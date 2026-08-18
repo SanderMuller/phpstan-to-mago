@@ -23,6 +23,14 @@ deletes** whatever was already on the stack, and the BEFORE run it produces is i
 To verify an already-committed fix, revert by path instead: `git checkout HEAD~1 -- <files>`, confirm the
 test fails, then `git checkout HEAD -- src/`.
 
+## `git checkout -- <file>` discards uncommitted work, with no confirmation
+
+Reverting a file to HEAD to undo a deliberate mutation also throws away every uncommitted change in it. A
+mutation check had just proved a test caught its bug; `git checkout -- src/Transpiler.php` to restore the
+code silently reverted the uncommitted feature with it, and the whole thing had to be reconstructed.
+
+Before mutating a file on purpose, copy it aside and restore from the copy.
+
 ## Do not hand-edit generated files
 
 `AGENTS.md`, `CLAUDE.md` and `.config/boost.php` are managed by boost sync. Edits belong in the source the
