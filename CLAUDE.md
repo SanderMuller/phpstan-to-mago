@@ -195,3 +195,31 @@ explicitly requested or when a behaviour change requires it.
 
 Be concise. Focus on what changed and why. Skip restating what the
 diff already shows.
+
+## Two invariants before you change the transpiler
+
+**1. The emitted output is the contract, not the source.** Both targets have a reviewed snapshot under
+`tests/Fixtures/expected` and `tests/Fixtures/expected-rust`. A refactor that changes what is emitted will
+fail those, which is the point: pint and rector have both rewritten `src/Transpiler.php` wholesale and the
+snapshots proved the output was untouched. If a snapshot changes, decide whether the new output is right
+before updating it, and say why in the commit.
+
+**2. Refuse rather than approximate.** The generator refuses a construct outside `Vocabulary`, naming it
+and its line, and `PhpBackend::checked()` refuses any operand it was handed and could not render. Both
+checks are load-bearing. Weakening either produced, at different times, files that did not parse and files
+that parsed while still containing Rust; the second kind is worse, because it loads and misbehaves.
+
+## `rector/type-perfect` is deliberately absent
+
+The repo-init baseline ships both `rector/type-perfect` and `tomasvotruba/type-coverage`. Since
+type-coverage 2.3 absorbed type-perfect's rules under the same namespace, both register
+`Rector\TypePerfect\Reflection\MethodNodeAnalyser` and PHPStan aborts before analysing with "Multiple
+services of type ... found". `hihaho/phpstan-rules` v3.15.1 fixed this the same way. Do not re-add it.
+
+## The baseline is debt, not a standard
+
+`phpstan-baseline.neon` holds the errors this code arrived with when it moved out of research. It came
+down from 559 to about 100 by installing the Mago SDK so the runtime type-checks, replacing 92 calls to
+php-parser's deprecated `getLine()`, and typing the vocabulary tables and the descriptor shape that
+everything flows through. What remains is mostly cognitive complexity in a few large methods, which needs
+splitting them rather than annotating them. Prefer emptying the baseline over adding to it.

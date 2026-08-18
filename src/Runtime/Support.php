@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Runtime;
 
 use LogicException;
+use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
+use Mago\Sdk\Analyzer\Type;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
-use Mago\Sdk\Analyzer\Type\Type;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
+use Mago\Sdk\Syntax\ResolvedName;
 
 /**
  * The PHP target's support runtime, the counterpart of `support.rs`.
@@ -411,7 +413,7 @@ final class Support
 
             foreach ($context->source->getChildren($child) as $part) {
                 $resolved = $context->source->getResolvedName($part);
-                $text = $resolved !== null ? $resolved->name : trim($context->source->getText($part));
+                $text = $resolved instanceof ResolvedName ? $resolved->name : trim($context->source->getText($part));
                 if ($text !== '' && $text !== 'extends') {
                     $names[] = $text;
                 }
@@ -479,7 +481,7 @@ final class Support
     {
         $className = self::namedObjectName($type);
 
-        return $className !== null && $context->codebase->getMethod($className, $method) !== null;
+        return $className !== null && $context->codebase->getMethod($className, $method) instanceof FunctionLikeMetadata;
     }
 
     private static function namedObjectName(?Type $type): ?string
@@ -625,7 +627,7 @@ final class Support
 
         $resolved = $context->source->getResolvedName($hint->node);
 
-        return $resolved !== null ? $resolved->name : $hint->text;
+        return $resolved instanceof ResolvedName ? $resolved->name : $hint->text;
     }
 
     public static function hintNameIs(NodeAnalysisContext $context, ?Part $hint, string $name): bool
@@ -704,7 +706,7 @@ final class Support
                 if ($child->kind === NodeKind::LocalIdentifier || $child->kind === NodeKind::Identifier) {
                     $resolved = $context->source->getResolvedName($child);
 
-                    return $resolved !== null ? $resolved->name : trim($context->source->getText($child));
+                    return $resolved instanceof ResolvedName ? $resolved->name : trim($context->source->getText($child));
                 }
             }
         }

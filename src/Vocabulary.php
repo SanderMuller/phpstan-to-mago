@@ -32,6 +32,9 @@ use PHPStan\Node\InClassNode;
  */
 final class Vocabulary
 {
+    /**
+     * @var array<class-string, array{trait: string, method: string, node: string|null, kind: string, adapter?: string, extra?: string, classFrom?: string, classOnly?: bool, each?: string}>
+     */
     public const array HOOKS = [
         MethodCall::class => ['trait' => 'MethodCallHook', 'method' => 'after_method_call', 'node' => 'MethodCall', 'kind' => 'MethodCall'],
         FuncCall::class => ['trait' => 'FunctionCallHook', 'method' => 'after_function_call', 'node' => 'FunctionCall', 'kind' => 'FunctionCall'],
@@ -59,6 +62,9 @@ final class Vocabulary
      * [rust expression, descriptor kind]. `name-selector` and `name-expr` differ because a method
      * name is a member selector while a function name is an arbitrary expression — the same PHPStan
      * source (`$node->name`) compiles to different Rust.
+     */
+    /**
+     * @var array<string, array<string, array{0: string, 1: string, 2?: string}>>
      */
     public const array FIELDS = [
         'MethodCall' => [
@@ -107,12 +113,18 @@ final class Vocabulary
      * gives items whose `->name` is an identifier, not an arbitrary expression.
      */
     /** Properties reachable from a local of a given descriptor kind. */
+    /**
+     * @var array<string, array<string, array{0: string, 1: string, 2?: string}>>
+     */
     public const array KIND_FIELDS = [
         'property' => [
             'type' => ['support::property_hint({base})', 'hint-option', 'Support::propertyHint($context, {base})'],
         ],
     ];
 
+    /**
+     * @var array<string, array{iter: string, item: string, phpIter?: string}>
+     */
     public const array ITERABLES = [
         'collected' => ['iter' => '{rust}', 'item' => 'collected-item'],
         'collected-item' => ['iter' => '{rust}', 'item' => 'collected-item'],
@@ -122,6 +134,9 @@ final class Vocabulary
     ];
 
     /** PHPStan node class -> the support predicate that recognises it. */
+    /**
+     * @var array<class-string, string>
+     */
     public const array NODE_PREDICATES = [
         Name::class => 'is_name',
         Variable::class => 'is_variable',
@@ -136,6 +151,9 @@ final class Vocabulary
      * A bare `! $x instanceof K` guard is not a test, it is a refinement: in Rust the idiomatic form
      * binds the narrowed node and returns early. Each entry says how to bind, and which of the PHP
      * node's properties the binding then stands for.
+     */
+    /**
+     * @var array<class-string, array{adapter: string, field?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>}>
      */
     public const array REFINEMENTS = [
         // adapter yields the node itself, so its fields are reachable

@@ -22,6 +22,7 @@
         "nikic/php-parser": "^5.7"
     },
     "require-dev": {
+        "carthage-software/mago": "^1.47",
         "laravel/pao": "^1.1",
         "laravel/pint": "^1.30",
         "mrpunyapal/rector-pest": "^0.2",
@@ -82,7 +83,8 @@
             "@phpstan-simplified",
             "@validate-gitattributes",
             "@test"
-        ]
+        ],
+        "transpile": "bin/phpstan-to-mago"
     },
     "config": {
         "sort-packages": true,
@@ -97,6 +99,6 @@
         "bin/phpstan-to-mago"
     ],
     "suggest": {
-        "carthage-software/mago": "Required to run the generated analyzer plugins (^1.47)"
+        "carthage-software/mago": "Runs the generated analyzer plugins (installed as a dev dependency here so the runtime type-checks)"
     }
 }

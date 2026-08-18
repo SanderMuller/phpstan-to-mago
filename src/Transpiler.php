@@ -62,6 +62,14 @@ final class Transpiler
     /** Which tier to emit for: 'analyzer' (a plugin) or 'linter' (a lint rule). */
     public static string $target = 'analyzer';
 
+    /**
+     * Where to read the good and bad examples a linter rule embeds in its metadata.
+     *
+     * Used by the linter target only. It used to be a path relative to this file, which meant a
+     * sibling directory that ships with nothing: the examples came out empty and said so nowhere.
+     */
+    public static ?string $examplesDir = null;
+
     /** @var list<Stm> emitted statements, in source order: guards and bindings interleave */
     private array $lines = [];
 
@@ -86,7 +94,7 @@ final class Transpiler
     /** The Mago node kind the hook's `node` currently refers to, for FIELDS lookup. */
     private string $nodeKind = '';
 
-    /** @var array<string, array{rust: string, kind: string, fields?: array}> PHP local -> descriptor */
+    /** @var array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string}> PHP local name -> descriptor */
     private array $locals = [];
 
     /** @var array<string, string> alias -> fully qualified class name, from the rule's `use` list */
@@ -157,6 +165,9 @@ final class Transpiler
         $this->backend = self::$target === 'php' ? new PhpBackend() : new RustBackend();
     }
 
+    /**
+     * @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, messages: list<string>} the emitted rule, plus what the caller needs to register and attribute it
+     */
     public function transpile(): array
     {
         $code = (string) file_get_contents($this->file);
@@ -189,7 +200,16 @@ final class Transpiler
                 $this->translateStatement($stmt);
             }
 
-            return ['name' => $className, 'trait' => $hook['trait'], 'node' => $short, 'rust' => ''];
+            return [
+                'name' => $className,
+                'trait' => $hook['trait'],
+                'node' => $short,
+                'kind' => $hook['kind'],
+                'module' => $this->snake($className),
+                'rust' => '',
+                'identifier' => $this->identifier,
+                'messages' => [],
+            ];
         }
 
         $hook = Vocabulary::HOOKS[$nodeType];
@@ -236,6 +256,22 @@ final class Transpiler
     }
 
     /** A written class name, as the FQCN the rule file's `use` list makes it mean. */
+    /**
+     * A member name written literally.
+     *
+     * `$object->$method()` and `Foo::{$name}` put an expression here rather than a name, and casting
+     * that to string is a TypeError rather than a useful answer. The vocabulary has nothing to say
+     * about a dynamic name, so this refuses instead of crashing.
+     */
+    private function memberName(Node|string $name, int $line): string
+    {
+        if (is_string($name) || $name instanceof Identifier || $name instanceof Name) {
+            return (string) $name;
+        }
+
+        throw new Refusal('dynamic member name', $line);
+    }
+
     private function resolveClassName(Name $name): string
     {
         $first = $name->getFirst();
@@ -330,7 +366,7 @@ final class Transpiler
                         }
 
                         try {
-                            $values[] = $this->rawStringLiteral($item->value, $c->getLine());
+                            $values[] = $this->rawStringLiteral($item->value, $c->getStartLine());
                         } catch (Refusal) {
                             continue 2; // not resolvable to strings; leave the constant unresolved
                         }
@@ -362,7 +398,7 @@ final class Transpiler
                 return $local['rust'];
             }
 
-            throw new Refusal("\${$expr->name} is not a message built in this rule", $expr->getLine());
+            throw new Refusal("\${$expr->name} is not a message built in this rule", $expr->getStartLine());
         }
 
         if ($expr instanceof FuncCall
@@ -372,7 +408,7 @@ final class Transpiler
             return $this->translateSprintf($expr);
         }
 
-        throw new Refusal('message expression outside the vocabulary: ' . $expr->getType(), $expr->getLine());
+        throw new Refusal('message expression outside the vocabulary: ' . $expr->getType(), $expr->getStartLine());
     }
 
     /** `sprintf(<format>, <args>)` -> `format!("...", ...)`, with PHP's specifiers rewritten. */
@@ -380,28 +416,28 @@ final class Transpiler
     {
         $args = $expr->getArgs();
         if ($args === []) {
-            throw new Refusal('sprintf() without a format', $expr->getLine());
+            throw new Refusal('sprintf() without a format', $expr->getStartLine());
         }
 
         $formatArg = $args[0]->value;
         $format = match (true) {
             $formatArg instanceof String_ => $formatArg->value,
             $formatArg instanceof ClassConstFetch => $this->selfConstant($formatArg),
-            default => throw new Refusal('sprintf() format is not a literal or a class constant', $expr->getLine()),
+            default => throw new Refusal('sprintf() format is not a literal or a class constant', $expr->getStartLine()),
         };
 
-        [$rustFormat, $expected] = $this->rustFormat($format, $expr->getLine());
+        [$rustFormat, $expected] = $this->rustFormat($format, $expr->getStartLine());
         $values = array_slice($args, 1);
         if (count($values) !== $expected) {
             throw new Refusal(
                 sprintf('sprintf() has %d placeholders but %d arguments', $expected, count($values)),
-                $expr->getLine(),
+                $expr->getStartLine(),
             );
         }
 
         $translated = [];
         foreach ($values as $value) {
-            $translated[] = $this->stringValue($value->value, $expr->getLine());
+            $translated[] = $this->stringValue($value->value, $expr->getStartLine());
         }
 
         if (self::$target === 'php') {
@@ -474,9 +510,9 @@ final class Transpiler
         if ($expr instanceof ClassConstFetch
             && $expr->class instanceof Name
             && in_array($expr->class->toString(), ['self', 'static'], true)
-            && isset($this->arrayConstants[(string) $expr->name])
+            && isset($this->arrayConstants[$this->memberName($expr->name, $expr->getStartLine())])
         ) {
-            return $this->arrayConstants[(string) $expr->name];
+            return $this->arrayConstants[$this->memberName($expr->name, $expr->getStartLine())];
         }
 
         if ($expr instanceof Array_) {
@@ -580,11 +616,11 @@ final class Transpiler
 
         foreach ($method->stmts ?? [] as $statement) {
             if ($final !== null) {
-                throw new Refusal('statements after the return of an inlined helper', $statement->getLine());
+                throw new Refusal('statements after the return of an inlined helper', $statement->getStartLine());
             }
 
             if ($statement instanceof Expression && $statement->expr instanceof Assign) {
-                $this->bindLocal($statement->expr, $statement->getLine());
+                $this->bindLocal($statement->expr, $statement->getStartLine());
 
                 continue;
             }
@@ -597,7 +633,7 @@ final class Transpiler
             ) {
                 $returned = $statement->stmts[0]->expr;
                 if (! $returned instanceof ConstFetch) {
-                    throw new Refusal('early return from a helper that is not a boolean literal', $statement->getLine());
+                    throw new Refusal('early return from a helper that is not a boolean literal', $statement->getStartLine());
                 }
 
                 $guards[] = [
@@ -614,7 +650,7 @@ final class Transpiler
                 continue;
             }
 
-            throw new Refusal('statement in an inlined helper outside the vocabulary: ' . $statement->getType(), $statement->getLine());
+            throw new Refusal('statement in an inlined helper outside the vocabulary: ' . $statement->getType(), $statement->getStartLine());
         }
 
         if ($final === null) {
@@ -678,13 +714,13 @@ final class Transpiler
     private function selfConstant(ClassConstFetch $expr): string
     {
         $class = $expr->class instanceof Name ? $expr->class->toString() : '';
-        $name = (string) $expr->name;
+        $name = $this->memberName($expr->name, $expr->getStartLine());
         if (in_array($class, ['self', 'static'], true) && isset($this->constants[$name])) {
             return $this->constants[$name];
         }
 
         // A constant from elsewhere: resolvable the same way argument literals are.
-        return $this->rawStringLiteral($expr, $expr->getLine());
+        return $this->rawStringLiteral($expr, $expr->getStartLine());
     }
 
     /**
@@ -742,7 +778,7 @@ final class Transpiler
         }
 
         if ($expr instanceof MethodCall
-            && in_array((string) $expr->name, ['getLine', 'getStartLine'], true)
+            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getLine', 'getStartLine'], true)
             && $expr->var instanceof Variable
             && $expr->var->name === 'node'
         ) {
@@ -801,7 +837,7 @@ final class Transpiler
             if ($stmt->elseifs !== [] || count($stmt->stmts) !== 1
                 || ($stmt->else instanceof Else_ && ! $this->isFlagAssignment($stmt->stmts[0]))
             ) {
-                throw new Refusal('if statement that is not a single-statement guard', $stmt->getLine());
+                throw new Refusal('if statement that is not a single-statement guard', $stmt->getStartLine());
             }
 
             $only = $stmt->stmts[0];
@@ -819,12 +855,12 @@ final class Transpiler
                 $exit = $this->backend->bail();
             } elseif ($only instanceof Continue_ && ! $only->num instanceof Expr) {
                 if (! $this->inLoop) {
-                    throw new Refusal('continue outside a loop', $stmt->getLine());
+                    throw new Refusal('continue outside a loop', $stmt->getStartLine());
                 }
 
                 $exit = 'continue;';
             } else {
-                throw new Refusal('guard body is neither `return []` nor `continue`', $stmt->getLine());
+                throw new Refusal('guard body is neither `return []` nor `continue`', $stmt->getStartLine());
             }
 
             $this->translateGuard($stmt->cond, $exit);
@@ -842,7 +878,7 @@ final class Transpiler
         // `continue;` inside a loop
         if ($stmt instanceof Continue_) {
             if (! $this->inLoop) {
-                throw new Refusal('continue outside a loop', $stmt->getLine());
+                throw new Refusal('continue outside a loop', $stmt->getStartLine());
             }
 
             $this->lines[] = new Stm('continue', [], $this->indent);
@@ -898,12 +934,12 @@ final class Transpiler
                 return;
             }
 
-            $this->bindLocal($stmt->expr, $stmt->getLine());
+            $this->bindLocal($stmt->expr, $stmt->getStartLine());
 
             return;
         }
 
-        throw new Refusal('statement outside the vocabulary: ' . $stmt->getType(), $stmt->getLine());
+        throw new Refusal('statement outside the vocabulary: ' . $stmt->getType(), $stmt->getStartLine());
     }
 
     /**
@@ -949,7 +985,7 @@ final class Transpiler
 
         $refinement = Vocabulary::REFINEMENTS[$wanted];
 
-        $subject = $this->resolve($instanceof->expr, $instanceof->getLine());
+        $subject = $this->resolve($instanceof->expr, $instanceof->getStartLine());
         if ($subject['kind'] !== 'expr') {
             return false;
         }
@@ -1000,7 +1036,7 @@ final class Transpiler
         }
     }
 
-    /** @var array<string, array> PHP expression key -> refined field map */
+    /** @var array<string, array<string, array{0: string, 1: string, 2?: string}>> expression key -> refined fields */
     private array $refinements = [];
 
     private function exprKey(Expr $expr): string
@@ -1012,7 +1048,7 @@ final class Transpiler
         }
 
         if ($expr instanceof PropertyFetch && $expr->var instanceof Variable) {
-            return $this->exprKey($expr->var) . '->' . $expr->name;
+            return $this->exprKey($expr->var) . '->' . $this->memberName($expr->name, $expr->getStartLine());
         }
 
         return spl_object_hash($expr);
@@ -1076,7 +1112,7 @@ final class Transpiler
         if ($stmt->else instanceof Else_
             && (count($stmt->else->stmts) !== 1 || ! $this->isFlagAssignment($stmt->else->stmts[0]))
         ) {
-            throw new Refusal('else branch that does more than set a flag', $stmt->getLine());
+            throw new Refusal('else branch that does more than set a flag', $stmt->getStartLine());
         }
 
         $condition = $this->translateCondition($stmt->cond);
@@ -1105,12 +1141,12 @@ final class Transpiler
     private function translateForeach(Foreach_ $stmt): void
     {
         if ($stmt->byRef) {
-            throw new Refusal('foreach by reference', $stmt->getLine());
+            throw new Refusal('foreach by reference', $stmt->getStartLine());
         }
 
         if ($stmt->keyVar instanceof Expr && ! $this->isCollectedSubject($stmt->expr)) {
             // The only keyed iteration modelled is over collected data, whose key is the file path.
-            throw new Refusal('foreach with a key', $stmt->getLine());
+            throw new Refusal('foreach with a key', $stmt->getStartLine());
         }
 
         if ($stmt->valueVar instanceof Array_ || $stmt->valueVar instanceof List_) {
@@ -1120,10 +1156,10 @@ final class Transpiler
         }
 
         if (! $stmt->valueVar instanceof Variable || ! is_string($stmt->valueVar->name)) {
-            throw new Refusal('foreach into something other than a simple variable', $stmt->getLine());
+            throw new Refusal('foreach into something other than a simple variable', $stmt->getStartLine());
         }
 
-        $subject = $this->resolve($stmt->expr, $stmt->getLine());
+        $subject = $this->resolve($stmt->expr, $stmt->getStartLine());
 
         // PHPStan hands collected data back as file => list-of-data, so rules walk it with two nested
         // loops. Mago's store is flat and each datum carries its own position, so the outer loop has
@@ -1143,7 +1179,7 @@ final class Transpiler
         }
 
         if (! isset(Vocabulary::ITERABLES[$subject['kind']])) {
-            throw new Refusal("no iteration mapped for a {$subject['kind']}", $stmt->getLine());
+            throw new Refusal("no iteration mapped for a {$subject['kind']}", $stmt->getStartLine());
         }
 
         $iterable = Vocabulary::ITERABLES[$subject['kind']];
@@ -1184,7 +1220,7 @@ final class Transpiler
     private function isCollectedSubject(Expr $expr): bool
     {
         try {
-            return $this->resolve($expr, $expr->getLine())['kind'] === 'collected';
+            return $this->resolve($expr, $expr->getStartLine())['kind'] === 'collected';
         } catch (Refusal) {
             return false;
         }
@@ -1193,9 +1229,9 @@ final class Transpiler
     /** `foreach ($collected as [$a, $b, $c])` — the datum's values, by position. */
     private function translateDestructuringForeach(Foreach_ $stmt): void
     {
-        $subject = $this->resolve($stmt->expr, $stmt->getLine());
+        $subject = $this->resolve($stmt->expr, $stmt->getStartLine());
         if ($subject['kind'] !== 'collected') {
-            throw new Refusal('destructuring foreach over something other than collected data', $stmt->getLine());
+            throw new Refusal('destructuring foreach over something other than collected data', $stmt->getStartLine());
         }
 
         $savedLocals = $this->locals;
@@ -1207,9 +1243,13 @@ final class Transpiler
         $this->indent += 4;
 
         $bindings = [];
+        if (! $stmt->valueVar instanceof Array_) {
+            throw new Refusal('destructuring foreach over something other than a list', $stmt->getStartLine());
+        }
+
         foreach ($stmt->valueVar->items as $index => $item) {
             if ($item === null || ! $item->value instanceof Variable || ! is_string($item->value->name)) {
-                throw new Refusal('destructuring into something other than simple variables', $stmt->getLine());
+                throw new Refusal('destructuring into something other than simple variables', $stmt->getStartLine());
             }
 
             $name = $this->snake($item->value->name);
@@ -1251,16 +1291,16 @@ final class Transpiler
     private function translateCollect(Return_ $stmt): void
     {
         if (! $stmt->expr instanceof Array_) {
-            throw new Refusal('collector returns something other than a list of values', $stmt->getLine());
+            throw new Refusal('collector returns something other than a list of values', $stmt->getStartLine());
         }
 
         $values = [];
         foreach ($stmt->expr->items as $item) {
             if ($item === null) {
-                throw new Refusal('collector returns a list with a hole', $stmt->getLine());
+                throw new Refusal('collector returns a list with a hole', $stmt->getStartLine());
             }
 
-            $values[] = $this->stringValue($item->value, $stmt->getLine()) . '.to_string()';
+            $values[] = $this->stringValue($item->value, $stmt->getStartLine()) . '.to_string()';
         }
 
         $pad = str_repeat(' ', $this->indent);
@@ -1279,7 +1319,7 @@ final class Transpiler
      * PHP counterpart and must become a navigation helper; a descriptor without a `php` key means
      * that recipe has not been written, and refusing is the only honest answer.
      *
-     * @param array{rust: string, kind: string, php?: string} $descriptor
+     * @param array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string} $descriptor
      */
     private function operand(array $descriptor): string
     {
@@ -1366,9 +1406,9 @@ final class Transpiler
     {
         while ($chain instanceof MethodCall) {
             if ((string) $chain->name === 'identifier' && count($chain->getArgs()) === 1) {
-                $identifier = $this->rawStringLiteral($chain->getArgs()[0]->value, $chain->getLine());
+                $identifier = $this->rawStringLiteral($chain->getArgs()[0]->value, $chain->getStartLine());
                 if ($this->identifier !== null && $this->identifier !== $identifier) {
-                    throw new Refusal('more than one distinct identifier in one rule', $chain->getLine());
+                    throw new Refusal('more than one distinct identifier in one rule', $chain->getStartLine());
                 }
 
                 $this->identifier = $identifier;
@@ -1378,17 +1418,17 @@ final class Transpiler
         }
 
         if (! $chain instanceof StaticCall || (string) $chain->name !== 'message') {
-            throw new Refusal('error builder chain does not start with message()', $chain->getLine());
+            throw new Refusal('error builder chain does not start with message()', $chain->getStartLine());
         }
 
         $args = $chain->getArgs();
         if (count($args) !== 1) {
-            throw new Refusal('message() with more than one argument', $chain->getLine());
+            throw new Refusal('message() with more than one argument', $chain->getStartLine());
         }
 
         $message = $this->translateMessageExpression($args[0]->value);
         if ($this->message !== null && $this->message !== $message) {
-            throw new Refusal('more than one distinct message in one rule', $chain->getLine());
+            throw new Refusal('more than one distinct message in one rule', $chain->getStartLine());
         }
 
         $this->message = $message;
@@ -1400,7 +1440,9 @@ final class Transpiler
             $expr = $expr->var;
         }
 
-        return $expr instanceof StaticCall && $expr->class->getLast() === 'RuleErrorBuilder';
+        return $expr instanceof StaticCall
+            && $expr->class instanceof Name
+            && $expr->class->getLast() === 'RuleErrorBuilder';
     }
 
     // -----------------------------------------------------------------------
@@ -1426,8 +1468,9 @@ final class Transpiler
 
         // $flag = true;  /  $flag = false;  — state carried across loop iterations, which needs a
         // real mutable binding rather than a compile-time alias like every other local here.
-        if ($this->isBooleanLiteral($value)) {
-            $this->assignBoolean($name, $this->isBooleanLiteral($value) === 'true', $line);
+        $boolean = $this->isBooleanLiteral($value);
+        if ($boolean !== null) {
+            $this->assignBoolean($name, $boolean === 'true', $line);
 
             return;
         }
@@ -1704,7 +1747,7 @@ final class Transpiler
         }
 
         if ($expr instanceof NotIdentical || $expr instanceof Identical) {
-            $equal = $this->equality($expr->left, $expr->right, $expr->getLine());
+            $equal = $this->equality($expr->left, $expr->right, $expr->getStartLine());
 
             return $expr instanceof NotIdentical ? "!({$equal})" : $equal;
         }
@@ -1715,23 +1758,27 @@ final class Transpiler
             return $this->intComparison($expr);
         }
 
-        throw new Refusal('condition outside the vocabulary: ' . $expr->getType(), $expr->getLine());
+        throw new Refusal('condition outside the vocabulary: ' . $expr->getType(), $expr->getStartLine());
     }
 
     private function staticHelperPredicate(StaticCall $expr): string
     {
+        if (! $expr->class instanceof Name) {
+            throw new Refusal('static call on a dynamic class name', $expr->getStartLine());
+        }
+
         $helper = $expr->class->getLast();
-        $method = (string) $expr->name;
+        $method = $this->memberName($expr->name, $expr->getStartLine());
         $args = $expr->getArgs();
 
         if ($helper === 'NamingHelper' && $method === 'isName' && count($args) === 2) {
-            $literal = $this->stringLiteral($args[1]->value, $expr->getLine());
+            $literal = $this->stringLiteral($args[1]->value, $expr->getStartLine());
 
-            return $this->nameEquals($this->resolve($args[0]->value, $expr->getLine()), $literal, $expr->getLine());
+            return $this->nameEquals($this->resolve($args[0]->value, $expr->getStartLine()), $literal, $expr->getStartLine());
         }
 
         if ($helper === 'MethodCallNameAnalyzer' && $method === 'isThisMethodCall' && count($args) === 2) {
-            $literal = $this->stringLiteral($args[1]->value, $expr->getLine());
+            $literal = $this->stringLiteral($args[1]->value, $expr->getStartLine());
 
             return $this->backend->call('is_this_method_call', [
                 ...(self::$target === 'php' ? ['$context', '$node'] : ['node']),
@@ -1742,25 +1789,25 @@ final class Transpiler
         // Any other static helper whose source we can find is inlined rather than hand-translated.
         $helperClass = $this->findClassByName($helper);
         if ($helperClass !== null) {
-            return $this->inlineMethod($helperClass['class'], $method, $args, $expr->getLine(), $helperClass['uses']);
+            return $this->inlineMethod($helperClass['class'], $method, $args, $expr->getStartLine(), $helperClass['uses']);
         }
 
-        throw new Refusal("unknown static helper {$helper}::{$method}()", $expr->getLine());
+        throw new Refusal("unknown static helper {$helper}::{$method}()", $expr->getStartLine());
     }
 
     private function instanceofPredicate(Instanceof_ $expr): string
     {
         if (! $expr->class instanceof Name) {
-            throw new Refusal('instanceof with a dynamic class', $expr->getLine());
+            throw new Refusal('instanceof with a dynamic class', $expr->getStartLine());
         }
 
         $wanted = $this->resolveClassName($expr->class);
-        $subject = $this->resolve($expr->expr, $expr->getLine());
+        $subject = $this->resolve($expr->expr, $expr->getStartLine());
 
         // `$type instanceof ObjectType` is a *type* test, not a node test.
         if ($wanted === ObjectType::class) {
             if ($subject['kind'] !== 'type') {
-                throw new Refusal('ObjectType test on something that is not a resolved type', $expr->getLine());
+                throw new Refusal('ObjectType test on something that is not a resolved type', $expr->getStartLine());
             }
 
             if (self::$target === 'php') {
@@ -1793,7 +1840,7 @@ final class Transpiler
                 Name::class => "hint{$suffix}_is_name",
             ];
             if (! isset($hintPredicates[$wanted])) {
-                throw new Refusal("instanceof {$wanted} on a type hint", $expr->getLine());
+                throw new Refusal("instanceof {$wanted} on a type hint", $expr->getStartLine());
             }
 
             // `hint_option_is_name` and `hint_is_name` differ only in whether the hint may be absent,
@@ -1807,7 +1854,7 @@ final class Transpiler
 
         if ($wanted === ClassReflection::class) {
             if ($subject['kind'] !== 'class-reflection') {
-                throw new Refusal('ClassReflection test on something else', $expr->getLine());
+                throw new Refusal('ClassReflection test on something else', $expr->getStartLine());
             }
 
             // "is there an enclosing class" — yes by construction inside a declaration hook.
@@ -1821,7 +1868,7 @@ final class Transpiler
                 return $this->backend->call('selector_is_identifier', [$this->operand($subject)]);
             }
 
-            throw new Refusal("instanceof {$wanted} on a member selector", $expr->getLine());
+            throw new Refusal("instanceof {$wanted} on a member selector", $expr->getStartLine());
         }
 
         if ($subject['kind'] === 'extends') {
@@ -1829,11 +1876,11 @@ final class Transpiler
                 return $this->backend->call('has_extends', self::$target === 'php' ? ['$context', '$node'] : ['node']);
             }
 
-            throw new Refusal("instanceof {$wanted} on an extends clause", $expr->getLine());
+            throw new Refusal("instanceof {$wanted} on an extends clause", $expr->getStartLine());
         }
 
         if (! isset(Vocabulary::NODE_PREDICATES[$wanted])) {
-            throw new Refusal("no node predicate for instanceof {$wanted}", $expr->getLine());
+            throw new Refusal("no node predicate for instanceof {$wanted}", $expr->getStartLine());
         }
 
         return $this->backend->call(Vocabulary::NODE_PREDICATES[$wanted], [$this->operand($subject)]);
@@ -1841,7 +1888,7 @@ final class Transpiler
 
     private function methodPredicate(MethodCall $expr): string
     {
-        $method = (string) $expr->name;
+        $method = $this->memberName($expr->name, $expr->getStartLine());
         $args = $expr->getArgs();
 
         // Trinary-logic tails: ->yes() / ->no() on a type or scope query.
@@ -1851,9 +1898,9 @@ final class Transpiler
             $innerArgs = $inner->getArgs();
 
             if ($innerName === 'hasMethod' && count($innerArgs) === 1) {
-                $subject = $this->resolve($inner->var, $expr->getLine());
-                $this->requireType($subject, $expr->getLine());
-                $literal = $this->stringLiteral($innerArgs[0]->value, $expr->getLine());
+                $subject = $this->resolve($inner->var, $expr->getStartLine());
+                $this->requireType($subject, $expr->getStartLine());
+                $literal = $this->stringLiteral($innerArgs[0]->value, $expr->getStartLine());
                 if (self::$target === 'php') {
                     if ($subject['rust'] !== 'node.object') {
                         throw new Refusal("the inferred type of {$subject['rust']} is not a position the SDK exposes");
@@ -1869,9 +1916,9 @@ final class Transpiler
             }
 
             if ($innerName === 'isInstanceOf' && count($innerArgs) === 1) {
-                $subject = $this->resolve($inner->var, $expr->getLine());
-                $this->requireType($subject, $expr->getLine());
-                $literal = $this->classLiteral($innerArgs[0]->value, $expr->getLine());
+                $subject = $this->resolve($inner->var, $expr->getStartLine());
+                $this->requireType($subject, $expr->getStartLine());
+                $literal = $this->classLiteral($innerArgs[0]->value, $expr->getStartLine());
                 if (self::$target === 'php') {
                     if ($subject['rust'] !== 'node.object') {
                         throw new Refusal("the inferred type of {$subject['rust']} is not a position the SDK exposes");
@@ -1890,13 +1937,13 @@ final class Transpiler
                 && $inner->var instanceof Variable && $inner->var->name === 'scope'
             ) {
                 $this->readsPriorScope = true;
-                $name = $this->variableNameExpression($innerArgs[0]->value, $expr->getLine());
+                $name = $this->variableNameExpression($innerArgs[0]->value, $expr->getStartLine());
                 $undefined = "support::variable_is_undefined(context, {$name})";
 
                 return $method === 'no' ? $undefined : "!({$undefined})";
             }
 
-            throw new Refusal("trinary tail on an unsupported query ->{$innerName}()", $expr->getLine());
+            throw new Refusal("trinary tail on an unsupported query ->{$innerName}()", $expr->getStartLine());
         }
 
         if ($method === 'isInClass' && $expr->var instanceof Variable && $expr->var->name === 'scope') {
@@ -1908,25 +1955,25 @@ final class Transpiler
 
         // $classReflection->is($type) — the enclosing class, against a literal or a loop variable
         if ($method === 'is' && count($args) === 1) {
-            $subject = $this->resolve($expr->var, $expr->getLine());
+            $subject = $this->resolve($expr->var, $expr->getStartLine());
             if ($subject['kind'] !== 'class-reflection') {
-                throw new Refusal('is() on something other than the scope class', $expr->getLine());
+                throw new Refusal('is() on something other than the scope class', $expr->getStartLine());
             }
 
-            return $this->enclosingClassIs($this->bytesValue($args[0]->value, $expr->getLine()));
+            return $this->enclosingClassIs($this->bytesValue($args[0]->value, $expr->getStartLine()));
         }
 
         // Reflection predicates. Inside a declaration hook these come from the class metadata, and
         // two of them are settled by which hook it is: the class hook fires only for classes, and
         // never for anonymous ones, which are a separate node in Mago.
         if (in_array($method, ['isClass', 'isAnonymous', 'isAbstract', 'isInterface'], true) && $args === []) {
-            $subject = $this->resolve($expr->var, $expr->getLine());
+            $subject = $this->resolve($expr->var, $expr->getStartLine());
             if ($subject['kind'] !== 'class-reflection') {
-                throw new Refusal("{$method}() on something other than a class reflection", $expr->getLine());
+                throw new Refusal("{$method}() on something other than a class reflection", $expr->getStartLine());
             }
 
             if ($this->classFrom !== 'metadata') {
-                throw new Refusal("{$method}() outside a declaration hook", $expr->getLine());
+                throw new Refusal("{$method}() outside a declaration hook", $expr->getStartLine());
             }
 
             $this->usesMetadata = true;
@@ -1940,23 +1987,23 @@ final class Transpiler
         }
 
         if ($method === 'getName' && $args === []) {
-            $subject = $this->resolve($expr->var, $expr->getLine());
+            $subject = $this->resolve($expr->var, $expr->getStartLine());
             if ($subject['kind'] !== 'class-reflection') {
-                throw new Refusal('getName() on something other than a class reflection', $expr->getLine());
+                throw new Refusal('getName() on something other than a class reflection', $expr->getStartLine());
             }
 
             $this->usesMetadata = true;
 
-            throw new Refusal('getName() used as a predicate', $expr->getLine());
+            throw new Refusal('getName() used as a predicate', $expr->getStartLine());
         }
 
         if ($method === 'isSubclassOf' && count($args) === 1) {
-            $subject = $this->resolve($expr->var, $expr->getLine());
+            $subject = $this->resolve($expr->var, $expr->getStartLine());
             if ($subject['kind'] !== 'class-reflection') {
-                throw new Refusal('isSubclassOf() on something other than the scope class', $expr->getLine());
+                throw new Refusal('isSubclassOf() on something other than the scope class', $expr->getStartLine());
             }
 
-            $literal = $this->classLiteral($args[0]->value, $expr->getLine());
+            $literal = $this->classLiteral($args[0]->value, $expr->getStartLine());
 
             // PHPStan's isSubclassOf() excludes the class itself; Mago's is_instance_of() includes
             // it. For the interface/abstract parents this vocabulary sees, the two coincide.
@@ -1971,20 +2018,24 @@ final class Transpiler
 
         // A private helper on the rule itself: same treatment as a static one.
         if ($expr->var instanceof Variable && $expr->var->name === 'this' && $this->currentClass instanceof Class_) {
-            return $this->inlineMethod($this->currentClass, $method, $args, $expr->getLine());
+            return $this->inlineMethod($this->currentClass, $method, $args, $expr->getStartLine());
         }
 
-        throw new Refusal("method call outside the vocabulary ->{$method}()", $expr->getLine());
+        throw new Refusal("method call outside the vocabulary ->{$method}()", $expr->getStartLine());
     }
 
     private function functionPredicate(FuncCall $expr): string
     {
+        if (! $expr->name instanceof Name) {
+            throw new Refusal('call to a dynamic function name', $expr->getStartLine());
+        }
+
         $name = $expr->name->toString();
         $args = $expr->getArgs();
 
         if (in_array($name, ['str_ends_with', 'str_starts_with', 'str_contains'], true) && count($args) === 2) {
-            $subject = $this->resolve($args[0]->value, $expr->getLine());
-            $needle = $this->bytesValue($args[1]->value, $expr->getLine());
+            $subject = $this->resolve($args[0]->value, $expr->getStartLine());
+            $needle = $this->bytesValue($args[1]->value, $expr->getStartLine());
 
             if ($subject['kind'] === 'file') {
                 $support = ['str_ends_with' => 'file_ends_with', 'str_starts_with' => 'file_starts_with', 'str_contains' => 'file_contains'][$name];
@@ -1998,20 +2049,20 @@ final class Transpiler
                 return $this->backend->call($support, [$this->operand($subject), $needle]);
             }
 
-            throw new Refusal("{$name}() on a {$subject['kind']}", $expr->getLine());
+            throw new Refusal("{$name}() on a {$subject['kind']}", $expr->getStartLine());
         }
 
         // array_any(<list of strings>, fn ($x) => <predicate using $x>)
         if (in_array($name, ['array_any', 'array_all'], true) && count($args) === 2) {
-            $options = $this->stringList($args[0]->value, $expr->getLine());
+            $options = $this->stringList($args[0]->value, $expr->getStartLine());
             $closure = $args[1]->value;
             if (! $closure instanceof ArrowFunction || count($closure->params) !== 1) {
-                throw new Refusal("{$name}() with something other than a one-parameter arrow function", $expr->getLine());
+                throw new Refusal("{$name}() with something other than a one-parameter arrow function", $expr->getStartLine());
             }
 
             $parameter = $closure->params[0]->var;
             if (! $parameter instanceof Variable || ! is_string($parameter->name)) {
-                throw new Refusal("{$name}()'s parameter is not a simple variable", $expr->getLine());
+                throw new Refusal("{$name}()'s parameter is not a simple variable", $expr->getStartLine());
             }
 
             $saved = $this->locals;
@@ -2042,11 +2093,11 @@ final class Transpiler
                 || strtolower($args[2]->value->name->toString()) !== 'true'
             ) {
                 // Loose in_array() compares with ==, which is not what any of these rules mean.
-                throw new Refusal('in_array() without strict comparison', $expr->getLine());
+                throw new Refusal('in_array() without strict comparison', $expr->getStartLine());
             }
 
-            $options = $this->stringList($args[1]->value, $expr->getLine());
-            $subject = $this->resolve($args[0]->value, $expr->getLine());
+            $options = $this->stringList($args[1]->value, $expr->getStartLine());
+            $subject = $this->resolve($args[0]->value, $expr->getStartLine());
             $list = $this->byteSliceList($options);
 
             return match ($subject['kind']) {
@@ -2054,24 +2105,24 @@ final class Transpiler
                 'name-selector' => $this->backend->call('selector_is_one_of', [$this->operand($subject), self::$target === 'php' ? $list : '&' . $list]),
                 'name-expr' => "support::name_is_one_of({$subject['rust']}, &{$list})",
                 'extends' => "support::extends_is_one_of(context, node, &{$list})",
-                default => throw new Refusal("in_array() over a {$subject['kind']}", $expr->getLine()),
+                default => throw new Refusal("in_array() over a {$subject['kind']}", $expr->getStartLine()),
             };
         }
 
         if ($name === 'is_string' && count($args) === 1) {
             $target = $args[0]->value;
             if ($target instanceof PropertyFetch && (string) $target->name === 'name') {
-                $subject = $this->resolve($target->var, $expr->getLine());
+                $subject = $this->resolve($target->var, $expr->getStartLine());
 
                 return self::$target === 'php'
                     ? $this->backend->call('direct_variable_name', [$this->operand($subject)]) . ' !== null'
                     : "support::direct_variable_name({$subject['rust']}).is_some()";
             }
 
-            throw new Refusal('is_string() on something outside the vocabulary', $expr->getLine());
+            throw new Refusal('is_string() on something outside the vocabulary', $expr->getStartLine());
         }
 
-        throw new Refusal("function call outside the vocabulary {$name}()", $expr->getLine());
+        throw new Refusal("function call outside the vocabulary {$name}()", $expr->getStartLine());
     }
 
     /** `count($node->getArgs()) === N` and `$args === []`. */
@@ -2166,11 +2217,11 @@ final class Transpiler
     {
         $left = $expr->left;
         if (! $left instanceof PropertyFetch || (string) $left->name !== 'value') {
-            throw new Refusal('numeric comparison outside the vocabulary', $expr->getLine());
+            throw new Refusal('numeric comparison outside the vocabulary', $expr->getStartLine());
         }
 
-        $subject = $this->resolve($left->var, $expr->getLine());
-        $number = $this->intLiteral($expr->right, $expr->getLine());
+        $subject = $this->resolve($left->var, $expr->getStartLine());
+        $number = $this->intLiteral($expr->right, $expr->getStartLine());
         $operator = match (true) {
             $expr instanceof GreaterOrEqual => '>=',
             $expr instanceof Greater => '>',
@@ -2257,7 +2308,7 @@ final class Transpiler
 
     private function variableNameExpression(Expr $expr, int $line): string
     {
-        if ($expr instanceof PropertyFetch && (string) $expr->name === 'name') {
+        if ($expr instanceof PropertyFetch && $this->memberName($expr->name, $expr->getStartLine()) === 'name') {
             $subject = $this->resolve($expr->var, $line);
 
             return "support::direct_variable_name({$subject['rust']}).unwrap_or_default()";
@@ -2277,7 +2328,14 @@ final class Transpiler
     // Paths
     // -----------------------------------------------------------------------
 
-    /** @return array{rust: string, kind: string, fields?: array, key?: string} */
+    /**
+     * The descriptor for a PHP expression: how to say it in the target, and what kind of thing it is.
+     *
+     * `rust` and `php` are the same expression rendered for each target. A descriptor with no `php` key
+     * has no navigation recipe yet, and {@see operand} refuses rather than guessing.
+     *
+     * @return array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string}
+     */
     private function resolve(Expr $expr, int $line): array
     {
         if ($expr instanceof Variable && $expr->name === 'node') {
@@ -2293,7 +2351,7 @@ final class Transpiler
         }
 
         if ($expr instanceof MethodCall
-            && (string) $expr->name === 'getOriginalNode'
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getOriginalNode'
             && $expr->var instanceof Variable
             && $expr->var->name === 'node'
         ) {
@@ -2301,14 +2359,7 @@ final class Transpiler
         }
 
         if ($expr instanceof MethodCall
-            && (string) $expr->name === 'getClassProperties'
-            && false
-        ) {
-            return [];
-        }
-
-        if ($expr instanceof MethodCall
-            && (string) $expr->name === 'getFile'
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getFile'
             && $expr->var instanceof Variable
             && $expr->var->name === 'scope'
         ) {
@@ -2316,7 +2367,7 @@ final class Transpiler
         }
 
         if ($expr instanceof MethodCall
-            && (string) $expr->name === 'getClassReflection'
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getClassReflection'
             && $expr->var instanceof Variable
             && in_array($expr->var->name, ['scope', 'node'], true)
         ) {
@@ -2325,7 +2376,7 @@ final class Transpiler
 
         // $node->get(SomeCollector::class)
         if ($expr instanceof MethodCall
-            && (string) $expr->name === 'get'
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'get'
             && $expr->var instanceof Variable
             && $expr->var->name === 'node'
             && count($expr->getArgs()) === 1
@@ -2336,7 +2387,7 @@ final class Transpiler
             return ['rust' => "support::collected(\"{$short}\")", 'kind' => 'collected', 'collector' => $short];
         }
 
-        if ($expr instanceof MethodCall && (string) $expr->name === 'getName' && $expr->args === []) {
+        if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getName' && $expr->args === []) {
             $base = $this->resolve($expr->var, $line);
             if ($base['kind'] !== 'class-reflection') {
                 throw new Refusal('getName() on something other than a class reflection', $line);
@@ -2355,7 +2406,7 @@ final class Transpiler
             ];
         }
 
-        if ($expr instanceof MethodCall && (string) $expr->name === 'getProperties') {
+        if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getProperties') {
             $base = $this->resolve($expr->var, $line);
             if ($base['kind'] !== 'hook-node') {
                 throw new Refusal('getProperties() on something other than the class-like', $line);
@@ -2368,7 +2419,7 @@ final class Transpiler
             ];
         }
 
-        if ($expr instanceof MethodCall && (string) $expr->name === 'getArgs') {
+        if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getArgs') {
             $args = ['rust' => $this->argListPath($line), 'kind' => 'args'];
             if (self::$target === 'php') {
                 $args['php'] = $args['rust'];
@@ -2377,12 +2428,12 @@ final class Transpiler
             return $args;
         }
 
-        if ($expr instanceof MethodCall && (string) $expr->name === 'toString') {
+        if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'toString') {
             return $this->resolve($expr->var, $line);
         }
 
         if ($expr instanceof PropertyFetch) {
-            $property = (string) $expr->name;
+            $property = $this->memberName($expr->name, $expr->getStartLine());
             $key = $this->exprKey($expr);
 
             // A narrowing binding for this exact path takes precedence.
@@ -2524,7 +2575,7 @@ final class Transpiler
 
         $alias = $expr->class->getFirst();
         $fqcn = $this->useMap[$alias] ?? $expr->class->toString();
-        $constant = (string) $expr->name;
+        $constant = $this->memberName($expr->name, $expr->getStartLine());
 
         if ($constant === 'class') {
             return $fqcn;
@@ -2803,11 +2854,18 @@ RUST;
      *
      * @return array{string, string} good, bad
      */
+    /**
+     * @return array{string, string} the good and bad example for this rule, blank when none is known
+     */
     private function corpusExamples(string $className): array
     {
         $blank = "<?php\n";
+        if (self::$examplesDir === null) {
+            return [$blank, $blank];
+        }
+
         $units = [];
-        foreach (glob(__DIR__ . '/../differential/corpus/*.php') ?: [] as $path) {
+        foreach (glob(self::$examplesDir . '/*.php') ?: [] as $path) {
             $lines = file($path) ?: [];
             $header = [];
             $headerDepth = 0;

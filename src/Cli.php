@@ -34,6 +34,15 @@ final class Cli
             $files = array_values($files);
         }
 
+        foreach ($files as $key => $argument) {
+            if (str_starts_with($argument, '--examples=')) {
+                Transpiler::$examplesDir = substr($argument, strlen('--examples='));
+                unset($files[$key]);
+            }
+        }
+
+        $files = array_values($files);
+
         if (($key = array_search('--target=linter', $files, true)) !== false) {
             Transpiler::$target = 'linter';
             unset($files[$key]);

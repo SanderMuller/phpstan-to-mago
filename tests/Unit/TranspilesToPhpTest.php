@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
+use PhpParser\Error;
+use PhpParser\ParserFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -48,17 +50,19 @@ final class TranspilesToPhpTest extends TestCase
     }
 
     #[DataProvider('supportedRules')]
-    public function test_emitted_plugin_is_valid_php(string $rule): void
+    public function test_emitted_plugin_parses(string $rule): void
     {
-        $file = tempnam(sys_get_temp_dir(), 'ptm') . '.php';
-        file_put_contents($file, $this->transpile($rule));
+        // Parsed with the same parser the transpiler reads rules with, rather than shelling out to
+        // `php -l`: no subprocess, and the failure names the offending line.
+        $parser = (new ParserFactory())->createForHostVersion();
 
-        $output = [];
-        $status = 0;
-        exec('php -l ' . escapeshellarg($file) . ' 2>&1', $output, $status);
-        unlink($file);
+        try {
+            $statements = $parser->parse($this->transpile($rule));
+        } catch (Error $error) {
+            self::fail("Emitted plugin for {$rule} does not parse: " . $error->getMessage());
+        }
 
-        $this->assertSame(0, $status, "Emitted plugin for {$rule} does not parse: " . implode("\n", $output));
+        $this->assertNotNull($statements, "Emitted plugin for {$rule} produced no statements.");
     }
 
     /**

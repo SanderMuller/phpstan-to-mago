@@ -15,6 +15,14 @@ vendor/bin/phpstan-to-mago --target=php --out=build src/Rules/ForbiddenStaticCon
 ```
 
 ```
+--target=php       a Mago SDK plugin, an ordinary composer library (the default is the Rust analyzer)
+--target=linter    a Rust lint rule, which has to be compiled into Mago
+--out=DIR          where to write, defaulting to the current directory
+--examples=DIR     PHP files the linter target reads its good and bad examples from
+--survey           report what each rule would need, writing nothing
+```
+
+```
   EMIT    ForbiddenStaticConstFetchRule
 
 emitted: 1, refused: 0
@@ -97,6 +105,12 @@ overstating the case.
 inside Mago's own crate, so it cannot ship as a package and is not what this tool is for. It is kept
 because both targets share the whole body translation, which makes it a useful check that a change to that
 has not altered behaviour.
+
+## Contributing
+
+`composer qa-check` runs the lot. Two invariants matter more than the rest, and both are in `CLAUDE.md`:
+the emitted output is the contract and is snapshotted per target, and anything the vocabulary does not
+cover is refused rather than approximated.
 
 ## Requirements
 
