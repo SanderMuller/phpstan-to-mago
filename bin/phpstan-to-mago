@@ -20,9 +20,9 @@ if ($argv === [] || in_array('--help', $argv, true) || in_array('-h', $argv, tru
 
       phpstan-to-mago [--target=php|linter] [--out=DIR] [--examples=DIR] [--survey] <path>...
 
-      --target=php      a Mago SDK plugin, an ordinary composer library
+      --target=php      a Mago SDK plugin, an ordinary composer library, the default
+      --target=analyzer a Rust analyzer plugin, which has to be compiled into Mago
       --target=linter   a Rust lint rule, which has to be compiled into Mago
-                        the default target is the Rust analyzer
       --survey          report what each rule would need, writing nothing
       --out=DIR         where to write, defaulting to the current directory
       --examples=DIR    PHP files the linter target reads its examples from

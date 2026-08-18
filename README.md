@@ -16,7 +16,8 @@ vendor/bin/phpstan-to-mago --survey vendor/hihaho/phpstan-rules/src
 ```
 
 ```
---target=php       a Mago SDK plugin, an ordinary composer library (the default is the Rust analyzer)
+--target=php       a Mago SDK plugin, an ordinary composer library, the default
+--target=analyzer  a Rust analyzer plugin, which has to be compiled into Mago
 --target=linter    a Rust lint rule, which has to be compiled into Mago
 --out=DIR          where to write, defaulting to the current directory
 --examples=DIR     PHP files the linter target reads its good and bad examples from
@@ -106,7 +107,7 @@ overstating the case.
 
 ## The Rust target
 
-`--target=linter` and the default `--target=analyzer` emit Rust instead. Generated Rust only runs compiled
+`--target=linter` and `--target=analyzer` emit Rust instead. Generated Rust only runs compiled
 inside Mago's own crate, so it cannot ship as a package and is not what this tool is for. It is kept
 because both targets share the whole body translation, which makes it a useful check that a change to that
 has not altered behaviour.

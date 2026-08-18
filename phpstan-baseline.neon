@@ -1,18 +1,6 @@
 parameters:
 	ignoreErrors:
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Cli::run()" is 23, keep it under 20'
-			identifier: complexity.functionLike
-			count: 1
-			path: src/Cli.php
-
-		-
-			rawMessage: Foreach overwrites $key with its key variable.
-			identifier: foreach.keyOverwrite
-			count: 1
-			path: src/Cli.php
-
-		-
 			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\ExampleReader::forRule()" is 36, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1

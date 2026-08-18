@@ -60,7 +60,7 @@ final class Transpiler
     public static bool $survey = false;
 
     /** Which tier to emit for: 'analyzer' (a plugin) or 'linter' (a lint rule). */
-    public static string $target = 'analyzer';
+    public static string $target = 'php';
 
     /**
      * Where to read the good and bad examples a linter rule embeds in its metadata.

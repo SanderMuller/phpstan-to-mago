@@ -16,46 +16,35 @@ use Throwable;
 final class Cli
 {
     /**
-     * @param list<string> $argv rule source paths or directories, plus any of --target=php, --target=linter, --survey
+     * @param list<string> $argv rule source paths or directories, plus any of --target, --survey, --examples
      *
      * @return int 0 when every rule was emitted
      */
     public static function run(array $argv, string $outRoot): int
     {
-        $files = $argv;
-        if (($key = array_search('--survey', $files, true)) !== false) {
-            Transpiler::$survey = true;
-            unset($files[$key]);
+        try {
+            $options = Options::parse($argv);
+        } catch (Refusal $refusal) {
+            echo '  REFUSE  ', $refusal->getMessage(), "\n";
+
+            return 1;
         }
 
-        if (($key = array_search('--target=php', $files, true)) !== false) {
-            Transpiler::$target = 'php';
-            unset($files[$key]);
-            $files = array_values($files);
+        Transpiler::$target = $options->target;
+        Transpiler::$survey = $options->survey;
+        if ($options->examplesDir !== null) {
+            Transpiler::$examplesDir = $options->examplesDir;
         }
 
-        foreach ($files as $key => $argument) {
-            if (str_starts_with($argument, '--examples=')) {
-                Transpiler::$examplesDir = substr($argument, strlen('--examples='));
-                unset($files[$key]);
-            }
-        }
+        $files = RulePaths::expand($options->paths);
 
-        $files = array_values($files);
-
-        if (($key = array_search('--target=linter', $files, true)) !== false) {
-            Transpiler::$target = 'linter';
-            unset($files[$key]);
-        }
-
-        $files = RulePaths::expand(array_values($files));
-
-        $outDir = $outRoot . match (Transpiler::$target) {
-            'linter' => '/generated-lint',
-            'php' => '/generated-php',
-            default => '/generated',
-        };
+        $outDir = $options->outDir($outRoot);
         @mkdir($outDir, 0777, true);
+
+        // The count means nothing without the target: a rule can render as Rust and be refused as PHP, so
+        // surveying one target and emitting the other silently disagrees. Naming it here is what stops that
+        // being read as leniency in the survey.
+        echo ($options->survey ? '  SURVEY  ' : '  TARGET  '), $options->target, "\n\n";
 
         $rules = [];
         $refused = [];
@@ -88,7 +77,7 @@ final class Cli
                 '# Imports for crates/linter/src/settings.rs',
                 $lint['configUses'],
             ]) . "\n");
-            echo "\nemitted: " . count($rules) . ', refused: ' . count($refused) . "\n";
+            echo "\nemitted: " . count($rules) . ', refused: ' . count($refused) . ' (target: ' . Transpiler::$target . ")\n";
 
             return $refused === [] ? 0 : 1;
         }
@@ -110,7 +99,7 @@ final class Cli
             file_put_contents($outRoot . '/generated/manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
         }
 
-        echo "\nemitted: " . count($rules) . ', refused: ' . count($refused) . "\n";
+        echo "\nemitted: " . count($rules) . ', refused: ' . count($refused) . ' (target: ' . Transpiler::$target . ")\n";
 
         return $refused === [] ? 0 : 1;
     }
