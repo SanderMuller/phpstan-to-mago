@@ -13,6 +13,30 @@ parameters:
 			path: src/Cli.php
 
 		-
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\ExampleReader::forRule()" is 36, keep it under 20'
+			identifier: complexity.functionLike
+			count: 1
+			path: src/ExampleReader.php
+
+		-
+			rawMessage: 'Offset ''file'' might not exist on array{file: string, header: list<string>, lines: list<string>, open: int}|array{lines: non-empty-list<string>}.'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: src/ExampleReader.php
+
+		-
+			rawMessage: 'Parameter #2 $array of function implode expects array, mixed given.'
+			identifier: argument.type
+			count: 2
+			path: src/ExampleReader.php
+
+		-
+			rawMessage: 'Parameter #2 $times of function str_repeat expects int, mixed given.'
+			identifier: argument.type
+			count: 1
+			path: src/ExampleReader.php
+
+		-
 			rawMessage: 'Part $rule[''module''] (mixed) of encapsed string cannot be cast to string.'
 			identifier: encapsedStringPart.nonString
 			count: 4
@@ -103,20 +127,8 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Binary operation "." between "<?php\n\n// file: " and int|list<string>|string results in an error.'
-			identifier: binaryOp.invalid
-			count: 1
-			path: src/Transpiler.php
-
-		-
 			rawMessage: Binary operation "." between 'arg' and mixed results in an error.
 			identifier: binaryOp.invalid
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: Cannot access an offset on int|list<string>|string.
-			identifier: offsetAccess.nonOffsetAccessible
 			count: 1
 			path: src/Transpiler.php
 
@@ -147,7 +159,7 @@ parameters:
 		-
 			rawMessage: Cannot cast PhpParser\Node\Expr|PhpParser\Node\Identifier to string.
 			identifier: cast.string
-			count: 15
+			count: 14
 			path: src/Transpiler.php
 
 		-
@@ -157,19 +169,13 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 728, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 673, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php
 
 		-
 			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::bindLocal()" is 39, keep it under 20'
-			identifier: complexity.functionLike
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::corpusExamples()" is 36, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
@@ -193,7 +199,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::methodPredicate()" is 61, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::methodPredicate()" is 31, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
@@ -277,30 +283,6 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Parameter #2 $array of function implode expects array, int|list<string>|string given.'
-			identifier: argument.type
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Parameter #2 $array of function implode expects array, mixed given.'
-			identifier: argument.type
-			count: 2
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Parameter #2 $replacement of function preg_replace expects array<float|int|string>|string, mixed given.'
-			identifier: argument.type
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Parameter #2 $times of function str_repeat expects int, mixed given.'
-			identifier: argument.type
-			count: 1
-			path: src/Transpiler.php
-
-		-
 			rawMessage: 'Parameter #3 $args of method Sandermuller\PhpstanToMago\Transpiler::inlineMethod() expects list<PhpParser\Node\Arg>, array<PhpParser\Node\Arg> given.'
 			identifier: argument.type
 			count: 2
@@ -315,12 +297,6 @@ parameters:
 		-
 			rawMessage: 'Parameter #3 ...$values of function sprintf expects bool|float|int|string|null, array<mixed>|string given.'
 			identifier: argument.type
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Part $innerName (mixed) of encapsed string cannot be cast to string.'
-			identifier: encapsedStringPart.nonString
 			count: 1
 			path: src/Transpiler.php
 
@@ -370,12 +346,6 @@ parameters:
 			rawMessage: 'Property Sandermuller\PhpstanToMago\Transpiler::$useMap (array<string, string>) does not accept array.'
 			identifier: assign.propertyType
 			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: Short ternary operator is not allowed. Use null coalesce operator if applicable or consider using long ternary.
-			identifier: ternary.shortNotAllowed
-			count: 2
 			path: src/Transpiler.php
 
 		-

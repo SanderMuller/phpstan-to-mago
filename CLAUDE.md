@@ -221,5 +221,12 @@ services of type ... found". `hihaho/phpstan-rules` v3.15.1 fixed this the same 
 `phpstan-baseline.neon` holds the errors this code arrived with when it moved out of research. It came
 down from 559 to about 100 by installing the Mago SDK so the runtime type-checks, replacing 92 calls to
 php-parser's deprecated `getLine()`, and typing the vocabulary tables and the descriptor shape that
-everything flows through. What remains is mostly cognitive complexity in a few large methods, which needs
-splitting them rather than annotating them. Prefer emptying the baseline over adding to it.
+everything flows through. It is now 94, after extracting `ExampleReader` and splitting the worst
+predicate method.
+
+What remains is largely **class** cognitive complexity: `Transpiler` scores in the hundreds against a
+limit of 80, and splitting methods inside it does not move that number, since the class total is roughly
+their sum. Fixing it properly means separating the four jobs the class does, orchestration, statement
+translation, expression translation and emission, which all share mutable state (`$locals`, `$lines`,
+`$indent`, `$refinements`, `$nodeKind`). That is a deliberate refactor behind a shared context object,
+not something to bolt onto a cleanup. Prefer emptying the baseline over adding to it.

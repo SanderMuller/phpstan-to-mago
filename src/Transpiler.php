@@ -1886,64 +1886,83 @@ final class Transpiler
         return $this->backend->call(Vocabulary::NODE_PREDICATES[$wanted], [$this->operand($subject)]);
     }
 
+    /**
+     * A trinary-logic tail: `->yes()` or `->no()` on a type or scope query.
+     *
+     * @param 'no'|'yes' $tail
+     */
+    private function trinaryTailPredicate(MethodCall $inner, string $tail, int $line): string
+    {
+        $name = $this->memberName($inner->name, $line);
+        $args = $inner->getArgs();
+
+        if ($name === 'hasMethod' && count($args) === 1) {
+            return $this->negateUnless(
+                $tail === 'yes',
+                $this->typeQuery($inner, 'type_has_method', $this->stringLiteral($args[0]->value, $line), $line),
+            );
+        }
+
+        if ($name === 'isInstanceOf' && count($args) === 1) {
+            return $this->negateUnless(
+                $tail === 'yes',
+                $this->typeQuery($inner, 'type_is_instance_of', $this->classLiteral($args[0]->value, $line), $line),
+            );
+        }
+
+        if (
+            $name === 'hasVariableType' && count($args) === 1
+            && $inner->var instanceof Variable && $inner->var->name === 'scope'
+        ) {
+            // The rule asks about the scope *before* this node, which only the pre hook can answer.
+            $this->readsPriorScope = true;
+            $variable = $this->variableNameExpression($args[0]->value, $line);
+
+            return $this->negateUnless($tail === 'no', "support::variable_is_undefined(context, {$variable})");
+        }
+
+        throw new Refusal("trinary tail on an unsupported query ->{$name}()", $line);
+    }
+
+    /**
+     * A question about an expression's inferred type.
+     *
+     * The two callers differ only in the helper and how the argument is read, so the part that matters,
+     * which position the SDK will answer for, is written once.
+     */
+    private function typeQuery(MethodCall $inner, string $helper, string $literal, int $line): string
+    {
+        $subject = $this->resolve($inner->var, $line);
+        $this->requireType($subject, $line);
+
+        if (self::$target !== 'php') {
+            return "support::{$helper}(context, {$subject['rust']}, b\"{$literal}\")";
+        }
+
+        // A node hook is handed types only at the positions it asked for, and the receiver of a method
+        // call is one of them. Anything else is refused rather than answered about the wrong expression.
+        if ($subject['rust'] !== 'node.object') {
+            throw new Refusal("the inferred type of {$subject['rust']} is not a position the SDK exposes");
+        }
+
+        $this->usesReceiverType = true;
+
+        return $this->backend->call($helper, ['$context', '$context->receiverType', $this->backend->bytes($literal)]);
+    }
+
+    /** Keeps a predicate as it is, or negates it, without the caller repeating the ternary. */
+    private function negateUnless(bool $asIs, string $predicate): string
+    {
+        return $asIs ? $predicate : "!({$predicate})";
+    }
+
     private function methodPredicate(MethodCall $expr): string
     {
         $method = $this->memberName($expr->name, $expr->getStartLine());
         $args = $expr->getArgs();
 
-        // Trinary-logic tails: ->yes() / ->no() on a type or scope query.
         if (($method === 'yes' || $method === 'no') && $expr->var instanceof MethodCall) {
-            $inner = $expr->var;
-            $innerName = (string) $inner->name;
-            $innerArgs = $inner->getArgs();
-
-            if ($innerName === 'hasMethod' && count($innerArgs) === 1) {
-                $subject = $this->resolve($inner->var, $expr->getStartLine());
-                $this->requireType($subject, $expr->getStartLine());
-                $literal = $this->stringLiteral($innerArgs[0]->value, $expr->getStartLine());
-                if (self::$target === 'php') {
-                    if ($subject['rust'] !== 'node.object') {
-                        throw new Refusal("the inferred type of {$subject['rust']} is not a position the SDK exposes");
-                    }
-
-                    $this->usesReceiverType = true;
-                    $check = $this->backend->call('type_has_method', ['$context', '$context->receiverType', $this->backend->bytes($literal)]);
-                } else {
-                    $check = "support::type_has_method(context, {$subject['rust']}, b\"{$literal}\")";
-                }
-
-                return $method === 'yes' ? $check : "!({$check})";
-            }
-
-            if ($innerName === 'isInstanceOf' && count($innerArgs) === 1) {
-                $subject = $this->resolve($inner->var, $expr->getStartLine());
-                $this->requireType($subject, $expr->getStartLine());
-                $literal = $this->classLiteral($innerArgs[0]->value, $expr->getStartLine());
-                if (self::$target === 'php') {
-                    if ($subject['rust'] !== 'node.object') {
-                        throw new Refusal("the inferred type of {$subject['rust']} is not a position the SDK exposes");
-                    }
-
-                    $this->usesReceiverType = true;
-                    $check = $this->backend->call('type_is_instance_of', ['$context', '$context->receiverType', $this->backend->bytes($literal)]);
-                } else {
-                    $check = "support::type_is_instance_of(context, {$subject['rust']}, b\"{$literal}\")";
-                }
-
-                return $method === 'yes' ? $check : "!({$check})";
-            }
-
-            if ($innerName === 'hasVariableType' && count($innerArgs) === 1
-                && $inner->var instanceof Variable && $inner->var->name === 'scope'
-            ) {
-                $this->readsPriorScope = true;
-                $name = $this->variableNameExpression($innerArgs[0]->value, $expr->getStartLine());
-                $undefined = "support::variable_is_undefined(context, {$name})";
-
-                return $method === 'no' ? $undefined : "!({$undefined})";
-            }
-
-            throw new Refusal("trinary tail on an unsupported query ->{$innerName}()", $expr->getStartLine());
+            return $this->trinaryTailPredicate($expr->var, $method, $expr->getStartLine());
         }
 
         if ($method === 'isInClass' && $expr->var instanceof Variable && $expr->var->name === 'scope') {
@@ -2742,7 +2761,10 @@ final class Transpiler
         // can end up calling no helper at all, and an unused import is a warning.
         $supportImport = str_contains($body, 'support::') ? "use crate::rule::transpiled::support;\n" : '';
 
-        [$good, $bad] = $this->corpusExamples($className);
+        [$good, $bad] = (new ExampleReader(self::$examplesDir))->forRule(
+            $className,
+            str_contains($this->renderAll(), 'support::file_ends_with('),
+        );
         $goodExample = $this->rustString($good);
         $badExample = $this->rustString($bad);
 
@@ -2854,105 +2876,6 @@ RUST;
      *
      * @return array{string, string} good, bad
      */
-    /**
-     * @return array{string, string} the good and bad example for this rule, blank when none is known
-     */
-    private function corpusExamples(string $className): array
-    {
-        $blank = "<?php\n";
-        if (self::$examplesDir === null) {
-            return [$blank, $blank];
-        }
-
-        $units = [];
-        foreach (glob(self::$examplesDir . '/*.php') ?: [] as $path) {
-            $lines = file($path) ?: [];
-            $header = [];
-            $headerDepth = 0;
-            $depth = 0;
-            $unit = null;
-            foreach ($lines as $line) {
-                $opens = substr_count($line, '{');
-                $closes = substr_count($line, '}');
-                if ($depth === 0 && $unit === null) {
-                    // A top-level declaration starts here, or this is still the file header.
-                    if (preg_match('/^\s*(final |abstract |readonly )*(class|interface|trait|enum|function|const) /', $line) === 1) {
-                        // A docblock or comment run immediately above belongs to this declaration, not
-                        // to the file, or it would be repeated on top of every later unit.
-                        $own = [];
-                        while ($header !== [] && trim(end($header)) !== '' && ! str_ends_with(rtrim(end($header)), ';')) {
-                            array_unshift($own, array_pop($header));
-                        }
-
-                        $unit = ['file' => basename($path), 'header' => $header, 'lines' => [...$own, $line], 'open' => $headerDepth];
-                        $depth += $opens - $closes;
-                        if ($depth <= 0 && str_contains($line, ';')) {
-                            $units[] = $unit;
-                            $unit = null;
-                            $depth = 0;
-                        }
-
-                        continue;
-                    }
-
-                    $header[] = $line;
-                    // A braced `namespace Foo { .. }` leaves the header open; the snippet has to close
-                    // it again or it will not parse on its own.
-                    $headerDepth += $opens - $closes;
-
-                    continue;
-                }
-
-                $unit['lines'][] = $line;
-                $depth += $opens - $closes;
-                if ($depth <= 0) {
-                    $units[] = $unit;
-                    $unit = null;
-                    $depth = 0;
-                }
-            }
-        }
-
-        $render = static function (array $unit): string {
-            $header = implode('', $unit['header']);
-            // The corpus keeps its fixtures in one namespace; a snippet does not need it, but the
-            // `use` statements are load-bearing since the rules resolve written names.
-            $header = (string) preg_replace('/^namespace .*;\n\n?/m', '', $header);
-
-            $closing = str_repeat("\n}", max(0, $unit['open']));
-
-            return rtrim($header . implode('', $unit['lines']) . $closing) . "\n";
-        };
-
-        $bad = $blank;
-        $good = $blank;
-        foreach ($units as $unit) {
-            $body = implode('', $unit['lines']);
-            $fires = preg_match('/@fires[^\n]*\b' . preg_quote($className, '/') . '\b/', $body) === 1;
-            $silent = preg_match('/@silent[^\n]*\b' . preg_quote($className, '/') . '\b/', $body) === 1;
-            // A `@diverges` site fires in one tool and not the other, so it is neither a clean good
-            // example nor a canonical bad one.
-            $diverges = preg_match('/@diverges[^\n]*\b' . preg_quote($className, '/') . '\b/', $body) === 1;
-            $fires = $fires && ! $diverges;
-            $silent = $silent && ! $diverges;
-            if ($bad === $blank && $fires) {
-                $bad = $render($unit);
-                // The rules that only look at test files need the snippet to be named like one, and
-                // the harness lets an example say so.
-                if (str_contains($this->renderAll(), 'support::file_ends_with(')) {
-                    $bad = (string) preg_replace('/^<\?php\n/', "<?php\n\n// file: " . $unit['file'], $bad, 1);
-                    $bad = (string) preg_replace('/^(<\?php\n\n\/\/ file: [^\n]*)/', '$1' . "\n", $bad, 1);
-                }
-            }
-
-            if ($good === $blank && $silent && ! $fires) {
-                $good = $render($unit);
-            }
-        }
-
-        return [$good, $bad];
-    }
-
     /** A Rust string literal, since the examples are multi-line PHP. */
     private function rustString(string $value): string
     {
