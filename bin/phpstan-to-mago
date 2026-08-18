@@ -1,0 +1,44 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Sandermuller\PhpstanToMago\Cli;
+
+foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../autoload.php'] as $autoload) {
+    if (is_file($autoload)) {
+        require $autoload;
+
+        break;
+    }
+}
+
+$argv = array_slice($argv, 1);
+if ($argv === [] || in_array('--help', $argv, true) || in_array('-h', $argv, true)) {
+    fwrite(STDOUT, <<<TXT
+    Transpile PHPStan rules into Mago analyzer plugins.
+
+      phpstan-to-mago [--target=php|linter] [--out=DIR] [--survey] <rule.php>...
+
+      --target=php      a Mago SDK plugin, the default, an ordinary composer library
+      --target=linter   a Rust lint rule, which has to be compiled into Mago
+      --survey          report what each rule would need, writing nothing
+      --out=DIR         where to write, defaulting to the current directory
+
+    A rule using a construct outside the vocabulary is refused, with the construct and its line
+    named. Nothing is approximated: a plausible but wrong rule is worse than no rule.
+
+    TXT);
+
+    exit(0);
+}
+
+$outRoot = getcwd() ?: '.';
+foreach ($argv as $key => $argument) {
+    if (str_starts_with($argument, '--out=')) {
+        $outRoot = substr($argument, strlen('--out='));
+        unset($argv[$key]);
+    }
+}
+
+exit(Cli::run(array_values($argv), $outRoot));

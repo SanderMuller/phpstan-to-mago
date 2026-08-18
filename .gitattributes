@@ -1,0 +1,38 @@
+* text=auto eol=lf
+
+*.css diff=css
+*.html diff=html
+*.md diff=markdown
+*.php diff=php
+
+# >>> package-boost (managed) >>>
+.agents/ export-ignore
+.cache/ export-ignore
+.cache/phpstan/ export-ignore
+.cache/phpunit/ export-ignore
+.cache/pint/ export-ignore
+.cache/rector/ export-ignore
+.claude/ export-ignore
+.config/ export-ignore
+.config/boost.php export-ignore
+.editorconfig export-ignore
+.gitattributes export-ignore
+.github/ export-ignore
+.github/dependabot.yml export-ignore
+.github/workflows/ export-ignore
+.gitignore export-ignore
+.mcp.json export-ignore
+AGENTS.md export-ignore
+CHANGELOG.md export-ignore
+CLAUDE.md export-ignore
+composer.lock export-ignore
+phpstan-baseline.neon export-ignore
+phpstan.neon.dist export-ignore
+phpunit.xml export-ignore
+pint.json export-ignore
+rector.php export-ignore
+tests/ export-ignore
+tests/Feature/ export-ignore
+tests/Fixtures/ export-ignore
+tests/Unit/ export-ignore
+# <<< package-boost (managed) <<<
