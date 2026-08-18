@@ -7,12 +7,18 @@
 
 # >>> package-boost (managed) >>>
 .agents/ export-ignore
+.ai/ export-ignore
+.ai/docs/ export-ignore
+.ai/guidelines/ export-ignore
+.ai/README.md export-ignore
+.ai/skills/ export-ignore
 .cache/ export-ignore
 .cache/phpstan/ export-ignore
 .cache/phpunit/ export-ignore
 .cache/pint/ export-ignore
 .cache/rector/ export-ignore
 .claude/ export-ignore
+.claude/settings.local.json export-ignore
 .config/ export-ignore
 .config/boost.php export-ignore
 .editorconfig export-ignore
