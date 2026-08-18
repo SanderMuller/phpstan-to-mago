@@ -12,6 +12,7 @@ This reads a rule's PHP source and writes a Mago SDK plugin.
 ```bash
 composer require --dev sandermuller/phpstan-to-mago
 vendor/bin/phpstan-to-mago --target=php --out=build src/Rules/ForbiddenStaticConstFetchRule.php
+vendor/bin/phpstan-to-mago --survey vendor/hihaho/phpstan-rules/src
 ```
 
 ```
@@ -21,6 +22,10 @@ vendor/bin/phpstan-to-mago --target=php --out=build src/Rules/ForbiddenStaticCon
 --examples=DIR     PHP files the linter target reads its good and bad examples from
 --survey           report what each rule would need, writing nothing
 ```
+
+A path is either a rule file or a directory. A directory is walked for rules, and files that cannot be
+rules (traits, abstract bases) are skipped rather than reported as refusals. A file named on the command
+line is taken as a rule, and refused by name if it turns out not to be one.
 
 ```
   EMIT    ForbiddenStaticConstFetchRule

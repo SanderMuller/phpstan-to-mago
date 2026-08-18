@@ -16,7 +16,7 @@ use Throwable;
 final class Cli
 {
     /**
-     * @param list<string> $argv rule source paths, plus any of --target=php, --target=linter, --survey
+     * @param list<string> $argv rule source paths or directories, plus any of --target=php, --target=linter, --survey
      *
      * @return int 0 when every rule was emitted
      */
@@ -47,6 +47,8 @@ final class Cli
             Transpiler::$target = 'linter';
             unset($files[$key]);
         }
+
+        $files = RulePaths::expand(array_values($files));
 
         $outDir = $outRoot . match (Transpiler::$target) {
             'linter' => '/generated-lint',

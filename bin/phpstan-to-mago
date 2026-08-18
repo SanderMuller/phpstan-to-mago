@@ -18,12 +18,18 @@ if ($argv === [] || in_array('--help', $argv, true) || in_array('-h', $argv, tru
     fwrite(STDOUT, <<<TXT
     Transpile PHPStan rules into Mago analyzer plugins.
 
-      phpstan-to-mago [--target=php|linter] [--out=DIR] [--survey] <rule.php>...
+      phpstan-to-mago [--target=php|linter] [--out=DIR] [--examples=DIR] [--survey] <path>...
 
-      --target=php      a Mago SDK plugin, the default, an ordinary composer library
+      --target=php      a Mago SDK plugin, an ordinary composer library
       --target=linter   a Rust lint rule, which has to be compiled into Mago
+                        the default target is the Rust analyzer
       --survey          report what each rule would need, writing nothing
       --out=DIR         where to write, defaulting to the current directory
+      --examples=DIR    PHP files the linter target reads its examples from
+
+    A path may be a rule file or a directory. A directory is walked for rules, so files that are
+    not rules are skipped; a file named on the command line is taken as a rule, and refused by
+    name if it is not one.
 
     A rule using a construct outside the vocabulary is refused, with the construct and its line
     named. Nothing is approximated: a plausible but wrong rule is worse than no rule.
