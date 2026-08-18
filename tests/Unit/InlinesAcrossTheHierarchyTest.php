@@ -69,6 +69,45 @@ final class InlinesAcrossTheHierarchyTest extends TestCase
         $this->assertStringContainsString('Support::nameEquals', (new Transpiler($relative))->transpile()['rust']);
     }
 
+    /**
+     * The shape that blocks a real rule package: the helper returns the finding, not a boolean, so it has
+     * to be inlined in statement position — its guards becoming the rule's guards and its returned error
+     * becoming the rule's report.
+     */
+    public function test_inlines_a_helper_that_returns_the_finding(): void
+    {
+        $emitted = $this->emit('TraitErrorHelperRule');
+
+        $this->assertStringContainsString('$context->report(', $emitted);
+        $this->assertStringContainsString('Do not use a debug function', $emitted);
+    }
+
+    /**
+     * Two guards each returning the same error report under either condition, which is one guard on their
+     * disjunction followed by the single report the emitted rule already appends.
+     */
+    public function test_collects_report_guards_into_one_disjunction(): void
+    {
+        $emitted = $this->emit('TraitErrorHelperRule');
+
+        $this->assertMatchesRegularExpression("/if \(!\(\(.+'dd'\) \|\| .+'dump'\)\)\)/", $emitted);
+    }
+
+    /**
+     * The helper's trailing `return null` is the fall-through of those guards, not an exit. Emitting a
+     * bail for it put an unconditional `return;` in front of the report, so the rule loaded, ran, and
+     * silently found nothing — the failure mode that makes "it emitted" worthless as a result.
+     *
+     * Two guards means exactly two exits. A third is the bug.
+     */
+    public function test_emits_no_exit_that_makes_the_report_unreachable(): void
+    {
+        $body = substr($this->emit('TraitErrorHelperRule'), (int) strpos($this->emit('TraitErrorHelperRule'), 'public function analyze'));
+
+        $this->assertSame(2, substr_count($body, 'return;'));
+        $this->assertStringContainsString('$context->report(', $body);
+    }
+
     private function emit(string $rule): string
     {
         return (new Transpiler(self::RULES . '/' . $rule . '.php'))->transpile()['rust'];

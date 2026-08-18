@@ -46,6 +46,7 @@ use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\UnionType;
+use PhpParser\NodeFinder;
 use PhpParser\ParserFactory;
 use PHPStan\Collectors\Collector;
 use PHPStan\Reflection\ClassReflection;
@@ -107,6 +108,25 @@ final class Transpiler
 
     /** True while translating a loop body, so `continue` and inline reports are legal. */
     private bool $inLoop = false;
+
+    /**
+     * True while inlining a helper whose return value *is* the finding.
+     *
+     * Inside such a helper `return null` means "no finding", the same exit as a rule's `return []`, and a
+     * returned `RuleErrorBuilder` chain is the report itself.
+     */
+    private bool $inErrorHelper = false;
+
+    /**
+     * Conditions under which an error helper reports, collected while inlining it.
+     *
+     * A helper shaped `if (A) return err; if (B) return err; return null;` reports exactly when `A || B`,
+     * which is one guard followed by the report the rule already appends. Collecting them rather than
+     * emitting each in place keeps the emitted shape the one everything else assumes.
+     *
+     * @var list<string>
+     */
+    private array $reportConditions = [];
 
     /** Set once a report has been emitted inside the body; suppresses the trailing one. */
     private bool $reportedInline = false;
@@ -542,24 +562,7 @@ final class Transpiler
         $savedClass = $this->currentClass;
         $savedUses = $this->useMap;
 
-        $bound = [];
-        foreach ($method->params as $index => $param) {
-            if (! $param->var instanceof Variable || ! is_string($param->var->name)) {
-                throw new Refusal("{$methodName}() has a parameter that is not a simple variable", $line);
-            }
-
-            if (! isset($args[$index])) {
-                throw new Refusal("{$methodName}() is called with fewer arguments than it declares", $line);
-            }
-
-            $argument = $args[$index]->value;
-            // `$scope` is the analysis context on both sides, so it needs no descriptor.
-            $bound[$param->var->name] = $argument instanceof Variable && $argument->name === 'scope'
-                ? ['rust' => 'context', 'kind' => 'scope']
-                : $this->resolve($argument, $line);
-        }
-
-        $this->locals = $bound;
+        $this->locals = $this->bindParameters($method, $args, $methodName, $line);
         $this->constants = [];
         $this->arrayConstants = [];
         $this->currentClass = $class;
@@ -580,6 +583,36 @@ final class Transpiler
             $this->currentClass = $savedClass;
             $this->useMap = $savedUses;
         }
+    }
+
+    /**
+     * Bind a helper's parameters to the caller's arguments, as descriptors the body can then resolve.
+     *
+     * @param array<Node\Arg> $args
+     *
+     * @return array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string}>
+     */
+    private function bindParameters(ClassMethod $method, array $args, string $methodName, int $line): array
+    {
+        $bound = [];
+        $args = array_values($args);
+        foreach ($method->params as $index => $param) {
+            if (! $param->var instanceof Variable || ! is_string($param->var->name)) {
+                throw new Refusal("{$methodName}() has a parameter that is not a simple variable", $line);
+            }
+
+            if (! isset($args[$index])) {
+                throw new Refusal("{$methodName}() is called with fewer arguments than it declares", $line);
+            }
+
+            $argument = $args[$index]->value;
+            // `$scope` is the analysis context on both sides, so it needs no descriptor.
+            $bound[$param->var->name] = $argument instanceof Variable && $argument->name === 'scope'
+                ? ['rust' => 'context', 'kind' => 'scope']
+                : $this->resolve($argument, $line);
+        }
+
+        return $bound;
     }
 
     /** The accepted helper shapes, as one Rust expression. */
@@ -652,6 +685,198 @@ final class Transpiler
     private function findClassByName(string $shortName): ?array
     {
         return $this->index->find($shortName, $this->file);
+    }
+
+    /**
+     * `if (COND) { return []; }`, or inside a loop `if (COND) { continue; }`, or in an error helper
+     * `if (COND) { return <error>; }`.
+     */
+    private function translateIf(If_ $stmt): void
+    {
+        if ($stmt->elseifs !== [] || count($stmt->stmts) !== 1
+            || ($stmt->else instanceof Else_ && ! $this->isFlagAssignment($stmt->stmts[0]))
+        ) {
+            throw new Refusal('if statement that is not a single-statement guard', $stmt->getStartLine());
+        }
+
+        $only = $stmt->stmts[0];
+
+        // if (COND) { $flag = ..; } [else { $flag = ..; }]  — not a guard, a branch.
+        if ($this->isFlagAssignment($only)) {
+            $this->translateFlagBranch($stmt);
+
+            return;
+        }
+
+        // In an error helper a guard that returns the error is the report condition, not an exit.
+        if ($this->takeReportCondition($stmt, $only)) {
+            return;
+        }
+
+        // `return []` leaves the whole rule; `continue` only ends this iteration. Which one it
+        // is comes from the guard's own body, not from whether we happen to be in a loop.
+        if ($this->isReturnEmptyArray($stmt->stmts) || (($this->isCollector || $this->inErrorHelper) && $this->isReturnNull($stmt->stmts))) {
+            $exit = $this->backend->bail();
+        } elseif ($only instanceof Continue_ && ! $only->num instanceof Expr) {
+            if (! $this->inLoop) {
+                throw new Refusal('continue outside a loop', $stmt->getStartLine());
+            }
+
+            $exit = 'continue;';
+        } else {
+            throw new Refusal('guard body is neither `return []` nor `continue`', $stmt->getStartLine());
+        }
+
+        $this->translateGuard($stmt->cond, $exit);
+    }
+
+    /**
+     * `$this->something(...)`, with a plain method name.
+     *
+     * @phpstan-assert-if-true MethodCall&object{name: Identifier} $value
+     */
+    private function isOwnMethodCall(Expr $value): bool
+    {
+        return $value instanceof MethodCall
+            && $value->var instanceof Variable
+            && $value->var->name === 'this'
+            && $value->name instanceof Identifier;
+    }
+
+    /**
+     * `if (COND) { return <error>; }` inside an error helper: a condition to report under, not an exit.
+     */
+    private function takeReportCondition(If_ $stmt, Stmt $only): bool
+    {
+        if (! $this->inErrorHelper
+            || ! $only instanceof Return_
+            || ! $only->expr instanceof Expr
+            || ! $this->isRuleErrorBuilder($only->expr)
+        ) {
+            return false;
+        }
+
+        $this->takeMessage($only->expr);
+        $this->reportConditions[] = $this->stripOuterParentheses($this->translateCondition($stmt->cond));
+
+        return true;
+    }
+
+    private function translateErrorHelperReturn(Return_ $stmt): void
+    {
+        if ($stmt->expr instanceof Expr && $this->isRuleErrorBuilder($stmt->expr)) {
+            $this->takeMessage($stmt->expr);
+
+            return;
+        }
+
+        // A trailing `return null` is "no finding". When guards have already collected the conditions
+        // under which the helper *does* report, it is the fall-through of those, and emitting a bail
+        // here would put an unconditional exit in front of the report.
+        if (! $this->isReturnNull([$stmt])) {
+            throw new Refusal('an error helper returns something other than null or a built rule error', $stmt->getStartLine());
+        }
+
+        if ($this->reportConditions === []) {
+            $this->lines[] = new Stm('bail', [], $this->indent);
+        }
+    }
+
+    /**
+     * Inline a helper whose return value *is* the finding, in statement position.
+     *
+     * The dominant shape in a real rule package. The rule is a shim:
+     *
+     *     $error = $this->funcDebugError($node->name->name, $scope);
+     *     return $error instanceof IdentifierRuleError ? [$error] : [];
+     *
+     * and the helper decides *and* builds the message, returning `?RuleError`. This differs from
+     * {@see inlineOwnHelper} in what it produces: that one yields a single expression for use inside a
+     * condition, which cannot express a helper that reports. Here the helper's guards become the rule's
+     * guards and its returned error becomes the rule's message, which is the emitted shape already — a
+     * chain of guards followed by one report.
+     *
+     * The forwarding `return $error instanceof ... ? [$error] : []` needs no translation: by the time it
+     * is reached every guard has been emitted and the message taken.
+     *
+     * @param array<Node\Arg> $args
+     */
+    private function inlineErrorHelper(string $method, array $args, int $line): void
+    {
+        $declaring = $this->currentClass instanceof ClassLike
+            ? $this->hierarchy()->declaring($this->currentClass, $method, $this->useMap)
+            : null;
+
+        if ($declaring === null) {
+            throw new Refusal("no method {$method}() on the rule, its traits or its parents", $line);
+        }
+
+        $helper = $this->findMethod($declaring['class'], $method);
+        if (! $this->buildsRuleError($helper)) {
+            throw new Refusal("{$method}() is assigned but does not build a rule error", $line);
+        }
+
+        if ($this->inlineDepth >= self::INLINE_DEPTH_LIMIT) {
+            throw new Refusal("inlining {$method}() nests deeper than " . self::INLINE_DEPTH_LIMIT, $line);
+        }
+
+        $savedLocals = $this->locals;
+        $savedConstants = $this->constants;
+        $savedArrayConstants = $this->arrayConstants;
+        $savedClass = $this->currentClass;
+        $savedUses = $this->useMap;
+        $savedInHelper = $this->inErrorHelper;
+        $savedConditions = $this->reportConditions;
+
+        $this->locals = $this->bindParameters($helper, $args, $method, $line);
+        $this->constants = [];
+        $this->arrayConstants = [];
+        $this->currentClass = $declaring['class'];
+        $this->useMap = $declaring['uses'];
+        $this->inErrorHelper = true;
+        $this->reportConditions = [];
+        $this->collectConstants($declaring['class']);
+        ++$this->inlineDepth;
+
+        try {
+            foreach ($helper->stmts ?? [] as $statement) {
+                $this->translateStatement($statement);
+            }
+
+            if ($this->reportConditions !== []) {
+                // The helper reports when any of them holds, so the rule bails when none does.
+                $this->lines[] = new Stm('guard', [
+                    'condition' => '!((' . implode(' || ', $this->reportConditions) . '))',
+                    'exit' => $this->backend->bail(),
+                ], $this->indent);
+            }
+        } finally {
+            --$this->inlineDepth;
+            $this->reportConditions = $savedConditions;
+            $this->inErrorHelper = $savedInHelper;
+            $this->locals = $savedLocals;
+            $this->constants = $savedConstants;
+            $this->arrayConstants = $savedArrayConstants;
+            $this->currentClass = $savedClass;
+            $this->useMap = $savedUses;
+        }
+    }
+
+    /**
+     * Whether any return in this method hands back a built rule error.
+     *
+     * Searched at any depth, because the shape that matters is a run of guards with the build inside one
+     * of them and a trailing `return null`. Only checking top-level returns missed every real helper.
+     */
+    private function buildsRuleError(ClassMethod $method): bool
+    {
+        foreach ((new NodeFinder())->findInstanceOf($method->stmts ?? [], Return_::class) as $return) {
+            if ($return->expr instanceof Expr && $this->isRuleErrorBuilder($return->expr)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -806,38 +1031,8 @@ final class Transpiler
 
     private function translateStatement(Stmt $stmt): void
     {
-        // Guard: if (COND) { return []; }  or, inside a loop, if (COND) { continue; }
         if ($stmt instanceof If_) {
-            if ($stmt->elseifs !== [] || count($stmt->stmts) !== 1
-                || ($stmt->else instanceof Else_ && ! $this->isFlagAssignment($stmt->stmts[0]))
-            ) {
-                throw new Refusal('if statement that is not a single-statement guard', $stmt->getStartLine());
-            }
-
-            $only = $stmt->stmts[0];
-
-            // if (COND) { $flag = ..; } [else { $flag = ..; }]  — not a guard, a branch.
-            if ($this->isFlagAssignment($only)) {
-                $this->translateFlagBranch($stmt);
-
-                return;
-            }
-
-            // `return []` leaves the whole rule; `continue` only ends this iteration. Which one it
-            // is comes from the guard's own body, not from whether we happen to be in a loop.
-            if ($this->isReturnEmptyArray($stmt->stmts) || ($this->isCollector && $this->isReturnNull($stmt->stmts))) {
-                $exit = $this->backend->bail();
-            } elseif ($only instanceof Continue_ && ! $only->num instanceof Expr) {
-                if (! $this->inLoop) {
-                    throw new Refusal('continue outside a loop', $stmt->getStartLine());
-                }
-
-                $exit = 'continue;';
-            } else {
-                throw new Refusal('guard body is neither `return []` nor `continue`', $stmt->getStartLine());
-            }
-
-            $this->translateGuard($stmt->cond, $exit);
+            $this->translateIf($stmt);
 
             return;
         }
@@ -867,6 +1062,13 @@ final class Transpiler
             return;
         }
 
+        // Inside an error helper the return value is the finding itself, not a list holding it.
+        if ($this->inErrorHelper && $stmt instanceof Return_) {
+            $this->translateErrorHelperReturn($stmt);
+
+            return;
+        }
+
         // Terminal: return [ ...error... ];  or  $x = RuleErrorBuilder...; return [$x];
         if ($stmt instanceof Return_) {
             if ($stmt->expr instanceof Array_) {
@@ -889,6 +1091,13 @@ final class Transpiler
 
         if ($stmt instanceof Expression && $stmt->expr instanceof Assign) {
             $value = $stmt->expr->expr;
+
+            // $error = $this->somethingError(...);  where the helper builds the finding itself.
+            if ($this->isOwnMethodCall($value)) {
+                $this->inlineErrorHelper($value->name->toString(), $value->getArgs(), $stmt->getStartLine());
+
+                return;
+            }
 
             // $ruleErrors[] = RuleErrorBuilder::...  — report here and keep looping
             if ($stmt->expr->var instanceof ArrayDimFetch
@@ -2501,6 +2710,12 @@ final class Transpiler
             if ($base['kind'] === 'expr' && $property === 'name') {
                 // The name of an as-yet-unnarrowed expression; only comparisons can use this.
                 return ['rust' => $base['rust'], 'kind' => 'expr', 'key' => $key];
+            }
+
+            // `$node->name->name` on a Name node is its text, the same thing `->toString()` yields. Both
+            // spellings appear in real rules, so both resolve to the name itself rather than a new kind.
+            if (in_array($base['kind'], ['name-expr', 'name-selector', 'local-name'], true) && $property === 'name') {
+                return $base + ['key' => $key];
             }
 
             if (self::$survey) {
