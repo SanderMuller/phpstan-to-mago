@@ -109,38 +109,8 @@ parameters:
 			path: src/RustBackend.php
 
 		-
-			rawMessage: 'Argument of an invalid type mixed supplied for foreach, only iterables are supported.'
-			identifier: foreach.nonIterable
-			count: 2
-			path: src/Transpiler.php
-
-		-
 			rawMessage: Binary operation "." between 'arg' and mixed results in an error.
 			identifier: binaryOp.invalid
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Cannot call method getBasename() on mixed.'
-			identifier: method.nonObject
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Cannot call method getExtension() on mixed.'
-			identifier: method.nonObject
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Cannot call method getPathname() on mixed.'
-			identifier: method.nonObject
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Cannot call method isFile() on mixed.'
-			identifier: method.nonObject
 			count: 1
 			path: src/Transpiler.php
 
@@ -157,7 +127,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 673, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 647, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php
@@ -211,12 +181,6 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Method Sandermuller\PhpstanToMago\Transpiler::classFiles() return type has no value type specified in iterable type array.'
-			identifier: missingType.iterableValue
-			count: 1
-			path: src/Transpiler.php
-
-		-
 			rawMessage: 'Method Sandermuller\PhpstanToMago\Transpiler::inlineMethod() has parameter $uses with no value type specified in iterable type array.'
 			identifier: missingType.iterableValue
 			count: 1
@@ -247,12 +211,6 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Parameter #1 $filename of function file_get_contents expects string, mixed given.'
-			identifier: argument.type
-			count: 2
-			path: src/Transpiler.php
-
-		-
 			rawMessage: 'Parameter #1 $name of method Sandermuller\PhpstanToMago\Transpiler::snake() expects string, mixed given.'
 			identifier: argument.type
 			count: 1
@@ -273,7 +231,7 @@ parameters:
 		-
 			rawMessage: 'Parameter #3 $args of method Sandermuller\PhpstanToMago\Transpiler::inlineMethod() expects list<PhpParser\Node\Arg>, array<PhpParser\Node\Arg> given.'
 			identifier: argument.type
-			count: 2
+			count: 1
 			path: src/Transpiler.php
 
 		-
@@ -307,12 +265,6 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: Possibly invalid array key type mixed.
-			identifier: offsetAccess.invalidOffset
-			count: 1
-			path: src/Transpiler.php
-
-		-
 			rawMessage: 'Property Sandermuller\PhpstanToMago\Transpiler::$lines (list<Sandermuller\PhpstanToMago\Stm>) does not accept non-empty-list<Sandermuller\PhpstanToMago\Stm|(literal-string&non-falsy-string)>.'
 			identifier: assign.propertyType
 			count: 1
@@ -332,12 +284,6 @@ parameters:
 
 		-
 			rawMessage: 'Property Sandermuller\PhpstanToMago\Transpiler::$useMap (array<string, string>) does not accept array.'
-			identifier: assign.propertyType
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Static property Sandermuller\PhpstanToMago\Transpiler::$classFiles (array<string, list<string>>) does not accept non-empty-array<list>.'
 			identifier: assign.propertyType
 			count: 1
 			path: src/Transpiler.php

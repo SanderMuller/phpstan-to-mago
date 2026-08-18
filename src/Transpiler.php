@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago;
 
-use FilesystemIterator;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -37,6 +36,7 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Class_;
+use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Continue_;
 use PhpParser\Node\Stmt\Else_;
@@ -45,14 +45,11 @@ use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\Node\Stmt\Return_;
-use PhpParser\Node\Stmt\Use_;
 use PhpParser\Node\UnionType;
 use PhpParser\ParserFactory;
 use PHPStan\Collectors\Collector;
 use PHPStan\Reflection\ClassReflection;
 use PHPStan\Type\ObjectType;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
 
 final class Transpiler
 {
@@ -143,26 +140,20 @@ final class Transpiler
     /** Set once a collector has emitted its push, so no report is appended. */
     private bool $collected = false;
 
-    /** @var array<string, list<string>> basename -> paths, for resolving `Foo::BAR` literals */
-    private static array $classFiles = [];
-
-    /** @var array<string, true> vendor roots already indexed into {@see} */
-    private static array $indexedRoots = [];
-
-    /** @var array<string, array{class: Class_, uses: array<string, string>}> parsed helper classes */
-    private static array $parsedClasses = [];
-
-    /** The class whose `self::` constants are currently in scope, i.e. the one being inlined. */
-    private ?Class_ $currentClass = null;
+    /** The class-like whose `self::` constants are currently in scope, i.e. the one being inlined. */
+    private ?ClassLike $currentClass = null;
 
     /** Guards against a helper that calls itself. */
     private int $inlineDepth = 0;
 
     private const int INLINE_DEPTH_LIMIT = 4;
 
+    private readonly SourceIndex $index;
+
     public function __construct(private readonly string $file)
     {
         $this->backend = self::$target === 'php' ? new PhpBackend() : new RustBackend();
+        $this->index = new SourceIndex();
     }
 
     /**
@@ -289,23 +280,7 @@ final class Transpiler
      */
     private function collectUses(array $ast): void
     {
-        $walk = function (array $stmts) use (&$walk): void {
-            foreach ($stmts as $stmt) {
-                if ($stmt instanceof Namespace_) {
-                    $walk($stmt->stmts);
-
-                    continue;
-                }
-
-                if ($stmt instanceof Use_) {
-                    foreach ($stmt->uses as $use) {
-                        $alias = $use->alias !== null ? (string) $use->alias : $use->name->getLast();
-                        $this->useMap[$alias] = $use->name->toString();
-                    }
-                }
-            }
-        };
-        $walk($ast);
+        $this->useMap = [...$this->useMap, ...Uses::collect($ast)];
     }
 
     /**
@@ -330,7 +305,7 @@ final class Transpiler
         throw new Refusal('no class found');
     }
 
-    private function findMethod(Class_ $class, string $name): ClassMethod
+    private function findMethod(ClassLike $class, string $name): ClassMethod
     {
         foreach ($class->getMethods() as $method) {
             if ((string) $method->name === $name) {
@@ -348,7 +323,7 @@ final class Transpiler
      * (`NoMissnamedDocTagRule` has one each for methods, properties and constants), which is why the
      * message cannot be hoisted to the class level.
      */
-    private function collectConstants(Class_ $class): void
+    private function collectConstants(ClassLike $class): void
     {
         foreach ($class->getConstants() as $const) {
             foreach ($const->consts as $c) {
@@ -542,7 +517,7 @@ final class Transpiler
      *
      * @param list<Node\Arg> $args
      */
-    private function inlineMethod(Class_ $class, string $methodName, array $args, int $line, ?array $uses = null): string
+    private function inlineMethod(ClassLike $class, string $methodName, array $args, int $line, ?array $uses = null): string
     {
         if ($this->inlineDepth >= self::INLINE_DEPTH_LIMIT) {
             throw new Refusal("inlining {$methodName}() nests deeper than " . self::INLINE_DEPTH_LIMIT, $line);
@@ -672,42 +647,41 @@ final class Transpiler
      * the `use` statements of *its* file, not the calling rule's. Sharing the caller's map silently
      * resolved names to the wrong thing, or failed to resolve them at all.
      *
-     * @return array{class: Class_, uses: array<string, string>}|null
+     * @return array{class: ClassLike, uses: array<string, string>}|null
      */
     private function findClassByName(string $shortName): ?array
     {
-        if (isset(self::$parsedClasses[$shortName])) {
-            return self::$parsedClasses[$shortName];
+        return $this->index->find($shortName, $this->file);
+    }
+
+    /**
+     * A helper reached through `$this`.
+     *
+     * It is usually not declared on the rule itself: rule packages keep the logic in a trait or an abstract
+     * base and leave the rule as a shim, so the declaration has to be found across the hierarchy first.
+     *
+     * @param array<Node\Arg> $args
+     */
+    private function inlineOwnHelper(string $method, array $args, int $line): string
+    {
+        $declaring = $this->currentClass instanceof ClassLike
+            ? $this->hierarchy()->declaring($this->currentClass, $method, $this->useMap)
+            : null;
+
+        if ($declaring === null) {
+            throw new Refusal("no method {$method}() on the rule, its traits or its parents", $line);
         }
 
-        foreach ($this->classFiles($this->file)[$shortName] ?? [] as $path) {
-            $ast = (new ParserFactory())->createForNewestSupportedVersion()->parse((string) file_get_contents($path));
-            if ($ast === null) {
-                continue;
-            }
+        return $this->inlineMethod($declaring['class'], $method, array_values($args), $line, $declaring['uses']);
+    }
 
-            try {
-                $class = $this->findClass($ast);
-            } catch (Refusal) {
-                continue;
-            }
-
-            if ((string) $class->name !== $shortName) {
-                continue;
-            }
-
-            $savedUses = $this->useMap;
-            $this->useMap = [];
-            $this->collectUses($ast);
-            $uses = $this->useMap;
-            $this->useMap = $savedUses;
-
-            self::$parsedClasses[$shortName] = ['class' => $class, 'uses' => $uses];
-
-            return self::$parsedClasses[$shortName];
-        }
-
-        return null;
+    /**
+     * The hierarchy walker, sharing this transpiler's cross-file lookup so a trait or base class resolves
+     * exactly the way a static helper reference already does.
+     */
+    private function hierarchy(): Hierarchy
+    {
+        return new Hierarchy(fn (string $shortName): ?array => $this->findClassByName($shortName));
     }
 
     /** A `self::CONST` / `static::CONST` string constant declared by this rule. */
@@ -2035,9 +2009,8 @@ final class Transpiler
             return 'false';
         }
 
-        // A private helper on the rule itself: same treatment as a static one.
-        if ($expr->var instanceof Variable && $expr->var->name === 'this' && $this->currentClass instanceof Class_) {
-            return $this->inlineMethod($this->currentClass, $method, $args, $expr->getStartLine());
+        if ($expr->var instanceof Variable && $expr->var->name === 'this' && $this->currentClass instanceof ClassLike) {
+            return $this->inlineOwnHelper($method, $args, $expr->getStartLine());
         }
 
         throw new Refusal("method call outside the vocabulary ->{$method}()", $expr->getStartLine());
@@ -2611,7 +2584,7 @@ final class Transpiler
         }
 
         $short = substr($fqcn, (int) strrpos('\\' . $fqcn, '\\'));
-        foreach ($this->classFiles($this->file)[$short] ?? [] as $path) {
+        foreach ($this->index->paths($short, $this->file) as $path) {
             $source = (string) file_get_contents($path);
             if (preg_match('/const\s+(?:string\s+)?' . preg_quote($constant, '/') . '\s*=\s*\'([^\']*)\'/', $source, $match) === 1) {
                 return $match[1];
@@ -2628,28 +2601,6 @@ final class Transpiler
      * vendor directory would otherwise poison the cache with an empty index, and which rule that is
      * depends on argument order.
      */
-    private function classFiles(string $ruleFile): array
-    {
-        $vendor = $ruleFile;
-        while ($vendor !== '/' && $vendor !== '.' && basename($vendor) !== 'vendor') {
-            $vendor = dirname($vendor);
-        }
-
-        if ($vendor === '/' || $vendor === '.' || isset(self::$indexedRoots[$vendor])) {
-            return self::$classFiles;
-        }
-
-        self::$indexedRoots[$vendor] = true;
-        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($vendor, FilesystemIterator::SKIP_DOTS));
-        foreach ($iterator as $entry) {
-            if ($entry->isFile() && $entry->getExtension() === 'php') {
-                self::$classFiles[$entry->getBasename('.php')][] = $entry->getPathname();
-            }
-        }
-
-        return self::$classFiles;
-    }
-
     /** Node-kind names PHP reserves, which the SDK spells with a trailing underscore. */
     private const array PHP_RESERVED_KINDS = ['class', 'function', 'default', 'list', 'print', 'echo', 'unset', 'exit', 'match', 'try', 'use', 'for', 'foreach', 'while', 'do', 'if', 'else', 'switch', 'return', 'global', 'static', 'break', 'continue', 'namespace', 'const', 'goto'];
 

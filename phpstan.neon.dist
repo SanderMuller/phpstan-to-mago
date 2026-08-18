@@ -16,6 +16,9 @@ parameters:
     # change what the snapshot test compares against.
     excludePaths:
         - tests/Fixtures/expected
+        # Calls a helper nothing in its hierarchy declares. Being invalid is the whole fixture: it proves
+        # the transpiler refuses such a call by name instead of translating it into something plausible.
+        - tests/Fixtures/Rules/MissingHelperRule.php
 
     level: max
 
