@@ -39,17 +39,42 @@ assignment handler, before any helper is looked up.
 Recording this because the plausible reading cost real time. The refusal *reason* names the assignment; the
 callee's location is a fact about those rules that is true and irrelevant.
 
-### What the blocker actually is
+### What the blocker actually was, and the fix
 
-`inlineMethod()` produces one *expression*, through `translateMethodAsPredicate()`. That fits a helper that
-answers yes or no inside a condition. It does not fit a helper whose return value **is the finding**, where
-`return null` means "no finding" and `return RuleErrorBuilder::message(...)->build()` means "report this".
+`inlineMethod()` produces one *expression*, through `translateMethodAsPredicate()`. That fits a helper
+answering yes or no inside a condition. It does not fit a helper whose return value **is the finding**.
 
-Supporting it means inlining a helper in **statement position**: its guards become early returns, and its
-error-returning path becomes the report the rule would have emitted. The reporting machinery already exists
-— emitted rules report — so the missing piece is inlining into statements rather than into an expression.
+Fixed in `0d56d18` by inlining such a helper in **statement position**, which needs no new emitted shape
+because the shape was already right — a rule is a chain of guards followed by one report:
 
-That is the single change that moves this package off zero. It is a real build, not a vocabulary entry.
+| in the helper | becomes |
+|:--|:--|
+| `return null` | the same exit as a rule's `return []` |
+| `return RuleErrorBuilder::message(...)->build()` | the rule's message |
+| `if (COND) { return <error>; }` | a condition to report under |
+
+Report conditions are collected and emitted as a single guard on their disjunction, so the report the rule
+already appends stays the only one. The forwarding `return $error instanceof ... ? [$error] : []` needs no
+translation: by then the guards are emitted and the message is taken.
+
+**The bug worth remembering:** the first version treated the helper's trailing `return null` as a bail, which
+put an unconditional `return;` in front of the report. The plugin loaded, ran, and silently found nothing.
+Emitting proved nothing; running it did. The test counts exits rather than asserting on text.
+
+### The frontier now
+
+The package still emits nothing, but every refusal has moved past the assignment and names something real:
+
+| refusal | what it needs |
+|:--|:--|
+| `Expr_Isset` in a condition | a vocabulary entry |
+| `Stmt_Foreach` inside an inlined helper | loop translation in helper bodies |
+| `unknown local $this` | constructor-injected properties as helper arguments, i.e. configuration |
+| more than one distinct identifier in one rule | a plugin reporting under several codes |
+| cross-file collector aggregation | nothing; correctly refused forever |
+
+The configuration one is the interesting entry: those rules take `$this->firstPartyNamespaces` and pass it
+to the helper, which is the same problem `docs/dogfooding.md` describes at the config level.
 
 ### Refusals that are correct forever
 
