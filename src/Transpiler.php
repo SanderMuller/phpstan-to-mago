@@ -32,6 +32,8 @@ use PhpParser\Node\Expr\List_;
 use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
@@ -463,6 +465,41 @@ final class Transpiler
         }
 
         throw new Refusal('dynamic member name', $line);
+    }
+
+    /**
+     * What a construct is, in the terms whoever has to support it would look it up by.
+     *
+     * `Expr_MethodCall` names php-parser's class, which is the same answer for every method call there is.
+     * Seventeen rules across four packages refused with exactly that string, so the largest single gap in the
+     * tool read as one unknown instead of the several named ones it turned out to be. `->getVariants()` is a
+     * thing to go and support; a node class is not.
+     */
+    private function describe(Node $node): string
+    {
+        return match (true) {
+            $node instanceof MethodCall => '->' . $this->memberLabel($node->name) . '()',
+            $node instanceof NullsafeMethodCall => '?->' . $this->memberLabel($node->name) . '()',
+            $node instanceof StaticCall => $this->classLabel($node->class) . '::' . $this->memberLabel($node->name) . '()',
+            $node instanceof FuncCall => $this->memberLabel($node->name) . '()',
+            $node instanceof PropertyFetch => '->' . $this->memberLabel($node->name),
+            $node instanceof NullsafePropertyFetch => '?->' . $this->memberLabel($node->name),
+            $node instanceof ClassConstFetch => $this->classLabel($node->class) . '::' . $this->memberLabel($node->name),
+            default => $node->getType(),
+        };
+    }
+
+    /** A member's written name, or a placeholder — this is for a message, so a dynamic name must not throw. */
+    private function memberLabel(Node|string $name): string
+    {
+        return is_string($name) || $name instanceof Identifier || $name instanceof Name
+            ? (string) $name
+            : '{expr}';
+    }
+
+    private function classLabel(Node $class): string
+    {
+        return $class instanceof Name ? $class->getLast() : '{expr}';
     }
 
     private function resolveClassName(Name $name): string
@@ -1483,7 +1520,7 @@ PHP;
             return $this->translateSprintf($expr);
         }
 
-        throw new Refusal('message expression outside the vocabulary: ' . $expr->getType(), $expr->getStartLine());
+        throw new Refusal('message expression outside the vocabulary: ' . $this->describe($expr), $expr->getStartLine());
     }
 
     /** `sprintf(<format>, <args>)` -> `format!("...", ...)`, with PHP's specifiers rewritten. */
@@ -1869,7 +1906,7 @@ PHP;
                 continue;
             }
 
-            throw new Refusal('statement in an inlined helper outside the vocabulary: ' . $statement->getType(), $statement->getStartLine());
+            throw new Refusal('statement in an inlined helper outside the vocabulary: ' . $this->describe($statement), $statement->getStartLine());
         }
 
         if ($final === null) {
@@ -2958,7 +2995,7 @@ PHP;
             return;
         }
 
-        throw new Refusal('statement outside the vocabulary: ' . $stmt->getType(), $stmt->getStartLine());
+        throw new Refusal('statement outside the vocabulary: ' . $this->describe($stmt), $stmt->getStartLine());
     }
 
     /**
@@ -3918,7 +3955,7 @@ PHP;
             }
         }
 
-        throw new Refusal('condition outside the vocabulary: ' . $expr->getType(), $expr->getStartLine());
+        throw new Refusal('condition outside the vocabulary: ' . $this->describe($expr), $expr->getStartLine());
     }
 
     private function staticHelperPredicate(StaticCall $expr): string
@@ -4485,7 +4522,7 @@ PHP;
         }
 
         throw new Refusal(
-            'comparison outside the vocabulary: ' . $left->getType() . ' against ' . $right->getType(),
+            'comparison outside the vocabulary: ' . $this->describe($left) . ' against ' . $this->describe($right),
             $line,
         );
     }
@@ -5243,7 +5280,7 @@ PHP;
             }
         }
 
-        throw new Refusal('access path outside the vocabulary: ' . $expr->getType(), $line);
+        throw new Refusal('access path outside the vocabulary: ' . $this->describe($expr), $line);
     }
 
     // -----------------------------------------------------------------------
