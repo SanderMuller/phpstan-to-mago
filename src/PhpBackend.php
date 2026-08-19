@@ -72,7 +72,7 @@ final class PhpBackend implements Backend
                 return "{$pad}\$context->report(\n"
                     . "{$pad}    Level::Error,\n"
                     . "{$pad}    {$a['code']},\n"
-                    . "{$pad}    Issue::new({$a['message']}, \$node->span, 'here'),\n"
+                    . "{$pad}    Issue::new({$a['message']}, {$a['anchor']}, 'here'),\n"
                     . "{$pad});\n\n";
             default:
                 throw new LogicException("no PHP rendering for statement kind {$s->kind}");

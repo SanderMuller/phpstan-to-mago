@@ -139,3 +139,20 @@ class Widget
     /** For the receiver-based positional-flag rules: a method whose declaring class is not first-party. */
     public function toggle(bool $enabled): void {}
 }
+
+namespace Symfony\Contracts\Service\Attribute;
+
+/** Symfony's autowiring attribute, for `NoRequiredOutsideClassRule`. */
+#[\Attribute]
+class Required {}
+
+namespace Examples\Wiring;
+
+/** An attribute that is not the one that rule looks for. */
+#[\Attribute]
+class SomeOtherAttribute {}
+
+namespace Doctrine\ODM\MongoDB\Repository;
+
+/** A parent type `RequiredOnlyInAbstractRule` skips, because the pattern is the framework's own there. */
+class DocumentRepository {}

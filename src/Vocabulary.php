@@ -23,6 +23,7 @@ use PhpParser\Node\Stmt\ClassConst;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Const_;
 use PhpParser\Node\Stmt\Property;
+use PhpParser\Node\Stmt\Trait_;
 use PHPStan\Node\CollectedDataNode;
 use PHPStan\Node\InClassNode;
 
@@ -68,6 +69,10 @@ final class Vocabulary
         // `ContainerConfigurator`, so the whole family gates on the declaration itself. PHP target only, for the
         // same reason as the nullsafe hook — the Rust trait for it is not pinned down by anything in the corpus.
         Closure::class => ['trait' => 'ClosureHook', 'method' => 'after_closure', 'node' => 'Closure', 'kind' => 'Closure', 'phpOnly' => true],
+        // A trait declaration. Separate from the class hook because Mago makes it a separate node kind, and
+        // because a rule that targets `Trait_` means traits only — `NoRequiredOutsideClassRule` exists to say
+        // that a `#[Required]` setter belongs in a class, not in a trait.
+        Trait_::class => ['trait' => 'TraitDeclarationHook', 'method' => 'on_enter_trait', 'node' => 'Trait', 'kind' => 'Trait', 'phpOnly' => true],
     ];
 
     /**
@@ -140,6 +145,18 @@ final class Vocabulary
         'property' => [
             'type' => ['support::property_hint({base})', 'hint-option', 'Support::propertyHint($context, {base})'],
         ],
+        // A method declaration as written, which is what a rule looping a class-like's body holds. `->name` is
+        // the written name; the visibility, staticness and magic-ness are read from the modifiers and the name,
+        // because this is the declaration rather than the metadata a reflection lookup returns.
+        'method-decl' => [
+            'name' => [self::PHP_ONLY, 'method-name', '{base}'],
+        ],
+        'attr-group' => [
+            'attrs' => [self::PHP_ONLY, 'attributes', 'Support::attributesOf({base})'],
+        ],
+        'attribute' => [
+            'name' => [self::PHP_ONLY, 'attribute-name', '{base}'],
+        ],
         // A parameter of a declaration, as written — not the metadata a reflection lookup returns. `->type` is
         // the hint, which is absent for an untyped parameter, so it goes through the option-tolerant kind.
         'param-decl' => [
@@ -178,6 +195,13 @@ final class Vocabulary
         'const-items' => ['iter' => '{rust}.iter()', 'item' => 'const-item', 'phpIter' => '{rust}'],
         'hint-parts' => ['iter' => '{rust}', 'item' => 'hint'],
         'property-members' => ['iter' => '{rust}', 'item' => 'property'],
+        // The method declarations of a class-like body, one `method-decl` each.
+        'method-members' => ['iter' => self::PHP_ONLY, 'item' => 'method-decl', 'phpIter' => '{rust}'],
+        // php-parser models attributes in two levels: a declaration carries attribute *groups*, each holding
+        // attributes. Both levels are iterables here because a rule asking "does it carry this attribute" writes
+        // both loops, and flattening them would be inventing a shape the source does not have.
+        'attr-groups' => ['iter' => self::PHP_ONLY, 'item' => 'attr-group', 'phpIter' => '{rust}'],
+        'attributes' => ['iter' => self::PHP_ONLY, 'item' => 'attribute', 'phpIter' => '{rust}'],
         // A call's arguments, one wrapped `Argument` each. Iterated to ask a question of every argument —
         // `lastBareFlagIndex()` asks whether any is named or spread, because either breaks the mapping from
         // argument position to parameter position.

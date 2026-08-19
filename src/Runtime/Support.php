@@ -14,10 +14,12 @@ use Mago\Sdk\Analyzer\Type;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
 use Mago\Sdk\Analyzer\Type\SimpleAtomicType;
 use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
+use Mago\Sdk\Span;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
 use Mago\Sdk\Syntax\ResolvedName;
 use Mago\Sdk\Syntax\SourceFile;
+use Mago\Sdk\Syntax\TriviaKind;
 
 /**
  * The PHP target's support runtime, the counterpart of `support.rs`.
@@ -1091,6 +1093,272 @@ final class Support
         $written = self::hintName($context, $hint);
 
         return $written !== null && strcasecmp($written, $name) === 0;
+    }
+
+    /**
+     * The method declarations of a class-like body, in source order.
+     *
+     * Walked rather than read off one level, because a class-like's members sit inside its body node. This is
+     * php-parser's `$classLike->getMethods()`, so it is the methods *written here* — not the ones a trait brings
+     * in, and not the inherited ones a reflection lookup would add.
+     *
+     * @return list<Part>
+     */
+    public static function classMethods(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        $node = self::node($subject);
+        if (! $node instanceof Node) {
+            return [];
+        }
+
+        $out = [];
+        $walk = function (Node $parent, int $depth) use (&$walk, $context, &$out): void {
+            foreach ($context->source->getChildren($parent) as $child) {
+                if ($child->kind === NodeKind::Method) {
+                    $out[] = self::part($context, $child);
+
+                    continue;
+                }
+
+                if ($depth < self::MEMBER_DEPTH) {
+                    $walk($child, $depth + 1);
+                }
+            }
+        };
+        $walk($node, 0);
+
+        return $out;
+    }
+
+    /** How far below a class-like to look for its members: body, then member list. */
+    private const int MEMBER_DEPTH = 3;
+
+    /** Names php-parser treats as magic, copied from `ClassMethod::$magicNames` rather than recalled. */
+    private const array MAGIC_METHOD_NAMES = [
+        '__construct', '__destruct', '__call', '__callstatic', '__get', '__set', '__isset', '__unset',
+        '__sleep', '__wakeup', '__tostring', '__set_state', '__clone', '__invoke', '__debuginfo',
+        '__serialize', '__unserialize',
+    ];
+
+    /** Whether a class-like declaration is written `abstract`, which is a modifier on it. */
+    public static function declarationIsAbstract(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        $node = self::node($subject);
+        if (! $node instanceof Node) {
+            return false;
+        }
+
+        foreach ($context->source->getChildren($node) as $child) {
+            if ($child->kind === NodeKind::Modifier && strtolower(trim($context->source->getText($child))) === 'abstract') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** A method declaration's own name. */
+    public static function methodName(?Part $method): ?string
+    {
+        if (! $method instanceof Part) {
+            return null;
+        }
+
+        foreach ($method->children() as $child) {
+            if ($child->kind === NodeKind::LocalIdentifier) {
+                return trim($child->text);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether a method is magic, which php-parser answers from a fixed list of seventeen names.
+     *
+     * Not "starts with `__`": that would catch `__myHelper`, which php-parser does not, and the direction of
+     * that error is a port reporting where the rule stays silent.
+     */
+    public static function methodIsMagic(?Part $method): bool
+    {
+        $name = self::methodName($method);
+
+        return $name !== null && in_array(strtolower($name), self::MAGIC_METHOD_NAMES, true);
+    }
+
+    /**
+     * Whether a method declaration carries a modifier.
+     *
+     * `public` is the default in PHP, so php-parser's `isPublic()` is true for a method with no visibility
+     * modifier at all — which is why absence has to mean public rather than unknown.
+     */
+    public static function methodIsPublic(?Part $method): bool
+    {
+        $modifiers = self::methodModifiers($method);
+
+        return ! in_array('private', $modifiers, true) && ! in_array('protected', $modifiers, true);
+    }
+
+    public static function methodIsStatic(?Part $method): bool
+    {
+        return in_array('static', self::methodModifiers($method), true);
+    }
+
+    /** @return list<string> */
+    private static function methodModifiers(?Part $method): array
+    {
+        if (! $method instanceof Part) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($method->children() as $child) {
+            if ($child->kind === NodeKind::Modifier) {
+                $out[] = strtolower(trim($child->text));
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The attribute groups a declaration carries, one per `#[..]` written on it.
+     *
+     * @return list<Part>
+     */
+    public static function attributeGroups(?Part $declaration): array
+    {
+        if (! $declaration instanceof Part) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($declaration->children() as $child) {
+            if ($child->kind === NodeKind::AttributeList) {
+                $out[] = $child;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The attributes inside one group: `#[A, B]` is one group holding two.
+     *
+     * @return list<Part>
+     */
+    public static function attributesOf(?Part $group): array
+    {
+        if (! $group instanceof Part) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($group->children() as $child) {
+            if ($child->kind === NodeKind::Attribute) {
+                $out[] = $child;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Where a finding points: the given part, or the node the hook fired for when there is no part.
+     *
+     * A rule that loops a class-like's members reports each finding on its own member, which PHPStan spells
+     * `->line($member->getLine())`. Null-tolerant so a navigation that found nothing anchors at the hook's node
+     * rather than crashing the worker — a finding on the wrong line is a defect, a dead worker is worse.
+     */
+    public static function anchor(NodeAnalysisContext $context, Part|Node|null $subject): Span
+    {
+        $node = self::node($subject);
+
+        return $node instanceof Node ? $node->span : $context->node->span;
+    }
+
+    /** Two written names compared the way PHP compares them: case-insensitively, and null matching nothing. */
+    public static function nameIs(?string $written, string $name): bool
+    {
+        return $written !== null && strcasecmp($written, $name) === 0;
+    }
+
+    /** The fully-qualified name an attribute names, which is what `$attr->name->toString()` gives a rule. */
+    public static function attributeName(NodeAnalysisContext $context, ?Part $attribute): ?string
+    {
+        if (! $attribute instanceof Part) {
+            return null;
+        }
+
+        $resolved = $context->source->getResolvedName($attribute->node);
+
+        return $resolved instanceof ResolvedName && $resolved->name !== '' ? $resolved->name : trim($attribute->text);
+    }
+
+    /**
+     * Whether a declaration carries an attribute of this name.
+     *
+     * Compared against the *resolved* name, because that is what php-parser's `$attr->name->toString()` gives a
+     * rule: PHPStan resolves names in the AST first, so a rule matches `#[Required]` against the attribute's
+     * fully-qualified name. Probed: Mago resolves the attribute identifier the same way.
+     */
+    public static function hasAttribute(NodeAnalysisContext $context, ?Part $declaration, string $name): bool
+    {
+        if (! $declaration instanceof Part) {
+            return false;
+        }
+
+        foreach ($declaration->children() as $child) {
+            if ($child->kind !== NodeKind::AttributeList) {
+                continue;
+            }
+
+            foreach ($child->children() as $attribute) {
+                $resolved = $context->source->getResolvedName($attribute->node);
+                $written = $resolved instanceof ResolvedName ? $resolved->name : trim($attribute->text);
+                if (strcasecmp($written, $name) === 0) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The docblock immediately above a declaration, or null when it has none.
+     *
+     * Mago hands comments back as file-level trivia carrying a span and a kind but no text, so the text comes
+     * from the source and the *association* is arithmetic this owns. The rule mirrors php-parser's own
+     * attachment: the last docblock that ends before the declaration starts and begins after whatever precedes
+     * it, so a method with no docblock cannot inherit its neighbour's. A declaration's span includes its
+     * attribute list, which is what makes `\/** doc *\/ #[Attr] public function` associate correctly.
+     */
+    public static function docblockText(NodeAnalysisContext $context, ?Part $declaration): ?string
+    {
+        if (! $declaration instanceof Part) {
+            return null;
+        }
+
+        $start = $declaration->node->span->start;
+
+        foreach ($context->source->getTrivia() as $trivia) {
+            if ($trivia->kind !== TriviaKind::DocBlockComment || $trivia->span->end > $start) {
+                continue;
+            }
+
+            // Adjacent means nothing but whitespace in between, which is php-parser's own rule: a comment
+            // attaches to the token that follows it. Anything else — another member, an attribute belonging to
+            // something else — and this docblock is not this declaration's, so a member without one cannot
+            // inherit its neighbour's.
+            if ($trivia->span->end < $start && trim($context->source->getText(new Span($trivia->span->end, $start))) !== '') {
+                continue;
+            }
+
+            return $context->source->getText($trivia->span);
+        }
+
+        return null;
     }
 
     /**

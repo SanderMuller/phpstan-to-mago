@@ -14,7 +14,7 @@ parameter carrying the rule package's own default, read from that package's `ext
 that derives one from configured values, literals and a closed set of pure functions is carried verbatim, and
 only by the PHP target.
 
-Surveyed with the tool: `symplify/phpstan-rules` 21 of 96, `hihaho/phpstan-rules` 3 of 20,
+Surveyed with the tool: `symplify/phpstan-rules` 23 of 96, `hihaho/phpstan-rules` 3 of 20,
 `tomasvotruba/type-coverage` 0 of 10, `tomasvotruba/cognitive-complexity` 0 of 3. Every emitted rule is gated
 on actually running, per `docs/dogfooding.md`, which supersedes the frontier analysis below.
 
@@ -52,9 +52,9 @@ and the point of it is that it beat a guess.
 
 | rules | refusal |
 |--:|:--|
-| 5 | `->getMethods()` |
-| 4 | `instanceof Identifier` · `guard body is neither return [] nor continue` · `Expr_New` |
-| 3 | `no iteration mapped for a expr` · `list contains something other than a string literal` · `empty-array comparison against a expr` · `->findInstanceOf()` · unwired constructor parameter |
+| 5 | `Expr_New` |
+| 4 | `no iteration mapped for a expr` · `guard body is neither return [] nor continue` |
+| 3 | `instanceof Identifier` · `list contains something other than a string literal` · `empty-array comparison against a expr` · `->findInstanceOf()` · unwired constructor parameter |
 
 **The `->getParams()` cluster is closed.** It was nine rules, and eight of them were one line in one file:
 `Symfony/NodeAnalyzer/SymfonyClosureDetector.php:15` is a shared detector that every
@@ -96,9 +96,45 @@ helper check could not see it because no fixture asked, and the fires-gate could
 examples into one directory while that rule's guard tests the file's *path*. So the helper check now runs over the
 whole vendored corpus, and the gate copies examples keeping their directories.
 
-The `->getMethods()` cluster is the same idea as `getParams()` one level up — a class-like declaration's own
-methods, sometimes through a shared analyzer (`Doctrine/DoctrineEventSubscriberAnalyzer.php:15`) and sometimes in
-the rule body. It is now the largest single cluster, at 5.
+## A class-like's own methods, and reporting once per member
+
+The `->getMethods()` cluster is closed too, and it needed more than iteration. All five rules loop a class-like's
+methods and report **per method**, and their predicates all read attributes or docblocks — so there was no
+stopping point short of both. `SymfonyRequiredMethodAnalyzer::detect()` falls through from `#[Required]` to
+`str_contains($docComment->getText(), '@required')`; shipping one without the other would silently miss half the
+codebases the rule is for.
+
+What that took, and what each piece cost:
+
+- **Attributes are two levels.** php-parser gives a declaration attribute *groups*, each holding attributes, so
+  asking "does it carry this one" is a nested `foreach`. The "any of them" combinator now nests rather than the
+  two levels being flattened into a shape the source does not have. Attribute names resolve to their FQN, which
+  is what a rule compares against.
+- **Docblocks have no owner.** Mago hands comments back as file-level trivia carrying a span and a kind but no
+  text, so both the text and the *association* are this package's arithmetic. The rule mirrors php-parser's:
+  a docblock belongs to the declaration that follows it with nothing but whitespace in between. Mutation-checked
+  — drop the adjacency test and a method with no docblock inherits its neighbour's, which reports it.
+- **`isMagic()` is a list, not a prefix.** Seventeen exact names, copied from php-parser's `ClassMethod`. A `__`
+  prefix test would catch `__myHelper`, which php-parser does not, and that error reports where the rule is silent.
+- **The report has to move.** PHPStan's `->line($classMethod->getLine())` is what puts each finding on its own
+  method; without carrying it across, every finding in a loop landed on the class. The emitted report now takes an
+  anchor, defaulting to the hook's node.
+
+**Two bugs surfaced doing it, both older than this work.**
+
+`resolve()` mapped any variable named `node` to the hook's node *before* consulting locals, so an inlined helper
+whose parameter is called `$node` — `hasRouteAnnotationOrAttribute(ClassLike|ClassMethod $node)` is one — silently
+read the wrong subtree. No shipped snapshot changed when it was fixed, which is the only reason nothing was wrong
+in the field.
+
+And `$error = RuleErrorBuilder::…; return [$error];` deferred its report to the end of `analyze()`. Correct for a
+rule whose guards bail out of the function; wrong inside a loop, where the guards `continue` and the trailing
+report then fires whatever they decided. It reported every method of every class. Now the report is emitted at the
+`return` inside the loop, which is also what distinguishes "report the first and stop" from "collect them all".
+
+`NoRequiredOutsideClassRule` and `RequiredOnlyInAbstractRule` emit and agree; symplify 21 to 23. The other three
+stand on their own bodies: `Strings::match()` with captures feeding the message, a `DataProviderMethodResolver`,
+and `new AttributeFinder()` — which is the `Expr_New` cluster, now the largest at five.
 
 ### What this replaced, and why the note stays
 

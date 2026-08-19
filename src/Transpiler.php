@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago;
 
+use PhpParser\Comment\Doc;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -217,6 +218,24 @@ final class Transpiler
      * @var array<string, string>
      */
     private array $unwired = [];
+
+    /**
+     * Where the emitted report points, when the rule moves it off the node the hook fired for.
+     *
+     * Null means the hook's own node, which is what almost every rule wants. A rule that loops a class-like's
+     * members and reports per member does not: PHPStan's `->line($member->getLine())` is what puts each finding
+     * on its own member, and without carrying that across, every finding in such a rule lands on the class.
+     */
+    private ?string $anchor = null;
+
+    /**
+     * A local holding a built rule error whose report has not been emitted yet, inside a loop.
+     *
+     * Null everywhere else. The trailing report is right for a rule whose guards bail out of `analyze()`, and
+     * wrong for one whose guards `continue` — there the report has to sit inside the loop, and the `return` that
+     * follows the assignment is what says the rule stops at the first finding.
+     */
+    private ?string $pendingReport = null;
 
     /** True while translating a loop body, so `continue` and inline reports are legal. */
     private bool $inLoop = false;
@@ -1195,6 +1214,11 @@ PHP;
             return $this->unreachable('an index produced behind guards is never null once those guards have run');
         }
 
+        // `$docComment === null` is `instanceof Doc` the other way round, and the descriptor is already the text.
+        if ($subject['kind'] === 'docblock') {
+            return $this->operand($subject) . ' === null';
+        }
+
         // `$parameters[$i] ?? null === null` asks whether the method declares a parameter at that position at
         // all, which a call passing more arguments than the method takes does not.
         if ($subject['kind'] === 'parameter') {
@@ -1799,7 +1823,7 @@ PHP;
      * same question `array_any()` asks, so it emits the same combinator rather than a loop: a helper is
      * inlined as an expression, and a loop is not one.
      */
-    private function foreachAsAny(Foreach_ $statement): string
+    private function foreachAsAny(Foreach_ $statement, int $depth = 0): string
     {
         if ($statement->byRef || $statement->keyVar instanceof Expr) {
             throw new Refusal('a foreach in an inlined helper that binds a key or a reference', $statement->getStartLine());
@@ -1811,17 +1835,8 @@ PHP;
         }
 
         $body = $statement->stmts;
-        if (count($body) !== 1
-            || ! $body[0] instanceof If_
-            || $body[0]->elseifs !== []
-            || $body[0]->else instanceof Else_
-        ) {
+        if (count($body) !== 1) {
             throw new Refusal('a foreach in an inlined helper whose body is not a single guard', $statement->getStartLine());
-        }
-
-        $returned = $this->soleReturn($body[0]->stmts);
-        if (! $returned instanceof ConstFetch || strtolower($returned->name->toString()) !== 'true') {
-            throw new Refusal('a foreach in an inlined helper that does not return true when it matches', $statement->getStartLine());
         }
 
         $subject = $this->resolve($statement->expr, $statement->getStartLine());
@@ -1830,14 +1845,15 @@ PHP;
         }
 
         $saved = $this->locals;
+        $bound = 'item' . ($depth === 0 ? '' : (string) $depth);
         $this->locals[$item->name] = [
-            'rust' => 'item',
+            'rust' => $bound,
             'kind' => Vocabulary::ITERABLES[$subject['kind']]['item'],
-            'php' => '$item',
+            'php' => '$' . $bound,
         ];
 
         try {
-            $predicate = $this->stripOuterParentheses($this->translateCondition($body[0]->cond));
+            $predicate = $this->anyBody($body[0], $depth);
         } finally {
             $this->locals = $saved;
         }
@@ -1845,13 +1861,43 @@ PHP;
         if (self::$target === 'php') {
             return $this->backend->call('any_of', [
                 $this->operand($subject),
-                "static fn (\$item): bool => {$predicate}",
+                "static fn (\${$bound}): bool => {$predicate}",
             ]);
         }
 
         $iterable = str_replace('{rust}', $subject['rust'], Vocabulary::ITERABLES[$subject['kind']]['iter']);
 
-        return "{$iterable}.any(|item| {$predicate})";
+        return "{$iterable}.any(|{$bound}| {$predicate})";
+    }
+
+    /**
+     * What one level of an "any of them" loop tests: a guard, or a further loop.
+     *
+     * php-parser models attributes in two levels — a declaration has attribute *groups*, each holding attributes
+     * — so `foreach ($groups as $group) { foreach ($group->attrs as $attr) { if (..) return true; } }` is the only
+     * way to ask "does it carry this attribute". One level cannot express that, and flattening the two into one
+     * would be inventing a shape the source does not have.
+     */
+    private function anyBody(Stmt $body, int $depth): string
+    {
+        if ($body instanceof Foreach_) {
+            if ($depth >= self::INLINE_DEPTH_LIMIT) {
+                throw new Refusal('an "any of them" loop nested deeper than ' . self::INLINE_DEPTH_LIMIT, $body->getStartLine());
+            }
+
+            return $this->stripOuterParentheses($this->foreachAsAny($body, $depth + 1));
+        }
+
+        if (! $body instanceof If_ || $body->elseifs !== [] || $body->else instanceof Else_) {
+            throw new Refusal('a foreach in an inlined helper whose body is not a single guard', $body->getStartLine());
+        }
+
+        $returned = $this->soleReturn($body->stmts);
+        if (! $returned instanceof ConstFetch || strtolower($returned->name->toString()) !== 'true') {
+            throw new Refusal('a foreach in an inlined helper that does not return true when it matches', $body->getStartLine());
+        }
+
+        return $this->stripOuterParentheses($this->translateCondition($body->cond));
     }
 
     /** The accepted helper shapes, as one Rust expression. */
@@ -2944,6 +2990,25 @@ PHP;
 
         // Terminal: return [ ...error... ];  or  $x = RuleErrorBuilder...; return [$x];
         if ($stmt instanceof Return_) {
+            // `return [$error];` inside the loop that built it: report here and stop, which is what the original
+            // does. Emitted at the return rather than at the assignment, because only the return distinguishes
+            // "report the first one and stop" from "collect them all".
+            if ($this->inLoop
+                && $this->pendingReport !== null
+                && $stmt->expr instanceof Array_
+                && count($stmt->expr->items) === 1
+                && ($only = $stmt->expr->items[0]) !== null
+                && $only->value instanceof Variable
+                && $only->value->name === $this->pendingReport
+            ) {
+                $this->lines[] = $this->reportNode();
+                $this->lines[] = new Stm('bail', [], $this->indent);
+                $this->reportedInline = true;
+                $this->pendingReport = null;
+
+                return;
+            }
+
             if ($stmt->expr instanceof Array_) {
                 foreach ($stmt->expr->items as $item) {
                     if ($item !== null && $this->isRuleErrorBuilder($item->value)) {
@@ -2986,6 +3051,15 @@ PHP;
 
             if ($this->isRuleErrorBuilder($value)) {
                 $this->takeMessage($value);
+
+                // Inside a loop the trailing report is not where this belongs. The loop's guards exit with
+                // `continue`, so a report emitted after the loop runs whichever way those guards went — which is
+                // every method, including the ones the rule filtered out. Remembered here and emitted at the
+                // `return` that follows, because that return is what says whether the rule stops at the first
+                // finding or keeps going.
+                if ($this->inLoop && $stmt->expr->var instanceof Variable && is_string($stmt->expr->var->name)) {
+                    $this->pendingReport = $stmt->expr->var->name;
+                }
 
                 return;
             }
@@ -3442,12 +3516,36 @@ PHP;
         $literal = str_starts_with($this->message, '"') && str_ends_with($this->message, '"');
 
         return new Stm('report', [
+            'anchor' => $this->anchor ?? '$node->span',
             'message' => $literal ? $this->backend->bytes(substr($this->message, 1, -1)) : $this->message,
             // PHPStan's own identifier is the code, so a finding is labelled the same by both tools. Written
             // as PHP here rather than in the backend: a rule that classifies what it found computes its code,
             // and only this side knows whether the code is a literal to quote or an expression to keep.
             'code' => $this->reportedCode(),
         ], $this->indent);
+    }
+
+    /**
+     * The span `->line(<expr>)` names, as a PHP expression, refusing anything that is not a node's own line.
+     *
+     * `getLine()` and `getStartLine()` are the same question of a declaration. A computed line number is not:
+     * a report points at a node here, not at an integer, so there is nothing to translate it to.
+     */
+    private function reportAnchor(Expr $expr, int $line): string
+    {
+        if (self::$target !== 'php') {
+            throw new Refusal('a report moved off the hook node, which only the PHP target carries', $line);
+        }
+
+        if (! $expr instanceof MethodCall
+            || ! in_array($this->memberName($expr->name, $line), ['getLine', 'getStartLine'], true)
+        ) {
+            throw new Refusal("a report line that is not a node's own", $line);
+        }
+
+        $subject = $this->resolve($expr->var, $line);
+
+        return 'Support::anchor($context, ' . $this->operand($subject) . ')';
     }
 
     private function reportStatement(): string
@@ -3538,6 +3636,13 @@ PHP;
                 }
 
                 $this->identifier = $identifier;
+            }
+
+            // `->line($classMethod->getLine())` moves the finding off the node the hook fired for and onto the
+            // member the rule is really talking about. A rule looping a class-like's methods reports one finding
+            // per method, and every one of them would otherwise land on the class's own line.
+            if ((string) $chain->name === 'line' && count($chain->getArgs()) === 1) {
+                $this->anchor = $this->reportAnchor($chain->getArgs()[0]->value, $chain->getStartLine());
             }
 
             $chain = $chain->var;
@@ -3983,6 +4088,13 @@ PHP;
             ]);
         }
 
+        // `self::other()` inside an analyzer class already being inlined: the class is the one we are in, so it
+        // needs no lookup. Without this, `findClassByName('self')` finds nothing and the refusal names `self`,
+        // which points at no file anyone can open.
+        if (in_array($helper, ['self', 'static'], true) && $this->currentClass instanceof ClassLike) {
+            return $this->inlineMethod($this->currentClass, $method, $args, $expr->getStartLine(), $this->useMap);
+        }
+
         // Any other static helper whose source we can find is inlined rather than hand-translated.
         $helperClass = $this->findClassByName($helper);
         if ($helperClass !== null) {
@@ -4068,6 +4180,22 @@ PHP;
             throw new Refusal("instanceof {$wanted} on a member selector", $expr->getStartLine());
         }
 
+        // `$node instanceof ClassMethod` inside a helper that takes `ClassLike|ClassMethod`: the caller passed a
+        // method declaration, so the narrowing holds by construction here.
+        if ($subject['kind'] === 'method-decl' && $wanted === ClassMethod::class) {
+            return 'true';
+        }
+
+        // `$docComment instanceof Doc` asks whether the declaration has a docblock at all, and the descriptor is
+        // already its text, so the question is whether that text exists.
+        if ($subject['kind'] === 'docblock') {
+            if ($wanted !== Doc::class) {
+                throw new Refusal("instanceof {$wanted} on a docblock", $expr->getStartLine());
+            }
+
+            return $this->operand($subject) . ' !== null';
+        }
+
         // `$arg->value instanceof ConstFetch` asks whether the value is a bare constant name. Mago splits that
         // across two node kinds — a keyword `Literal` for true/false/null, a `ConstantAccess` for anything else
         // — so it is one helper rather than a node-kind test.
@@ -4102,7 +4230,7 @@ PHP;
         }
 
         if (! isset(Vocabulary::NODE_PREDICATES[$wanted])) {
-            throw new Refusal("no node predicate for instanceof {$wanted}", $expr->getStartLine());
+            throw new Refusal("no node predicate for instanceof {$wanted} on a {$subject['kind']}", $expr->getStartLine());
         }
 
         return $this->backend->call(Vocabulary::NODE_PREDICATES[$wanted], [$this->operand($subject)]);
@@ -4204,6 +4332,19 @@ PHP;
             return $this->enclosingClassIs($this->bytesValue($args[0]->value, $expr->getStartLine()));
         }
 
+        // `isAbstract()` on the class-like *declaration* the hook fired for, which is a modifier on it rather
+        // than a metadata flag.
+        if ($method === 'isAbstract' && $args === []) {
+            $subject = $this->resolve($expr->var, $expr->getStartLine());
+            if ($subject['kind'] === 'hook-node') {
+                if (self::$target !== 'php') {
+                    throw new Refusal('isAbstract() on a declaration, which only the PHP target carries', $expr->getStartLine());
+                }
+
+                return 'Support::declarationIsAbstract($context, ' . $this->operand($subject) . ')';
+            }
+        }
+
         // Reflection predicates. Inside a declaration hook these come from the class metadata, and
         // two of them are settled by which hook it is: the class hook fires only for classes, and
         // never for anonymous ones, which are a separate node in Mago.
@@ -4223,7 +4364,12 @@ PHP;
                 'isClass' => $this->classHookIsClass(),
                 'isAnonymous' => $this->unreachable('an anonymous class is a separate node kind, so the class declaration hook never fires for one'),
                 'isInterface' => $this->unreachable('the class declaration hook fires for classes, never for an interface'),
-                default => 'support::metadata_is_abstract(metadata)',
+                // The class metadata carries this on the Rust side; on the PHP side the hook's own node *is* the
+                // declaration, so the modifier is right there. Without a rendering here the PHP target emitted
+                // Rust and refused on it one step later, which named the operand instead of the question.
+                default => self::$target === 'php'
+                    ? 'Support::declarationIsAbstract($context, $node)'
+                    : 'support::metadata_is_abstract(metadata)',
             };
         }
 
@@ -4273,6 +4419,21 @@ PHP;
             }
         }
 
+        // Questions about a method *declaration*, answered from its modifiers and its name rather than from
+        // metadata: this is the method as written, which is what a rule looping a class-like's body holds.
+        if (in_array($method, ['isPublic', 'isStatic', 'isMagic'], true) && $args === []) {
+            $subject = $this->resolve($expr->var, $expr->getStartLine());
+            if ($subject['kind'] === 'method-decl') {
+                if (self::$target !== 'php') {
+                    throw new Refusal("{$method}() on a declaration, which only the PHP target carries", $expr->getStartLine());
+                }
+
+                $helper = ['isPublic' => 'methodIsPublic', 'isStatic' => 'methodIsStatic', 'isMagic' => 'methodIsMagic'][$method];
+
+                return 'Support::' . $helper . '(' . $this->operand($subject) . ')';
+            }
+        }
+
         if ($method === 'isFirstClassCallable') {
             return $this->unreachable('Mago parses `f(...)` as a partial application, which never reaches a call hook');
         }
@@ -4315,6 +4476,14 @@ PHP;
                 $support = ['str_ends_with' => 'file_ends_with', 'str_starts_with' => 'file_starts_with', 'str_contains' => 'file_contains'][$name];
 
                 return $this->backend->call($support, self::$target === 'php' ? ['$context', $needle] : ['context', $needle]);
+            }
+
+            // A method's written name is a name node here and a string to the rule, so it goes through the byte
+            // helpers like any other name once its text is read.
+            if ($subject['kind'] === 'method-name' && self::$target === 'php') {
+                $support = ['str_ends_with' => 'bytes_end_with', 'str_starts_with' => 'bytes_start_with', 'str_contains' => 'bytes_contain'][$name];
+
+                return $this->backend->call($support, ['Support::methodName(' . $this->operand($subject) . ')', $needle]);
             }
 
             if (in_array($subject['kind'], ['class-name', 'bytes', 'name-expr'], true)) {
@@ -4587,6 +4756,11 @@ PHP;
                     $subject['rust'],
                     $literal,
                 ),
+            // Both are already resolved names, so the comparison is a string one — and both are compared against
+            // a fully-qualified name, because that is what php-parser hands a rule after PHPStan has resolved
+            // the AST.
+            'attribute-name' => 'Support::nameIs(Support::attributeName($context, ' . $this->operand($subject) . '), ' . $this->backend->bytes($literal) . ')',
+            'method-name' => 'Support::nameIs(Support::methodName(' . $this->operand($subject) . '), ' . $this->backend->bytes($literal) . ')',
             'expr' => "support::expression_selector_is({$subject['rust']}, b\"{$literal}\")",
             default => throw new Refusal("name comparison against a {$subject['kind']}", $line),
         };
@@ -4984,13 +5158,16 @@ PHP;
      */
     private function resolve(Expr $expr, int $line): array
     {
-        if ($expr instanceof Variable && $expr->name === 'node') {
-            return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
-        }
-
         if ($expr instanceof Variable && is_string($expr->name)) {
+            // Locals first, then the hook's node. A helper is free to call its parameter `$node` —
+            // `hasRouteAnnotationOrAttribute(ClassLike|ClassMethod $node)` does — and answering the hook's node
+            // for it read the wrong subtree while looking perfectly reasonable in the emitted file.
             if (isset($this->locals[$expr->name])) {
                 return $this->locals[$expr->name];
+            }
+
+            if ($expr->name === 'node') {
+                return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
             }
 
             throw new Refusal("unknown local \${$expr->name}", $line);
@@ -5063,6 +5240,71 @@ PHP;
                 'rust' => 'support::metadata_name(metadata)',
                 'kind' => 'class-name',
                 'php' => 'Support::enclosingClassName($context, $node)',
+            ];
+        }
+
+        // `getDocComment()` on a declaration. Mago hands comments back as file-level trivia, so the helper both
+        // finds the right one and reads its text — which means the descriptor is already the text, and
+        // `->getText()` on it is the identity.
+        if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getDocComment') {
+            $base = $this->resolve($expr->var, $line);
+            if (self::$target !== 'php') {
+                throw new Refusal('getDocComment(), which only the PHP target carries', $line);
+            }
+
+            if (! in_array($base['kind'], ['method-decl', 'hook-node', 'property'], true)) {
+                throw new Refusal("getDocComment() on a {$base['kind']}", $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'docblock',
+                'php' => 'Support::docblockText($context, ' . $this->operand($base) . ')',
+            ];
+        }
+
+        // `getText()` on a docblock is the docblock, since the descriptor is already its text.
+        if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getText') {
+            $base = $this->resolve($expr->var, $line);
+            if ($base['kind'] === 'docblock') {
+                return ['rust' => $base['rust'], 'kind' => 'bytes', 'php' => $this->operand($base)];
+            }
+        }
+
+        // `getAttrGroups()` on a declaration — the `#[..]` groups written on it.
+        if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getAttrGroups') {
+            $base = $this->resolve($expr->var, $line);
+            if (self::$target !== 'php') {
+                throw new Refusal('getAttrGroups(), which only the PHP target carries', $line);
+            }
+
+            if (! in_array($base['kind'], ['method-decl', 'hook-node', 'property'], true)) {
+                throw new Refusal("getAttrGroups() on a {$base['kind']}", $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'attr-groups',
+                'php' => 'Support::attributeGroups(' . $this->operand($base) . ')',
+            ];
+        }
+
+        // `getMethods()` on the class-like under analysis — the methods written in its body, which is what a
+        // rule looping them and reporting per method asks for.
+        if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getMethods') {
+            $base = $this->resolve($expr->var, $line);
+            if ($base['kind'] !== 'hook-node') {
+                throw new Refusal("getMethods() on a {$base['kind']} rather than on the class-like", $line);
+            }
+
+            if (self::$target !== 'php') {
+                throw new Refusal('getMethods(), which only the PHP target carries', $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'method-members',
+                'php' => 'Support::classMethods($context, $node)',
             ];
         }
 
