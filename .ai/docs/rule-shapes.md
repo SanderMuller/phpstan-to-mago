@@ -45,10 +45,58 @@ Two variants of that family stay refused for a fact about the package rather tha
 registers only the constructor and nullsafe rules, leaving the static-call and method-call ones to
 `CombinedStaticCallRule`/`CombinedMethodCallRule`, so their `$firstPartyNamespaces` has nothing behind it.
 
-## The next shape, named rather than guessed
+## The frontier, measured
 
-`CombinedMethodCallRule` is now refused one line further along than it was, and the new refusal names something
-genuinely different: it **accumulates** findings.
+Every refusal across the four packages, grouped. Re-run it rather than trusting this table — it is a snapshot,
+and the point of it is that it beat a guess.
+
+| rules | refusal |
+|--:|:--|
+| 9 | `->getParams()` |
+| 5 | `->getMethods()` |
+| 4 | `instanceof Identifier` |
+| 4 | `guard body is neither return [] nor continue` |
+| 3 | `Expr_New` · `list contains something other than a string literal` · `empty-array comparison against a expr` · unwired constructor parameter |
+
+**Eight of the nine `->getParams()` refusals are one line in one file.**
+`Symfony/NodeAnalyzer/SymfonyClosureDetector.php:15` is a shared detector that every
+`Rules/Symfony/ConfigClosure/*` rule gates on:
+
+```php
+public static function detect(Closure $closure): bool
+{
+    if (count($closure->getParams()) !== 1) { return false; }
+    $onlyParam = $closure->getParams()[0];
+    if (! $onlyParam->type instanceof Name) { return false; }
+    return $onlyParam->type->toString() === SymfonyClass::CONTAINER_CONFIGURATOR;
+}
+```
+
+So the next shape is **a closure and its declared parameters**, not nine separate gaps. Those rules have
+`getNodeType(): Closure::class`, `Closure::class` is not in `HOOKS` at all, and Mago has `NodeKind::Closure`. The
+pieces: the hook, `getParams()` on a closure, `[0]` on that list, and a parameter's written type — which the
+`hint`/`hint-option` machinery already answers for a property's type, so that may be reuse rather than new work.
+One thing genuinely new: `detect()` is a **static call into another class**, where helper inlining so far follows
+`$this->` calls.
+
+The `->getMethods()` cluster is the same idea one level up — a class-like declaration's own methods, sometimes
+through a shared analyzer (`Doctrine/DoctrineEventSubscriberAnalyzer.php:15`) and sometimes in the rule body.
+
+### What this replaced, and why the note stays
+
+The previous version of this section named `CombinedMethodCallRule`'s **accumulated findings** as the next shape,
+because that was the refusal most recently read. It is real — see below — but it is four rules where the closure
+detector is eight behind a single line. The reason the wrong one looked biggest is that the largest cluster,
+seventeen rules, all refused with `access path outside the vocabulary: Expr_MethodCall`: php-parser's node class,
+the same string for every method call there is. Naming the member in that refusal split it into `->getParams()`,
+`->getMethods()` and `->getConstantStrings()`, and changed the answer.
+
+Which is the lesson this document already records twice: a refusal that does not name the construct makes the
+frontier unreadable, and reading it wrong costs more than the message costs to fix.
+
+## Accumulated findings, still a real shape
+
+`CombinedMethodCallRule` **accumulates** findings.
 
 ```php
 $errors = [];
@@ -63,7 +111,9 @@ return $errors;
 Every emitted plugin so far has one report site behind one chain of guards, because every rule so far reports at
 most once per node. This one reports zero, one or two findings from a single node, from independent checks. That
 needs a second emission shape — one guarded report site per check, sharing the node — rather than another
-vocabulary entry. `CombinedStaticCallRule` is blocked by something else entirely, and traced rather than
+vocabulary entry. Four rules, so behind the closure detector rather than ahead of it.
+
+`CombinedStaticCallRule` is blocked by something else entirely, and traced rather than
 guessed from its refusal: `DetectsFacadeAlias` memoises in a `static $cache = []` because it needs *runtime*
 reflection — Laravel registers facade aliases lazily through an autoloader that PHPStan's `ReflectionProvider`
 never invokes. A plugin cannot do that at all, so the honest outcome there is a refusal naming the runtime
