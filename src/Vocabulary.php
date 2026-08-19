@@ -11,6 +11,7 @@ use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
@@ -33,10 +34,18 @@ use PHPStan\Node\InClassNode;
 final class Vocabulary
 {
     /**
-     * @var array<class-string, array{trait: string, method: string, node: string|null, kind: string, adapter?: string, extra?: string, classFrom?: string, classOnly?: bool, each?: string}>
+     * @var array<class-string, array{trait: string, method: string, node: string|null, kind: string, adapter?: string, extra?: string, classFrom?: string, classOnly?: bool, each?: string, phpOnly?: bool}>
      */
     public const array HOOKS = [
         MethodCall::class => ['trait' => 'MethodCallHook', 'method' => 'after_method_call', 'node' => 'MethodCall', 'kind' => 'MethodCall'],
+        // `$obj?->m(..)` is a node kind of its own in Mago, probed rather than assumed: the `MethodCall` hook
+        // does not fire for it. That also settles a question PHPStan has to guard against — it dispatches a
+        // *synthetic* `MethodCall` for the non-null branch, which is why its rules check a
+        // `virtualNullsafeMethodCall` attribute to avoid reporting twice. There is no synthetic node here.
+        //
+        // PHP target only: Mago's Rust side has its own hook trait for this and nothing in the corpus has
+        // pinned down which, so the Rust targets refuse by name rather than register against a guess.
+        NullsafeMethodCall::class => ['trait' => 'NullSafeMethodCallHook', 'method' => 'after_null_safe_method_call', 'node' => 'NullSafeMethodCall', 'kind' => 'NullSafeMethodCall', 'phpOnly' => true],
         FuncCall::class => ['trait' => 'FunctionCallHook', 'method' => 'after_function_call', 'node' => 'FunctionCall', 'kind' => 'FunctionCall'],
         StaticCall::class => ['trait' => 'StaticMethodCallHook', 'method' => 'after_static_method_call', 'node' => 'StaticMethodCall', 'kind' => 'StaticMethodCall'],
         ClassConstFetch::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'adapter' => 'as_class_constant_access', 'kind' => 'ClassConstantAccess'],
@@ -70,6 +79,12 @@ final class Vocabulary
         'MethodCall' => [
             'var' => ['node.object', 'expr', 'Support::nthExpression($context, $node, 0)'],
             'name' => ['&node.method', 'name-selector', 'Support::selector($context, $node)'],
+        ],
+        // The same three children in the same order, which the CST probe confirmed rather than assumed: there
+        // is no extra node for the `?->` token to shift the positions.
+        'NullSafeMethodCall' => [
+            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
+            'name' => [self::PHP_ONLY, 'name-selector', 'Support::selector($context, $node)'],
         ],
         'FunctionCall' => [
             'name' => ['node.function', 'name-expr', 'Support::nthExpression($context, $node, 0)'],

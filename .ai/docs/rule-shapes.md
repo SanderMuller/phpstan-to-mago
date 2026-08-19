@@ -14,30 +14,68 @@ parameter carrying the rule package's own default, read from that package's `ext
 that derives one from configured values, literals and a closed set of pure functions is carried verbatim, and
 only by the PHP target.
 
-Surveyed with the tool: `symplify/phpstan-rules` 20 of 96, `hihaho/phpstan-rules` 2 of 20,
+Surveyed with the tool: `symplify/phpstan-rules` 20 of 96, `hihaho/phpstan-rules` 3 of 20,
 `tomasvotruba/type-coverage` 0 of 10, `tomasvotruba/cognitive-complexity` 0 of 3. Every emitted rule is gated
 on actually running, per `docs/dogfooding.md`, which supersedes the frontier analysis below.
 
+## The receiver type, now measured
+
+`$scope->getType($receiver)->getObjectClassReflections()` with a `count() === 1` gate is how a rule asks for a
+single concrete receiver. It maps onto the SDK's `ReceiverType` requirement, and `Type->atomicTypes` yields a
+`NamedObjectType` whose `name` **keeps its casing** — unlike `ClassLikeMetadata->name`, which arrives
+lowercased. So the class a receiver names is available, and `Support::methodExists()` and
+`Support::parameterName()` take it directly.
+
+Three things this only got right by probing:
+
+- **`$obj?->m(..)` is its own node kind.** `NodeKind::NullSafeMethodCall`, and the `MethodCall` hook does not
+  fire for it. That also disposes of a guard PHPStan needs and Mago does not: PHPStan dispatches a *synthetic*
+  `MethodCall` for the non-null branch, which is why its rules check a `virtualNullsafeMethodCall` attribute to
+  avoid reporting twice. There is no synthetic node here, so that operand folds to false — folded out of the
+  disjunction it sits in, not treated as an unreachable guard, which would have taken the real question with it.
+- **`TypeCombinator::removeNull()` is load-bearing, not cosmetic.** A `?Widget` receiver arrives as two atomics,
+  a `NamedObjectType` and a `SimpleAtomicType` of kind `Null`. Ask "exactly one class" without dropping the null
+  and the answer is no. Mutation-checked: with the strict helper, the nullsafe rule reports **nothing at all**
+  and the method-call rule loses every nullable receiver. Both look like perfectly well-formed plugins.
+- **The `count($classReflections) !== 1` guard is faithful but redundant here.** The helpers behind it are
+  null-tolerant, so the method lookup one step later already rejects a union. Removing that guard leaves the
+  example pairs green — recorded so nobody reads a union example as proving it.
+
+Two variants of that family stay refused for a fact about the package rather than a gap here: `extension.neon`
+registers only the constructor and nullsafe rules, leaving the static-call and method-call ones to
+`CombinedStaticCallRule`/`CombinedMethodCallRule`, so their `$firstPartyNamespaces` has nothing behind it.
+
 ## The next shape, named rather than guessed
 
-The two positional-flag variants that go through a *receiver* — `PositionalFlagArgumentMethodCallRule` and its
-nullsafe twin — both reach `$scope->getType($receiver)->getObjectClassReflections()` with a `count() === 1`
-gate. That is the SDK's `ReceiverType` requirement, which `typeQuery()` already touches for the inferred type
-of a call's receiver. What is **not** known is whether `receiverType` hands back a class name that
-`Support::methodExists()` and `Support::parameterName()` can take; that needs a probe of its own, and guessing
-it is how a plausible-but-wrong port gets shipped. If it cannot yield a name, the honest outcome is a refusal
-with a traced reason.
+`CombinedMethodCallRule` is now refused one line further along than it was, and the new refusal names something
+genuinely different: it **accumulates** findings.
 
-The other two variants of that family are refused for a fact about the package rather than a gap here:
-`extension.neon` registers only the constructor and nullsafe rules, leaving the static-call and method-call
-ones to `CombinedStaticCallRule`/`CombinedMethodCallRule`, so their `$firstPartyNamespaces` has nothing behind
-it.
+```php
+$errors = [];
+$flagError = $this->positionalFlagErrorForMethodCall($node, $scope, $this->firstPartyNamespaces);
+if ($flagError instanceof IdentifierRuleError) {
+    $errors[] = $flagError;
+}
+// ... a second, independent check appends to $errors too
+return $errors;
+```
+
+Every emitted plugin so far has one report site behind one chain of guards, because every rule so far reports at
+most once per node. This one reports zero, one or two findings from a single node, from independent checks. That
+needs a second emission shape — one guarded report site per check, sharing the node — rather than another
+vocabulary entry. `CombinedStaticCallRule` is blocked by something else entirely, and traced rather than
+guessed from its refusal: `DetectsFacadeAlias` memoises in a `static $cache = []` because it needs *runtime*
+reflection — Laravel registers facade aliases lazily through an autoloader that PHPStan's `ReflectionProvider`
+never invokes. A plugin cannot do that at all, so the honest outcome there is a refusal naming the runtime
+reflection, not a vocabulary entry for `static`. `CombinedFuncCallRule` is blocked by a constructor derivation
+that reaches outside the pure set.
 
 ## The shape that blocks `hihaho/phpstan-rules`
 
-That package was **0 of 20** when this was written and is now 2 of 20 — `NoDebugInNamespaceRule` emits and
-reports under two computed codes, and `PositionalFlagArgumentConstructorRule` agrees with the original on line
-and message over a pair holding a bare flag, a named flag, a spread and a vendor-declared constructor. `unknown local $this` was the first blocker for five rules and is now the
+That package was **0 of 20** when this was written and is now 3 of 20 — `NoDebugInNamespaceRule` emits and
+reports under two computed codes, and both `PositionalFlagArgumentConstructorRule` and
+`PositionalFlagArgumentNullsafeMethodCallRule` agree with the original on line and message over pairs holding a
+bare flag, a named flag, a spread and a vendor-declared method. `unknown local $this` was the first blocker for five rules and is now the
 first blocker for none. What follows is the analysis as it stood; the current frontier is in the spec.
 
 At the time, 17 of the refusals were the same message, `assignment value outside the

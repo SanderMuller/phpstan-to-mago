@@ -55,6 +55,11 @@ final class TranspilesToPhpTest extends TestCase
         // output is the contract — the fires-gate proves it *runs*, and this proves a refactor did not change
         // what it emits.
         yield 'a record producer feeding a message' => ['PositionalFlagRule'];
+        // The receiver-typed half of the same family: the class comes from the receiver's inferred type rather
+        // than from a written name, and the type is null-stripped first. One per hook, because `?->` is a node
+        // kind of its own in Mago and the `MethodCall` hook does not fire for it.
+        yield 'a class read from the receiver type' => ['PositionalFlagOnReceiverRule'];
+        yield 'the same, on a nullsafe call' => ['PositionalFlagOnNullsafeReceiverRule'];
     }
 
     #[DataProvider('supportedRules')]

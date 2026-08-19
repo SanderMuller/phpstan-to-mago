@@ -12,6 +12,8 @@ use Mago\Sdk\Analyzer\Metadata\ParameterMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
+use Mago\Sdk\Analyzer\Type\SimpleAtomicType;
+use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
 use Mago\Sdk\Syntax\ResolvedName;
@@ -778,7 +780,7 @@ final class Support
     /** Whether the inferred type is a single named object rather than a union, scalar or mixed. */
     public static function typeIsNamedObject(?Type $type): bool
     {
-        return self::namedObjectName($type) !== null;
+        return self::namedObjectName($type, false) !== null;
     }
 
     /**
@@ -790,7 +792,7 @@ final class Support
      */
     public static function typeIsInstanceOf(NodeAnalysisContext $context, ?Type $type, string $name): bool
     {
-        $className = self::namedObjectName($type);
+        $className = self::namedObjectName($type, false);
         if ($className === null) {
             return false;
         }
@@ -810,12 +812,43 @@ final class Support
 
     public static function typeHasMethod(NodeAnalysisContext $context, ?Type $type, string $method): bool
     {
-        $className = self::namedObjectName($type);
+        $className = self::namedObjectName($type, false);
 
         return $className !== null && $context->codebase->getMethod($className, $method) instanceof FunctionLikeMetadata;
     }
 
-    private static function namedObjectName(?Type $type): ?string
+    /**
+     * The one class an inferred type names, or null when it does not name exactly one.
+     *
+     * `$type->getObjectClassReflections()` with a `count() === 1` gate, which is how a rule asks "a single
+     * concrete receiver". A union of two classes is not one class, and a rule that named a parameter against
+     * one arbitrary member would suggest a name the other does not have.
+     *
+     * Cased as written — `NamedObjectType->name` keeps `Demo\Widget`, unlike `ClassLikeMetadata->name`, which
+     * arrives lowercased. Measured, not read.
+     */
+    public static function soleObjectClass(?Type $type): ?string
+    {
+        return self::namedObjectName($type, false);
+    }
+
+    /**
+     * The same question asked after dropping `null` from the type, which is `TypeCombinator::removeNull()`.
+     *
+     * Load-bearing for a nullsafe call, and it was measured rather than assumed: a `?Widget` receiver arrives
+     * as two atomics, a `NamedObjectType` and a `SimpleAtomicType` of kind `Null`. The strict helper answers
+     * null for that, so a port of a rule that removeNulls first would have gone silent on exactly the receivers
+     * `?->` exists for — no error, just nothing reported.
+     *
+     * Separate from {@see soleObjectClass()} rather than replacing it: a rule that does *not* removeNull is
+     * asking a narrower question, and answering the wider one for it would make the port wider than the rule.
+     */
+    public static function soleObjectClassIgnoringNull(?Type $type): ?string
+    {
+        return self::namedObjectName($type, true);
+    }
+
+    private static function namedObjectName(?Type $type, bool $droppingNull): ?string
     {
         if (! $type instanceof Type) {
             return null;
@@ -823,6 +856,10 @@ final class Support
 
         $names = [];
         foreach ($type->atomicTypes as $atomic) {
+            if ($droppingNull && $atomic instanceof SimpleAtomicType && $atomic->kind === SimpleAtomicTypeKind::Null) {
+                continue;
+            }
+
             if (! $atomic instanceof NamedObjectType) {
                 return null;
             }

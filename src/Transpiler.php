@@ -399,6 +399,13 @@ final class Transpiler
         }
 
         $hook = Vocabulary::HOOKS[$nodeType];
+
+        // A hook Mago answers only through the PHP SDK. Refused by name rather than registered against a
+        // guessed Rust trait, which `ModuleEmitter` would turn into a crash instead of a refusal.
+        if (($hook['phpOnly'] ?? false) && self::$target !== 'php') {
+            throw new Refusal("a {$hook['kind']} hook, which only the PHP target carries");
+        }
+
         $this->nodeKind = $hook['kind'];
         $this->classFrom = $hook['classFrom'] ?? 'scope';
 
@@ -3728,9 +3735,11 @@ PHP;
 
         // An instantiation carries one too, and `new Foo;` carries none — which the PHP helper answers as an
         // empty list, the same thing PHPStan's `getArgs()` returns. The Rust field is not optional in the same
-        // way, so that target keeps refusing rather than guessing.
+        // way, so that target keeps refusing rather than guessing. A nullsafe call is PHP-only for its own
+        // reason: {@see Vocabulary::HOOKS} refuses that hook on the Rust targets before this is reached.
         if (self::$target === 'php') {
             $kinds[] = 'Instantiation';
+            $kinds[] = 'NullSafeMethodCall';
         }
 
         if (! in_array($this->nodeKind, $kinds, true)) {
@@ -3768,14 +3777,45 @@ PHP;
         }
 
         if ($cond instanceof BooleanAnd) {
-            return $this->parenthesiseDisjunction($cond->left) . ' && ' . $this->parenthesiseDisjunction($cond->right);
+            return $this->combine(
+                '&&',
+                $this->parenthesiseDisjunction($cond->left),
+                $this->parenthesiseDisjunction($cond->right),
+            );
         }
 
         if ($cond instanceof BooleanOr) {
-            return $this->translateCondition($cond->left) . ' || ' . $this->translateCondition($cond->right);
+            return $this->combine('||', $this->translateCondition($cond->left), $this->translateCondition($cond->right));
         }
 
         return $this->translatePredicate($cond, negated: false);
+    }
+
+    /**
+     * Joins two translated operands, folding away one that cannot hold in Mago's model.
+     *
+     * A guard can mix a question Mago answers with one it settles by construction — `! $node->name instanceof
+     * Identifier || $this->isVirtualNullsafeCall($node)`, where the second is about a synthetic node PHPStan
+     * dispatches and Mago has no equivalent of. `unreachable()` is the wrong tool for that: it marks the whole
+     * guard as dropped, which would take the first question with it. Folding the operand keeps the guard and
+     * removes only the part that is constant.
+     *
+     * The parenthesis-stripping is not incidental: an inlined helper hands its expression back wrapped, so the
+     * first version of this compared against a bare `false`, missed `(false)`, and emitted `|| (false)` into a
+     * plugin. `tests/Fixtures/expected/PositionalFlagOnReceiverRule.php` is what pins that.
+     */
+    private function combine(string $operator, string $left, string $right): string
+    {
+        $constant = $operator === '||' ? 'false' : 'true';
+        if ($this->stripOuterParentheses($left) === $constant) {
+            return $right;
+        }
+
+        if ($this->stripOuterParentheses($right) === $constant) {
+            return $left;
+        }
+
+        return $left . ' ' . $operator . ' ' . $right;
     }
 
     /**
@@ -4319,20 +4359,50 @@ PHP;
         throw new Refusal("function call outside the vocabulary {$name}()", $expr->getStartLine());
     }
 
+    /**
+     * `count(<something>) === N`, for the two things a rule counts.
+     *
+     * An argument list compares against any number. A sole receiver class compares only against one: the helper
+     * behind it hands back that class or null, so "exactly one" is "there is one" — and a rule asking for two
+     * would be asking a question this cannot answer, which refuses rather than guessing.
+     */
+    private function countComparison(FuncCall $count, Expr $right, int $line): string
+    {
+        $subject = $this->resolve($count->getArgs()[0]->value, $line);
+
+        if ($subject['kind'] === 'sole-class') {
+            if ($this->intLiteral($right, $line) !== 1) {
+                throw new Refusal('a receiver-class count other than one', $line);
+            }
+
+            return $this->operand($subject) . ' !== null';
+        }
+
+        if ($subject['kind'] !== 'args') {
+            throw new Refusal('count() of something other than an argument list', $line);
+        }
+
+        $equals = self::$target === 'php' ? '===' : '==';
+
+        return $this->backend->call('arg_count', [$this->operand($subject)])
+            . " {$equals} " . $this->intLiteral($right, $line);
+    }
+
     /** `count($node->getArgs()) === N` and `$args === []`. */
     private function equality(Expr $left, Expr $right, int $line): string
     {
-        // count(<args>) === N
         if ($left instanceof FuncCall && $left->name instanceof Name && $left->name->toString() === 'count') {
-            $subject = $this->resolve($left->getArgs()[0]->value, $line);
-            if ($subject['kind'] !== 'args') {
-                throw new Refusal('count() of something other than an argument list', $line);
+            return $this->countComparison($left, $right, $line);
+        }
+
+        // A value that cannot exist in Mago's model, compared against anything, is false. Folded here rather
+        // than refused: the comparison is real PHPStan code, and the answer is knowable.
+        try {
+            if ($this->resolve($left, $line)['kind'] === 'never') {
+                return 'false';
             }
-
-            $number = $this->intLiteral($right, $line);
-            $equals = self::$target === 'php' ? '===' : '==';
-
-            return $this->backend->call('arg_count', [$this->operand($subject)]) . " {$equals} {$number}";
+        } catch (Refusal) {
+            // Not resolvable on its own; the paths below say what it is instead.
         }
 
         // <args> === []  /  <members> === []
@@ -4556,50 +4626,16 @@ PHP;
     // -----------------------------------------------------------------------
 
     /**
-     * The descriptor for a PHP expression: how to say it in the target, and what kind of thing it is.
+     * A question about reflection, an inferred type, or one of the handles those produce.
      *
-     * `rust` and `php` are the same expression rendered for each target. A descriptor with no `php` key
-     * has no navigation recipe yet, and {@see operand} refuses rather than guessing.
+     * Null means "not one of these", so {@see resolve()} carries on with its other paths. Split out because
+     * these branches share one idea — Mago has no reflection object, so every handle a rule holds is reduced to
+     * the names a codebase lookup takes — and because `resolve()` is already the largest thing in this class.
      *
-     * @return Descriptor
+     * @return Descriptor|null
      */
-    private function resolve(Expr $expr, int $line): array
+    private function resolveReflection(Expr $expr, int $line): ?array
     {
-        if ($expr instanceof Variable && $expr->name === 'node') {
-            return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
-        }
-
-        if ($expr instanceof Variable && is_string($expr->name)) {
-            if (isset($this->locals[$expr->name])) {
-                return $this->locals[$expr->name];
-            }
-
-            throw new Refusal("unknown local \${$expr->name}", $line);
-        }
-
-        $namespace = $this->resolveScopeNamespace($expr, $line);
-        if ($namespace !== null) {
-            return $namespace;
-        }
-
-        if ($expr instanceof MethodCall
-            && $this->memberName($expr->name, $expr->getStartLine()) === 'getOriginalNode'
-            && $expr->var instanceof Variable
-            && $expr->var->name === 'node'
-        ) {
-            return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
-        }
-
-        if ($expr instanceof MethodCall
-            // `getFileDescription()` is the same path for our purposes: PHPStan uses it for messages, and a
-            // rule that tests it against a suffix is asking about the file either way.
-            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getFile', 'getFileDescription'], true)
-            && $expr->var instanceof Variable
-            && $expr->var->name === 'scope'
-        ) {
-            return ['rust' => 'context', 'kind' => 'file', 'php' => '$context'];
-        }
-
         // `self::SOME_LIST` where the constant holds a list of strings. Known at transpile time, so it is
         // emitted as the list itself and iterates exactly like a configured one.
         if ($expr instanceof ClassConstFetch
@@ -4610,6 +4646,71 @@ PHP;
             $rendered = $this->byteSliceList($this->arrayConstants[$this->memberName($expr->name, $line)]);
 
             return ['rust' => $rendered, 'kind' => 'config-list', 'php' => $rendered];
+        }
+
+        // `$scope->getType(<the call's receiver>)` — the inferred type of the thing the method is called on.
+        // A node hook is handed types only at the positions it asked for, and the receiver is one of them, so
+        // the descriptor *is* `$context->receiverType`. Any other position is refused rather than answered
+        // about the wrong expression, which is the same constraint {@see typeQuery()} enforces.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getType'
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'scope'
+            && count($expr->getArgs()) === 1
+        ) {
+            if (self::$target !== 'php') {
+                throw new Refusal('getType() as a value, which only the PHP target carries', $line);
+            }
+
+            $of = $this->resolve($expr->getArgs()[0]->value, $line);
+
+            // Compared against the vocabulary's own navigation to this node kind's receiver rather than a
+            // hardcoded path, so a hook whose receiver is reached differently cannot pass by accident.
+            $receiver = Vocabulary::FIELDS[$this->nodeKind]['var'][2] ?? null;
+            if ($receiver === null || ($of['php'] ?? null) !== $receiver) {
+                throw new Refusal("the inferred type of a {$of['kind']} that is not this call's receiver, which is the only position the SDK exposes it for", $line);
+            }
+
+            $this->usesReceiverType = true;
+
+            return ['rust' => self::PHP_ONLY, 'kind' => 'type', 'php' => '$context->receiverType'];
+        }
+
+        // `TypeCombinator::removeNull(<a type>)`. Not a no-op: a `?Widget` receiver carries a null atomic
+        // beside the object one, so whether it was dropped decides whether the single-class question can be
+        // answered at all — which is why the two are separate helpers rather than one tolerant one.
+        if ($expr instanceof StaticCall
+            && $expr->class instanceof Name
+            && $expr->class->getLast() === 'TypeCombinator'
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'removeNull'
+            && count($expr->getArgs()) === 1
+        ) {
+            $of = $this->resolve($expr->getArgs()[0]->value, $line);
+            if ($of['kind'] !== 'type') {
+                throw new Refusal("removeNull() of a {$of['kind']} rather than of an inferred type", $line);
+            }
+
+            return ['rust' => self::PHP_ONLY, 'kind' => 'type-without-null', 'php' => $this->operand($of)];
+        }
+
+        // `getObjectClassReflections()` on a type. Mago has no reflection object, and a rule only ever asks
+        // this to find out whether the receiver is one concrete class and which — so the list stands for that
+        // one name, and `count(..) === 1` becomes "there is a name".
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getObjectClassReflections'
+        ) {
+            $of = $this->resolve($expr->var, $line);
+            if (! in_array($of['kind'], ['type', 'type-without-null'], true)) {
+                throw new Refusal("getObjectClassReflections() of a {$of['kind']}", $line);
+            }
+
+            $helper = $of['kind'] === 'type-without-null' ? 'soleObjectClassIgnoringNull' : 'soleObjectClass';
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'sole-class',
+                'php' => 'Support::' . $helper . '(' . $this->operand($of) . ')',
+            ];
         }
 
         // `getVariants()` on a method handle. PHPStan models a function-like as one or more *variants* — a
@@ -4670,15 +4771,21 @@ PHP;
                 return $found;
             }
 
-            if ($list['kind'] === 'parameters' || $list['kind'] === 'variants') {
+            // `$classReflections[0]` — the sole class the list stands for, or null, which every helper that
+            // takes it tolerates.
+            if ($list['kind'] === 'sole-class') {
+                return ['rust' => self::PHP_ONLY, 'kind' => 'named-class', 'php' => $this->operand($list)];
+            }
+
+            // `$variants[0]` is the one variant Mago has, so the index says nothing and the handle carries
+            // through unchanged. Answered before the index is resolved, because a literal `0` is not a value
+            // this vocabulary resolves and does not need to be.
+            if ($list['kind'] === 'variants') {
+                return $list;
+            }
+
+            if ($list['kind'] === 'parameters') {
                 $index = $this->resolve($expr->dim, $line);
-
-                // `$variants[0]` is the one variant Mago has, so the index says nothing and the handle carries
-                // through unchanged. A parameter position is real and rides along with the handle.
-                if ($list['kind'] === 'variants') {
-                    return $list;
-                }
-
                 if ($index['kind'] !== 'int') {
                     throw new Refusal("a parameter read at a {$index['kind']} rather than at a position", $line);
                 }
@@ -4787,6 +4894,61 @@ PHP;
                 'kind' => 'resolved-name',
                 'php' => 'Support::resolvedName($context, ' . $this->operand($written) . ')',
             ];
+        }
+
+        return null;
+    }
+
+    /**
+     * The descriptor for a PHP expression: how to say it in the target, and what kind of thing it is.
+     *
+     * `rust` and `php` are the same expression rendered for each target. A descriptor with no `php` key
+     * has no navigation recipe yet, and {@see operand} refuses rather than guessing.
+     *
+     * @return Descriptor
+     */
+    private function resolve(Expr $expr, int $line): array
+    {
+        if ($expr instanceof Variable && $expr->name === 'node') {
+            return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
+        }
+
+        if ($expr instanceof Variable && is_string($expr->name)) {
+            if (isset($this->locals[$expr->name])) {
+                return $this->locals[$expr->name];
+            }
+
+            throw new Refusal("unknown local \${$expr->name}", $line);
+        }
+
+        $namespace = $this->resolveScopeNamespace($expr, $line);
+        if ($namespace !== null) {
+            return $namespace;
+        }
+
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getOriginalNode'
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'node'
+        ) {
+            return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
+        }
+
+        if ($expr instanceof MethodCall
+            // `getFileDescription()` is the same path for our purposes: PHPStan uses it for messages, and a
+            // rule that tests it against a suffix is asking about the file either way.
+            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getFile', 'getFileDescription'], true)
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'scope'
+        ) {
+            return ['rust' => 'context', 'kind' => 'file', 'php' => '$context'];
+        }
+
+        // Reflection, inferred types and the handles they produce — a block of its own so `resolve()` stays a
+        // dispatch rather than growing a second one inside it.
+        $reflected = $this->resolveReflection($expr, $line);
+        if ($reflected !== null) {
+            return $reflected;
         }
 
         if ($expr instanceof MethodCall
@@ -4909,6 +5071,16 @@ PHP;
             $built = $this->stringOperand($expr->left, $line) . ' . ' . $this->stringOperand($expr->right, $line);
 
             return ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'php' => '(' . $built . ')'];
+        }
+
+        // The attribute PHPStan marks a synthetic nullsafe dispatch with, which Mago has no equivalent of —
+        // see the `NullsafeMethodCall` entry in {@see Vocabulary::HOOKS}. Never set, so never true.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getAttribute'
+            && count($expr->getArgs()) === 1
+            && $this->rawStringLiteral($expr->getArgs()[0]->value, $line) === 'virtualNullsafeMethodCall'
+        ) {
+            return ['rust' => 'false', 'kind' => 'never', 'php' => 'false'];
         }
 
         // count(<args>) as a value rather than as one side of a comparison, which {@see equality()} handles.

@@ -110,6 +110,23 @@ argument for both. PHP rejects a positional argument after a named or unpacked o
 argument is named or spread the last one is too, and the earlier check has already bailed. Removing the sweep
 leaves the pair green. Say so in the example file; do not let a reader infer the sweep is covered.
 
+### The receiver-typed rules, and the mutation that proved the difference
+
+`hihaho/phpstan-rules` goes 2 of 20 to 3 with `PositionalFlagArgumentNullsafeMethodCallRule`, the first rule to
+reach a class through a receiver's *inferred type* rather than a written name. Verified the same way as the
+constructor rule: run against PHPStan over a pair holding a bare flag, a named flag, a spread, a non-bool, a
+call past the end of the parameter list and a vendor-declared method — one finding each side, byte-identical.
+
+The finding worth carrying forward is what a *passing* gate would not have shown. `TypeCombinator::removeNull()`
+looked like a formality; a `?Widget` receiver turns out to carry a null atomic beside the object one, so the
+"exactly one class" question answers no unless the null is dropped first. Mutation-checked by swapping the
+null-dropping helper for the strict one: the nullsafe rule then reports **nothing at all**, and the method-call
+shape loses every nullable receiver. Neither failure shows up in the emitted file, which parses, loads and calls
+only helpers that exist.
+
+That is the same class of defect as the five dead rules — and the reason a bad example has to contain the case
+that discriminates, not merely a case the rule fires on.
+
 **Separating the two needs the control this document already prescribes** — two files with the same violation,
 one resolvable and one not — applied per rule rather than to the corpus as a whole. That is the next
 measurement.

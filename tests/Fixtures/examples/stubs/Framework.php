@@ -135,4 +135,7 @@ namespace Vendor;
 class Widget
 {
     public function __construct(public bool $enabled) {}
+
+    /** For the receiver-based positional-flag rules: a method whose declaring class is not first-party. */
+    public function toggle(bool $enabled): void {}
 }
