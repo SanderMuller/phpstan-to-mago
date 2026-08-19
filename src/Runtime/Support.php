@@ -1140,6 +1140,70 @@ final class Support
         '__serialize', '__unserialize',
     ];
 
+    /** Body kinds: what a declaration or a statement keeps its statements in. */
+    private const array BODY_KINDS = ['ForeachBody', 'Block', 'MethodBody', 'ForBody', 'WhileBody'];
+
+    /**
+     * The statements a node holds, which is php-parser's `$node->stmts`.
+     *
+     * Load-bearing that this is the *body* and not the node: `findInstanceOf($node->stmts, Foreach_::class)`
+     * inside a foreach must not find the foreach it started from, or every count is one too high.
+     */
+    public static function bodyOf(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        $node = self::node($subject);
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        foreach ($context->source->getChildren($node) as $child) {
+            if (in_array($child->kind->value, self::BODY_KINDS, true)) {
+                return self::part($context, $child);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Every node of the given kinds anywhere below this one, which is php-parser's `NodeFinder::findInstanceOf()`.
+     *
+     * Recurses blindly, including into nested closures and functions, because php-parser does: a rule counting
+     * nested `foreach` statements counts one written inside a closure too. Stopping at a function boundary would
+     * be the port deciding something the rule does not.
+     *
+     * **The starting node counts.** php-parser's traverser visits the nodes it is given, so
+     * `findInstanceOf($node, Foreach_::class)` inside a foreach finds that foreach. Which makes
+     * `findInstanceOf($node->stmts, ..)` — what the rules actually write — the version that excludes it, and puts
+     * the exclusion in the `->stmts` navigation where the rule put it. Skipping the root here instead would give
+     * the same answer for every rule in the corpus and the wrong one for the first rule that passes a node.
+     *
+     * @param list<string> $kinds
+     *
+     * @return list<Part>
+     */
+    public static function findKind(NodeAnalysisContext $context, Part|Node|null $within, array $kinds): array
+    {
+        $node = self::node($within);
+        if (! $node instanceof Node) {
+            return [];
+        }
+
+        $out = [];
+        $walk = function (Node $current) use (&$walk, $context, $kinds, &$out): void {
+            if (in_array($current->kind->value, $kinds, true)) {
+                $out[] = self::part($context, $current);
+            }
+
+            foreach ($context->source->getChildren($current) as $child) {
+                $walk($child);
+            }
+        };
+        $walk($node);
+
+        return $out;
+    }
+
     /** Whether a class-like declaration is written `abstract`, which is a modifier on it. */
     public static function declarationIsAbstract(NodeAnalysisContext $context, Part|Node|null $subject): bool
     {

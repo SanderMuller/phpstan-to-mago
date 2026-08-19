@@ -14,7 +14,7 @@ parameter carrying the rule package's own default, read from that package's `ext
 that derives one from configured values, literals and a closed set of pure functions is carried verbatim, and
 only by the PHP target.
 
-Surveyed with the tool: `symplify/phpstan-rules` 23 of 96, `hihaho/phpstan-rules` 3 of 20,
+Surveyed with the tool: `symplify/phpstan-rules` 24 of 96, `hihaho/phpstan-rules` 3 of 20,
 `tomasvotruba/type-coverage` 0 of 10, `tomasvotruba/cognitive-complexity` 0 of 3. Every emitted rule is gated
 on actually running, per `docs/dogfooding.md`, which supersedes the frontier analysis below.
 
@@ -52,9 +52,8 @@ and the point of it is that it beat a guess.
 
 | rules | refusal |
 |--:|:--|
-| 5 | `Expr_New` |
-| 4 | `no iteration mapped for a expr` · `guard body is neither return [] nor continue` |
-| 3 | `instanceof Identifier` · `list contains something other than a string literal` · `empty-array comparison against a expr` · `->findInstanceOf()` · unwired constructor parameter |
+| 4 | `guard body is neither return [] nor continue` |
+| 3 | `instanceof Identifier` · `no iteration mapped for a subtree` · `list contains something other than a string literal` · `empty-array comparison against a expr` · unwired constructor parameter |
 
 **The `->getParams()` cluster is closed.** It was nine rules, and eight of them were one line in one file:
 `Symfony/NodeAnalyzer/SymfonyClosureDetector.php:15` is a shared detector that every
@@ -134,7 +133,44 @@ report then fires whatever they decided. It reported every method of every class
 
 `NoRequiredOutsideClassRule` and `RequiredOnlyInAbstractRule` emit and agree; symplify 21 to 23. The other three
 stand on their own bodies: `Strings::match()` with captures feeding the message, a `DataProviderMethodResolver`,
-and `new AttributeFinder()` — which is the `Expr_New` cluster, now the largest at five.
+and `new AttributeFinder()`.
+
+## Searching a subtree
+
+The `Expr_New` cluster was `new NodeFinder()` — php-parser's subtree search — and it splits in two. `findInstanceOf`
+and `findFirstInstanceOf` name a node class; `find` and `findFirst` take a **closure filter**, usually one that
+mutates a variable captured by reference. The first pair is built; the second is the boundary, and about eight call
+sites sit behind it.
+
+Three things the search needed:
+
+- **A refuse-by-default class-to-kind table**, not a derived mapping. `ClassLike` is *abstract* in php-parser — it
+  means class, interface, trait or enum, four Mago kinds — and the hook table is no substitute, since a hook's kind
+  and a search's kind coincide for `Foreach` and diverge for `New_`, which hooks through an expression adapter and
+  searches as `Instantiation`.
+- **The starting node counts.** php-parser's traverser visits the nodes it is handed, so `findInstanceOf($node, ..)`
+  inside a `foreach` finds that `foreach`. Which makes `$node->stmts` — what the rules write — the thing that
+  excludes it, and the exclusion belongs there rather than in the search. Skipping the root inside the search would
+  give the same answer for every rule in the corpus and the wrong one for the first rule that passes a node;
+  mutation-checked, and with the root included the body navigation is what discriminates.
+- **`NodeFinder` is stateless**, so a rule that injects one or assigns one in its constructor holds the same handle
+  `new NodeFinder()` produces. Without recognising that, three rules refused with *"`$nodeFinder` is computed in the
+  constructor and the package wires no configured values"* — pointing at the package's neon for something a neon
+  has no business wiring.
+
+**One bug this surfaced was live for every reserved-word hook.** The emitted target came from a list of twenty-six
+PHP reserved words, on the assumption that the SDK suffixes such cases the way it spells `Class_`. It does not: PHP
+allows a reserved word after `::`, so every other case is declared bare, and `Class` is special only because
+`::class` yields a string. `Foreach` was the first other reserved kind any hook targeted, and it emitted
+`NodeKind::Foreach_`, which the enum has no case for — a plugin that dies on load. The list now holds `class`, and
+the corpus gate reads the enum's own case names rather than trusting a convention.
+
+`ForeachCeptionRule` emits and agrees; symplify 23 to 24. `AvoidFeatureSetAttributeInRectorRule` and
+`NoOnlyNullReturnInRefactorRule` both moved to the same structural boundary, which is the next shape worth naming:
+**field navigation is relative to the hook's node.** `Vocabulary::FIELDS` and `argListPath()` are keyed on the kind
+the hook fired for, so a rule that asks a *found* node for its arguments or its `->expr` refuses with
+`no argument list on a Class node`. Making navigation relative to an arbitrary node is one change touching a
+much-used path, which is why it is its own pass and not a footnote to this one.
 
 ### What this replaced, and why the note stays
 

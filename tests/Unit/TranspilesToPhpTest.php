@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
+use Mago\Sdk\Syntax\NodeKind;
 use PhpParser\Error;
 use PhpParser\ParserFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -149,6 +150,21 @@ final class TranspilesToPhpTest extends TestCase
                     method_exists(Support::class, $helper),
                     basename($file) . " emits a call to Support::{$helper}(), which does not exist. The plugin would "
                     . 'load and then kill the worker.',
+                );
+            }
+
+            // The hook's target has to name a case the SDK really has. The SDK renames exactly one — `Class_`,
+            // because `::class` is special — and a list of reserved words guessing at that convention emitted
+            // `NodeKind::Foreach_`, which does not exist. A plugin naming a missing case dies on load.
+            // Compared against the enum's own case names. Reading them beats a dynamic constant fetch, which
+            // throws on a missing case and would make this pass or error rather than fail with a reason.
+            $declared = array_map(static fn (NodeKind $kind): string => $kind->name, NodeKind::cases());
+            preg_match_all('/NodeKind::([A-Za-z_]+)/', $plugin, $kinds);
+            foreach (array_unique($kinds[1]) as $case) {
+                $this->assertContains(
+                    $case,
+                    $declared,
+                    basename($file) . " targets NodeKind::{$case}, which the SDK does not declare.",
                 );
             }
         }

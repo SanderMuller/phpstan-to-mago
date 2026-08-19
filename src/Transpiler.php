@@ -21,6 +21,7 @@ use PhpParser\Node\Expr\BinaryOp\GreaterOrEqual;
 use PhpParser\Node\Expr\BinaryOp\Identical;
 use PhpParser\Node\Expr\BinaryOp\Minus;
 use PhpParser\Node\Expr\BinaryOp\NotIdentical;
+use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\BinaryOp\Smaller;
 use PhpParser\Node\Expr\BinaryOp\SmallerOrEqual;
 use PhpParser\Node\Expr\BooleanNot;
@@ -236,6 +237,26 @@ final class Transpiler
      * follows the assignment is what says the rule stops at the first finding.
      */
     private ?string $pendingReport = null;
+
+    /**
+     * Integer class constants of the rule being translated, by name.
+     *
+     * A rule names its thresholds — `self::MAX_NESTED_FOREACHES` — and the number is what it compares against, so
+     * it folds here rather than becoming something the generated plugin carries.
+     *
+     * @var array<string, int>
+     */
+    private array $intConstants = [];
+
+    /**
+     * Constructor properties holding a stateless subtree finder, by name.
+     *
+     * `NodeFinder` carries nothing, so a rule that injects one instead of constructing one is asking the same
+     * question either way, and the property reads as the same handle `new NodeFinder()` produces.
+     *
+     * @var array<string, true>
+     */
+    private array $finders = [];
 
     /** True while translating a loop body, so `continue` and inline reports are legal. */
     private bool $inLoop = false;
@@ -747,6 +768,16 @@ PHP;
             }
 
             if ($argument === null) {
+                // php-parser's `NodeFinder` is stateless, so a rule that takes one in its constructor is not
+                // carrying configuration and not holding a PHPStan service — it just did not want to write `new`
+                // twice. Classified here or the property read refuses as an unwired configured value, which points
+                // at the package's neon for something the neon has no business wiring.
+                if ($param->type instanceof Name && $param->type->getLast() === 'NodeFinder') {
+                    $this->finders[$name] = true;
+
+                    continue;
+                }
+
                 // The package may not wire this rule at all. A declared type is still evidence: nothing but a
                 // PHPStan service is spelled `ReflectionProvider`, and classifying it says what would have to
                 // be translated instead of calling the property unknown.
@@ -815,6 +846,19 @@ PHP;
             }
 
             $property = $this->memberName($target->name, $statement->getStartLine());
+
+            // `$this->nodeFinder = new NodeFinder();` — a stateless helper the rule constructs once rather than
+            // per call. Not a derivation of anything: the same handle `new NodeFinder()` produces inline.
+            $constructed = $statement->expr->expr;
+            if ($constructed instanceof New_
+                && $constructed->class instanceof Name
+                && $constructed->class->getLast() === 'NodeFinder'
+            ) {
+                $this->finders[$property] = true;
+
+                continue;
+            }
+
             $service = $this->serviceBehind($statement->expr->expr);
             if ($service !== null) {
                 $this->injected[$property] = $service;
@@ -1322,6 +1366,10 @@ PHP;
             );
         }
 
+        if (isset($this->finders[$property])) {
+            return ['rust' => self::PHP_ONLY, 'kind' => 'node-finder', 'key' => $key, 'php' => self::PHP_ONLY];
+        }
+
         if (isset($this->pure[$property])) {
             if (self::$target !== 'php') {
                 throw new Refusal(
@@ -1488,6 +1536,12 @@ PHP;
             foreach ($const->consts as $c) {
                 if ($c->value instanceof String_) {
                     $this->constants[(string) $c->name] = $c->value->value;
+
+                    continue;
+                }
+
+                if ($c->value instanceof Int_) {
+                    $this->intConstants[(string) $c->name] = $c->value->value;
 
                     continue;
                 }
@@ -1699,12 +1753,14 @@ PHP;
         // Bind the parameters, then translate the body in the helper's own constant scope.
         $savedLocals = $this->locals;
         $savedConstants = $this->constants;
+        $savedInts = $this->intConstants;
         $savedArrayConstants = $this->arrayConstants;
         $savedClass = $this->currentClass;
         $savedUses = $this->useMap;
 
         $this->locals = $this->bindParameters($method, $args, $methodName, $line);
         $this->constants = [];
+        $this->intConstants = [];
         $this->arrayConstants = [];
         $this->currentClass = $class;
         if ($uses !== null) {
@@ -1720,6 +1776,7 @@ PHP;
             --$this->inlineDepth;
             $this->locals = $savedLocals;
             $this->constants = $savedConstants;
+            $this->intConstants = $savedInts;
             $this->arrayConstants = $savedArrayConstants;
             $this->currentClass = $savedClass;
             $this->useMap = $savedUses;
@@ -2199,6 +2256,7 @@ PHP;
         }
 
         $savedConstants = $this->constants;
+        $savedInts = $this->intConstants;
         $savedArrayConstants = $this->arrayConstants;
         $savedClass = $this->currentClass;
         $savedUses = $this->useMap;
@@ -2207,6 +2265,7 @@ PHP;
 
         $this->locals = $this->bindParameters($helper, $args, $method, $line);
         $this->constants = [];
+        $this->intConstants = [];
         $this->arrayConstants = [];
         $this->currentClass = $declaring['class'];
         $this->useMap = $declaring['uses'];
@@ -2233,6 +2292,7 @@ PHP;
             $this->inErrorHelper = $savedInHelper;
             $this->locals = $savedLocals;
             $this->constants = $savedConstants;
+            $this->intConstants = $savedInts;
             $this->arrayConstants = $savedArrayConstants;
             $this->currentClass = $savedClass;
             $this->useMap = $savedUses;
@@ -2414,6 +2474,7 @@ PHP;
 
         $savedLocals = $this->locals;
         $savedConstants = $this->constants;
+        $savedInts = $this->intConstants;
         $savedArrayConstants = $this->arrayConstants;
         $savedClass = $this->currentClass;
         $savedUses = $this->useMap;
@@ -2422,6 +2483,7 @@ PHP;
 
         $this->locals = $this->bindParameters($helper, $args, $name, $line);
         $this->constants = [];
+        $this->intConstants = [];
         $this->arrayConstants = [];
         $this->currentClass = $declaring['class'];
         $this->useMap = $declaring['uses'];
@@ -2442,6 +2504,7 @@ PHP;
             $this->inErrorHelper = $savedInHelper;
             $this->locals = $savedLocals;
             $this->constants = $savedConstants;
+            $this->intConstants = $savedInts;
             $this->arrayConstants = $savedArrayConstants;
             $this->currentClass = $savedClass;
             $this->useMap = $savedUses;
@@ -2622,6 +2685,7 @@ PHP;
     {
         $savedLocals = $this->locals;
         $savedConstants = $this->constants;
+        $savedInts = $this->intConstants;
         $savedArrayConstants = $this->arrayConstants;
         $savedConstantKeys = $this->constantKeys;
         $savedClass = $this->currentClass;
@@ -2629,6 +2693,7 @@ PHP;
 
         $this->locals = $this->bindParameters($helper, $args, $method, $line);
         $this->constants = [];
+        $this->intConstants = [];
         $this->arrayConstants = [];
         $this->constantKeys = [];
         $this->currentClass = $declaring['class'];
@@ -2651,6 +2716,7 @@ PHP;
             --$this->inlineDepth;
             $this->locals = $savedLocals;
             $this->constants = $savedConstants;
+            $this->intConstants = $savedInts;
             $this->arrayConstants = $savedArrayConstants;
             $this->constantKeys = $savedConstantKeys;
             $this->currentClass = $savedClass;
@@ -2856,6 +2922,57 @@ PHP;
         return is_string($half) ? $half : throw new Refusal("a handle with no {$part} behind it", $line);
     }
 
+    private function numericOperator(BinaryOp $expr): string
+    {
+        return match (true) {
+            $expr instanceof GreaterOrEqual => '>=',
+            $expr instanceof Greater => '>',
+            $expr instanceof SmallerOrEqual => '<=',
+            default => '<',
+        };
+    }
+
+    /**
+     * `count(<something>)` as a number, for the lists whose length a rule compares.
+     *
+     * Only a list this vocabulary produces: counting something else would be counting an expression nobody has
+     * established is a list, and the answer would look right whatever it was.
+     */
+    private function countable(FuncCall $count, int $line): string
+    {
+        if (self::$target !== 'php') {
+            throw new Refusal('a list length compared numerically, which only the PHP target carries', $line);
+        }
+
+        $subject = $this->resolve($count->getArgs()[0]->value, $line);
+        if (! in_array($subject['kind'], ['found-nodes', 'method-members', 'param-decls', 'property-members', 'config-list'], true)) {
+            throw new Refusal("count() of a {$subject['kind']} compared numerically", $line);
+        }
+
+        return 'count(' . $this->operand($subject) . ')';
+    }
+
+    /**
+     * What a subtree search searches, as a PHP expression.
+     *
+     * A rule passes either the statements a node holds or the node itself, sometimes through a `(array)` cast
+     * that says nothing here. Anything else — a list a rule built, a node from somewhere unrelated — is refused,
+     * because a search over the wrong subtree is a wrong answer that looks like a right one.
+     */
+    private function subtreeArgument(Expr $expr, int $line): string
+    {
+        if ($expr instanceof Expr\Cast\Array_) {
+            return $this->subtreeArgument($expr->expr, $line);
+        }
+
+        $subject = $this->resolve($expr, $line);
+        if (! in_array($subject['kind'], ['subtree', 'hook-node', 'method-decl', 'expr'], true)) {
+            throw new Refusal("a subtree search over a {$subject['kind']}", $line);
+        }
+
+        return $this->operand($subject);
+    }
+
     /**
      * One side of a string built at analysis time, as a PHP expression.
      *
@@ -2913,6 +3030,9 @@ PHP;
                 'collected-value', 'bytes', 'class-name' => $this->operand($subject),
                 'local-name', 'name-selector', 'name-expr' => $this->backend->call('text_of', [$this->operand($subject)]),
                 'extends' => $this->backend->call('extends_text', ['$context', '$node']),
+                // A number a rule counted, put in the message with `%d`. Already a PHP int, so `sprintf` formats
+                // it without help.
+                'int' => $this->operand($subject),
                 default => throw new Refusal("cannot render a {$subject['kind']} as a message argument", $line),
             };
         }
@@ -4702,22 +4822,25 @@ PHP;
         );
     }
 
-    /** `$intNode->value >= 1` and friends. */
+    /** `$intNode->value >= 1`, `count($found) <= 1` and friends. */
     private function intComparison(BinaryOp $expr): string
     {
         $left = $expr->left;
+        $operator = $this->numericOperator($expr);
+
+        // `count(<a list>) <= N` — a plain PHP comparison, since both sides are numbers rather than nodes.
+        if ($left instanceof FuncCall && $left->name instanceof Name && $left->name->toString() === 'count') {
+            $counted = $this->countable($left, $expr->getStartLine());
+
+            return $counted . ' ' . $operator . ' ' . $this->intLiteral($expr->right, $expr->getStartLine());
+        }
+
         if (! $left instanceof PropertyFetch || (string) $left->name !== 'value') {
             throw new Refusal('numeric comparison outside the vocabulary', $expr->getStartLine());
         }
 
         $subject = $this->resolve($left->var, $expr->getStartLine());
         $number = $this->intLiteral($expr->right, $expr->getStartLine());
-        $operator = match (true) {
-            $expr instanceof GreaterOrEqual => '>=',
-            $expr instanceof Greater => '>',
-            $expr instanceof SmallerOrEqual => '<=',
-            default => '<',
-        };
         if (self::$target === 'php') {
             // Rust's `is_some_and` folds the absent case into the comparison; PHP has no equivalent, so
             // the operator is passed to the helper rather than emitted twice around a repeated call.
@@ -5243,6 +5366,64 @@ PHP;
             ];
         }
 
+        // `new NodeFinder()` — php-parser's subtree search. Stateless, so the handle carries nothing and only the
+        // calls on it translate. A `find()`/`findFirst()` with a closure filter is refused there by name.
+        if ($expr instanceof New_ && $expr->class instanceof Name && $expr->class->getLast() === 'NodeFinder') {
+            return ['rust' => self::PHP_ONLY, 'kind' => 'node-finder', 'php' => self::PHP_ONLY];
+        }
+
+        // `$node->stmts` — the statements a node holds, not the node. For a rule counting nested `foreach`
+        // statements the distinction is the rule: searching the node itself finds the one it started from.
+        if ($expr instanceof PropertyFetch
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'stmts'
+        ) {
+            $base = $this->resolve($expr->var, $line);
+            if ($base['kind'] === 'hook-node') {
+                if (self::$target !== 'php') {
+                    throw new Refusal('->stmts, which only the PHP target carries', $line);
+                }
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'subtree',
+                    'php' => 'Support::bodyOf($context, ' . $this->operand($base) . ')',
+                ];
+            }
+        }
+
+        // `$nodeFinder->findInstanceOf(<subtree>, Some::class)` — every node of a kind below the subtree.
+        if ($expr instanceof MethodCall
+            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['findInstanceOf', 'findFirstInstanceOf'], true)
+            && count($expr->getArgs()) === 2
+        ) {
+            $finder = $this->resolve($expr->var, $line);
+            if ($finder['kind'] !== 'node-finder') {
+                throw new Refusal("findInstanceOf() on a {$finder['kind']} rather than on a node finder", $line);
+            }
+
+            if (self::$target !== 'php') {
+                throw new Refusal('a subtree search, which only the PHP target carries', $line);
+            }
+
+            $searched = $this->resolveClassName($expr->getArgs()[1]->value instanceof ClassConstFetch
+                && $expr->getArgs()[1]->value->class instanceof Name
+                    ? $expr->getArgs()[1]->value->class
+                    : throw new Refusal('a subtree search for something other than a node class', $line));
+
+            $kinds = Vocabulary::SEARCHABLE[$searched]
+                ?? throw new Refusal("no searchable node kind mapped for {$searched}", $line);
+
+            $within = $this->subtreeArgument($expr->getArgs()[0]->value, $line);
+            $found = 'Support::findKind($context, ' . $within . ", ['" . implode("', '", $kinds) . "'])";
+            $first = $this->memberName($expr->name, $expr->getStartLine()) === 'findFirstInstanceOf';
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => $first ? 'found-node' : 'found-nodes',
+                'php' => $first ? '(' . $found . '[0] ?? null)' : $found,
+            ];
+        }
+
         // `getDocComment()` on a declaration. Mago hands comments back as file-level trivia, so the helper both
         // finds the right one and reads its text — which means the descriptor is already the text, and
         // `->getText()` on it is the identity.
@@ -5405,7 +5586,11 @@ PHP;
         if ($expr instanceof FuncCall && $expr->name instanceof Name && $expr->name->toString() === 'count') {
             $subject = $this->resolve($expr->getArgs()[0]->value, $line);
             if ($subject['kind'] !== 'args') {
-                throw new Refusal('count() of something other than an argument list', $line);
+                // Not an argument list, so it is one of the plain lists this vocabulary produces, whose length is
+                // just its length.
+                $counted = $this->countable($expr, $line);
+
+                return ['rust' => self::PHP_ONLY, 'kind' => 'int', 'php' => $counted];
             }
 
             $counted = $this->backend->call('arg_count', [$this->operand($subject)]);
@@ -5413,13 +5598,17 @@ PHP;
             return ['rust' => $counted, 'kind' => 'int', 'php' => $counted];
         }
 
-        if ($expr instanceof Minus) {
+        // `count($args) - 1` and `count($found) + 1`: a count offset by a fixed amount, which is how a rule names
+        // a position or reports a total that includes the node it started from.
+        if ($expr instanceof Minus || $expr instanceof Plus) {
             $counted = $this->resolve($expr->left, $line);
             if ($counted['kind'] !== 'int') {
-                throw new Refusal("subtraction from a {$counted['kind']} rather than from a count", $line);
+                throw new Refusal("arithmetic on a {$counted['kind']} rather than on a count", $line);
             }
 
-            $value = $this->operand($counted) . ' - ' . $this->intLiteral($expr->right, $line);
+            $value = $this->operand($counted)
+                . ($expr instanceof Minus ? ' - ' : ' + ')
+                . $this->intLiteral($expr->right, $line);
 
             return ['rust' => $value, 'kind' => 'int', 'php' => $value];
         }
@@ -5632,6 +5821,18 @@ PHP;
             return $expr->value;
         }
 
+        // A threshold a rule names rather than spells: `self::MAX_NESTED_FOREACHES`. Known at transpile time, so
+        // it folds to the number, which is what the rule compares against.
+        if ($expr instanceof ClassConstFetch
+            && $expr->class instanceof Name
+            && in_array($expr->class->toString(), ['self', 'static'], true)
+        ) {
+            $name = $this->memberName($expr->name, $line);
+            if (isset($this->intConstants[$name])) {
+                return $this->intConstants[$name];
+            }
+        }
+
         throw new Refusal('expected an integer literal', $line);
     }
 
@@ -5679,7 +5880,17 @@ PHP;
      * depends on argument order.
      */
     /** Node-kind names PHP reserves, which the SDK spells with a trailing underscore. */
-    private const array PHP_RESERVED_KINDS = ['class', 'function', 'default', 'list', 'print', 'echo', 'unset', 'exit', 'match', 'try', 'use', 'for', 'foreach', 'while', 'do', 'if', 'else', 'switch', 'return', 'global', 'static', 'break', 'continue', 'namespace', 'const', 'goto'];
+    /**
+     * Node kinds the SDK renames because PHP will not let the case be referenced.
+     *
+     * Exactly one, checked against the enum rather than assumed from a list of reserved words: PHP allows a
+     * reserved word after `::`, so `NodeKind::Foreach` is legal and is declared bare. `class` is the exception,
+     * because `::class` yields the class-name string instead — which is why the SDK spells that one case `Class_`.
+     *
+     * This list used to hold twenty-six words. Nothing was wrong while `Class` was the only reserved kind any hook
+     * targeted; the first other one, `Foreach`, emitted `NodeKind::Foreach_` and the enum has no such case.
+     */
+    private const array PHP_RESERVED_KINDS = ['class'];
 
     /** Rust identifiers that a PHP variable name could collide with. */
     private const array RUST_KEYWORDS = [

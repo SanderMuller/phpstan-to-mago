@@ -18,11 +18,15 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassConst;
+use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Const_;
+use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Property;
+use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Trait_;
 use PHPStan\Node\CollectedDataNode;
 use PHPStan\Node\InClassNode;
@@ -73,6 +77,31 @@ final class Vocabulary
         // because a rule that targets `Trait_` means traits only — `NoRequiredOutsideClassRule` exists to say
         // that a `#[Required]` setter belongs in a class, not in a trait.
         Trait_::class => ['trait' => 'TraitDeclarationHook', 'method' => 'on_enter_trait', 'node' => 'Trait', 'kind' => 'Trait', 'phpOnly' => true],
+        // A `foreach` statement. Probed: the hook fires for a nested one too, which is what PHPStan does — a rule
+        // registered for `Foreach_` runs on every one of them, so agreement depends on that matching.
+        Foreach_::class => ['trait' => 'ForeachHook', 'method' => 'after_foreach', 'node' => 'Foreach', 'kind' => 'Foreach', 'phpOnly' => true],
+    ];
+
+    /**
+     * php-parser node classes a rule searches a subtree for, and the Mago kinds each covers.
+     *
+     * A refuse-by-default table rather than a convenience mapping, for two reasons. Some php-parser classes are
+     * *abstract* — `ClassLike` means class, interface, trait or enum, four kinds here — so the relationship is not
+     * one to one and cannot be derived. And the hook table is not a substitute: a hook's kind and a search's kind
+     * coincide for `Foreach` and diverge for `New_`, which hooks through an expression adapter and searches as
+     * `Instantiation`. A class absent from here is refused by name.
+     *
+     * @var array<class-string, list<string>>
+     */
+    public const array SEARCHABLE = [
+        Foreach_::class => ['Foreach'],
+        Return_::class => ['Return'],
+        MethodCall::class => ['MethodCall'],
+        StaticCall::class => ['StaticMethodCall'],
+        FuncCall::class => ['FunctionCall'],
+        New_::class => ['Instantiation'],
+        String_::class => ['LiteralString'],
+        ClassLike::class => ['Class', 'Interface', 'Trait', 'Enum'],
     ];
 
     /**
@@ -195,6 +224,9 @@ final class Vocabulary
         'const-items' => ['iter' => '{rust}.iter()', 'item' => 'const-item', 'phpIter' => '{rust}'],
         'hint-parts' => ['iter' => '{rust}', 'item' => 'hint'],
         'property-members' => ['iter' => '{rust}', 'item' => 'property'],
+        // What a subtree search found, one node each. `expr` because what a rule does with a found node is ask
+        // the same things it asks of any expression it navigated to.
+        'found-nodes' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => '{rust}'],
         // The method declarations of a class-like body, one `method-decl` each.
         'method-members' => ['iter' => self::PHP_ONLY, 'item' => 'method-decl', 'phpIter' => '{rust}'],
         // php-parser models attributes in two levels: a declaration carries attribute *groups*, each holding

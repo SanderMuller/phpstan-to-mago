@@ -179,7 +179,7 @@ Three rule packages, surveyed with the tool rather than from memory:
 
 | package | rules | emit | refused |
 |:--|--:|--:|--:|
-| `symplify/phpstan-rules` | 96 | 23 | 73 |
+| `symplify/phpstan-rules` | 96 | 24 | 72 |
 | `hihaho/phpstan-rules` | 20 | 3 | 17 |
 | `tomasvotruba/type-coverage` | 10 | 0 | 10 |
 | `tomasvotruba/cognitive-complexity` | 3 | 0 | 3 |
@@ -204,7 +204,8 @@ all from Mago's codebase metadata, since there is no reflection object to hand a
 separate hook, because Mago makes it a separate node. A rule can also target a closure and ask about its declared
 parameters and their written types, which is how the Symfony config-file rules recognise a config file at all. A
 rule that loops a class-like's own methods reports one finding per method, on the method's line, and can ask each
-one about its visibility, its attributes and its docblock. A package that factors its detection into a producer handing back a `{...}` record and a consumer
+one about its visibility, its attributes and its docblock. A rule can search a subtree for every node of a given
+kind, count what it found, and put that count in its message. A package that factors its detection into a producer handing back a `{...}` record and a consumer
 reading one field out of it is followed through: the producer's guards become the rule's guards, and the record
 never exists at analysis time.
 
