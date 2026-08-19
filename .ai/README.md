@@ -23,6 +23,8 @@ Guidelines are rules, docs are explanations, skills are procedures. Skills are s
   this before trying to raise the emit count.
 - `docs/dogfooding.md` — what the differential runs against real projects showed, the performance numbers
   with both baselines, and how configuration reaches a generated plugin.
+- `docs/next-steps.md` — **start here for new work**: where the tool stands, the refusal frontier with
+  verified causes, what order to take it in, and what not to chase.
 
 ## Guidelines
 
