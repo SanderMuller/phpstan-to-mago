@@ -1280,6 +1280,13 @@ final class Support
      */
     public static function methodIsPublic(?Part $method): bool
     {
+        // The null case answers *no*, unlike the missing-modifier case. Absence of a modifier means public;
+        // absence of a node means the navigation found nothing, and a predicate that says yes to that turns a
+        // failed navigation into a reported finding. Every other helper here already defaults that way.
+        if (! $method instanceof Part) {
+            return false;
+        }
+
         $modifiers = self::methodModifiers($method);
 
         return ! in_array('private', $modifiers, true) && ! in_array('protected', $modifiers, true);
@@ -1379,36 +1386,6 @@ final class Support
         $resolved = $context->source->getResolvedName($attribute->node);
 
         return $resolved instanceof ResolvedName && $resolved->name !== '' ? $resolved->name : trim($attribute->text);
-    }
-
-    /**
-     * Whether a declaration carries an attribute of this name.
-     *
-     * Compared against the *resolved* name, because that is what php-parser's `$attr->name->toString()` gives a
-     * rule: PHPStan resolves names in the AST first, so a rule matches `#[Required]` against the attribute's
-     * fully-qualified name. Probed: Mago resolves the attribute identifier the same way.
-     */
-    public static function hasAttribute(NodeAnalysisContext $context, ?Part $declaration, string $name): bool
-    {
-        if (! $declaration instanceof Part) {
-            return false;
-        }
-
-        foreach ($declaration->children() as $child) {
-            if ($child->kind !== NodeKind::AttributeList) {
-                continue;
-            }
-
-            foreach ($child->children() as $attribute) {
-                $resolved = $context->source->getResolvedName($attribute->node);
-                $written = $resolved instanceof ResolvedName ? $resolved->name : trim($attribute->text);
-                if (strcasecmp($written, $name) === 0) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 
     /**
