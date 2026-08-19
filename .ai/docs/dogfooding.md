@@ -167,12 +167,20 @@ publishes, confirmed here against the installed versions rather than a checkout.
 | corpus | files | identifiers that fired | agree | only-original | only-port |
 |:--|--:|--:|--:|--:|--:|
 | this repo's example pairs, as a control | 76 | 25 of 26 | 34 | 0 | 0 |
-| a two-file probe for the 26th | 2 | 1 | 2 | 0 | 0 |
+| a two-file probe for the 26th (`tests/Fixtures/probes`) | 2 | 1 | 2 | 0 | 0 |
 | the consumer's first-party source | 2716 | 2 | 50 | 0 | 0 |
 | four of its vendored dependency trees | 3103 | 10 | 328 | 0 | 0 |
 
 Zero unexplained disagreements, in either direction, on 414 sites — and messages compared as text, not just
-lines. Identical finding sets at 1, 2, 4 and 8 threads.
+lines. Finding sets are identical at 1, 2, 4 and 8 threads on the first-party corpus, and at 1 and 8 on the
+vendor corpus, which is the one where a plugin aggregating per-file state would have room to diverge.
+
+Two things the run establishes about its own configuration, worth recording because both were assumptions
+until it ran. `paths!:` **replaced** rather than merged: had it merged, PHPStan would also have analysed the
+first-party tree during the vendor run and its exception findings would have shown as only-original — they
+did not. And `ignoreErrors!: []` is correct but **unexercised on this consumer**: its baseline holds none of
+the 26 identifiers, so nothing was actually suppressed there. The clause stays in the harness because the next
+consumer will not be so convenient, but no claim here rests on it.
 
 **The control run is what makes the zeros readable.** 24 of the 26 identifiers report nothing on the
 first-party corpus, and on its own that is indistinguishable from 24 dead rules. It is a Laravel application,
@@ -180,7 +188,7 @@ and most of `symplify/phpstan-rules` asks Symfony, Doctrine and PHPUnit question
 identifier over this repo's own example pairs first, in the same 27-plugin worker, and 25 of 26 agree exactly
 there. The 26th is the `positionalFlagArgument` pair, silent on both sides because its configured first-party
 namespaces do not match the examples' namespace; a two-file probe in a matching namespace fires both plugins
-and agrees on both sites. The 27-plugin worker was worth proving separately: a node hook's ancestors had
+and agrees on both sites, kept under `tests/Fixtures/probes` so the next run does not have to invent it. The 27-plugin worker was worth proving separately: a node hook's ancestors had
 already turned out to depend on what else shares the worker.
 
 ### Every disagreement the first run showed was the harness, not the port

@@ -301,6 +301,10 @@ final readonly class FiresGate
     private function sorted(array $findings): array
     {
         foreach ($findings as $file => $lines) {
+            // Deduped because the PHPStan side is: `PhpstanReport` collapses one site reported many times,
+            // and a gate where only one side collapses would fail on an example holding two identical
+            // same-line violations.
+            $lines = array_values(array_unique($lines));
             sort($lines);
             $findings[$file] = $lines;
         }
