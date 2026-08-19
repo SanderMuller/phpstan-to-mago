@@ -1221,6 +1221,28 @@ final class Support
         return false;
     }
 
+    /**
+     * The written name of a class-like or method declaration, short and unqualified.
+     *
+     * php-parser's `$node->name->toString()` on a declaration gives the name as written, not the namespaced one —
+     * `Something` rather than `App\Something` — which is what a rule testing a prefix or suffix compares.
+     */
+    public static function declarationName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        $node = self::node($subject);
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        foreach ($context->source->getChildren($node) as $child) {
+            if ($child->kind === NodeKind::LocalIdentifier || $child->kind === NodeKind::Identifier) {
+                return trim($context->source->getText($child));
+            }
+        }
+
+        return null;
+    }
+
     /** A method declaration's own name. */
     public static function methodName(?Part $method): ?string
     {

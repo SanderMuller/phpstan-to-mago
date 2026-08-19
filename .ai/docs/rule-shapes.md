@@ -165,12 +165,38 @@ allows a reserved word after `::`, so every other case is declared bare, and `Cl
 `NodeKind::Foreach_`, which the enum has no case for — a plugin that dies on load. The list now holds `class`, and
 the corpus gate reads the enum's own case names rather than trusting a convention.
 
-`ForeachCeptionRule` emits and agrees; symplify 23 to 24. `AvoidFeatureSetAttributeInRectorRule` and
-`NoOnlyNullReturnInRefactorRule` both moved to the same structural boundary, which is the next shape worth naming:
-**field navigation is relative to the hook's node.** `Vocabulary::FIELDS` and `argListPath()` are keyed on the kind
-the hook fired for, so a rule that asks a *found* node for its arguments or its `->expr` refuses with
-`no argument list on a Class node`. Making navigation relative to an arbitrary node is one change touching a
-much-used path, which is why it is its own pass and not a footnote to this one.
+`ForeachCeptionRule` emits and agrees; symplify 23 to 24.
+
+## Asking something of a node that is not the hook's
+
+Twenty-two of the hundred-odd refusals are one shape: a question asked of a *found* node, a loop item, or a
+navigated-to part rather than of the node the hook fired for. It has four faces —
+`instanceof X on a expr`, `empty-array comparison against a expr`, `no iteration mapped for a subtree`, and
+`no argument list on a Class node` — and the root of the last two is that **field navigation is keyed on the hook's
+kind**. `Vocabulary::FIELDS` and `argListPath()` both look up `$this->nodeKind`, so a rule asking a found node for
+its arguments gets a refusal naming the *class* it is inside.
+
+A pass at the first face moved **no rules**, and that is worth recording rather than dressing up. What it did do:
+
+- **`$node->name instanceof Identifier` on a class-like is settled by construction**, the same fact that makes
+  `isAnonymous()` unreachable — Mago gives an anonymous class its own node kind. Three rules now refuse on what
+  they *actually* need next (`getParams()` of a found method, `->getMethod()`, `namespacedName`) instead of on a
+  missing node predicate.
+- **A class-like's `->name` navigates to the written short name**, which is what `$node->name->toString()` gives a
+  rule testing a prefix or a suffix — not the namespaced name.
+- **Negating a proven constant folds.** A predicate settled by construction is `true`, and the guard around it is
+  `! true`; unfolded, that emitted `if (!(true))` — a guard that can never hold, sitting under whatever comment
+  happened to precede it. Every emitted plugin in the corpus had one. They now carry a stated reason instead, and
+  a guard that folds the *other* way — one that always exits, so the rule could never report — is refused.
+
+That last change surfaced two predicates returning a bare `true` with no reason recorded, which the
+dropped-guard gate then rejected: it demands that a drop be *proved*, not asserted. Both are the same fact as an
+already-proven one, so they share its wording, and `RequiredOnlyInAbstractRule`'s good example now carries the
+proof — an interface and a trait each declaring what the rule reports on a class. The guard that would have
+filtered them is dropped, so if the hook fired for either, the port would report.
+
+Which leaves the structural half of this shape untouched and named: making navigation relative to an arbitrary
+node, rather than to the hook's kind, is one change through a much-used path. It is the next pass.
 
 ### What this replaced, and why the note stays
 

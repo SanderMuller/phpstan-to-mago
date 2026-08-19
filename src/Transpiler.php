@@ -3221,6 +3221,15 @@ PHP;
             return;
         }
 
+        if ($bail === 'true') {
+            // The other direction of the same fold, and never right: a guard that always exits means the rule can
+            // never report anything, so emitting it would produce a plugin that loads and does nothing.
+            throw new Refusal(
+                'a guard that always exits, so the rule could never report: ' . ($this->unreachableGuard ?? 'no reason recorded'),
+                $cond->getStartLine(),
+            );
+        }
+
         $this->lines[] = new Stm('guard', ['condition' => $bail, 'exit' => $exit], $this->indent);
     }
 
@@ -4115,8 +4124,14 @@ PHP;
     private function translatePredicate(Expr $expr, bool $negated): string
     {
         $check = $this->predicate($expr);
-        if ($check === 'false') {
-            return $negated ? 'true' : 'false';
+
+        // Both constants fold, not just one. A predicate settled by construction is `true`, and the guard around it
+        // is `! true` — left unfolded that emitted `if (!(true))`, a guard that can never hold, carrying whatever
+        // comment happened to precede it. Folded, {@see translateGuard()} drops it and states the reason.
+        if ($check === 'false' || $check === 'true') {
+            $holds = $check === 'true';
+
+            return $negated === $holds ? 'false' : 'true';
         }
 
         return $negated ? '!(' . $this->stripOuterParentheses($check) . ')' : $check;
@@ -4258,7 +4273,7 @@ PHP;
         if ($wanted === Class_::class && $subject['kind'] === 'hook-node') {
             $this->narrowedToClass = true;
 
-            return 'true'; // the class declaration hook only fires for classes
+            return $this->alwaysHolds('the class declaration hook fires for classes, never for an interface');
         }
 
         if ($subject['kind'] === 'hint-option' || $subject['kind'] === 'hint') {
@@ -4300,10 +4315,22 @@ PHP;
             throw new Refusal("instanceof {$wanted} on a member selector", $expr->getStartLine());
         }
 
+        // `$node->name instanceof Identifier` on the class-like under analysis asks whether it is named. Mago makes
+        // an anonymous class a separate node kind, so this hook only ever fires for a named one — the same
+        // reasoning that makes `isAnonymous()` unreachable here.
+        if ($wanted === Identifier::class
+            && ($subject['key'] ?? null) === '$node->name'
+            && in_array($this->nodeKind, self::CLASS_LIKE_HOOK_KINDS, true)
+        ) {
+            return $this->alwaysHolds(
+                'an anonymous class is a separate node kind, so this hook only fires for a named class-like',
+            );
+        }
+
         // `$node instanceof ClassMethod` inside a helper that takes `ClassLike|ClassMethod`: the caller passed a
         // method declaration, so the narrowing holds by construction here.
         if ($subject['kind'] === 'method-decl' && $wanted === ClassMethod::class) {
-            return 'true';
+            return $this->alwaysHolds('the caller passed a method declaration, so this narrowing holds by construction');
         }
 
         // `$docComment instanceof Doc` asks whether the declaration has a docblock at all, and the descriptor is
@@ -4423,7 +4450,32 @@ PHP;
     /** Keeps a predicate as it is, or negates it, without the caller repeating the ternary. */
     private function negateUnless(bool $asIs, string $predicate): string
     {
-        return $asIs ? $predicate : "!({$predicate})";
+        if ($asIs) {
+            return $predicate;
+        }
+
+        // Folded rather than wrapped. A predicate settled by construction — "this hook only fires for a named
+        // class" — is `true`, and the guard around it is `! true`. Left unfolded that emitted `if (!(true))`, dead
+        // code carrying whatever comment happened to precede it; folded, {@see translateGuard()} drops the guard
+        // and states the reason.
+        return match ($predicate) {
+            'true' => 'false',
+            'false' => 'true',
+            default => "!({$predicate})",
+        };
+    }
+
+    /**
+     * A predicate that cannot be false in Mago's model, with the proof that says so.
+     *
+     * The mirror of {@see unreachable()}. Both record why; which one applies depends on whether the rule asks the
+     * question straight or negated, and a guard is dropped when the *bail* folds to false either way.
+     */
+    private function alwaysHolds(string $reason): string
+    {
+        $this->unreachableGuard = $reason;
+
+        return 'true';
     }
 
     private function methodPredicate(MethodCall $expr): string
@@ -4914,7 +4966,7 @@ PHP;
     {
         $this->narrowedToClass = true;
 
-        return 'true';
+        return $this->alwaysHolds('the class declaration hook fires for classes, never for an interface');
     }
 
     /** The enclosing-class test, from whichever source this hook provides. */
@@ -5891,6 +5943,9 @@ PHP;
      * targeted; the first other one, `Foreach`, emitted `NodeKind::Foreach_` and the enum has no such case.
      */
     private const array PHP_RESERVED_KINDS = ['class'];
+
+    /** Hook kinds that are a class-like declaration, where the node under analysis is always named. */
+    private const array CLASS_LIKE_HOOK_KINDS = ['Class', 'Interface', 'Trait', 'Enum'];
 
     /** Rust identifiers that a PHP variable name could collide with. */
     private const array RUST_KEYWORDS = [

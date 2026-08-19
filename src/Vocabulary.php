@@ -139,6 +139,9 @@ final class Vocabulary
         ],
         'Class' => [
             'extends' => ['node', 'extends'],
+            // The name as written, short: `$node->name->toString()` on a declaration gives `Something`, not
+            // `App\Something`, which is what a rule testing a prefix or a suffix compares against.
+            'name' => [self::PHP_ONLY, 'bytes', 'Support::declarationName($context, {base})'],
         ],
         'ClassConstantAccess' => [
             // Rust reads the field; the PHP SDK's Node has no fields, so the class part is found by

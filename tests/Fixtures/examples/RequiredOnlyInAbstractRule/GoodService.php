@@ -49,3 +49,22 @@ final class GoodRepository extends DocumentRepository
     #[Required]
     public function setThing(object $thing): void {}
 }
+
+/**
+ * An interface and a trait, each declaring what the rule reports on a class.
+ *
+ * The rule bails through `! $classLike instanceof Class_`, and the transpiler drops that guard, claiming the class
+ * declaration hook never fires for another class-like. These two are the proof: if the claim is wrong, the port
+ * reports here and this pair fails. PHPStan visits both through `InClassNode` and bails on the guard itself.
+ */
+interface GoodContract
+{
+    #[Required]
+    public function setThing(object $thing): void;
+}
+
+trait GoodWiringTrait
+{
+    #[Required]
+    public function setThing(object $thing): void {}
+}
