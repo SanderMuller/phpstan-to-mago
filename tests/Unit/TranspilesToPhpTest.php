@@ -39,6 +39,22 @@ final class TranspilesToPhpTest extends TestCase
     {
         yield 'guard chain' => ['ForbiddenStaticConstFetchRule'];
         yield 'loop with a formatted message' => ['UppercaseConstantRule'];
+        yield 'message with a quoted class name' => ['QuotedClassNameMessageRule'];
+        // PHP only: the namespace is read from the file's own text, which `support.rs` has no counterpart
+        // for, so the Rust targets refuse this rule rather than emitting a call that cannot compile.
+        yield 'gated on the declared namespace' => ['NamespacePrefixRule'];
+        yield 'membership in a constant set' => ['ConstantSetRule'];
+        yield 'a report code carrying a classification' => ['ClassifiedCodeRule'];
+        yield 'a loop inside an inlined predicate helper' => ['AnyConstantHelperRule'];
+        yield 'a reflection question answered by the codebase' => ['AsksTheCodebaseRule'];
+        yield 'a helper that forwards to the one that decides' => ['ForwardingHelperRule'];
+        yield 'the names a property declaration declares' => ['PropertyNameRule'];
+        yield 'membership in a table the constructor built' => ['ConstructedLookupRule'];
+        // PHP only, and the widest emission in the suite: a producer handing back a record, a producer handing
+        // back one value, and reflection on a class named at analysis time. Snapshotted because the emitted
+        // output is the contract — the fires-gate proves it *runs*, and this proves a refactor did not change
+        // what it emits.
+        yield 'a record producer feeding a message' => ['PositionalFlagRule'];
     }
 
     #[DataProvider('supportedRules')]

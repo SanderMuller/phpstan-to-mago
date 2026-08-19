@@ -2,15 +2,45 @@
 
 ## Covered today
 
-Guard chains, `foreach` with an inline report, `sprintf` messages, inlined private helpers used as
-*predicates*, string and integer comparisons, `instanceof` narrowing into a binding, class-hierarchy
-questions about the enclosing class, and the receiver's inferred type.
+Guard chains, `foreach` with an inline report, `sprintf` messages, inlined helpers, string and integer
+comparisons, `instanceof` narrowing into a binding, class-hierarchy questions about the enclosing class, the
+declared namespace, membership in a constant set, the names a property declaration declares, and the
+receiver's inferred type.
 
-Measured on 23 rules from `symplify/phpstan-rules` and a few of our own: **20 emit, 3 refused.**
+A helper is inlined from the rule, a trait or a parent class, and may answer a question, build the finding, or
+forward to the helper that does. A loop inside a predicate helper becomes an "any of them" combinator. A rule
+that classifies what it found reports under a code it computes. A configured value becomes a constructor
+parameter carrying the rule package's own default, read from that package's `extension.neon`; a constructor
+that derives one from configured values, literals and a closed set of pure functions is carried verbatim, and
+only by the PHP target.
+
+Surveyed with the tool: `symplify/phpstan-rules` 20 of 96, `hihaho/phpstan-rules` 2 of 20,
+`tomasvotruba/type-coverage` 0 of 10, `tomasvotruba/cognitive-complexity` 0 of 3. Every emitted rule is gated
+on actually running, per `docs/dogfooding.md`, which supersedes the frontier analysis below.
+
+## The next shape, named rather than guessed
+
+The two positional-flag variants that go through a *receiver* — `PositionalFlagArgumentMethodCallRule` and its
+nullsafe twin — both reach `$scope->getType($receiver)->getObjectClassReflections()` with a `count() === 1`
+gate. That is the SDK's `ReceiverType` requirement, which `typeQuery()` already touches for the inferred type
+of a call's receiver. What is **not** known is whether `receiverType` hands back a class name that
+`Support::methodExists()` and `Support::parameterName()` can take; that needs a probe of its own, and guessing
+it is how a plausible-but-wrong port gets shipped. If it cannot yield a name, the honest outcome is a refusal
+with a traced reason.
+
+The other two variants of that family are refused for a fact about the package rather than a gap here:
+`extension.neon` registers only the constructor and nullsafe rules, leaving the static-call and method-call
+ones to `CombinedStaticCallRule`/`CombinedMethodCallRule`, so their `$firstPartyNamespaces` has nothing behind
+it.
 
 ## The shape that blocks `hihaho/phpstan-rules`
 
-That package is **0 of 20**, and 17 of the refusals are the same message, `assignment value outside the
+That package was **0 of 20** when this was written and is now 2 of 20 — `NoDebugInNamespaceRule` emits and
+reports under two computed codes, and `PositionalFlagArgumentConstructorRule` agrees with the original on line
+and message over a pair holding a bare flag, a named flag, a spread and a vendor-declared constructor. `unknown local $this` was the first blocker for five rules and is now the
+first blocker for none. What follows is the analysis as it stood; the current frontier is in the spec.
+
+At the time, 17 of the refusals were the same message, `assignment value outside the
 vocabulary`, on a line like this:
 
 ```php
@@ -71,7 +101,7 @@ The package still emits nothing, but every refusal has moved past the assignment
 | `Stmt_Foreach` inside an inlined helper | loop translation in helper bodies |
 | `unknown local $this` | constructor-injected properties as helper arguments, i.e. configuration |
 | more than one distinct identifier in one rule | a plugin reporting under several codes |
-| cross-file collector aggregation | nothing; correctly refused forever |
+| cross-file collector aggregation | **this line was wrong.** An `AfterAnalysisHook` runs once per run, sees every file through `ProjectAnalysis`, can `report()`, and reaches per-file syntax through `FileAnalysis::getSourceFile()`. The premise, that a hook sees one file at a time, holds for a node hook only. What actually blocks the collector rules is agreement: the parameter aggregate is implemented and measured at 3079/2927 against PHPStan's 4057/1994, so it is refused with those numbers rather than emitted |
 
 The configuration one is the interesting entry: those rules take `$this->firstPartyNamespaces` and pass it
 to the helper, which is the same problem `docs/dogfooding.md` describes at the config level.

@@ -67,9 +67,11 @@ final class PhpBackend implements Backend
             case 'blank':
                 return "\n";
             case 'report':
+                // The code arrives already written as PHP — quoted when it is a literal, bare when the rule
+                // computes it — because only the transpiler knows which it is.
                 return "{$pad}\$context->report(\n"
                     . "{$pad}    Level::Error,\n"
-                    . "{$pad}    '{$a['code']}',\n"
+                    . "{$pad}    {$a['code']},\n"
                     . "{$pad}    Issue::new({$a['message']}, \$node->span, 'here'),\n"
                     . "{$pad});\n\n";
             default:
@@ -119,7 +121,28 @@ final class PhpBackend implements Backend
 
     public function bytes(string $literal): string
     {
-        return "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], stripcslashes($literal)) . "'";
+        // Callers differ: most arrive already escaped for a Rust byte string, where a backslash and a
+        // double quote are written `\\` and `\"`; some hand over a class name as written. The old
+        // `stripcslashes()` served the first and silently broke the second, because it also interprets C
+        // escapes — `Doctrine\Bundle\...` lost every separator and the emitted rule named a class that
+        // does not exist. Undoing exactly the two sequences Rust escapes serves both, and leaves any other
+        // backslash alone.
+        $unescaped = '';
+        $length = strlen($literal);
+        for ($index = 0; $index < $length; ++$index) {
+            $character = $literal[$index];
+            $next = $literal[$index + 1] ?? '';
+            if ($character === '\\' && ($next === '\\' || $next === '"')) {
+                $unescaped .= $next;
+                ++$index;
+
+                continue;
+            }
+
+            $unescaped .= $character;
+        }
+
+        return "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], $unescaped) . "'";
     }
 
     /**

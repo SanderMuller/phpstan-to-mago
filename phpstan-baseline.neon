@@ -97,7 +97,7 @@ parameters:
 			path: src/Runtime/Support.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 137, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 196, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Runtime/Support.php
@@ -127,7 +127,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 669, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 1060, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php
@@ -139,31 +139,31 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::equality()" is 34, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::equality()" is 38, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::functionPredicate()" is 32, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::functionPredicate()" is 35, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::instanceofPredicate()" is 32, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::instanceofPredicate()" is 39, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::methodPredicate()" is 31, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::methodPredicate()" is 47, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::resolve()" is 72, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::resolve()" is 172, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
@@ -193,21 +193,9 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Offset 2 on array{''support::property…'', ''hint-option'', ''Support:…''} on left side of ?? always exists and is not nullable.'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: src/Transpiler.php
-
-		-
 			rawMessage: 'Only booleans are allowed in &&, bool|string given on the left side.'
 			identifier: booleanAnd.leftNotBoolean
 			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Parameter #1 $descriptor of method Sandermuller\PhpstanToMago\Transpiler::operand() expects array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string}, non-empty-array<string, array<mixed>|string> given.'
-			identifier: argument.type
-			count: 3
 			path: src/Transpiler.php
 
 		-
@@ -241,24 +229,6 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Parameter #3 ...$values of function sprintf expects bool|float|int|string|null, array<mixed>|string given.'
-			identifier: argument.type
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Part $subject[''kind''] (array<mixed>|string) of encapsed string cannot be cast to string.'
-			identifier: encapsedStringPart.nonString
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Part $subject[''rust''] (array<mixed>|string) of encapsed string cannot be cast to string.'
-			identifier: encapsedStringPart.nonString
-			count: 2
-			path: src/Transpiler.php
-
-		-
 			rawMessage: Possibly invalid array key type PhpParser\Node\Expr|string.
 			identifier: offsetAccess.invalidOffset
 			count: 4
@@ -271,7 +241,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Property Sandermuller\PhpstanToMago\Transpiler::$locals (array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string}>) does not accept non-empty-array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array<string>>, collector?: string}>.'
+			rawMessage: 'Property Sandermuller\PhpstanToMago\Transpiler::$locals (array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, ...}>) does not accept non-empty-array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array<string>>, collector?: string, service?: string, classPhp?: string, ...}>.'
 			identifier: assign.propertyType
 			count: 1
 			path: src/Transpiler.php

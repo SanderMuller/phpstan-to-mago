@@ -1,0 +1,302 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Sandermuller\PhpstanToMago\Tests\Support;
+
+use RuntimeException;
+use Sandermuller\PhpstanToMago\Transpiler;
+
+/**
+ * Runs one emitted plugin under the real mago binary, and the rule it came from under PHPStan.
+ *
+ * The other gates prove an emitted plugin parses, contains no Rust and calls only helpers that exist.
+ * None of that proves it *ran*: a version of statement-position inlining passed every static check,
+ * loaded, and silently found nothing because an unconditional exit sat in front of the report. Only
+ * running caught it, which is why this harness shells out rather than asserting on text.
+ *
+ * A finding is compared as `line: message`, not just a line. The message is user-facing, and a port whose
+ * message differs is wrong in the way a reader notices first — `Doctrine\Bundle\...` arriving as
+ * `DoctrineBundle...` lands on the right line and still tells the reader the wrong class.
+ *
+ * The worker registers **one** plugin. That is load-bearing rather than tidy: a node hook's ancestors
+ * turned out to depend on what else shares the worker, so a rule that fires in a crowded extension can
+ * be dead on its own. A one-rule worker is the honest configuration.
+ */
+final readonly class FiresGate
+{
+    private const string WORKER = <<<'PHP'
+        <?php
+
+        declare(strict_types=1);
+
+        use Mago\Sdk\Extension;
+        use Mago\Sdk\Worker;
+
+        require '{autoload}';
+        require __DIR__ . '/plugin.php';
+
+        (new Worker(new Extension(
+            identifier: 'gate/one-rule',
+            name: 'One transpiled rule',
+            version: '0.0.0',
+            analyzerPlugins: [new \Transpiled\{rule}()],
+        )))->run();
+        PHP;
+
+    private const string MAGO_CONFIG = <<<'TOML'
+        [source]
+        paths = ["src", "stubs"]
+
+        [extension-hosts.gate]
+        command = ["php", "worker.php"]
+        TOML;
+
+    private const string PHPSTAN_CONFIG = <<<'NEON'
+        parameters:
+            level: 0
+            reportUnmatchedIgnoredErrors: false
+            paths:
+                - src
+            scanDirectories:
+                - stubs
+        services:
+            -
+                class: {class}
+                tags: [phpstan.rules.rule]
+        NEON;
+
+    public function __construct(
+        private string $repositoryRoot,
+        private string $examplesRoot,
+        private string $sandboxRoot,
+    ) {}
+
+    /**
+     * Whether an example pair exists for this rule.
+     *
+     * Asked separately from running it so the gate can fail an emitted rule that has no pair, rather
+     * than passing it by never looking. An emitted rule nobody wrote an example for is untested, and
+     * silence there is what let five dead rules ship.
+     */
+    public function hasExamples(string $rule): bool
+    {
+        return $this->examples($rule, 'Bad') !== [] && $this->examples($rule, 'Good') !== [];
+    }
+
+    /**
+     * The example files of one kind, by base name.
+     *
+     * A pair is identified by the `Bad`/`Good` prefix rather than by a fixed `Bad.php`, because some rules
+     * key on the file name: `TestClassDetector::isTestClass()` asks whether the path ends in `Test.php`,
+     * `TestCase.php` or `Context.php`. Such a rule needs its example called `BadSomethingTest.php`, and a
+     * gate that renamed it would test the wrong thing.
+     *
+     * @return list<string>
+     */
+    public function examples(string $rule, string $kind): array
+    {
+        $paths = glob($this->examplesRoot . '/' . $rule . '/' . $kind . '*.php');
+
+        return array_map(basename(...), $paths === false ? [] : $paths);
+    }
+
+    /**
+     * The lines the transpiled plugin reports, keyed by the file they land in.
+     *
+     * @return array<string, list<string>>
+     */
+    public function magoFindings(string $rule, string $ruleFile): array
+    {
+        $identifier = $this->identifierPrefixOf($ruleFile);
+        $sandbox = $this->sandbox($rule, $ruleFile);
+        $output = $this->run(['./mago', 'analyze', '--reporting-format', 'json'], $sandbox);
+
+        /** @var array{issues?: list<array{code?: string, message?: string, annotations?: list<array{span?: array{file_id?: array{name?: string}, start?: array{line?: int}}}>}>}|null $decoded */
+        $decoded = json_decode($output, true);
+        if (! is_array($decoded)) {
+            throw new RuntimeException("mago produced no JSON for {$rule}:\n" . $output);
+        }
+
+        $findings = [];
+        foreach ($decoded['issues'] ?? [] as $issue) {
+            // Only this rule's own findings count, on both sides. The engine reports unresolvable classes
+            // and other native diagnostics on the same run, and PHPStan reports its own level-0 errors;
+            // counting either would compare two different things. Mago spells the code
+            // `transpiled/<kebab-plugin>/<rule identifier>`, PHPStan spells it `<rule identifier>`.
+            if (! str_contains((string) ($issue['code'] ?? ''), '/' . $identifier)) {
+                continue;
+            }
+
+            // The path lives at `span.file_id.name`, not `span.file`.
+            $annotation = $issue['annotations'][0] ?? [];
+            $file = basename((string) ($annotation['span']['file_id']['name'] ?? ''));
+            // Mago's JSON line is 0-based; PHPStan's is 1-based, and the two are compared.
+            $line = ((int) ($annotation['span']['start']['line'] ?? 0)) + 1;
+            $findings[$file][] = $line . ': ' . ($issue['message'] ?? '');
+        }
+
+        return $this->sorted($findings);
+    }
+
+    /**
+     * The lines PHPStan reports for the original rule, keyed by the file they land in.
+     *
+     * @return array<string, list<string>>
+     */
+    public function phpstanFindings(string $rule, string $ruleFile, string $ruleClass): array
+    {
+        $sandbox = $this->sandbox($rule, $ruleFile, $ruleClass);
+        $output = $this->run([
+            $this->repositoryRoot . '/vendor/bin/phpstan',
+            'analyse',
+            '--no-progress',
+            '--error-format=json',
+            '--configuration=phpstan.neon',
+            '--autoload-file=' . $this->repositoryRoot . '/vendor/autoload.php',
+        ], $sandbox);
+
+        return PhpstanReport::findings($output, $this->identifierPrefixOf($ruleFile), $rule);
+    }
+
+    /**
+     * A throwaway project holding one emitted plugin, its worker, and the example pair.
+     *
+     * Rebuilt per call rather than cached: mago has no result cache, so a stale sandbox would be the
+     * one thing that could make a dead rule look alive.
+     */
+    private function sandbox(string $rule, string $ruleFile, string $ruleClass = 'Stub'): string
+    {
+        $sandbox = $this->sandboxRoot . '/' . $rule;
+        if (! is_dir($sandbox . '/src')) {
+            mkdir($sandbox . '/src', 0o777, true);
+        }
+
+        $plugin = $this->transpile($ruleFile);
+        file_put_contents($sandbox . '/plugin.php', $plugin . "\n");
+        file_put_contents($sandbox . '/worker.php', strtr(self::WORKER, [
+            '{autoload}' => $this->repositoryRoot . '/vendor/autoload.php',
+            '{rule}' => $rule,
+        ]));
+        file_put_contents($sandbox . '/mago.toml', self::MAGO_CONFIG . "\n");
+        file_put_contents($sandbox . '/phpstan.neon', strtr(self::PHPSTAN_CONFIG, [
+            '{class}' => $ruleClass,
+        ]) . "\n");
+
+        $examples = glob($this->examplesRoot . '/' . $rule . '/*.php');
+        foreach ($examples === false ? [] : $examples as $example) {
+            copy($example, $sandbox . '/src/' . basename($example));
+        }
+
+        // The stubs sit beside `src`, not inside it: mago needs them in its source paths to resolve
+        // ancestry, while PHPStan must scan them without analysing them, and one directory cannot be both
+        // analysed and excluded.
+        if (! is_dir($sandbox . '/stubs')) {
+            mkdir($sandbox . '/stubs', 0o777, true);
+        }
+
+        copy($this->examplesRoot . '/stubs/Framework.php', $sandbox . '/stubs/Framework.php');
+
+        // A relative `command` resolves from the config file's directory, and the binary is symlinked
+        // in so the sandbox needs no absolute path baked into a committed file.
+        if (! is_file($sandbox . '/mago')) {
+            symlink($this->repositoryRoot . '/vendor/bin/mago', $sandbox . '/mago');
+        }
+
+        return $sandbox;
+    }
+
+    /**
+     * The identifier the transpiled rule reports under, taken from the transpiler rather than guessed.
+     *
+     * Both sides of the comparison filter on it: mago spells a finding's code
+     * `transpiled/<kebab-plugin>/<identifier>` and PHPStan spells it `<identifier>`.
+     */
+    /**
+     * The literal part of a rule's identifier, which is what both sides can be filtered on.
+     *
+     * A rule that classifies what it found reports under a computed code — `'fixture.noDebugIn' . $area` —
+     * so there is no single literal to match. The leading literal is common to every code the rule can
+     * report, and matching on it keeps the comparison over exactly that rule's findings.
+     */
+    private function identifierPrefixOf(string $ruleFile): string
+    {
+        $identifier = $this->identifierOf($ruleFile);
+        if (! str_contains($identifier, "'")) {
+            return $identifier;
+        }
+
+        $quoted = explode("'", $identifier);
+
+        return $quoted[1] ?? $identifier;
+    }
+
+    private function identifierOf(string $ruleFile): string
+    {
+        $target = Transpiler::$target;
+        $survey = Transpiler::$survey;
+        Transpiler::$target = 'php';
+        Transpiler::$survey = false;
+
+        try {
+            return (string) (new Transpiler($ruleFile))->transpile()['identifier'];
+        } finally {
+            Transpiler::$target = $target;
+            Transpiler::$survey = $survey;
+        }
+    }
+
+    private function transpile(string $ruleFile): string
+    {
+        $target = Transpiler::$target;
+        $survey = Transpiler::$survey;
+        Transpiler::$target = 'php';
+        Transpiler::$survey = false;
+
+        try {
+            return (new Transpiler($ruleFile))->transpile()['rust'];
+        } finally {
+            Transpiler::$target = $target;
+            Transpiler::$survey = $survey;
+        }
+    }
+
+    /**
+     * @param list<string> $command
+     */
+    private function run(array $command, string $sandbox): string
+    {
+        $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+        $process = proc_open($command, $descriptors, $pipes, $sandbox);
+        if (! is_resource($process)) {
+            throw new RuntimeException('Could not start ' . $command[0]);
+        }
+
+        $stdout = (string) stream_get_contents($pipes[1]);
+        $stderr = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        // The exit code says nothing: mago exits non-zero whenever it finds an issue, which is the
+        // expected outcome here. A real failure shows up as unparseable output instead.
+        proc_close($process);
+
+        return $stdout === '' ? $stderr : $stdout;
+    }
+
+    /**
+     * @param array<string, list<string>> $findings
+     *
+     * @return array<string, list<string>>
+     */
+    private function sorted(array $findings): array
+    {
+        foreach ($findings as $file => $lines) {
+            sort($lines);
+            $findings[$file] = $lines;
+        }
+
+        ksort($findings);
+
+        return $findings;
+    }
+}

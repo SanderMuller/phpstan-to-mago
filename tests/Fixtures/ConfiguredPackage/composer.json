@@ -1,0 +1,8 @@
+{
+    "name": "fixture/configured-package",
+    "extra": {
+        "phpstan": {
+            "includes": ["config/extension.neon"]
+        }
+    }
+}

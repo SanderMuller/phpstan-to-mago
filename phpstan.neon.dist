@@ -16,6 +16,24 @@ parameters:
     # change what the snapshot test compares against.
     excludePaths:
         - tests/Fixtures/expected
+        # The differential's example pairs, plus the framework stubs they resolve against. Every `Bad`
+        # example is deliberately wrong code — that is what makes a rule fire on it — and the stubs are
+        # bodyless declarations. Both are input to the fires-gate, which runs the real mago binary and a
+        # real PHPStan over them with only one rule registered. Analysing them here instead reports the
+        # wrongness we put there on purpose.
+        - tests/Fixtures/examples
+        # Fixture rule *packages*, shaped to reproduce how real packages wire their rules — a configured
+        # value, a PHPStan service, a value derived in the constructor, one the neon never wires. They are
+        # input the transpiler reads, so their shape is dictated by what they must reproduce rather than by
+        # what reads well here; a property the fixture deliberately never uses is the fixture working.
+        - tests/Fixtures/ConfiguredPackage
+        - tests/Fixtures/UnconfiguredPackage
+        # The aggregate differential's project and the plugin that runs over it. The project is deliberately
+        # untyped — that is what gives it a coverage percentage to compare — and the plugin is emitted-shaped
+        # source, not ours to tidy.
+        - tests/Fixtures/aggregate
+        # A fixture package whose rule writes a file instead of reporting, which is what makes it a fixture.
+        - tests/Fixtures/WriterPackage
         # Calls a helper nothing in its hierarchy declares. Being invalid is the whole fixture: it proves
         # the transpiler refuses such a call by name instead of translating it into something plausible.
         - tests/Fixtures/Rules/MissingHelperRule.php
@@ -54,4 +72,12 @@ parameters:
             identifier: method.internalClass
             paths:
                 - tests/*
+            reportUnmatched: false
+        # The fires-gate has to start the real mago binary and a real PHPStan: the whole point is that a
+        # transpiled rule *ran*, which no in-process check can establish. Scoped to that one harness.
+        -
+            message: '#Calling proc_open\(\) is forbidden#'
+            paths:
+                - tests/Support/FiresGate.php
+                - tests/Unit/AggregatesTypeCoverageTest.php
             reportUnmatched: false

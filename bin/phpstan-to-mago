@@ -24,6 +24,9 @@ if ($argv === [] || in_array('--help', $argv, true) || in_array('-h', $argv, tru
       --target=analyzer a Rust analyzer plugin, which has to be compiled into Mago
       --target=linter   a Rust lint rule, which has to be compiled into Mago
       --survey          report what each rule would need, writing nothing
+      --unverified-aggregates
+                        also emit an aggregate rule whose numbers do not yet agree with the
+                        original; refused by default, and the refusal says by how much
       --out=DIR         where to write, defaulting to the current directory
       --examples=DIR    PHP files the linter target reads its examples from
 

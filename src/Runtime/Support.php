@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Runtime;
 
 use LogicException;
+use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata;
 use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
+use Mago\Sdk\Analyzer\Metadata\MetadataFlags;
+use Mago\Sdk\Analyzer\Metadata\ParameterMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
 use Mago\Sdk\Syntax\ResolvedName;
+use Mago\Sdk\Syntax\SourceFile;
 
 /**
  * The PHP target's support runtime, the counterpart of `support.rs`.
@@ -24,6 +28,187 @@ use Mago\Sdk\Syntax\ResolvedName;
  */
 final class Support
 {
+    // -----------------------------------------------------------------------
+    // The codebase, where a rule used to ask PHPStan's ReflectionProvider
+    // -----------------------------------------------------------------------
+
+    /**
+     * Whether a class-like of this name is known to the analysis.
+     *
+     * `ReflectionProvider::hasClass()` in the original. Mago answers it from the scanned codebase, so a class
+     * it never scanned reads as absent — the same answer PHPStan gives for a class outside its autoloader.
+     */
+    /**
+     * Whether the codebase knows a class-like of this name.
+     *
+     * Nullable and empty-guarded because the name can come from {@see self::resolvedName()} rather than from a
+     * literal, and `classLikeExists('')` aborts the whole analysis with "Codebase metadata names cannot be
+     * empty" — a worker crash, not a false answer.
+     */
+    public static function classExists(NodeAnalysisContext $context, ?string $name): bool
+    {
+        if ($name === null || $name === '') {
+            return false;
+        }
+
+        return $context->codebase->classLikeExists($name);
+    }
+
+    /**
+     * The fully-qualified name a written name means, which is what `$scope->resolveName()` answers.
+     *
+     * Mago resolves a written name against the file's imports and namespace and hands back the result, so an
+     * `Identifier` needs no work: `Thing` in `namespace Demo` comes back as `Demo\Thing`, an imported
+     * `Imported` as `Other\Imported`, and `\Root\Absolute` with its leading slash removed. A name that
+     * resolves to nothing declared still resolves — `hasClass()` is the separate question.
+     *
+     * Two spellings are not names to Mago and come back null, so they are answered here instead:
+     *
+     * - `self` and `static` are `Keyword` nodes, not identifiers, and PHPStan resolves both to the enclosing
+     *   class. Probed: `getResolvedName()` returns null for each.
+     * - `$name` in `new $name()` is a `Variable`, and null is right — PHPStan's rules guard on
+     *   `instanceof Name` first, so they never ask.
+     *
+     * One gap, known rather than silent: `parent` is a `Keyword` too — probed, like the other two — and a node
+     * hook has no metadata to resolve it through, so it comes back null where PHPStan would answer the parent
+     * class. A rule reached through `new parent()` will disagree.
+     */
+    public static function resolvedName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        $node = self::node($subject);
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        if ($node->kind === NodeKind::Keyword) {
+            $keyword = strtolower(trim($context->source->getText($node)));
+
+            return $keyword === 'self' || $keyword === 'static'
+                ? self::enclosingClassName($context, $node)
+                : null;
+        }
+
+        $resolved = $context->source->getResolvedName($node);
+
+        return $resolved instanceof ResolvedName && $resolved->name !== '' ? $resolved->name : null;
+    }
+
+    /**
+     * The class that actually declares a method, or null when neither the class nor the method is known.
+     *
+     * The distinction a rule cares about: a first-party class inheriting a vendor method should be judged on
+     * where the method *comes from*, not on the receiver. `getDeclaringMethod()` answers exactly that.
+     */
+    public static function declaringClassOfMethod(NodeAnalysisContext $context, ?string $class, ?string $method): ?string
+    {
+        if ($class === null || $method === null) {
+            return null;
+        }
+
+        $declared = $context->codebase->getDeclaringMethod($class, $method);
+
+        return $declared instanceof FunctionLikeMetadata ? self::declaringClassName($context, $class, $method) : null;
+    }
+
+    /**
+     * The name of a parameter by position, or null when the method or the position is not known.
+     *
+     * What `ParametersAcceptorSelector::selectFromArgs(..)->getParameters()` is reached for in the original:
+     * the *name* of the parameter an argument lands in, which is what a message about a positional argument
+     * has to quote.
+     */
+    public static function parameterName(NodeAnalysisContext $context, ?string $class, ?string $method, int $index): ?string
+    {
+        $parameter = self::parameterAt($context, $class, $method, $index);
+        if (! $parameter instanceof ParameterMetadata) {
+            return null;
+        }
+
+        // `ParameterMetadata->name` keeps the sigil — `$urgent` — where PHPStan's `getName()` drops it.
+        // Measured against the real rule: the port landed on the right line with `($urgent: ...)` in a message
+        // that has to read `(urgent: ...)`, because it is telling the reader what to type.
+        return ltrim($parameter->name, '$');
+    }
+
+    /**
+     * Whether the parameter at a position is variadic.
+     *
+     * A variadic parameter has no single argument position, so every rule in the corpus that names a
+     * parameter skips one. Read from the metadata flags rather than inferred.
+     */
+    public static function parameterIsVariadic(NodeAnalysisContext $context, ?string $class, ?string $method, int $index): bool
+    {
+        return self::parameterAt($context, $class, $method, $index)?->flags->contains(MetadataFlags::VARIADIC) === true;
+    }
+
+    /**
+     * Whether a method declares a parameter at a position, which is `$parameters[$i] ?? null` being non-null.
+     *
+     * A call may pass more arguments than the method declares — into a variadic, or wrongly — so a rule that
+     * names the parameter an argument lands in has to ask this first.
+     */
+    public static function hasParameterAt(NodeAnalysisContext $context, ?string $class, ?string $method, int $index): bool
+    {
+        return self::parameterAt($context, $class, $method, $index) instanceof ParameterMetadata;
+    }
+
+    private static function parameterAt(NodeAnalysisContext $context, ?string $class, ?string $method, int $index): ?ParameterMetadata
+    {
+        if ($class === null || $method === null || $index < 0) {
+            return null;
+        }
+
+        $declared = $context->codebase->getDeclaringMethod($class, $method);
+        if (! $declared instanceof FunctionLikeMetadata) {
+            return null;
+        }
+
+        $parameter = $declared->parameters[$index] ?? null;
+
+        return $parameter instanceof ParameterMetadata ? $parameter : null;
+    }
+
+    /**
+     * The declaring class's own name, walked from the class the method was asked of.
+     *
+     * `getDeclaringMethod()` hands back the method, not the class that declares it, so the class is found by
+     * asking each ancestor in turn which one declares it directly.
+     */
+    /**
+     * Whether a named class declares or inherits a method, which is `ClassReflection::hasMethod()`.
+     *
+     * `getDeclaringMethod()` answers for the whole hierarchy, which is what PHPStan's question means — a class
+     * that inherits a method has it. Null-tolerant because the class name comes from
+     * {@see self::resolvedName()}, which answers null for `parent` and for a variable class name.
+     */
+    public static function methodExists(NodeAnalysisContext $context, ?string $class, ?string $method): bool
+    {
+        if ($class === null || $method === null || $class === '' || $method === '') {
+            return false;
+        }
+
+        return $context->codebase->getDeclaringMethod($class, $method) instanceof FunctionLikeMetadata;
+    }
+
+    /**
+     * The name of the class that declares a method, spelled as it was written.
+     *
+     * `ClassLikeMetadata->name` is **lowercased** — measured, not read: `Examples\Flags\Sender` comes back as
+     * `examples\flags\sender`. A rule comparing a declaring class against a namespace prefix therefore matched
+     * nothing, and the whole rule went silent while every other guard passed. `originalName` keeps the case.
+     */
+    private static function declaringClassName(NodeAnalysisContext $context, string $class, string $method): ?string
+    {
+        foreach ([$class, ...$context->codebase->getClassAncestors($class)] as $candidate) {
+            $own = $context->codebase->getClass($candidate);
+            if ($own instanceof ClassLikeMetadata && in_array($method, $own->methods, true)) {
+                return $own->originalName;
+            }
+        }
+
+        return null;
+    }
+
     /** Declaration kinds, by backed value: see the note in {@see enclosingClassName}. */
     private const array CLASS_LIKE_KINDS = ['Class', 'Interface', 'Trait', 'Enum'];
 
@@ -155,6 +340,29 @@ final class Support
         return $part instanceof Part && in_array($part->kind, self::NAME_KINDS, true);
     }
 
+    /**
+     * Whether a class name is one of PHP's own — `self`, `parent` or `static`.
+     *
+     * Those three arrive as `Keyword` where a written class name is an `Identifier`, which is the
+     * distinction php-parser spells `Name::isSpecialClassName()`. Rules use it as a filter: a name that
+     * resolves relative to the current class cannot be compared against a written one.
+     */
+    public static function isSpecialClassName(?Part $part): bool
+    {
+        return $part instanceof Part && $part->kind === NodeKind::Keyword;
+    }
+
+    /**
+     * Whether a class name is written relative to the current namespace, as `namespace\Foo`.
+     *
+     * Answered from the name's own text, because that prefix is what makes it relative and Mago resolves the
+     * name before a hook sees it. Compared case insensitively, as PHP treats the keyword.
+     */
+    public static function isRelativeName(?Part $part): bool
+    {
+        return $part instanceof Part && str_starts_with(strtolower($part->text), 'namespace\\');
+    }
+
     public static function isVariable(?Part $part): bool
     {
         return $part instanceof Part && $part->kind === NodeKind::Variable;
@@ -284,15 +492,44 @@ final class Support
      */
     public static function positionalArgAt(?Part $list, int $index): ?Part
     {
-        $argument = self::arguments($list)[$index] ?? null;
-        if ($argument === null) {
+        return self::argumentValue(self::argumentAt($list, $index));
+    }
+
+    /** The nth argument, still wrapped, so the questions about *how* it was written can be asked of it. */
+    public static function argumentAt(?Part $list, int $index): ?Part
+    {
+        return self::arguments($list)[$index] ?? null;
+    }
+
+    /**
+     * The expression an argument holds, unwrapped through the layers Mago's tree puts around it.
+     *
+     * The tree is `Argument > PositionalArgument > Expression > <the value>`, so stopping at the first
+     * child yields the `PositionalArgument`. Every level has the same *text*, which is why the
+     * text-based predicates (`isInt`, `nameEquals`) worked at the wrong depth while the kind-based ones
+     * (`isArray`, `isVariable`) silently never matched.
+     *
+     * A named argument nests one level deeper — `NamedArgument > LocalIdentifier, Expression` — so its name
+     * child is skipped rather than mistaken for the value.
+     */
+    public static function argumentValue(?Part $argument): ?Part
+    {
+        if (! $argument instanceof Part) {
             return null;
         }
 
         $inner = $argument;
         foreach ([[NodeKind::PositionalArgument, NodeKind::NamedArgument], [NodeKind::Expression]] as $layer) {
-            $child = $inner->firstChild();
-            if ($child === null || ! in_array($child->kind, $layer, true)) {
+            $child = null;
+            foreach ($inner->children() as $candidate) {
+                if (in_array($candidate->kind, $layer, true)) {
+                    $child = $candidate;
+
+                    break;
+                }
+            }
+
+            if ($child === null) {
                 break;
             }
 
@@ -300,6 +537,82 @@ final class Support
         }
 
         return $inner->firstChild() ?? $inner;
+    }
+
+    /**
+     * Whether an argument is written with a name — `enabled: true`.
+     *
+     * Mago spells the distinction as the node kind under `Argument`: `NamedArgument` carries a
+     * `LocalIdentifier` before its expression, `PositionalArgument` carries none. Read from the kind rather
+     * than from the text, because a positional argument's text can contain a colon of its own.
+     */
+    public static function argumentIsNamed(?Part $argument): bool
+    {
+        if (! $argument instanceof Part) {
+            return false;
+        }
+
+        foreach ([$argument, ...$argument->children()] as $candidate) {
+            if ($candidate->kind === NodeKind::NamedArgument) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether an expression is a bare constant name — what php-parser calls a `ConstFetch`.
+     *
+     * Mago splits the one PHP concept across two node kinds, probed rather than assumed: `true`, `false` and
+     * `null` are `Literal` nodes holding a `Keyword`, while any other bare name — `FOO`, `PHP_INT_MAX` — is a
+     * `ConstantAccess`. A `Literal` holding a `LiteralInteger` or a `LiteralString` is neither, so the keyword
+     * child is what has to be checked rather than the `Literal` kind alone.
+     */
+    public static function isConstantName(?Part $part): bool
+    {
+        if (! $part instanceof Part) {
+            return false;
+        }
+
+        if ($part->kind === NodeKind::ConstantAccess) {
+            return true;
+        }
+
+        return $part->kind === NodeKind::Literal && $part->firstChild()?->kind === NodeKind::Keyword;
+    }
+
+    /**
+     * The name a bare constant name is written with, or null when the expression is not one.
+     *
+     * php-parser puts a `Name` on `ConstFetch->name`, so a rule reads `->name->toLowerString()` after guarding
+     * on `instanceof ConstFetch`. Null-tolerant for the same reason the guard exists: reading the name of
+     * something that is not a constant name has no answer, and null makes every comparison against it false.
+     */
+    public static function constantNameText(?Part $part): ?string
+    {
+        return self::isConstantName($part) ? trim((string) $part?->text) : null;
+    }
+
+    /** `->toLowerString()` on a name, which rules use so a comparison ignores how the name was written. */
+    public static function lowerBytes(?string $text): ?string
+    {
+        return $text === null ? null : strtolower($text);
+    }
+
+    /**
+     * Whether an argument is spread — `...$rest`.
+     *
+     * Probed rather than assumed: a spread argument is still a `PositionalArgument`, with no separate kind and
+     * no ellipsis child to find, so the leading `...` in its text is the only thing that distinguishes it.
+     *
+     * That makes one case a known false negative rather than a silent one: an argument written with a block
+     * comment before its spread puts that comment where the `...` would be, so this answers no. A rule reached
+     * that way reports where PHPStan would not.
+     */
+    public static function argumentIsUnpacked(?Part $argument): bool
+    {
+        return $argument instanceof Part && str_starts_with(ltrim($argument->text), '...');
     }
 
     /** `$this->foo(..)`, the receiver being `$this` rather than any expression. */
@@ -393,8 +706,12 @@ final class Support
             return [];
         }
 
+        // The same ancestor problem as `enclosingClassName()`, and the same fix: an `extends` question
+        // asked from an expression target read an empty ancestor list and answered "no parent".
+        [$file, $located] = self::locate($context, $node);
+
         $declaration = null;
-        foreach ([$node, ...$context->source->getAncestors($node)] as $candidate) {
+        foreach ([$located, ...$file->getAncestors($located)] as $candidate) {
             if (in_array($candidate->kind->value, self::CLASS_LIKE_KINDS, true)) {
                 $declaration = $candidate;
                 break;
@@ -406,14 +723,14 @@ final class Support
         }
 
         $names = [];
-        foreach ($context->source->getChildren($declaration) as $child) {
+        foreach ($file->getChildren($declaration) as $child) {
             if ($child->kind !== NodeKind::Extends) {
                 continue;
             }
 
-            foreach ($context->source->getChildren($child) as $part) {
-                $resolved = $context->source->getResolvedName($part);
-                $text = $resolved instanceof ResolvedName ? $resolved->name : trim($context->source->getText($part));
+            foreach ($file->getChildren($child) as $part) {
+                $resolved = $file->getResolvedName($part);
+                $text = $resolved instanceof ResolvedName ? $resolved->name : trim($file->getText($part));
                 if ($text !== '' && $text !== 'extends') {
                     $names[] = $text;
                 }
@@ -436,6 +753,20 @@ final class Support
     public static function bytesStartWith(?string $haystack, string $needle): bool
     {
         return $haystack !== null && str_starts_with($haystack, $needle);
+    }
+
+    /**
+     * Whether a string value is one of a set.
+     *
+     * The counterpart of {@see selectorIsOneOf} for a value that is already a string rather than a node: a
+     * helper's string parameter, or the enclosing namespace. Compared case sensitively, because the sets it
+     * is asked about — function names in a constant table — are written the way PHP compares them.
+     *
+     * @param list<string> $values
+     */
+    public static function bytesIsOneOf(?string $subject, array $values): bool
+    {
+        return $subject !== null && in_array($subject, $values, true);
     }
 
     /** @param list<string> $names */
@@ -682,6 +1013,149 @@ final class Support
         return false;
     }
 
+    /**
+     * The full tree of the file being analysed, and its nodes indexed by kind and span.
+     *
+     * One file, not a map of them: `getSourceFile()` is a host round-trip on first call and `getNodes()`
+     * walks the whole tree, and a node hook asks per node, so calling them per question cost 6.4s wall and
+     * 12.8s CPU on a 676-file corpus against 0.89s / 0.77s without. Memoising the current file brings that
+     * back to 0.99s / 1.05s. A single slot keeps a long-lived worker bounded; hooks arrive grouped per
+     * file, so a second file simply replaces the first.
+     *
+     * @var array{string, SourceFile, array<string, Node>}|null
+     */
+    private static ?array $tree = null;
+
+    /**
+     * The whole file, and this node's counterpart inside it.
+     *
+     * A node hook is handed `TargetSubtree`, which embeds "each targeted node's concrete-syntax subtree".
+     * So the target's `parentId` is null and `$context->source->getAncestors()` is empty — every question
+     * about an *enclosing* declaration silently answered "none", and five emitted rules reported nothing
+     * for it while parsing, loading and running.
+     *
+     * `$context->analysis->getSourceFile()` returns the complete analysed syntax. The target cannot simply
+     * be handed to it: the same node is a different object there, with a real parent chain, so it is
+     * relocated by kind and span first.
+     *
+     * @return array{SourceFile, Node}
+     */
+    private static function locate(NodeAnalysisContext $context, Node $node): array
+    {
+        $path = $context->source->path;
+        if (self::$tree === null || self::$tree[0] !== $path) {
+            $file = $context->analysis->getSourceFile();
+            $index = [];
+            foreach ($file->getNodes() as $candidate) {
+                $key = $candidate->kind->value . ':' . $candidate->span->start . ':' . $candidate->span->end;
+                // Two nodes of one kind at one span would make the index lose an entry, and relocation
+                // would then answer with the wrong node instead of failing. Detected here, where it costs
+                // one lookup per node, rather than trusted: a span identifying a node is an assumption.
+                if (isset($index[$key])) {
+                    throw new LogicException(sprintf('Two %s nodes share offsets %d-%d in %s, so a span does not identify one.', $candidate->kind->value, $candidate->span->start, $candidate->span->end, $file->path));
+                }
+
+                $index[$key] = $candidate;
+            }
+
+            self::$tree = [$path, $file, $index];
+        }
+
+        [, $file, $index] = self::$tree;
+        $key = $node->kind->value . ':' . $node->span->start . ':' . $node->span->end;
+        $matches = isset($index[$key]) ? [$index[$key]] : [];
+
+        // Neither branch below has been seen across the corpus. They throw rather than picking a candidate
+        // because guessing here is how the original bug behaved: an unanswerable question that answers
+        // anyway is invisible, and this method exists to stop exactly that.
+        if ($matches === []) {
+            throw new LogicException(sprintf(
+                'No %s node at offsets %d-%d in the full tree of %s.',
+                $node->kind->value,
+                $node->span->start,
+                $node->span->end,
+                $file->path,
+            ));
+        }
+
+        return [$file, $matches[0]];
+    }
+
+    /**
+     * The namespace the analysed file declares, or null when it declares none.
+     *
+     * `$scope->getNamespace()` has no direct equivalent in the SDK. The file's own text does: `SourceFile`
+     * carries `contents` under the `SourceText` requirement, and a PHP file declares at most one namespace
+     * before any declaration. Read from the text rather than from the node tree because the answer is a
+     * property of the file, not of the target — a rule asks it from an expression deep inside a method.
+     *
+     * The resolved-name route considered instead — taking an unqualified call's resolved name and dropping
+     * its last segment — fails for an already-qualified name, which is why it is not used.
+     */
+    public static function enclosingNamespace(NodeAnalysisContext $context): ?string
+    {
+        if (preg_match('/^\\s*namespace\\s+([^;{\\s]+)\\s*[;{]/m', $context->source->contents, $matches) !== 1) {
+            return null;
+        }
+
+        return trim($matches[1], '\\');
+    }
+
+    /**
+     * The items of a property declaration: `protected $a = 1, $b = 2;` has two.
+     *
+     * The tree, read from a probe rather than assumed: `Property` wraps a `PlainProperty`, which holds one
+     * `PropertyItem` per declared name. php-parser calls the same list `$node->props`.
+     *
+     * @return list<Part>
+     */
+    public static function propertyItems(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        $node = self::node($subject);
+        if (! $node instanceof Node) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($context->source->getChildren($node) as $child) {
+            // A property declaration may be plain or hooked; both hold the items.
+            if (! in_array($child->kind->value, ['PlainProperty', 'HookedProperty'], true)) {
+                continue;
+            }
+
+            foreach ($context->source->getChildren($child) as $item) {
+                if ($item->kind === NodeKind::PropertyItem) {
+                    $items[] = self::part($context, $item);
+                }
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * A property item's name, without the `$`.
+     *
+     * `$with = ['author']` gives `with`. The name is a `DirectVariable` under a `PropertyConcreteItem` for an
+     * initialised property, or directly under the item for an uninitialised one, so both are searched.
+     */
+    public static function propertyItemName(?Part $item): ?string
+    {
+        if (! $item instanceof Part) {
+            return null;
+        }
+
+        foreach ([$item, ...$item->children()] as $candidate) {
+            foreach ($candidate->children() as $child) {
+                if ($child->kind === NodeKind::DirectVariable) {
+                    return ltrim($child->text, '$');
+                }
+            }
+        }
+
+        return null;
+    }
+
     /** The enclosing class-like declaration's name, or null at top level. */
     public static function enclosingClassName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
@@ -690,10 +1164,12 @@ final class Support
             return null;
         }
 
+        [$file, $located] = self::locate($context, $node);
+
         // The node itself counts. A rule hooked on the class declaration is handed that declaration, so
         // walking only ancestors finds the *enclosing* class and returns null at top level, which made
         // every class-level name test silently fail.
-        foreach ([$node, ...$context->source->getAncestors($node)] as $ancestor) {
+        foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
             // Compared by backed value, not by case or by name. `NodeKind::Class` does not reference
             // the case at all, because PHP special-cases `::class` and silently yields the class-name
             // string, so every comparison against it is true and this method always returned null. The
@@ -702,11 +1178,11 @@ final class Support
                 continue;
             }
 
-            foreach ($context->source->getChildren($ancestor) as $child) {
+            foreach ($file->getChildren($ancestor) as $child) {
                 if ($child->kind === NodeKind::LocalIdentifier || $child->kind === NodeKind::Identifier) {
-                    $resolved = $context->source->getResolvedName($child);
+                    $resolved = $file->getResolvedName($child);
 
-                    return $resolved instanceof ResolvedName ? $resolved->name : trim($context->source->getText($child));
+                    return $resolved instanceof ResolvedName ? $resolved->name : trim($file->getText($child));
                 }
             }
         }

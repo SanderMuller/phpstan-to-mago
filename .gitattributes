@@ -40,5 +40,6 @@ rector.php export-ignore
 tests/ export-ignore
 tests/Feature/ export-ignore
 tests/Fixtures/ export-ignore
+tests/Support/ export-ignore
 tests/Unit/ export-ignore
 # <<< package-boost (managed) <<<

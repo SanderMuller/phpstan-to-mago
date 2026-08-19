@@ -34,6 +34,7 @@ final class TranspilesToRustTest extends TestCase
     {
         yield 'guard chain' => ['ForbiddenStaticConstFetchRule'];
         yield 'loop with a formatted message' => ['UppercaseConstantRule'];
+        yield 'message with a quoted class name' => ['QuotedClassNameMessageRule'];
     }
 
     #[DataProvider('supportedRules')]

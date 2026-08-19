@@ -1,0 +1,63 @@
+includes:
+    - nested.neon
+
+parametersSchema:
+    fixture: structure([
+        namespaces: listOf(string())
+        limit: int()
+    ])
+
+parameters:
+    fixture:
+        namespaces:
+            - App
+            - Tests
+        limit: 3
+
+services:
+    -
+        class: Fixture\Rules\ConfiguredRule
+        arguments:
+            namespaces: %fixture.namespaces%
+            limit: %fixture.limit%
+            reflectionProvider: @reflectionProvider
+        tags:
+            - phpstan.rules.rule
+    -
+        class: Fixture\Rules\ServiceBackedRule
+        arguments:
+            namespaces: %fixture.namespaces%
+            limit: %fixture.limit%
+            reflectionProvider: @reflectionProvider
+        tags:
+            - phpstan.rules.rule
+    -
+        class: Fixture\Rules\DerivedPropertyRule
+        arguments:
+            namespaces: %fixture.namespaces%
+            limit: %fixture.limit%
+            reflectionProvider: @reflectionProvider
+        tags:
+            - phpstan.rules.rule
+    -
+        class: Fixture\Rules\DerivedFromServiceRule
+        arguments:
+            namespaces: %fixture.namespaces%
+            limit: %fixture.limit%
+            reflectionProvider: @reflectionProvider
+        tags:
+            - phpstan.rules.rule
+    -
+        class: Fixture\Rules\ImpureDerivationRule
+        arguments:
+            namespaces: %fixture.namespaces%
+            limit: %fixture.limit%
+            reflectionProvider: @reflectionProvider
+        tags:
+            - phpstan.rules.rule
+    -
+        class: Fixture\Rules\LiteralArgumentRule
+        arguments:
+            suffix: 'Repository'
+        tags:
+            - phpstan.rules.rule

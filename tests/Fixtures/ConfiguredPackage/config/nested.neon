@@ -1,0 +1,12 @@
+parameters:
+    fixture:
+        limit: 1
+        deep: true
+
+services:
+    -
+        class: Fixture\Rules\NestedOnlyRule
+        arguments:
+            deep: %fixture.deep%
+        tags:
+            - phpstan.rules.rule

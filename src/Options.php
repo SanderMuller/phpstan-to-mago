@@ -29,6 +29,7 @@ final readonly class Options
         public string $target,
         public bool $survey,
         public ?string $examplesDir,
+        public bool $unverifiedAggregates = false,
     ) {}
 
     /**
@@ -42,9 +43,12 @@ final readonly class Options
         $target = Transpiler::$target;
         $survey = false;
         $examplesDir = null;
+        $unverifiedAggregates = false;
 
         foreach ($argv as $argument) {
-            if ($argument === '--survey') {
+            if ($argument === '--unverified-aggregates') {
+                $unverifiedAggregates = true;
+            } elseif ($argument === '--survey') {
                 $survey = true;
             } elseif (str_starts_with($argument, '--target=')) {
                 $target = self::target(substr($argument, strlen('--target=')));
@@ -55,7 +59,7 @@ final readonly class Options
             }
         }
 
-        return new self($paths, $target, $survey, $examplesDir);
+        return new self($paths, $target, $survey, $examplesDir, $unverifiedAggregates);
     }
 
     public function outDir(string $outRoot): string
