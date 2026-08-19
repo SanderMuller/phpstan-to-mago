@@ -14,7 +14,7 @@ parameter carrying the rule package's own default, read from that package's `ext
 that derives one from configured values, literals and a closed set of pure functions is carried verbatim, and
 only by the PHP target.
 
-Surveyed with the tool: `symplify/phpstan-rules` 20 of 96, `hihaho/phpstan-rules` 3 of 20,
+Surveyed with the tool: `symplify/phpstan-rules` 21 of 96, `hihaho/phpstan-rules` 3 of 20,
 `tomasvotruba/type-coverage` 0 of 10, `tomasvotruba/cognitive-complexity` 0 of 3. Every emitted rule is gated
 on actually running, per `docs/dogfooding.md`, which supersedes the frontier analysis below.
 
@@ -52,13 +52,11 @@ and the point of it is that it beat a guess.
 
 | rules | refusal |
 |--:|:--|
-| 9 | `->getParams()` |
 | 5 | `->getMethods()` |
-| 4 | `instanceof Identifier` |
-| 4 | `guard body is neither return [] nor continue` |
-| 3 | `Expr_New` · `list contains something other than a string literal` · `empty-array comparison against a expr` · unwired constructor parameter |
+| 4 | `instanceof Identifier` · `guard body is neither return [] nor continue` · `Expr_New` |
+| 3 | `no iteration mapped for a expr` · `list contains something other than a string literal` · `empty-array comparison against a expr` · `->findInstanceOf()` · unwired constructor parameter |
 
-**Eight of the nine `->getParams()` refusals are one line in one file.**
+**The `->getParams()` cluster is closed.** It was nine rules, and eight of them were one line in one file:
 `Symfony/NodeAnalyzer/SymfonyClosureDetector.php:15` is a shared detector that every
 `Rules/Symfony/ConfigClosure/*` rule gates on:
 
@@ -72,15 +70,35 @@ public static function detect(Closure $closure): bool
 }
 ```
 
-So the next shape is **a closure and its declared parameters**, not nine separate gaps. Those rules have
-`getNodeType(): Closure::class`, `Closure::class` is not in `HOOKS` at all, and Mago has `NodeKind::Closure`. The
-pieces: the hook, `getParams()` on a closure, `[0]` on that list, and a parameter's written type — which the
-`hint`/`hint-option` machinery already answers for a property's type, so that may be reuse rather than new work.
-One thing genuinely new: `detect()` is a **static call into another class**, where helper inlining so far follows
-`$this->` calls.
+That is one gap behind ten rules, and it is done: `Closure::class` is a hook (PHP target only, like the nullsafe
+one), `getParams()` navigates the `FunctionLikeParameterList`, and a parameter's written type reuses the existing
+`hint`/`hint-option` machinery. Two things predicted about that work were wrong, and both are worth keeping:
 
-The `->getMethods()` cluster is the same idea one level up — a class-like declaration's own methods, sometimes
-through a shared analyzer (`Doctrine/DoctrineEventSubscriberAnalyzer.php:15`) and sometimes in the rule body.
+- **The static call needed nothing.** `detect()` is `SymfonyClosureDetector::detect($node)`, and this was written
+  up as genuinely new because helper inlining follows `$this->` calls — but `staticHelperPredicate()` already ends
+  in "any other static helper whose source we can find is inlined", so it was already handled. Read the code
+  before calling something new.
+- **`hintIsName()` was wider than the question it answered.** It meant "present, and not a union or intersection",
+  where php-parser's `$param->type instanceof Name` distinguishes a class-like from a builtin — `int` is an
+  `Identifier` there, not a `Name`. Mago's discriminator is the `Hint`'s child kind, probed across ten written
+  forms, with `self`/`static`/`parent` splitting off the `Keyword` row because php-parser counts those as names
+  while `array` and `callable` are `Identifier`. Nothing emitted depended on the wider reading.
+
+Unblocking the detector opened the gate for all ten rules, and nine then refused on their own bodies — which is
+the expected shape of this kind of win, not a disappointment. `NoBundleResourceConfigRule` emits and agrees, and
+the rest are now specific: `->findInstanceOf()` (a `NodeFinder` subtree search, 3 rules), `Expr_New`,
+`Expr_ConstFetch`, `->resolveClassConstructorNamesToTypes()`.
+
+**Two holes in the gates showed up while doing it, both now closed.** `Support::fileContains()` and
+`fileStartsWith()` were mapped by the transpiler and never written, so a rule using
+`str_contains($scope->getFile(), ..)` emitted a plugin that loaded and then killed the worker. The per-fixture
+helper check could not see it because no fixture asked, and the fires-gate could not either because it flattened
+examples into one directory while that rule's guard tests the file's *path*. So the helper check now runs over the
+whole vendored corpus, and the gate copies examples keeping their directories.
+
+The `->getMethods()` cluster is the same idea as `getParams()` one level up — a class-like declaration's own
+methods, sometimes through a shared analyzer (`Doctrine/DoctrineEventSubscriberAnalyzer.php:15`) and sometimes in
+the rule body. It is now the largest single cluster, at 5.
 
 ### What this replaced, and why the note stays
 

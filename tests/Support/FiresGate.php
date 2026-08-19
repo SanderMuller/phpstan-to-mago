@@ -96,7 +96,7 @@ final readonly class FiresGate
      */
     public function examples(string $rule, string $kind): array
     {
-        $paths = glob($this->examplesRoot . '/' . $rule . '/' . $kind . '*.php');
+        $paths = glob($this->examplesRoot . '/' . $rule . '/{,*/,*/*/,*/*/*/,*/*/*/*/}' . $kind . '*.php', GLOB_BRACE);
 
         return array_map(basename(...), $paths === false ? [] : $paths);
     }
@@ -183,9 +183,19 @@ final readonly class FiresGate
             '{class}' => $ruleClass,
         ]) . "\n");
 
-        $examples = glob($this->examplesRoot . '/' . $rule . '/*.php');
+        // Copied keeping any directories the example sits in, because a rule may ask about its own path:
+        // `NoBundleResourceConfigRule` reports only for a file under `Resources/config`, so a flat sandbox could
+        // never make it fire and the pair would look like a dead rule. Findings are still compared by base name,
+        // so the names have to stay unique within a rule's examples.
+        $root = $this->examplesRoot . '/' . $rule;
+        $examples = glob($root . '/{,*/,*/*/,*/*/*/,*/*/*/*/}*.php', GLOB_BRACE);
         foreach ($examples === false ? [] : $examples as $example) {
-            copy($example, $sandbox . '/src/' . basename($example));
+            $target = $sandbox . '/src/' . ltrim(substr($example, strlen($root)), '/');
+            if (! is_dir(dirname($target))) {
+                mkdir(dirname($target), 0o777, true);
+            }
+
+            copy($example, $target);
         }
 
         // The stubs sit beside `src`, not inside it: mago needs them in its source paths to resolve

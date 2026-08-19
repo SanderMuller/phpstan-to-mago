@@ -179,7 +179,7 @@ Three rule packages, surveyed with the tool rather than from memory:
 
 | package | rules | emit | refused |
 |:--|--:|--:|--:|
-| `symplify/phpstan-rules` | 96 | 20 | 76 |
+| `symplify/phpstan-rules` | 96 | 21 | 75 |
 | `hihaho/phpstan-rules` | 20 | 3 | 17 |
 | `tomasvotruba/type-coverage` | 10 | 0 | 10 |
 | `tomasvotruba/cognitive-complexity` | 3 | 0 | 3 |
@@ -201,7 +201,8 @@ Reflection is translated at the use site rather than passed through. A rule can 
 at a call site — or read the class off the receiver's inferred type, with `null` stripped first — ask whether
 that class is known, ask for the method's parameter at a position, and put that parameter's name in its message,
 all from Mago's codebase metadata, since there is no reflection object to hand a plugin. `$obj?->m(..)` is a
-separate hook, because Mago makes it a separate node. A package that factors its detection into a producer handing back a `{...}` record and a consumer
+separate hook, because Mago makes it a separate node. A rule can also target a closure and ask about its declared
+parameters and their written types, which is how the Symfony config-file rules recognise a config file at all. A package that factors its detection into a producer handing back a `{...}` record and a consumer
 reading one field out of it is followed through: the producer's guards become the rule's guards, and the record
 never exists at analysis time.
 

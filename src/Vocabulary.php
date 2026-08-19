@@ -8,6 +8,7 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
@@ -63,6 +64,10 @@ final class Vocabulary
         ClassConst::class => ['trait' => 'ClassLikeMemberHook', 'method' => 'on_class_like_constant', 'node' => 'ClassLikeConstant', 'kind' => 'ClassLikeConstant', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata'],
         // The *statement*, so one finding per declaration however many items it declares.
         Const_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'adapter' => 'as_global_constant', 'kind' => 'Constant'],
+        // A closure, which the Symfony config rules target: a config file *is* a closure taking a
+        // `ContainerConfigurator`, so the whole family gates on the declaration itself. PHP target only, for the
+        // same reason as the nullsafe hook — the Rust trait for it is not pinned down by anything in the corpus.
+        Closure::class => ['trait' => 'ClosureHook', 'method' => 'after_closure', 'node' => 'Closure', 'kind' => 'Closure', 'phpOnly' => true],
     ];
 
     /**
@@ -134,6 +139,11 @@ final class Vocabulary
     public const array KIND_FIELDS = [
         'property' => [
             'type' => ['support::property_hint({base})', 'hint-option', 'Support::propertyHint($context, {base})'],
+        ],
+        // A parameter of a declaration, as written — not the metadata a reflection lookup returns. `->type` is
+        // the hint, which is absent for an untyped parameter, so it goes through the option-tolerant kind.
+        'param-decl' => [
+            'type' => [self::PHP_ONLY, 'hint-option', 'Support::declaredParamHint({base})'],
         ],
         // An argument still wrapped, so how it was *written* can be asked of it. php-parser puts all three on
         // one `Arg`: `->value` is the expression, `->name` is set when the call names the parameter, and

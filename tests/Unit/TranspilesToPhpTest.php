@@ -60,6 +60,8 @@ final class TranspilesToPhpTest extends TestCase
         // kind of its own in Mago and the `MethodCall` hook does not fire for it.
         yield 'a class read from the receiver type' => ['PositionalFlagOnReceiverRule'];
         yield 'the same, on a nullsafe call' => ['PositionalFlagOnNullsafeReceiverRule'];
+        // A closure and its declared parameters, which every Symfony config-closure rule gates on.
+        yield 'a closure with one class-typed parameter' => ['ConfigClosureRule'];
     }
 
     #[DataProvider('supportedRules')]
@@ -113,6 +115,47 @@ final class TranspilesToPhpTest extends TestCase
             $this->assertTrue(method_exists(Support::class, $helper), "Emitted plugin for {$rule} calls Support::{$helper}(), which does not exist.");
             $this->assertTrue((new ReflectionMethod(Support::class, $helper))->isPublic(), "Support::{$helper}() is not public.");
         }
+    }
+
+    /**
+     * The same check over every rule in the vendored corpus that emits, not only the fixtures.
+     *
+     * A fixture is written to pin a shape, so it exercises the helpers that shape needs — and nothing else. The
+     * corpus asks for whatever it asks for: `Support::fileContains()` and `fileStartsWith()` were mapped by the
+     * transpiler and never written, so a rule using `str_contains($scope->getFile(), ..)` emitted a plugin that
+     * loaded and then killed the worker with "Call to undefined method". No fixture asked, so the per-fixture gate
+     * above could not see it, and the corpus rule that did ask was not reaching the fires-gate either, because the
+     * sandbox flattened its examples and its guard tests the file's path. The gate copies directories now, so that
+     * second hole is closed too — but this check is the one that does not depend on anybody writing an example.
+     *
+     * Cheap enough to run over the whole corpus: this transpiles, it does not analyse.
+     */
+    public function test_every_helper_the_corpus_calls_exists(): void
+    {
+        $rules = glob(dirname(__DIR__, 2) . '/vendor/symplify/phpstan-rules/src/Rules/{,*/,*/*/}*Rule.php', GLOB_BRACE);
+        $emitted = 0;
+
+        foreach ($rules === false ? [] : $rules as $file) {
+            try {
+                $plugin = (new Transpiler($file))->transpile()['rust'];
+            } catch (Refusal) {
+                continue; // a refusal is a documented outcome, not a failure
+            }
+
+            ++$emitted;
+            preg_match_all('/Support::([a-zA-Z]+)\(/', $plugin, $matches);
+            foreach (array_unique($matches[1]) as $helper) {
+                $this->assertTrue(
+                    method_exists(Support::class, $helper),
+                    basename($file) . " emits a call to Support::{$helper}(), which does not exist. The plugin would "
+                    . 'load and then kill the worker.',
+                );
+            }
+        }
+
+        // Guards the guard: if the glob or the transpiler stops producing plugins, the loop above passes by
+        // never looking, which is the failure mode this whole file exists to rule out.
+        $this->assertGreaterThan(15, $emitted, 'The corpus produced almost no plugins, so this proved nothing.');
     }
 
     public function test_refuses_a_construct_outside_the_vocabulary(): void

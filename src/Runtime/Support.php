@@ -974,10 +974,98 @@ final class Support
         return $out;
     }
 
-    /** A hint that is a plain name: neither a union nor an intersection, and present. */
+    /**
+     * A hint that is a class-like *name*, which is what php-parser's `$param->type instanceof Name` asks.
+     *
+     * Not "a hint that is present and not a union" — that was the earlier reading, and it is wider than the
+     * question: php-parser gives an `Identifier` for a builtin, so a rule asking `instanceof Name` is
+     * distinguishing a class from `int`. Nothing emitted depended on the wider version.
+     *
+     * Mago's discriminator, probed across ten written forms:
+     *
+     * | written                          | `Hint` child      | resolves |
+     * |----------------------------------|-------------------|----------|
+     * | `Widget`, `\Root\Deep`, an import | `Identifier`      | to a FQN |
+     * | `int`, `iterable`, `mixed`       | `LocalIdentifier` | no       |
+     * | `array`, `callable`              | `Keyword`         | no       |
+     * | `self`, `static`, `parent`       | `Keyword`         | no       |
+     * | `?Widget`                        | `NullableHint`    | no       |
+     * | `string\|int`                    | `UnionHint`       | no       |
+     *
+     * So an `Identifier` child is a class-like name. The `Keyword` row splits, because php-parser does: `self`,
+     * `static` and `parent` are `Name` there while `array` and `callable` are `Identifier`, and a vocabulary that
+     * answered no for `self` would be *narrower* than the rule — the direction that makes a port silently miss.
+     */
     public static function hintIsName(?Part $hint): bool
     {
-        return $hint instanceof Part && ! self::hintIsUnion($hint) && ! self::hintIsIntersection($hint);
+        if (! $hint instanceof Part) {
+            return false;
+        }
+
+        $inner = $hint->firstChild();
+        if (! $inner instanceof Part) {
+            return false;
+        }
+
+        if ($inner->kind === NodeKind::Identifier) {
+            return true;
+        }
+
+        return $inner->kind === NodeKind::Keyword
+            && in_array(strtolower(trim($inner->text)), ['self', 'static', 'parent'], true);
+    }
+
+    /**
+     * The parameters a function-like declares, in order.
+     *
+     * `FunctionLikeParameterList` holds one `FunctionLikeParameter` each, and a closure with no parameters still
+     * has the list — so an empty list and a missing one are the same answer, which is what `getParams()` gives.
+     *
+     * @return list<Part>
+     */
+    public static function declaredParams(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        $node = self::node($subject);
+        if (! $node instanceof Node) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($context->source->getChildren($node) as $child) {
+            if ($child->kind !== NodeKind::FunctionLikeParameterList) {
+                continue;
+            }
+
+            foreach ($context->source->getChildren($child) as $parameter) {
+                if ($parameter->kind === NodeKind::FunctionLikeParameter) {
+                    $out[] = self::part($context, $parameter);
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /** The nth declared parameter, or null when the declaration has no such position. */
+    public static function declaredParamAt(NodeAnalysisContext $context, Part|Node|null $subject, int $index): ?Part
+    {
+        return self::declaredParams($context, $subject)[$index] ?? null;
+    }
+
+    /** The written type of a declared parameter, or null when it has none. */
+    public static function declaredParamHint(?Part $parameter): ?Part
+    {
+        if (! $parameter instanceof Part) {
+            return null;
+        }
+
+        foreach ($parameter->children() as $child) {
+            if ($child->kind === NodeKind::Hint) {
+                return $child;
+            }
+        }
+
+        return null;
     }
 
     /** Whether a name is written entirely in upper case, as a constant convention check. */
@@ -1036,6 +1124,25 @@ final class Support
     public static function fileEndsWith(NodeAnalysisContext $context, string $suffix): bool
     {
         return str_ends_with($context->source->path, $suffix);
+    }
+
+    /**
+     * The other two questions a rule asks about the analysed file's path.
+     *
+     * The transpiler has always mapped `str_starts_with($scope->getFile(), ..)` and `str_contains(..)` onto these
+     * names, and neither existed — so a rule that asked either emitted a plugin that loaded and then killed the
+     * worker with "Call to undefined method". No shipped rule had asked yet, which is the only reason it went
+     * unnoticed, and `TranspilesToPhpTest` could not see it because that gate walks the fixture rules and none of
+     * them asked either. It now walks the whole corpus.
+     */
+    public static function fileStartsWith(NodeAnalysisContext $context, string $prefix): bool
+    {
+        return str_starts_with($context->source->path, $prefix);
+    }
+
+    public static function fileContains(NodeAnalysisContext $context, string $needle): bool
+    {
+        return str_contains($context->source->path, $needle);
     }
 
     /** @param list<string> $suffixes */

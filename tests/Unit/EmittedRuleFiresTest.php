@@ -34,6 +34,11 @@ final class EmittedRuleFiresTest extends TestCase
 
     protected function setUp(): void
     {
+        // Set explicitly rather than inherited: the target is static, so whichever test ran last decides it, and
+        // a rule whose hook only the PHP target carries then refuses here instead of emitting.
+        Transpiler::$target = 'php';
+        Transpiler::$survey = false;
+
         $this->gate = new FiresGate(
             dirname(__DIR__, 2),
             self::EXAMPLES,

@@ -4407,6 +4407,12 @@ PHP;
     {
         $subject = $this->resolve($count->getArgs()[0]->value, $line);
 
+        // A declaration's parameter list is a plain PHP list, so its length is its length — any number is a
+        // meaningful comparison, unlike the sole-receiver question below.
+        if ($subject['kind'] === 'param-decls') {
+            return 'count(' . $this->operand($subject) . ') === ' . $this->intLiteral($right, $line);
+        }
+
         if ($subject['kind'] === 'sole-class') {
             if ($this->intLiteral($right, $line) !== 1) {
                 throw new Refusal('a receiver-class count other than one', $line);
@@ -4750,6 +4756,28 @@ PHP;
             ];
         }
 
+        // `getParams()` on a declaration under analysis — the parameters as *written*, not the metadata a
+        // reflection lookup returns. A Symfony config file is a closure taking a `ContainerConfigurator`, so the
+        // whole config-closure family gates on this list and on the first parameter's written type.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getParams'
+        ) {
+            $of = $this->resolve($expr->var, $line);
+            if ($of['kind'] !== 'hook-node') {
+                throw new Refusal("getParams() of a {$of['kind']} rather than of the declaration under analysis", $line);
+            }
+
+            if (self::$target !== 'php') {
+                throw new Refusal('getParams(), which only the PHP target carries', $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'param-decls',
+                'php' => 'Support::declaredParams($context, $node)',
+            ];
+        }
+
         // `getVariants()` on a method handle. PHPStan models a function-like as one or more *variants* — a
         // stubbed overload set — and Mago does not: `FunctionLikeMetadata` carries exactly one `parameters`
         // list. So the variant list stands for the handle itself, and asking for its single member gives the
@@ -4812,6 +4840,16 @@ PHP;
             // takes it tolerates.
             if ($list['kind'] === 'sole-class') {
                 return ['rust' => self::PHP_ONLY, 'kind' => 'named-class', 'php' => $this->operand($list)];
+            }
+
+            // `$closure->getParams()[0]` — a position in a declaration's parameter list.
+            if ($list['kind'] === 'param-decls') {
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'param-decl',
+                    'key' => $this->exprKey($expr),
+                    'php' => 'Support::declaredParamAt($context, $node, ' . $this->intLiteral($expr->dim, $line) . ')',
+                ];
             }
 
             // `$variants[0]` is the one variant Mago has, so the index says nothing and the handle carries
