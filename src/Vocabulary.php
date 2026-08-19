@@ -107,6 +107,11 @@ final class Vocabulary
     /**
      * Where a PHPStan node's property lives on the Mago node, per node kind.
      *
+     * A PHP template navigates from `{base}`, the node being asked, rather than from the hook's own `$node`. The
+     * same field means the same thing wherever the node came from — a rule that finds a method call in a subtree
+     * asks it for its arguments exactly as a rule hooked on one does — and hardcoding `$node` made every one of
+     * these answer about the wrong node as soon as the subject was not the hook's.
+     *
      * [rust expression, descriptor kind]. `name-selector` and `name-expr` differ because a method
      * name is a member selector while a function name is an arbitrary expression — the same PHPStan
      * source (`$node->name`) compiles to different Rust.
@@ -117,20 +122,20 @@ final class Vocabulary
     public const array FIELDS = [
         'MethodCall' => [
             'var' => ['node.object', 'expr', 'Support::nthExpression($context, $node, 0)'],
-            'name' => ['&node.method', 'name-selector', 'Support::selector($context, $node)'],
+            'name' => ['&node.method', 'name-selector', 'Support::selector($context, {base})'],
         ],
         // The same three children in the same order, which the CST probe confirmed rather than assumed: there
         // is no extra node for the `?->` token to shift the positions.
         'NullSafeMethodCall' => [
             'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
-            'name' => [self::PHP_ONLY, 'name-selector', 'Support::selector($context, $node)'],
+            'name' => [self::PHP_ONLY, 'name-selector', 'Support::selector($context, {base})'],
         ],
         'FunctionCall' => [
             'name' => ['node.function', 'name-expr', 'Support::nthExpression($context, $node, 0)'],
         ],
         'StaticMethodCall' => [
-            'class' => ['node.class', 'name-expr', 'Support::classPart($context, $node)'],
-            'name' => ['&node.method', 'name-selector', 'Support::selector($context, $node)'],
+            'class' => ['node.class', 'name-expr', 'Support::classPart($context, {base})'],
+            'name' => ['&node.method', 'name-selector', 'Support::selector($context, {base})'],
         ],
         'Assignment' => [
             // Both sides are an `Expression` child, told apart only by position.
@@ -147,19 +152,24 @@ final class Vocabulary
             // Rust reads the field; the PHP SDK's Node has no fields, so the class part is found by
             // walking children. A class-constant access has an Identifier for the class and a
             // ClassLikeConstantSelector for the constant, so the first Identifier is the class.
-            'class' => ['node.class', 'name-expr', 'Support::classPart($context, $node)'],
+            'class' => ['node.class', 'name-expr', 'Support::classPart($context, {base})'],
         ],
         'ClassLikeConstant' => [
-            'consts' => ['node.items', 'const-items', 'Support::constantItems($context, $node)'],
+            'consts' => ['node.items', 'const-items', 'Support::constantItems($context, {base})'],
         ],
         'Property' => [
-            'type' => ['support::property_hint(node)', 'hint-option', 'Support::propertyHint($context, $node)'],
+            'type' => ['support::property_hint(node)', 'hint-option', 'Support::propertyHint($context, {base})'],
         ],
         'Method' => [
             'name' => ['&node.name', 'local-name'],
         ],
         'Instantiation' => [
-            'class' => ['node.class', 'name-expr', 'Support::classPart($context, $node)'],
+            'class' => ['node.class', 'name-expr', 'Support::classPart($context, {base})'],
+        ],
+        // `return;` has no expression child at all, which is what makes `$return->expr === null` the question a
+        // rule asks — probed across `return null;`, `return 1 + 2;` and a bare `return;`.
+        'Return' => [
+            'expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
         ],
     ];
 

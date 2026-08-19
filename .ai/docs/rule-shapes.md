@@ -195,8 +195,33 @@ already-proven one, so they share its wording, and `RequiredOnlyInAbstractRule`'
 proof — an interface and a trait each declaring what the rule reports on a class. The guard that would have
 filtered them is dropped, so if the hook fired for either, the port would report.
 
-Which leaves the structural half of this shape untouched and named: making navigation relative to an arbitrary
-node, rather than to the hook's kind, is one change through a much-used path. It is the next pass.
+### The structural half, done
+
+Field navigation is now relative to the node being asked rather than to the hook's kind. Three parts:
+
+- **Every PHP template in `FIELDS` navigates from `{base}`**, not from a hardcoded `$node`. The same field means the
+  same thing wherever the node came from — a rule that finds a method call in a subtree asks it for its arguments
+  exactly as a rule hooked on one does. Behaviour-preserving: the snapshots are byte-identical, because the hook's
+  own path substitutes `$node`.
+- **A descriptor carries `as`** when its node kind is known from where it came. What a subtree search was asked for
+  is what it found, so every found node knows its kind, and a loop over them passes that to each item. Only when
+  the search names one kind: `ClassLike` covers four, and a node that could be any of them has no single set of
+  fields.
+- **`getArgs()` takes its receiver**, through the direct path and through the `$args[0]` binding path, which was
+  reading the hook's argument list whatever the rule wrote.
+
+That took the shape's refusals from 22 to 14 and **moved no rules**, which is the second pass in a row to move
+none. `AvoidFeatureSetAttributeInRectorRule` and `NoOnlyNullReturnInRefactorRule` both now refuse deep in their own
+bodies rather than on navigation, which is the point — but a frontier that reads better is not a rule that runs, and
+two passes of that is a signal to stop and get the work reviewed rather than start a third.
+
+What surfaced on the way: the fold added in the previous commit exposed a third predicate returning a bare `true`
+with no reason — the enclosing-class test inside a declaration hook, which cannot be false there. Three more rules
+now refuse with `guard translates to a constant with no reason it cannot hold`, each of which needs a *proved*
+reason before it can be dropped, and that gate is what stops the drops being asserted instead.
+
+Two new clusters, both further along than navigation: `instanceof ConstantStringType on a type` (3 rules, which
+needs the SDK's `ArgumentTypes`) and `no iteration mapped for a subtree` (3).
 
 ### What this replaced, and why the note stays
 

@@ -69,7 +69,7 @@ use PHPStan\Type\ObjectType;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 
 /**
- * @phpstan-type Descriptor array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, methodPhp?: string, indexPhp?: string, reason?: string, record?: array<string, array{rust: string, kind: string, php?: string, reason?: string}>}
+ * @phpstan-type Descriptor array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, methodPhp?: string, indexPhp?: string, reason?: string, as?: string, record?: array<string, array{rust: string, kind: string, php?: string, reason?: string}>}
  * @phpstan-type RecordFields array<string, array{rust: string, kind: string, php?: string, reason?: string}>
  */
 final class Transpiler
@@ -1907,7 +1907,7 @@ PHP;
             'rust' => $bound,
             'kind' => Vocabulary::ITERABLES[$subject['kind']]['item'],
             'php' => '$' . $bound,
-        ];
+        ] + (isset($subject['as']) ? ['as' => $subject['as']] : []);
 
         try {
             $predicate = $this->anyBody($body[0], $depth);
@@ -3459,6 +3459,11 @@ PHP;
         $savedLocals = $this->locals;
         $savedLoop = $this->inLoop;
         $this->locals[$stmt->valueVar->name] = ['rust' => $variable, 'kind' => $iterable['item']];
+        if (isset($subject['as'])) {
+            // Every item of a list of found nodes is of the kind that was searched for.
+            $this->locals[$stmt->valueVar->name]['as'] = $subject['as'];
+        }
+
         if (self::$target === 'php') {
             $this->locals[$stmt->valueVar->name]['php'] = '$' . $variable;
         }
@@ -3884,10 +3889,10 @@ PHP;
         // $x = <args>[N]  or  $x = <args>[N]->value  or  $x = $node->getArgs()[N]
         $argIndex = $this->argIndexOf($value);
         if ($argIndex !== null) {
-            [$index, $unwrapped] = $argIndex;
+            [$index, $unwrapped, $list] = $argIndex;
             $bind = 'arg' . ($index === 0 ? '' : (string) $index) . '_value';
             $pad = str_repeat(' ', $this->indent);
-            $this->lines[] = new Stm('bind-arg', ['bind' => $bind, 'args' => $this->argListPath($line), 'index' => $index], $this->indent);
+            $this->lines[] = new Stm('bind-arg', ['bind' => $bind, 'args' => $this->operand($list), 'index' => $index], $this->indent);
             $this->locals[$name] = ['rust' => $bind, 'kind' => $unwrapped ? 'expr' : 'arg', 'key' => 'arg' . $index];
             if (self::$target === 'php') {
                 // The binding is a PHP variable, so later reads of the local render as one.
@@ -3977,6 +3982,7 @@ PHP;
     }
 
     /** `$node->getArgs()[N]`, `$args[N]`, and either of those with `->value`. */
+    /** @return array{int, bool, Descriptor}|null */
     private function argIndexOf(Expr $value): ?array
     {
         $unwrapped = false;
@@ -3992,17 +3998,41 @@ PHP;
             return null;
         }
 
+        // The list, so the caller knows *whose* arguments these are: a rule reads `$methodCall->getArgs()[0]` of a
+        // call it found, and the hook's own node is not that call.
         $container = $value->var;
-        $isArgs = ($container instanceof MethodCall && (string) $container->name === 'getArgs')
-            || ($container instanceof Variable && is_string($container->name)
-                && ($this->locals[$container->name]['kind'] ?? null) === 'args');
+        if ($container instanceof MethodCall && (string) $container->name === 'getArgs') {
+            return [$value->dim->value, $unwrapped, $this->resolve($container, $container->getStartLine())];
+        }
 
-        return $isArgs ? [$value->dim->value, $unwrapped] : null;
+        if ($container instanceof Variable && is_string($container->name)
+            && ($this->locals[$container->name]['kind'] ?? null) === 'args'
+        ) {
+            return [$value->dim->value, $unwrapped, $this->locals[$container->name]];
+        }
+
+        return null;
     }
 
-    private function argListPath(int $line): string
+    /** @param Descriptor|null $subject the node whose arguments these are, or null for the hook's own */
+    private function argListPath(int $line, ?array $subject = null): string
     {
-        $kinds = ['MethodCall', 'FunctionCall', 'StaticMethodCall'];
+        // A found call is a call: its arguments live in the same place, and the only thing the hook's kind decides
+        // is whether *this* node has an argument list at all.
+        if ($subject !== null) {
+            $kind = $subject['as'] ?? null;
+            if ($kind === null || ! in_array($kind, self::ARGUMENT_LIST_KINDS, true)) {
+                throw new Refusal('no argument list on a ' . ($kind ?? $subject['kind']) . ' node', $line);
+            }
+
+            if (self::$target !== 'php') {
+                throw new Refusal("a found {$kind}'s arguments, which only the PHP target carries", $line);
+            }
+
+            return 'Support::argumentList($context, ' . $this->operand($subject) . ')';
+        }
+
+        $kinds = self::ARGUMENT_LIST_KINDS;
 
         // An instantiation carries one too, and `new Foo;` carries none — which the PHP helper answers as an
         // empty list, the same thing PHPStan's `getArgs()` returns. The Rust field is not optional in the same
@@ -4301,9 +4331,8 @@ PHP;
                 throw new Refusal('ClassReflection test on something else', $expr->getStartLine());
             }
 
-            // "is there an enclosing class" — yes by construction inside a declaration hook.
             return $this->classFrom === 'metadata'
-                ? 'true'
+                ? $this->alwaysHolds('a declaration hook fires inside a class-like, so there is always an enclosing class')
                 : $this->backend->call('is_in_class', self::$target === 'php' ? ['$context', '$node'] : ['context']);
         }
 
@@ -4849,6 +4878,15 @@ PHP;
 
         // <name>->toString() === 'literal'   /   <string local> === 'literal'
         if ($left instanceof MethodCall && (string) $left->name === 'toString') {
+            return $this->nameEquals($this->resolve($left->var, $line), $this->stringLiteral($right, $line), $line);
+        }
+
+        // `->toLowerString() === 'null'` is the same comparison with the case folded, and the name helpers already
+        // fold case — so the fold is what the rule wrote, not something extra to emit.
+        if ($left instanceof MethodCall
+            && $left->name instanceof Identifier
+            && $left->name->toString() === 'toLowerString'
+        ) {
             return $this->nameEquals($this->resolve($left->var, $line), $this->stringLiteral($right, $line), $line);
         }
 
@@ -5469,11 +5507,20 @@ PHP;
             $found = 'Support::findKind($context, ' . $within . ", ['" . implode("', '", $kinds) . "'])";
             $first = $this->memberName($expr->name, $expr->getStartLine()) === 'findFirstInstanceOf';
 
-            return [
+            $descriptor = [
                 'rust' => self::PHP_ONLY,
                 'kind' => $first ? 'found-node' : 'found-nodes',
                 'php' => $first ? '(' . $found . '[0] ?? null)' : $found,
             ];
+
+            // What was searched for is what was found, so each node knows its own kind and can be navigated like
+            // the hook's own. Only when the search names one kind: `ClassLike` covers four, and a node that could
+            // be any of them has no single set of fields.
+            if (count($kinds) === 1) {
+                $descriptor['as'] = $kinds[0];
+            }
+
+            return $descriptor;
         }
 
         // `getDocComment()` on a declaration. Mago hands comments back as file-level trivia, so the helper both
@@ -5555,9 +5602,16 @@ PHP;
         }
 
         if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getArgs') {
-            $args = ['rust' => $this->argListPath($line), 'kind' => 'args'];
+            // Asked of the hook's own node, or of a node a rule found: the arguments are the same thing either way,
+            // and only the second needs saying which node.
+            $of = $this->resolve($expr->var, $line);
+            $path = $of['kind'] === 'hook-node'
+                ? $this->argListPath($line)
+                : $this->argListPath($line, $of);
+
+            $args = ['rust' => $path, 'kind' => 'args'];
             if (self::$target === 'php') {
-                $args['php'] = $args['rust'];
+                $args['php'] = $path;
             }
 
             return $args;
@@ -5693,12 +5747,16 @@ PHP;
                 return ['rust' => $rust, 'kind' => $kind, 'key' => $key];
             }
 
-            if ($base['kind'] === 'hook-node' && isset(Vocabulary::FIELDS[$this->nodeKind][$property])) {
-                [$rust, $kind] = Vocabulary::FIELDS[$this->nodeKind][$property];
+            // Keyed on what the node *is*, not on what the hook fired for. A descriptor carries `as` when its
+            // node kind is known from where it came — every node a subtree search found is of the kind that was
+            // searched for — and the hook's own node is the kind the hook targets.
+            $navigating = $base['kind'] === 'hook-node' ? $this->nodeKind : ($base['as'] ?? null);
+            if ($navigating !== null && isset(Vocabulary::FIELDS[$navigating][$property])) {
+                [$rust, $kind] = Vocabulary::FIELDS[$navigating][$property];
                 $descriptor = ['rust' => $rust, 'kind' => $kind, 'key' => $key];
-                $php = Vocabulary::FIELDS[$this->nodeKind][$property][2] ?? null;
+                $php = Vocabulary::FIELDS[$navigating][$property][2] ?? null;
                 if ($php !== null) {
-                    $descriptor['php'] = $php;
+                    $descriptor['php'] = str_replace('{base}', $this->operand($base), $php);
                 }
 
                 return $descriptor;
@@ -5943,6 +6001,9 @@ PHP;
      * targeted; the first other one, `Foreach`, emitted `NodeKind::Foreach_` and the enum has no such case.
      */
     private const array PHP_RESERVED_KINDS = ['class'];
+
+    /** Node kinds that carry an argument list. */
+    private const array ARGUMENT_LIST_KINDS = ['MethodCall', 'FunctionCall', 'StaticMethodCall', 'NullSafeMethodCall', 'Instantiation'];
 
     /** Hook kinds that are a class-like declaration, where the node under analysis is always named. */
     private const array CLASS_LIKE_HOOK_KINDS = ['Class', 'Interface', 'Trait', 'Enum'];

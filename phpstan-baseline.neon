@@ -109,25 +109,13 @@ parameters:
 			path: src/RustBackend.php
 
 		-
-			rawMessage: Binary operation "." between 'arg' and mixed results in an error.
-			identifier: binaryOp.invalid
-			count: 1
-			path: src/Transpiler.php
-
-		-
 			rawMessage: Cannot cast PhpParser\Node\Expr|PhpParser\Node\Identifier to string.
 			identifier: cast.string
 			count: 15
 			path: src/Transpiler.php
 
 		-
-			rawMessage: Cannot cast mixed to string.
-			identifier: cast.string
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Class cognitive complexity is 1212, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 1225, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php
@@ -139,7 +127,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::equality()" is 37, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::equality()" is 40, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
@@ -163,7 +151,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::resolve()" is 155, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::resolve()" is 158, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
@@ -177,12 +165,6 @@ parameters:
 		-
 			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::translateStatement()" is 45, keep it under 20'
 			identifier: complexity.functionLike
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Method Sandermuller\PhpstanToMago\Transpiler::argIndexOf() return type has no value type specified in iterable type array.'
-			identifier: missingType.iterableValue
 			count: 1
 			path: src/Transpiler.php
 
@@ -212,12 +194,6 @@ parameters:
 
 		-
 			rawMessage: 'Parameter #1 $string of function strtolower expects string, bool|string|null given.'
-			identifier: argument.type
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Parameter #2 $args of class Sandermuller\PhpstanToMago\Stm constructor expects array<string, int|string>, array<string, mixed> given.'
 			identifier: argument.type
 			count: 1
 			path: src/Transpiler.php
