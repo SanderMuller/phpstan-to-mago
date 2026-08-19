@@ -143,3 +143,74 @@ five dead rules, and it is what `emitted` now means.
 Same 585 files. mago with 22 rules: 1.37s wall, 1.42s CPU, best of three. PHPStan cold with 5 rules: 4.16s
 wall, 17.50s CPU. Not like-for-like — different rule counts, and Mago resolves nothing it was not given — so it
 is not the comparison the README's performance table makes.
+
+## The 2026-08-20 run: a corpus differential, and the four ways the *harness* was wrong first
+
+The runs above compared counts a rule at a time. This one compares **sites** — `(identifier, file, line)` — for
+every emitted rule at once, against a consumer's own PHPStan with its baseline taken out, and it is persisted
+as a harness rather than reconstructed each time:
+
+```bash
+php tests/Support/run-corpus-differential.php <consumer-root> [--paths=a,b] [--threads=N] [--sandbox=DIR]
+```
+
+It transpiles the packages **as that consumer has them installed**, writes one worker holding every plugin,
+reads the consumer's own analysed paths and exclusions out of its `phpstan.neon`, and prints agree /
+only-original / only-port per identifier. Nothing is copied: both tools read the consumer in place, so there
+is no second corpus to drift, and no consumer source enters this repository.
+
+### Results
+
+Four packages as installed: 27 emitted, 102 refused, target `php` — the same 24/3/0/0 split the README
+publishes, confirmed here against the installed versions rather than a checkout.
+
+| corpus | files | identifiers that fired | agree | only-original | only-port |
+|:--|--:|--:|--:|--:|--:|
+| this repo's example pairs, as a control | 76 | 25 of 26 | 34 | 0 | 0 |
+| a two-file probe for the 26th | 2 | 1 | 2 | 0 | 0 |
+| the consumer's first-party source | 2716 | 2 | 50 | 0 | 0 |
+| four of its vendored dependency trees | 3103 | 10 | 328 | 0 | 0 |
+
+Zero unexplained disagreements, in either direction, on 414 sites — and messages compared as text, not just
+lines. Identical finding sets at 1, 2, 4 and 8 threads.
+
+**The control run is what makes the zeros readable.** 24 of the 26 identifiers report nothing on the
+first-party corpus, and on its own that is indistinguishable from 24 dead rules. It is a Laravel application,
+and most of `symplify/phpstan-rules` asks Symfony, Doctrine and PHPUnit questions — so the control fires every
+identifier over this repo's own example pairs first, in the same 27-plugin worker, and 25 of 26 agree exactly
+there. The 26th is the `positionalFlagArgument` pair, silent on both sides because its configured first-party
+namespaces do not match the examples' namespace; a two-file probe in a matching namespace fires both plugins
+and agrees on both sites. The 27-plugin worker was worth proving separately: a node hook's ancestors had
+already turned out to depend on what else shares the worker.
+
+### Every disagreement the first run showed was the harness, not the port
+
+In order, largest first. Each one reads as a port defect, and three of the four read as the port being
+*narrower* — the direction that is hardest to notice and worst to ship.
+
+1. **PHPStan analyses a trait once per using class** and names the file `Concerns/Shared.php (in context of
+   class App\First)`. One trait used by dozens of classes arrived as **477 findings on 6 lines** where an engine
+   that visits each file once reports 6. Stripped, and identical sites deduped, in `PhpstanReport`.
+2. **Findings were keyed by base name**, which the per-rule gate can afford — its two sandboxes put the same
+   example at different absolute paths — and a corpus cannot: `Handler.php` exists in several directories, so
+   collapsing them makes one rule's finding look like another's. Both are now tested.
+3. **Mago had no resolution context.** PHPStan has the consumer's autoloader; mago analysing only first-party
+   paths cannot walk a class's ancestry into the framework. `13` of `31` exception findings went missing — every
+   one a class extending a framework exception rather than `Exception`. `[source] includes` is the fix: scanned
+   for symbols, never analysed or reported. It is the configuration that makes the comparison fair, and
+   omitting it would have published "the port finds 18 of 31".
+4. **The consumer's `excludePaths` were not applied to mago**, so the port reported two findings in a directory
+   the original never opened. Read from its configuration now, and applied to the counted corpus too.
+
+The lesson is the one the procedure already states, sharpened: a differential's first disagreements are
+usually about *what each tool was asked to look at*. Attribute every one of them before touching a rule.
+
+### What is still not covered
+
+- The **type-coverage aggregate** stays refused by default and is not in these numbers.
+- 24 of 26 identifiers have fired only on the control corpus. Their zeros on real code are "decided no" —
+  proven by the control, not by silence — but no consumer here exercises the Symfony, Doctrine or PHPUnit
+  families at scale, so agreement there rests on 34 example sites plus 328 vendor sites, not on production code.
+- Performance is deliberately not quoted for this run. PHPStan's result cache was warm for some runs and cold
+  for others, and a figure without its baseline overstates the case — see the table further up, which names
+  both.

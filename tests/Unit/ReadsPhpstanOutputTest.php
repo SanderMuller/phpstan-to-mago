@@ -112,6 +112,52 @@ final class ReadsPhpstanOutputTest extends TestCase
         PhpstanReport::findings($output, self::IDENTIFIER, 'SomeRule');
     }
 
+    public function test_a_trait_analysed_in_many_contexts_is_one_site(): void
+    {
+        // PHPStan analyses a trait once per using class and names the file with the context it analysed it
+        // in. Measured, not supposed: on a real corpus one trait arrived as 477 findings on 6 lines, which
+        // made an engine that visits each file once look like it was missing all of them.
+        $output = json_encode([
+            'files' => [
+                '/project/src/Concerns/Shared.php (in context of class App\\First)' => ['messages' => [
+                    ['line' => 12, 'message' => 'Do not do that', 'identifier' => self::IDENTIFIER],
+                ]],
+                '/project/src/Concerns/Shared.php (in context of class App\\Second)' => ['messages' => [
+                    ['line' => 12, 'message' => 'Do not do that', 'identifier' => self::IDENTIFIER],
+                ]],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->assertSame(
+            ['Shared.php' => ['12: Do not do that']],
+            PhpstanReport::findings($output, self::IDENTIFIER),
+        );
+    }
+
+    public function test_a_corpus_run_keeps_the_path_so_two_files_cannot_be_confused(): void
+    {
+        // A per-rule gate compares base names because its sandboxes differ. A corpus cannot: `Handler.php`
+        // exists in several directories, and collapsing them makes one rule's finding look like another's.
+        $output = json_encode([
+            'files' => [
+                '/project/src/Api/Handler.php' => ['messages' => [
+                    ['line' => 8, 'message' => 'Do not do that', 'identifier' => self::IDENTIFIER],
+                ]],
+                '/project/src/Web/Handler.php' => ['messages' => [
+                    ['line' => 3, 'message' => 'Do not do that', 'identifier' => self::IDENTIFIER],
+                ]],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->assertSame(
+            [
+                'src/Api/Handler.php' => ['8: Do not do that'],
+                'src/Web/Handler.php' => ['3: Do not do that'],
+            ],
+            PhpstanReport::findings($output, self::IDENTIFIER, 'the rule', '/project'),
+        );
+    }
+
     public function test_findings_are_ordered_so_a_comparison_is_stable(): void
     {
         $output = json_encode([

@@ -22,12 +22,17 @@ final readonly class PhpstanReport
      * `$identifier` is matched as a prefix, because a rule that classifies what it found reports under a
      * computed code and the leading literal is what every code it can report has in common.
      *
+     * `$relativeTo` decides what a file is called. A per-rule gate compares base names, because its two
+     * sandboxes put the same example at different absolute paths. A corpus differential cannot: two files can
+     * share a base name, and collapsing them makes one rule's finding look like another's. Passing the corpus
+     * root keys by path relative to it, which is what the other engine's report is normalised to.
+     *
      * @return array<string, list<string>>
      *
      * @throws RuntimeException when the output is not a shape this understands, which means PHPStan did not
      *                          run and there is nothing to compare
      */
-    public static function findings(string $output, string $identifier, string $context = 'the rule'): array
+    public static function findings(string $output, string $identifier, string $context = 'the rule', ?string $relativeTo = null): array
     {
         $start = strpos($output, '{');
         /** @var array<string, mixed>|null $decoded */
@@ -45,7 +50,7 @@ final readonly class PhpstanReport
                 $byFile[$path] = $file['messages'] ?? [];
             }
 
-            return self::sorted(self::collect($byFile, $identifier));
+            return self::sorted(self::collect($byFile, $identifier, $relativeTo));
         }
 
         // Some environments wrap PHPStan's output in a reporting envelope. Accepted rather than fought,
@@ -54,7 +59,7 @@ final readonly class PhpstanReport
             /** @var array<string, list<array{line?: int, identifier?: string, message?: string}>> $details */
             $details = $decoded['error_details'];
 
-            return self::sorted(self::collect($details, $identifier));
+            return self::sorted(self::collect($details, $identifier, $relativeTo));
         }
 
         // A clean run genuinely found nothing, and says so rather than leaving it to be inferred.
@@ -72,7 +77,7 @@ final readonly class PhpstanReport
      *
      * @return array<string, list<string>>
      */
-    private static function collect(array $byFile, string $identifier): array
+    private static function collect(array $byFile, string $identifier, ?string $relativeTo = null): array
     {
         $findings = [];
         foreach ($byFile as $path => $messages) {
@@ -81,11 +86,34 @@ final readonly class PhpstanReport
                     continue;
                 }
 
-                $findings[basename($path)][] = ($message['line'] ?? 0) . ': ' . ($message['message'] ?? '');
+                $findings[self::name($path, $relativeTo)][] = ($message['line'] ?? 0) . ': ' . ($message['message'] ?? '');
             }
         }
 
         return $findings;
+    }
+
+    /**
+     * What to call the file a finding is in, with PHPStan's context suffix removed.
+     *
+     * PHPStan analyses a trait once per using class and names the file
+     * `Concerns/EnumUtils.php (in context of class App\\Enums\\Ability)`. A trait used by 120 classes therefore
+     * arrives as 120 findings on one line, where an engine that analyses each file once reports it once. Left
+     * in, that difference reads as the port missing 477 sites — the largest disagreement in the first run of
+     * this harness, and entirely an artefact of the two conventions.
+     */
+    private static function name(string $path, ?string $relativeTo): string
+    {
+        $context = strpos($path, ' (in context of ');
+        if ($context !== false) {
+            $path = substr($path, 0, $context);
+        }
+
+        if ($relativeTo === null) {
+            return basename($path);
+        }
+
+        return str_starts_with($path, $relativeTo . '/') ? substr($path, strlen($relativeTo) + 1) : $path;
     }
 
     /**
@@ -112,6 +140,10 @@ final readonly class PhpstanReport
     private static function sorted(array $findings): array
     {
         foreach ($findings as $file => $lines) {
+            // One site, once. A trait analysed in the context of 120 using classes yields 120 identical
+            // entries, and the comparison is over sites — so keeping them would only make one site read as
+            // 120 and any engine that visits the file once read as missing 119 of them.
+            $lines = array_values(array_unique($lines));
             sort($lines);
             $findings[$file] = $lines;
         }
