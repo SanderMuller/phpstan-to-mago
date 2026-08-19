@@ -23,7 +23,7 @@
         "nikic/php-parser": "^5.7"
     },
     "require-dev": {
-        "carthage-software/mago": "^1.47",
+        "carthage-software/mago": "^1.47.1",
         "laravel/pao": "^1.1",
         "laravel/pint": "^1.30",
         "mrpunyapal/rector-pest": "^0.2",

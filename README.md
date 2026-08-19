@@ -22,6 +22,9 @@ vendor/bin/phpstan-to-mago --survey vendor/hihaho/phpstan-rules/src
 --out=DIR          the root to write under, defaulting to the current directory
 --examples=DIR     PHP files the linter target reads its good and bad examples from
 --survey           report what each rule would need, writing nothing
+--unverified-aggregates
+                   also emit an aggregate rule whose numbers do not yet agree with the
+                   original; refused by default, and the refusal says by how much
 ```
 
 Each target writes into its own subdirectory of `--out`, so the command above writes
@@ -175,7 +178,7 @@ because you would trust it. Two consequences worth knowing:
 
 ## What it can translate
 
-Three rule packages, surveyed with the tool rather than from memory:
+Four rule packages, surveyed with the tool rather than from memory:
 
 | package | rules | emit | refused |
 |:--|--:|--:|--:|
@@ -205,9 +208,9 @@ separate hook, because Mago makes it a separate node. A rule can also target a c
 parameters and their written types, which is how the Symfony config-file rules recognise a config file at all. A
 rule that loops a class-like's own methods reports one finding per method, on the method's line, and can ask each
 one about its visibility, its attributes and its docblock. A rule can search a subtree for every node of a given
-kind, count what it found, and put that count in its message. A package that factors its detection into a producer handing back a `{...}` record and a consumer
-reading one field out of it is followed through: the producer's guards become the rule's guards, and the record
-never exists at analysis time.
+kind, count what it found, and put that count in its message. A package that factors its detection into a
+producer handing back a `{...}` record and a consumer reading one field out of it is followed through: the
+producer's guards become the rule's guards, and the record never exists at analysis time.
 
 ### Where it does not agree yet
 
@@ -258,7 +261,8 @@ cover is refused rather than approximated.
 
 PHP 8.4 for the transpiler — the floor the rule packages themselves set, since `symplify/phpstan-rules` and
 `tomasvotruba/type-coverage` both require it, and there is nothing to transpile without them. Generated
-plugins target the Mago PHP SDK and run under Mago 1.47 or later.
+plugins target the Mago PHP SDK and run under Mago 1.47.1 or later. 1.47.0 is skipped because its release
+carries no Linux binary, so the package installs and then cannot run.
 
 ## Credits
 
