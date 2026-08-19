@@ -30,6 +30,12 @@ final readonly class FiresGate
 
         declare(strict_types=1);
 
+        // A notice on stdout corrupts the extension frame — mago reads binary frames there, and the first
+        // bytes of a deprecation message arrive as `invalid extension frame magic`. One deprecated
+        // function in a vendored dependency turned 284 passing tests into 107 errors under
+        // `--prefer-lowest`, and nothing in the failure named the cause.
+        ini_set('display_errors', 'stderr');
+
         use Mago\Sdk\Extension;
         use Mago\Sdk\Worker;
 

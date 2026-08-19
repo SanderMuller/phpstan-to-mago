@@ -256,7 +256,9 @@ cover is refused rather than approximated.
 
 ## Requirements
 
-PHP 8.3 for the transpiler. Generated plugins target the Mago PHP SDK and run under Mago 1.47 or later.
+PHP 8.4 for the transpiler — the floor the rule packages themselves set, since `symplify/phpstan-rules` and
+`tomasvotruba/type-coverage` both require it, and there is nothing to transpile without them. Generated
+plugins target the Mago PHP SDK and run under Mago 1.47 or later.
 
 ## Credits
 

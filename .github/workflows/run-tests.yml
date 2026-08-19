@@ -31,9 +31,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { php: '8.3', stability: prefer-lowest }
-          - { php: '8.3', stability: prefer-stable }
+          # 8.4 is the floor because the rule corpora this tool exists to transpile require it:
+          # symplify/phpstan-rules 14.12 and tomasvotruba/type-coverage 2.3 both declare `php: ^8.4`,
+          # and six test files read them, so an 8.3 job could neither install nor test anything.
+          - { php: '8.4', stability: prefer-lowest }
           - { php: '8.4', stability: prefer-stable }
+          - { php: '8.5', stability: prefer-stable }
 
     name: P${{ matrix.php }} - ${{ matrix.stability }}
 
