@@ -223,6 +223,21 @@ reason before it can be dropped, and that gate is what stops the drops being ass
 Two new clusters, both further along than navigation: `instanceof ConstantStringType on a type` (3 rules, which
 needs the SDK's `ArgumentTypes`) and `no iteration mapped for a subtree` (3).
 
+### The report anchor had two emission paths and only one carried it
+
+`->line($member->getLine())` moves a finding onto the member a rule is talking about, and the emitted anchor is the
+variable the generated `foreach` binds. There are **two** places a report is emitted — `reportNode()` for a report
+inside a loop, and a template at the end of `emitPhp()` for the trailing one — and only the first was wired. So a
+rule whose report is trailing silently got the class's span instead of the member's, through a path that reads
+correctly. PHP leaves a loop variable set after the loop, which is why the wrong answer would have looked plausible;
+the comment already above that template records the same hazard for the message.
+
+Both rules in the corpus report *inside* the loop that anchored them, so nothing there exercised it. It took a
+deliberately-wrong fixture — `AnchorEscapesLoopRule`, in the same spirit as `MissingHelperRule` — to reach the case,
+and writing that fixture is what found the defect rather than confirming the guard. The trailing path now carries
+the anchor, and an anchor read from a loop item is *refused* there rather than substituted, because the item is not
+bound any more.
+
 ### What this replaced, and why the note stays
 
 The previous version of this section named `CombinedMethodCallRule`'s **accumulated findings** as the next shape,

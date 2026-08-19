@@ -37,6 +37,9 @@ parameters:
         # Calls a helper nothing in its hierarchy declares. Being invalid is the whole fixture: it proves
         # the transpiler refuses such a call by name instead of translating it into something plausible.
         - tests/Fixtures/Rules/MissingHelperRule.php
+        # Anchors a finding on a loop item and returns it from outside the loop. Being wrong is the fixture: it
+        # proves the transpiler refuses that instead of emitting a report on whatever PHP left in the variable.
+        - tests/Fixtures/Rules/AnchorEscapesLoopRule.php
 
     level: max
 

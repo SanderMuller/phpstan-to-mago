@@ -174,6 +174,25 @@ final class TranspilesToPhpTest extends TestCase
         $this->assertGreaterThan(15, $emitted, 'The corpus produced almost no plugins, so this proved nothing.');
     }
 
+    /**
+     * A report anchored on a loop item cannot be emitted after the loop.
+     *
+     * `->line($member->getLine())` becomes the variable the emitted `foreach` binds, so a report after that loop
+     * names something no longer bound. PHP leaves the loop variable set, so the finding would land on the last
+     * member seen rather than crash — a wrong span through a path that reads correctly.
+     *
+     * Every rule in the corpus reports inside the loop that anchored it, so nothing there exercises this. The
+     * fixture exists to, and writing it is what found the defect: the trailing report was built from its own
+     * template and ignored the anchor outright, so a rule in this shape silently reported on the class instead.
+     */
+    public function test_refuses_a_report_anchored_on_a_loop_item_it_has_left(): void
+    {
+        $this->expectException(Refusal::class);
+        $this->expectExceptionMessage('anchored on a loop item');
+
+        $this->transpile('AnchorEscapesLoopRule');
+    }
+
     public function test_refuses_a_construct_outside_the_vocabulary(): void
     {
         $this->expectException(Refusal::class);

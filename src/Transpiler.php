@@ -230,6 +230,15 @@ final class Transpiler
     private ?string $anchor = null;
 
     /**
+     * Whether {@see $anchor} names something only a loop body has in scope.
+     *
+     * An anchor read from a loop item is a PHP variable the emitted `foreach` binds, so a report emitted after that
+     * loop would name a variable that is not there — a wrong span at best, and nothing static would see it. Every
+     * rule in the corpus reports inside the loop that anchored it; this is what keeps that true.
+     */
+    private bool $anchorNeedsLoop = false;
+
+    /**
      * A local holding a built rule error whose report has not been emitted yet, inside a loop.
      *
      * Null everywhere else. The trailing report is right for a rule whose guards bail out of `analyze()`, and
@@ -3649,6 +3658,12 @@ PHP;
 
         $literal = str_starts_with($this->message, '"') && str_ends_with($this->message, '"');
 
+        if ($this->anchorNeedsLoop && ! $this->inLoop) {
+            throw new Refusal(
+                'a report anchored on a loop item but emitted outside the loop, where the item is no longer bound',
+            );
+        }
+
         return new Stm('report', [
             'anchor' => $this->anchor ?? '$node->span',
             'message' => $literal ? $this->backend->bytes(substr($this->message, 1, -1)) : $this->message,
@@ -3777,6 +3792,7 @@ PHP;
             // per method, and every one of them would otherwise land on the class's own line.
             if ((string) $chain->name === 'line' && count($chain->getArgs()) === 1) {
                 $this->anchor = $this->reportAnchor($chain->getArgs()[0]->value, $chain->getStartLine());
+                $this->anchorNeedsLoop = $this->inLoop;
             }
 
             $chain = $chain->var;
@@ -6269,14 +6285,25 @@ RUST;
         // A rule that already reported inside a loop has nothing to report at the end. Emitting it
         // anyway fired on every declaration, and PHP leaves the loop variable set after the loop, so
         // the message even looked plausible.
-        $trailingReport = $this->reportedInline ? '' : <<<'REPORT'
+        // The anchor applies here too. It did not, and that was the whole defect: an anchor read from a loop item
+        // is a variable the emitted `foreach` binds, and this report sits after the loop — so a rule asking for a
+        // member's line silently got the class's span instead, through a path that looked right. Refused rather
+        // than substituted, for the same reason the comment above gives: PHP leaves the loop variable set, so the
+        // wrong answer would look plausible.
+        if ($this->anchorNeedsLoop && ! $this->reportedInline) {
+            throw new Refusal(
+                'a report anchored on a loop item but emitted after the loop, where the item is no longer bound',
+            );
+        }
+
+        $trailingReport = $this->reportedInline ? '' : strtr(<<<'REPORT'
         $context->report(
             Level::Error,
             {CODE},
-            Issue::new({MESSAGE}, $node->span, 'here'),
+            Issue::new({MESSAGE}, {ANCHOR}, 'here'),
         );
 
-REPORT;
+REPORT, ['{ANCHOR}' => $this->anchor ?? '$node->span']);
         $message = $isFormatted ? $this->message : $this->backend->bytes(substr($this->message, 1, -1));
         // A rule that classifies what it found reports under a code decided at analysis time, so the code is
         // an expression there; quoting it would report under the source text of the interpolation.
