@@ -5452,15 +5452,18 @@ PHP;
      */
     private function nodePredicate(string $predicate, array $subject, string $wanted, int $line): string
     {
-        if (! in_array($predicate, ['is_dir_constant', 'is_literal_string'], true)) {
-            return $this->backend->call($predicate, [$this->operand($subject)]);
-        }
-
-        if (self::$target !== 'php') {
+        // Two independent facts about a predicate, kept apart because conflating them dropped a guard: whether
+        // only the PHP runtime has it, and whether it has to look the node up. `is_dir_constant` is PHP-only
+        // and needs no context; `is_literal_string` is both.
+        if (in_array($predicate, self::PHP_ONLY_PREDICATES, true) && self::$target !== 'php') {
             throw new Refusal("instanceof {$wanted}, which only the PHP target carries", $line);
         }
 
-        return $this->backend->call($predicate, ['$context', $this->operand($subject)]);
+        $arguments = in_array($predicate, self::CONTEXT_PREDICATES, true)
+            ? ['$context', $this->operand($subject)]
+            : [$this->operand($subject)];
+
+        return $this->backend->call($predicate, $arguments);
     }
 
     /**
@@ -6848,6 +6851,12 @@ PHP;
 
     /** Hook kinds that are a class-like declaration, where the node under analysis is always named. */
     private const array CLASS_LIKE_HOOK_KINDS = ['Class', 'Interface', 'Trait', 'Enum'];
+
+    /** Node predicates only the PHP runtime carries; the Rust backends have no counterpart. */
+    private const array PHP_ONLY_PREDICATES = ['is_dir_constant', 'is_literal_string'];
+
+    /** Node predicates that answer from the node's kind, and so have to look it up. */
+    private const array CONTEXT_PREDICATES = ['is_literal_string'];
 
     /** Rust identifiers that a PHP variable name could collide with. */
     private const array RUST_KEYWORDS = [

@@ -342,7 +342,7 @@ final class Support
     }
 
     /** Whether a navigated part is `__DIR__`, which php-parser models as its own node class. */
-    public static function isDirConstant(NodeAnalysisContext $context, ?Part $part): bool
+    public static function isDirConstant(?Part $part): bool
     {
         return $part instanceof Part
             && $part->kind === NodeKind::MagicConstant
@@ -1421,7 +1421,7 @@ final class Support
      * `ABSTRACT` and `FINAL` and no visibility at all, so a flags check would answer every method the same.
      * Null when the method is not found, so each predicate below decides for itself what absence means.
      */
-    public static function reflectedMethodVisibility(NodeAnalysisContext $context, ?string $class, ?string $method): ?Visibility
+    private static function reflectedMethodVisibility(NodeAnalysisContext $context, ?string $class, ?string $method): ?Visibility
     {
         if ($class === null || $method === null) {
             return null;
@@ -1442,16 +1442,6 @@ final class Support
     public static function reflectedMethodIsPrivate(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
         return self::reflectedMethodVisibility($context, $class, $method) === Visibility::Private;
-    }
-
-    /** The word a rule prints for the codebase's method visibility, which defaults the way PHP does. */
-    public static function reflectedMethodVisibilityName(NodeAnalysisContext $context, ?string $class, ?string $method): string
-    {
-        return match (self::reflectedMethodVisibility($context, $class, $method)) {
-            Visibility::Private => 'private',
-            Visibility::Protected => 'protected',
-            default => 'public',
-        };
     }
 
     public static function methodIsStatic(?Part $method): bool
