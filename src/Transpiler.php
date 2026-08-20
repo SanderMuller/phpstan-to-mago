@@ -625,14 +625,6 @@ final class Transpiler
         $this->nodeKind = $hook['kind'];
         $this->classFrom = $hook['classFrom'] ?? 'scope';
 
-        // Decided before the body is translated, because the folds below depend on it: `isInterface()` is only
-        // "never happens" while the plugin targets classes alone. Discovering the narrowing *during*
-        // translation meant a fold could be emitted before the target set was known, and a rule narrowing
-        // later in its body would have folded under the wrong assumption.
-        if ($hook['classOnly'] ?? false) {
-            $this->narrowedToClass = $this->narrowsToClassDeclaration($class);
-        }
-
         $processNode = $this->findMethod($class, 'processNode');
         $this->checkMode = self::$target === 'php' && $this->independentChecks($processNode) >= 2;
         foreach ($processNode->stmts ?? [] as $stmt) {
@@ -3485,48 +3477,17 @@ PHP;
     }
 
     /**
-     * Whether the rule restricts itself to class declarations.
-     *
-     * PHPStan's `InClassNode` fires for an enum, a class *and* an interface — controlled with a rule that
-     * reports unconditionally — where Mago's `Class` hook fires for the class alone. So a rule that asks about
-     * every class-like needs every one of those targets, and a rule that narrows to `Class_` itself must keep
-     * the single target: that narrowing is folded away as always holding *because* the hook is class-only, and
-     * widening the targets without dropping the fold would report on exactly what the rule set out to exclude.
-     *
-     * A syntactic scan, over the rule and everything it inherits, and deliberately biased: anything it cannot
-     * read as "asks about every class-like" is treated as narrowing, which is the pre-existing behaviour. So a
-     * shape it does not recognise stays as narrow as it is today rather than silently widening.
-     */
-    private function narrowsToClassDeclaration(ClassLike $class): bool
-    {
-        foreach ($this->hierarchy()->selfAndAncestors($class) as $declaration) {
-            $found = (new NodeFinder())->find([$declaration], fn (Node $node): bool => $this->narrowsHere($node));
-            if ($found !== []) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /** One node that would restrict a class-like rule to classes: the `instanceof` test, or the reflection one. */
-    private function narrowsHere(Node $node): bool
-    {
-        if ($node instanceof Instanceof_ && $node->class instanceof Name) {
-            return $node->class->getLast() === 'Class_';
-        }
-
-        return $node instanceof MethodCall
-            && $node->name instanceof Identifier
-            && $node->name->toString() === 'isClass';
-    }
-
-    /**
      * The node kinds the emitted plugin registers for.
      *
-     * One kind for every hook but the class-declaration one, where the breadth is decided by
-     * {@see narrowsToClassDeclaration()}. Trait is absent on purpose: PHPStan's `InClassNode` does not fire for
-     * a trait either, which the same control showed.
+     * One kind for every hook but the class-declaration one, where the breadth depends on whether the rule
+     * restricted itself to classes. Trait is absent on purpose: PHPStan's `InClassNode` does not fire for a
+     * trait either, which the same control showed.
+     *
+     * Read *after* the body is translated, which is what makes it exact: `$narrowedToClass` is set by the
+     * translation of the rule's own `instanceof Class_`, so it records what the emitted code actually did rather
+     * than what a scan of the source guessed. A syntactic pre-pass stood here and was wrong in the dangerous
+     * direction — a call named `isClass()` anywhere in the hierarchy, for any receiver and under any condition,
+     * narrowed the targets and made the plugin miss the enum and interface findings the rule reports.
      *
      * @param array<string, string>|array<string, null>|array<string, bool> $hook
      *
@@ -7393,19 +7354,15 @@ PHP;
     }
 
     /**
-     * Whether the declaration the hook fired for is of one kind, or the fold when it cannot be.
+     * Whether the declaration the hook fired for is of one kind.
      *
-     * A rule that narrowed to `Class_` gets the single class target, so asking is pointless and the answer is
-     * always no. A rule that did not gets every class-like target, and then the question decides which
-     * declarations it skips — `TraitRequiresInterfaceRule` excludes interfaces this way, because an interface
-     * has no implements clause to fix.
+     * Always the real question, never folded away. Folding it needed to know the target breadth, and the breadth
+     * is only settled once the body is translated — so the fold and the targets each wanted the other's answer
+     * first. Asking at runtime costs a node-kind comparison and removes the circularity: where the plugin
+     * targets classes alone the answer is simply always no.
      */
     private function declarationKindIs(string $kind, string $described): string
     {
-        if ($this->narrowedToClass) {
-            return $this->unreachable("the class declaration hook fires for classes, never for {$described}");
-        }
-
         if (self::$target !== 'php') {
             throw new Refusal("a {$described} declaration test, which only the PHP target carries");
         }

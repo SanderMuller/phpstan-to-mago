@@ -10,7 +10,7 @@ guideline goes stale, and the file is one command away.
 
 ## What remains is mostly class complexity, and needs a real refactor
 
-`Transpiler` scores 1702 against a limit of 80, and `Runtime\Support` 370. Both grow with every rule shape
+`Transpiler` scores 1693 against a limit of 80, and `Runtime\Support` 370. Both grow with every rule shape
 the vocabulary learns, so a rising number there is the cost of coverage rather than a regression — what matters
 is that no *new* entry appears. Splitting methods inside either does not move that number, because the class
 total is roughly the sum of its methods. Fixing `Transpiler`

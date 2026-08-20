@@ -606,10 +606,16 @@ alone. A rule that asks about every class-like therefore needs all three targets
 `Class_` itself must keep the single target: that narrowing is folded away as always holding *because* the hook
 is class-only, so widening the targets without dropping the fold reports on exactly what the rule excludes.
 
-The decision is made in a **pre-pass**, before the body is translated. It has to be: the folds depend on it, so
-discovering the narrowing while translating meant a fold could be emitted before the target set was known, and
-a rule narrowing later in its body folded under the wrong assumption. The scan is syntactic and biased towards
-"narrows", so a shape it cannot read stays as narrow as it is today rather than silently widening.
+The breadth is read from what the translation **did**: `$narrowedToClass` is set where the rule's own
+`instanceof Class_` is translated, and the targets are chosen after the body is emitted. That is exact.
+
+It was a syntactic pre-pass first, because the `isInterface()` fold seemed to need the answer before
+translation — and the fold and the targets then each wanted the other's answer first. The pre-pass was wrong in
+the dangerous direction: a call named `isClass()` anywhere in the hierarchy, for any receiver and under any
+condition, narrowed the targets and made the plugin miss the enum and interface findings the rule reports. The
+circularity is gone instead of guessed: `isInterface()` and `isEnum()` are never folded, so nothing needs the
+answer early. Where the plugin targets classes alone the runtime answer is simply always no, at the cost of one
+node-kind comparison.
 
 `TraitRequiresInterfaceRule` is what makes this provable: the pairs it exists for in a real project are enum
 concerns, and its example pair reports on an enum and a class. Forced back to one target, the port misses the
