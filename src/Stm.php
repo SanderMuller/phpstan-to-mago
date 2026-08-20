@@ -16,7 +16,7 @@ namespace Sandermuller\PhpstanToMago;
 final class Stm
 {
     /**
-     * @param array<string, string|int> $args the statement's operands, already rendered for the target
+     * @param array<string, string> $args the statement's operands, already rendered for the target
      *
      * Rendered rather than structured on purpose: an operand arrives from an expression producer that
      * has already committed to a language, and a Backend's job is the statement around it.

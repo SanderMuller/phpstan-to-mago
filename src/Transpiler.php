@@ -316,6 +316,30 @@ final class Transpiler
     /** Current emission indentation, which a loop body increases. */
     private int $indent = 8;
 
+    /**
+     * Where each `$x = []` was bound, as a line index and indent, for the accumulators that turn out to be lists.
+     *
+     * A rule's `$x = []` is usually a report accumulator, which emits nothing — a report is emitted where it is
+     * appended. When the appended value is a node instead, the accumulator is a real list and the emitted plugin
+     * needs a real `$x = []` before the loop. That declaration cannot be written when the binding is read,
+     * because nothing there says which kind it will be, so the slot is remembered and the declaration spliced
+     * in at the first append.
+     *
+     * @var array<string, array{int, int}>
+     */
+    private array $accumulatorSlots = [];
+
+    /**
+     * Accumulators that turned out to hold nodes rather than findings.
+     *
+     * Kept apart from `$locals` because a loop saves and restores those around its body, which is right for the
+     * loop variable and wrong for this: the append happens inside the loop and the count is read after it, so a
+     * promotion recorded in `$locals` would be discarded exactly where it is needed.
+     *
+     * @var array<string, true>
+     */
+    private array $listAccumulators = [];
+
     /** What the report's annotation points at; a loop reports per item, not per node. */
     private string $reportSpan = 'node.span()';
 
@@ -2954,7 +2978,7 @@ PHP;
         }
 
         $subject = $this->resolve($count->getArgs()[0]->value, $line);
-        if (! in_array($subject['kind'], ['found-nodes', 'method-members', 'param-decls', 'property-members', 'config-list'], true)) {
+        if (! in_array($subject['kind'], ['found-nodes', 'method-members', 'param-decls', 'property-members', 'config-list', 'list'], true)) {
             throw new Refusal("count() of a {$subject['kind']} compared numerically", $line);
         }
 
@@ -3174,6 +3198,20 @@ PHP;
                 $this->takeMessage($value);
                 $this->lines[] = $this->reportNode();
                 $this->reportedInline = true;
+
+                return;
+            }
+
+            // $someList[] = <a node>  — an accumulator being filled with what the loop kept, rather than
+            // with findings. Only a count is read from it today, and `countable()` is what allows that.
+            if ($stmt->expr->var instanceof ArrayDimFetch
+                && ! $stmt->expr->var->dim instanceof Expr
+                && $stmt->expr->var->var instanceof Variable
+                && is_string($stmt->expr->var->var->name)
+                && (($this->locals[$stmt->expr->var->var->name]['kind'] ?? null) === 'accumulator'
+                    || isset($this->listAccumulators[$stmt->expr->var->var->name]))
+            ) {
+                $this->appendToList($stmt->expr->var->var->name, $value, $stmt->getStartLine());
 
                 return;
             }
@@ -3539,7 +3577,7 @@ PHP;
 
             $name = $this->snake($item->value->name);
             $bindings[count($this->lines)] = $name;
-            $this->lines[] = new Stm('collected-value', ['name' => $name, 'index' => $index], $this->indent);
+            $this->lines[] = new Stm('collected-value', ['name' => $name, 'index' => (string) $index], $this->indent);
             $this->locals[$item->value->name] = ['rust' => $name, 'kind' => 'collected-value'];
         }
 
@@ -3665,7 +3703,7 @@ PHP;
         }
 
         return new Stm('report', [
-            'anchor' => $this->anchor ?? '$node->span',
+            'anchor' => $this->anchor ?? $this->defaultAnchor(),
             'message' => $literal ? $this->backend->bytes(substr($this->message, 1, -1)) : $this->message,
             // PHPStan's own identifier is the code, so a finding is labelled the same by both tools. Written
             // as PHP here rather than in the backend: a rule that classifies what it found computes its code,
@@ -3830,6 +3868,42 @@ PHP;
     // Local bindings
     // -----------------------------------------------------------------------
 
+    /**
+     * Appends to a list accumulator, declaring it at its binding site the first time.
+     *
+     * Restricted to appending a *node* — what a subtree search or a member loop yielded — because that is the
+     * only accumulator shape the corpus has, and a list of anything else would need a rendering for its items
+     * that nothing has pinned down.
+     */
+    private function appendToList(string $name, Expr $value, int $line): void
+    {
+        if (self::$target !== 'php') {
+            throw new Refusal('a list a rule builds, which only the PHP target carries', $line);
+        }
+
+        $item = $this->resolve($value, $line);
+        if (! in_array($item['kind'], ['expr', 'found-node', 'method-decl'], true)) {
+            throw new Refusal("appending a {$item['kind']} to a list", $line);
+        }
+
+        if (! isset($this->listAccumulators[$name])) {
+            [$slot, $indent] = $this->accumulatorSlots[$name]
+                ?? throw new Refusal("appending to \${$name}, which was never bound to an empty array", $line);
+
+            array_splice($this->lines, $slot, 0, [new Stm('declare-list', ['target' => $name], $indent)]);
+            // Every later slot moved down by one, so a second accumulator declares in the right place too.
+            foreach ($this->accumulatorSlots as $other => [$otherSlot, $otherIndent]) {
+                if ($otherSlot > $slot) {
+                    $this->accumulatorSlots[$other] = [$otherSlot + 1, $otherIndent];
+                }
+            }
+
+            $this->listAccumulators[$name] = true;
+        }
+
+        $this->lines[] = new Stm('append', ['target' => $name, 'value' => $this->operand($item)], $this->indent);
+    }
+
     private function bindLocal(Assign $assign, int $line): void
     {
         if (! $assign->var instanceof Variable || ! is_string($assign->var->name)) {
@@ -3843,6 +3917,7 @@ PHP;
         // are appended, so the binding itself produces no code.
         if ($value instanceof Array_ && $value->items === []) {
             $this->locals[$name] = ['rust' => '', 'kind' => 'accumulator'];
+            $this->accumulatorSlots[$name] = [count($this->lines), $this->indent];
 
             return;
         }
@@ -3908,7 +3983,7 @@ PHP;
             [$index, $unwrapped, $list] = $argIndex;
             $bind = 'arg' . ($index === 0 ? '' : (string) $index) . '_value';
             $pad = str_repeat(' ', $this->indent);
-            $this->lines[] = new Stm('bind-arg', ['bind' => $bind, 'args' => $this->operand($list), 'index' => $index], $this->indent);
+            $this->lines[] = new Stm('bind-arg', ['bind' => $bind, 'args' => $this->operand($list), 'index' => (string) $index], $this->indent);
             $this->locals[$name] = ['rust' => $bind, 'kind' => $unwrapped ? 'expr' : 'arg', 'key' => 'arg' . $index];
             if (self::$target === 'php') {
                 // The binding is a PHP variable, so later reads of the local render as one.
@@ -4413,6 +4488,21 @@ PHP;
             return 'Support::argumentIsNamed(' . $this->operand($subject) . ')';
         }
 
+        // `$classLike->name instanceof Identifier` asks whether a class-like is named, which php-parser
+        // answers with a nullable field because it models an anonymous class as a `Class_` with no name. Mago
+        // gives an anonymous class its own node kind, `AnonymousClass` — probed, not assumed — so a search for
+        // class-likes cannot return one and the question is already settled for everything the loop sees.
+        if ($subject['kind'] === 'class-like-name') {
+            if ($wanted !== Identifier::class) {
+                throw new Refusal("instanceof {$wanted} on a class-like's name", $expr->getStartLine());
+            }
+
+            return $this->alwaysHolds(
+                'a class-like found by a subtree search is always named: Mago models an anonymous class as its '
+                . 'own node kind, which a search for classes, interfaces, traits and enums never returns',
+            );
+        }
+
         if ($subject['kind'] === 'extends') {
             if ($wanted === Name::class) {
                 return $this->backend->call('has_extends', self::$target === 'php' ? ['$context', '$node'] : ['node']);
@@ -4516,6 +4606,18 @@ PHP;
      * The mirror of {@see unreachable()}. Both record why; which one applies depends on whether the rule asks the
      * question straight or negated, and a guard is dropped when the *bail* folds to false either way.
      */
+    /**
+     * Where a report lands when the rule anchors it on nothing but the node the hook fired for.
+     *
+     * The node's own span, except for the whole-file hook: PHPStan's `FileNode` takes its position from the
+     * first statement it holds, while Mago's `Program` starts at byte zero, and the two differ by however many
+     * lines sit above the first statement.
+     */
+    private function defaultAnchor(): string
+    {
+        return $this->nodeKind === 'Program' ? 'Support::fileAnchor($context, $node)' : '$node->span';
+    }
+
     private function alwaysHolds(string $reason): string
     {
         $this->unreachableGuard = $reason;
@@ -5391,6 +5493,10 @@ PHP;
             // Locals first, then the hook's node. A helper is free to call its parameter `$node` —
             // `hasRouteAnnotationOrAttribute(ClassLike|ClassMethod $node)` does — and answering the hook's node
             // for it read the wrong subtree while looking perfectly reasonable in the emitted file.
+            if (isset($this->listAccumulators[$expr->name])) {
+                return ['rust' => self::PHP_ONLY, 'kind' => 'list', 'php' => '$' . $expr->name];
+            }
+
             if (isset($this->locals[$expr->name])) {
                 return $this->locals[$expr->name];
             }
@@ -5408,7 +5514,10 @@ PHP;
         }
 
         if ($expr instanceof MethodCall
-            && $this->memberName($expr->name, $expr->getStartLine()) === 'getOriginalNode'
+            // `getNodes()` on the file node is the same handle: it hands back the file's statements, and a
+            // search from the `Program` node covers exactly those, since the root itself is never a match for
+            // anything a rule looks for in them.
+            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getOriginalNode', 'getNodes'], true)
             && $expr->var instanceof Variable
             && $expr->var->name === 'node'
         ) {
@@ -5530,10 +5639,12 @@ PHP;
             ];
 
             // What was searched for is what was found, so each node knows its own kind and can be navigated like
-            // the hook's own. Only when the search names one kind: `ClassLike` covers four, and a node that could
-            // be any of them has no single set of fields.
+            // the hook's own. A search naming several kinds has no single set of fields, so it navigates through
+            // a group instead — only the fields every kind in it answers the same way.
             if (count($kinds) === 1) {
                 $descriptor['as'] = $kinds[0];
+            } elseif (isset(Vocabulary::FIELD_GROUPS[$searched])) {
+                $descriptor['as'] = Vocabulary::FIELD_GROUPS[$searched];
             }
 
             return $descriptor;
@@ -6303,7 +6414,7 @@ RUST;
             Issue::new({MESSAGE}, {ANCHOR}, 'here'),
         );
 
-REPORT, ['{ANCHOR}' => $this->anchor ?? '$node->span']);
+REPORT, ['{ANCHOR}' => $this->anchor ?? $this->defaultAnchor()]);
         $message = $isFormatted ? $this->message : $this->backend->bytes(substr($this->message, 1, -1));
         // A rule that classifies what it found reports under a code decided at analysis time, so the code is
         // an expression there; quoting it would report under the source text of the interpolation.

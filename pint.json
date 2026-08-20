@@ -55,6 +55,7 @@
         ".cache",
         ".github",
         "demo",
+        "internal",
         "tests/Fixtures/expected",
         "vendor"
     ]

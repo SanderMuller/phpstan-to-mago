@@ -1370,6 +1370,35 @@ final class Support
         return $node instanceof Node ? $node->span : $context->node->span;
     }
 
+    /**
+     * Where a finding about the file as a whole belongs: the first statement, not the top of the file.
+     *
+     * PHPStan's `FileNode` is synthetic and takes its position from the first statement it holds, so a rule
+     * reporting on the file lands on `declare(strict_types=1);` in a file that opens with one. Mago's `Program`
+     * starts at byte zero, and its first child statement is the `<?php` tag — which php-parser does not model
+     * as a statement at all. Skipping the opening tag is what makes the two anchors the same line, and the
+     * example pair for `ForbiddenMultipleClassLikeInOneFileRule` is what caught the three-line difference.
+     */
+    public static function fileAnchor(NodeAnalysisContext $context, Part|Node|null $program): Span
+    {
+        $node = self::node($program);
+        if (! $node instanceof Node) {
+            return $context->node->span;
+        }
+
+        foreach ($context->source->getChildren($node) as $statement) {
+            foreach ($context->source->getChildren($statement) as $inner) {
+                if (in_array($inner->kind, [NodeKind::OpeningTag, NodeKind::FullOpeningTag, NodeKind::ShortOpeningTag], true)) {
+                    continue 2;
+                }
+            }
+
+            return $statement->span;
+        }
+
+        return $node->span;
+    }
+
     /** Two written names compared the way PHP compares them: case-insensitively, and null matching nothing. */
     public static function nameIs(?string $written, string $name): bool
     {

@@ -200,6 +200,8 @@ final class EmittedRuleFiresTest extends TestCase
             'Mago parses `f(...)` as a partial application, which never reaches a call hook',
             'an anonymous class is a separate node kind, so the class declaration hook never fires for one',
             'the class declaration hook fires for classes, never for an interface',
+            'a class-like found by a subtree search is always named: Mago models an anonymous class as its own '
+            . 'node kind, which a search for classes, interfaces, traits and enums never returns',
         ];
 
         $unproven = [];

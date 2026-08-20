@@ -46,7 +46,7 @@ final class PhpBackend implements Backend
                 // The PHP helpers navigate, so they need the context that Rust's adapters do not.
                 return $this->bind($pad, $a['bind'], $this->checked($this->call($a['adapter'], ['$context', $a['subject']])));
             case 'bind-arg':
-                return $this->bind($pad, $a['bind'], $this->call('positional_arg_at', [$a['args'], (string) $a['index']]));
+                return $this->bind($pad, $a['bind'], $this->call('positional_arg_at', [$a['args'], $a['index']]));
             case 'if-open':
                 return "{$pad}if ({$this->checked($a['condition'])}) {\n";
             case 'else':
@@ -64,6 +64,10 @@ final class PhpBackend implements Backend
                 $name = $s->unused ? '_' . $a['name'] : $a['name'];
 
                 return "{$pad}\${$this->name($name)} = Support::collectedValue(\$item, {$a['index']});\n";
+            case 'declare-list':
+                return "{$pad}\${$this->name($a['target'])} = [];\n";
+            case 'append':
+                return "{$pad}\${$this->name($a['target'])}[] = {$this->checked($a['value'])};\n";
             case 'blank':
                 return "\n";
             case 'report':

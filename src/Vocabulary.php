@@ -29,6 +29,7 @@ use PhpParser\Node\Stmt\Property;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Trait_;
 use PHPStan\Node\CollectedDataNode;
+use PHPStan\Node\FileNode;
 use PHPStan\Node\InClassNode;
 
 /**
@@ -80,6 +81,10 @@ final class Vocabulary
         // A `foreach` statement. Probed: the hook fires for a nested one too, which is what PHPStan does — a rule
         // registered for `Foreach_` runs on every one of them, so agreement depends on that matching.
         Foreach_::class => ['trait' => 'ForeachHook', 'method' => 'after_foreach', 'node' => 'Foreach', 'kind' => 'Foreach', 'phpOnly' => true],
+        // PHPStan's virtual whole-file node. Mago's `Program` is the CST root, so a hook on it fires once per
+        // file, which is what a rule asking a question about the file as a whole needs. PHP target only, like
+        // the other kinds whose Rust trait nothing in the corpus has pinned down.
+        FileNode::class => ['trait' => 'ProgramHook', 'method' => 'after_program', 'node' => 'Program', 'kind' => 'Program', 'phpOnly' => true],
     ];
 
     /**
@@ -102,6 +107,19 @@ final class Vocabulary
         New_::class => ['Instantiation'],
         String_::class => ['LiteralString'],
         ClassLike::class => ['Class', 'Interface', 'Trait', 'Enum'],
+    ];
+
+    /**
+     * A php-parser node class whose kinds answer a field the same way, and the FIELDS group that says how.
+     *
+     * A search for `ClassLike` finds four kinds, so no single kind's fields apply — but all four carry their
+     * name as a `LocalIdentifier` child, so `->name` has one answer for the group. Only fields that are the
+     * same for every kind in the group belong under it.
+     *
+     * @var array<class-string, string>
+     */
+    public const array FIELD_GROUPS = [
+        ClassLike::class => 'ClassLike',
     ];
 
     /**
@@ -147,6 +165,13 @@ final class Vocabulary
             // The name as written, short: `$node->name->toString()` on a declaration gives `Something`, not
             // `App\Something`, which is what a rule testing a prefix or a suffix compares against.
             'name' => [self::PHP_ONLY, 'bytes', 'Support::declarationName($context, {base})'],
+        ],
+        // The group a `ClassLike` search yields: class, interface, trait or enum, which all name themselves
+        // the same way. `class-like-name` is its own kind rather than plain bytes because the only question
+        // asked of it is php-parser's `name instanceof Identifier`, and that question has a structural answer
+        // here — see the instanceof handling.
+        'ClassLike' => [
+            'name' => [self::PHP_ONLY, 'class-like-name', 'Support::declarationName($context, {base})'],
         ],
         'ClassConstantAccess' => [
             // Rust reads the field; the PHP SDK's Node has no fields, so the class part is found by

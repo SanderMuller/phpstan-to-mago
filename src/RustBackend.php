@@ -71,6 +71,9 @@ final class RustBackend implements Backend
                 $name = $s->unused ? '_' . $a['name'] : $a['name'];
 
                 return "{$pad}let {$name} = support::collected_value(&item, {$a['index']});\n";
+            case 'declare-list':
+            case 'append':
+                throw new Refusal('a list a rule builds has no Rust rendering yet');
             case 'blank':
                 return "\n";
             default:

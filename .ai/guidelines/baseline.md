@@ -3,14 +3,14 @@
 `phpstan-baseline.neon` holds the errors this code arrived with when it moved out of research. It came down
 from 559 by installing the Mago SDK so the runtime type-checks, replacing 92 calls to php-parser's deprecated
 `getLine()`, typing the vocabulary tables and the descriptor shape everything flows through, extracting
-`ExampleReader`, and splitting the worst predicate method. It now holds 40 entries covering 71 errors.
+`ExampleReader`, and splitting the worst predicate method. It now holds 31 entries covering 56 errors.
 
 Prefer emptying it over adding to it. Check the current figure rather than quoting this one — a number in a
 guideline goes stale, and the file is one command away.
 
 ## What remains is mostly class complexity, and needs a real refactor
 
-`Transpiler` scores 1229 against a limit of 80, and `Runtime\Support` 267. Splitting methods inside either
+`Transpiler` scores 1248 against a limit of 80, and `Runtime\Support` 275. Splitting methods inside either
 does not move that number, because the class total is roughly the sum of its methods. Fixing `Transpiler`
 properly means separating the four jobs it does — orchestration, statement translation, expression
 translation, emission — which all share mutable state (`$locals`, `$lines`, `$indent`, `$refinements`,
