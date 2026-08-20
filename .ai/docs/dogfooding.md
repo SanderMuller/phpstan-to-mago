@@ -161,18 +161,21 @@ is no second corpus to drift, and no consumer source enters this repository.
 
 ### Results
 
-Four packages as installed: 27 emitted, 102 refused, target `php` — the same 24/3/0/0 split the README
-publishes, confirmed here against the installed versions rather than a checkout.
+Four packages as installed: **31 emitted, 98 refused**, target `php`. The numbers below were first measured
+at 27 emitted, and re-measured after four more rules were built; both runs are reported because the rules that
+fire changed, not just the count.
 
 | corpus | files | identifiers that fired | agree | only-original | only-port |
 |:--|--:|--:|--:|--:|--:|
 | this repo's example pairs, as a control | 76 | 25 of 26 | 34 | 0 | 0 |
 | a two-file probe for the 26th (`tests/Fixtures/probes`) | 2 | 1 | 2 | 0 | 0 |
-| the consumer's first-party source | 2716 | 2 | 50 | 0 | 0 |
-| four of its vendored dependency trees | 3103 | 10 | 328 | 0 | 0 |
+| the consumer's first-party source | 2716 | 2 → **3** | 50 → **58** | 0 | 0 |
+| four of its vendored dependency trees | 3103 | 10 → **12** | 328 → **336** | 0 | 0 |
 
-Zero unexplained disagreements, in either direction, on 414 sites — and messages compared as text, not just
-lines. Finding sets are identical at 1, 2, 4 and 8 threads on the first-party corpus, and at 1 and 8 on the
+Zero unexplained disagreements, in either direction, on 414 sites and then on 430 — and messages compared as
+text, not just lines. The four rules added afterwards brought real findings rather than more zeros:
+`PreventParentMethodVisibilityOverrideRule` reports **8 sites in the consumer's own source**, all agreeing,
+and `ForbiddenMultipleClassLikeInOneFileRule` 4 more in its vendor tree. Finding sets are identical at 1, 2, 4 and 8 threads on the first-party corpus, and at 1 and 8 on the
 vendor corpus, which is the one where a plugin aggregating per-file state would have room to diverge.
 
 Two things the run establishes about its own configuration, worth recording because both were assumptions
