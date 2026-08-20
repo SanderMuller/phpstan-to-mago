@@ -161,16 +161,16 @@ is no second corpus to drift, and no consumer source enters this repository.
 
 ### Results
 
-Four packages as installed: **31 emitted, 98 refused**, target `php`. The numbers below were first measured
-at 27 emitted, and re-measured after four more rules were built; both runs are reported because the rules that
-fire changed, not just the count.
+Four packages as installed: **34 emitted, 95 refused**, target `php`. The numbers below were first measured at
+27 emitted and re-measured twice as rules were built; every run is reported, because which rules fire changed
+each time, not just the count.
 
 | corpus | files | identifiers that fired | agree | only-original | only-port |
 |:--|--:|--:|--:|--:|--:|
 | this repo's example pairs, as a control | 76 | 25 of 26 | 34 | 0 | 0 |
 | a two-file probe for the 26th (`tests/Fixtures/probes`) | 2 | 1 | 2 | 0 | 0 |
-| the consumer's first-party source | 2716 | 2 → **3** | 50 → **58** | 0 | 0 |
-| four of its vendored dependency trees | 3103 | 10 → **12** | 328 → **336** | 0 | 0 |
+| the consumer's first-party source | 2716 | 2 → 3 | 50 → **58** | 0 | 0 |
+| four of its vendored dependency trees | 3103 | 10 → 12 → **13** | 328 → 336 → **345** | 0 → **5** | 0 |
 
 Zero unexplained disagreements, in either direction, on 414 sites and then on 430 — and messages compared as
 text, not just lines. The four rules added afterwards brought real findings rather than more zeros:
@@ -215,6 +215,24 @@ In order, largest first. Each one reads as a port defect, and three of the four 
 
 The lesson is the one the procedure already states, sharpened: a differential's first disagreements are
 usually about *what each tool was asked to look at*. Attribute every one of them before touching a rule.
+
+### A third kind of disagreement: neither rule is wrong
+
+The run after the type mechanism landed showed **5 only-original** for `ForbiddenArrayMethodCallRule`, against
+9 agreements — the first disagreement in this harness that is a defect in *neither* tool. All five are
+`[$handler, 'handleError']` in one Symfony file, where `$handler` is a `?self` parameter reassigned inside
+`if ($isNew = null === $handler) { $handler = new static(); }`.
+
+Probed on a reduced fixture: mago infers `Fixture\Handler|Fixture\Handler|null` there, keeping the null the
+assignment removed. PHPStan narrows to `Handler`. The rule asks `instanceof TypeWithClassName`, which a
+nullable type fails on **both** sides — so the port answering "no" is the *correct* translation of the question
+it was given, and it is given a different answer by the engine.
+
+Dropping nulls to close it would be wrong in the direction that matters: a genuinely nullable first element
+would then be reported where PHPStan is silent. So this stays as a named narrowness of the port on real code,
+attributed to engine narrowing rather than to translation, and it will recur for every rule that asks about a
+type. `soleObjectClassIgnoringNull()` exists for the one place a rule *asks* for nulls to be dropped
+(`TypeCombinator::removeNull()`), and nowhere else.
 
 ### What is still not covered
 

@@ -477,6 +477,14 @@ wrong three times in the comfortable direction, and the third time the correctio
 what looked like an after-file hook plus a runtime refactor was one requirement and one helper on the hook we
 already emit.
 
+### What a type-asking rule costs on real code
+
+`ForbiddenArrayMethodCallRule` agrees with PHPStan on 9 sites of a vendor corpus and misses 5, and the misses
+are not a translation defect: mago keeps a null in the type where PHPStan narrows it away, and the rule's
+`instanceof TypeWithClassName` correctly answers no to a nullable type on both sides. `docs/dogfooding.md` has
+the probe. Expect the same shape from every rule that asks about a type — the port is exactly as wide as the
+question it was given, and the engine gives a different answer.
+
 ### One caution about `ExpressionTypes`
 
 It embeds every expression type in the file, and the requirement is per hook — so a node hook that does not ask
