@@ -122,6 +122,17 @@ final class Transpiler
     /** PHPStan's `->identifier(..)`, which becomes the issue's code so the two tools agree on it. */
     private ?string $identifier = null;
 
+    /**
+     * Every identifier the rule reports under, in the order it takes them.
+     *
+     * `$identifier` holds the last one, which is what the trailing report uses. A merged rule reports under
+     * one identifier per check, and a harness comparing the two tools on a single identifier would measure
+     * one check and pass on the others' silence.
+     *
+     * @var list<string>
+     */
+    private array $identifiers = [];
+
     /** @var array<string, string> the rule's own string constants, by name */
     private array $constants = [];
 
@@ -144,6 +155,10 @@ final class Transpiler
      * A helper called with a literal — `namespaceStartsWith($scope, 'App')` — can use that parameter where a
      * literal is required, and the value is known at transpile time. Kept apart from `$locals`, which holds
      * runtime values.
+     *
+     * Scoped exactly like `$locals`: saved and restored around every inline, and dropped for a name a loop
+     * or closure binds. It used to outlive the inline that bound it, and a rule asking two checks then read
+     * the first check's literal in the second — see {@see foreachAsAny}.
      *
      * @var array<string, string>
      */
@@ -354,6 +369,26 @@ final class Transpiler
     private int $checksReported = 0;
 
     /**
+     * Whether this rule is emitted as one private method per check.
+     *
+     * A merged rule asks several *independent* checks of the same node in one pass, for the dispatch
+     * saving. Flattened into one body, the first check's guards become the rule's guards, so its "not my
+     * case" exits the rule and every later check is unreachable. One method per check gives each check's
+     * guards their own thing to return from.
+     *
+     * Decided before translation, and only for a rule that really asks two, so a rule with one check
+     * emits exactly what it emits today.
+     */
+    private bool $checkMode = false;
+
+    /**
+     * The checks emitted so far, each already rendered.
+     *
+     * @var list<array{name: string, signature: string, body: string}>
+     */
+    private array $checks = [];
+
+    /**
      * Locals holding an error an inlined helper already reported.
      *
      * A rule that checks several things in one pass writes `$e = $this->someError(..); if ($e instanceof
@@ -500,7 +535,7 @@ final class Transpiler
     }
 
     /**
-     * @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, arguments: array<string, mixed>, messages: list<string>} the emitted rule, plus what the caller needs to register and attribute it
+     * @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, identifiers: list<string>, arguments: array<string, mixed>, messages: list<string>} the emitted rule, plus what the caller needs to register and attribute it
      */
     public function transpile(): array
     {
@@ -564,6 +599,7 @@ final class Transpiler
                 'module' => $this->snake($className),
                 'rust' => '',
                 'identifier' => $this->identifier,
+                'identifiers' => array_values(array_unique($this->identifiers)),
                 'messages' => [],
             ];
         }
@@ -580,6 +616,7 @@ final class Transpiler
         $this->classFrom = $hook['classFrom'] ?? 'scope';
 
         $processNode = $this->findMethod($class, 'processNode');
+        $this->checkMode = self::$target === 'php' && $this->independentChecks($processNode) >= 2;
         foreach ($processNode->stmts ?? [] as $stmt) {
             $this->translateStatement($stmt);
         }
@@ -598,6 +635,9 @@ final class Transpiler
             'module' => $this->snake($className),
             'rust' => $rust,
             'identifier' => $this->identifier,
+            // Every identifier, not only the last: a harness comparing the two tools has to look for all of
+            // them, or a merged rule's other checks pass by being ignored rather than by agreeing.
+            'identifiers' => array_values(array_unique($this->identifiers)),
             // The configured values the generated plugin carries as constructor defaults, read from the
             // package's own neon. Handed back so a harness can register the *original* rule with the same
             // values: a rule whose two sides are configured differently is not a comparison.
@@ -772,7 +812,7 @@ final class Transpiler
      * configured threshold as a constructor default, the rule's own message and code, and one finding per
      * declaration that is missing a type, anchored where the declaration is.
      *
-     * @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, arguments: array<string, mixed>, messages: list<string>}
+     * @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, identifiers: list<string>, arguments: array<string, mixed>, messages: list<string>}
      */
     private function emitAggregate(string $className, AggregateRule $aggregate): array
     {
@@ -872,6 +912,7 @@ PHP;
             'rust' => $rust,
             'arguments' => [],
             'identifier' => $aggregate->identifier,
+            'identifiers' => [$aggregate->identifier],
             'messages' => [$aggregate->message],
         ];
     }
@@ -1064,7 +1105,10 @@ PHP;
                 throw new Refusal('a function-existence question, which only the PHP target carries', $expr->getStartLine());
             }
 
-            return $this->backend->call('function_exists', ['$context', $this->operand($this->resolve($args[0]->value, $expr->getStartLine()))]);
+            return $this->backend->call('function_exists', [
+                '$context',
+                $this->nameText($this->resolve($args[0]->value, $expr->getStartLine()), $expr->getStartLine()),
+            ]);
         }
 
         if ($method === 'hasClass' && count($args) === 1) {
@@ -1443,7 +1487,9 @@ PHP;
             return null;
         }
 
-        $comparable = ['bytes', 'class-name'];
+        // A configured value is a string the plugin carries, so comparing one against a string is the same
+        // comparison. It reaches here as the item of a configured list, which is what iterating one binds.
+        $comparable = ['bytes', 'class-name', 'config-bytes'];
         if (! in_array($first['kind'], $comparable, true) || ! in_array($second['kind'], $comparable, true)) {
             return null;
         }
@@ -2035,6 +2081,7 @@ PHP;
 
         // Bind the parameters, then translate the body in the helper's own constant scope.
         $savedLocals = $this->locals;
+        $savedLiterals = $this->literals;
         $savedConstants = $this->constants;
         $savedInts = $this->intConstants;
         $savedArrayConstants = $this->arrayConstants;
@@ -2058,6 +2105,7 @@ PHP;
         } finally {
             --$this->inlineDepth;
             $this->locals = $savedLocals;
+            $this->literals = $savedLiterals;
             $this->constants = $savedConstants;
             $this->intConstants = $savedInts;
             $this->arrayConstants = $savedArrayConstants;
@@ -2201,6 +2249,12 @@ PHP;
         }
 
         $saved = $this->locals;
+        // The loop variable shadows anything of the same name, including a literal an *earlier* inline bound
+        // to a parameter called the same thing. `ChecksNamespace` binds `$namespace` to `'App'` for the
+        // singular check and iterates a configured list under the same name for the plural one, so without
+        // this the second check compares every item against the first check's literal.
+        $savedLiterals = $this->literals;
+        unset($this->literals[$item->name]);
         $bound = 'item' . ($depth === 0 ? '' : (string) $depth);
         $this->locals[$item->name] = [
             'rust' => $bound,
@@ -2212,6 +2266,7 @@ PHP;
             $predicate = $this->anyBodies($body, $depth);
         } finally {
             $this->locals = $saved;
+            $this->literals = $savedLiterals;
         }
 
         if (self::$target === 'php') {
@@ -2675,6 +2730,7 @@ PHP;
         // Translated only once the shape is settled, because translating a condition can inline another helper
         // and there is no undoing that if the body turns out not to be a choice after all.
         $savedLocals = $this->locals;
+        $savedLiterals = $this->literals;
         $this->locals = $this->bindParameters($helper, $args, $name, $line) + $this->locals;
 
         try {
@@ -2695,6 +2751,7 @@ PHP;
             }
         } finally {
             $this->locals = $savedLocals;
+            $this->literals = $savedLiterals;
         }
 
         return ['rust' => '(' . $expression . ')', 'kind' => 'bytes', 'php' => '(' . $expression . ')'];
@@ -2956,7 +3013,10 @@ PHP;
             $reports[$branch['message'] . '|' . $branch['code'] . '|' . $branch['anchor']] = true;
         }
 
-        if (count($reports) === 1) {
+        // Outside check mode the rule appends one report of its own, so the helper only has to say when to
+        // reach it. In check mode there is no trailing report to reach: a guard that bailed would leave the
+        // check silent, which is the failure this whole mode exists to avoid.
+        if (count($reports) === 1 && ! $this->checkMode) {
             // The helper reports when any of them holds, so the rule bails when none does.
             $this->lines[] = new Stm('guard', [
                 'condition' => '!((' . implode(' || ', array_column($this->reportConditions, 'condition')) . '))',
@@ -2970,7 +3030,13 @@ PHP;
             throw new Refusal('a helper reporting different findings per branch, which only the PHP target carries');
         }
 
-        foreach ($this->reportConditions as $branch) {
+        // Branches reporting the same finding collapse to one `if` over their disjunction, rather than the
+        // same report written once per branch.
+        $branches = count($reports) === 1
+            ? [['condition' => implode(' || ', array_column($this->reportConditions, 'condition'))] + $this->reportConditions[0]]
+            : $this->reportConditions;
+
+        foreach ($branches as $branch) {
             $this->lines[] = new Stm('if-open', ['condition' => $branch['condition']], $this->indent);
             $this->indent += 4;
             $this->lines[] = new Stm('report', [
@@ -3008,6 +3074,175 @@ PHP;
                 $line,
             );
         }
+    }
+
+    /**
+     * A descriptor read as the string a name-taking `Support` helper expects.
+     *
+     * The name a rule hands `hasFunction()` is usually the call's own name *node*, and the helpers take the
+     * text. Passing the node instead was a `TypeError` in the worker, which surfaces as an orchestrator
+     * protocol error naming neither the rule nor the argument — so the reduction is done here, by kind.
+     *
+     * @param Descriptor $subject
+     */
+    private function nameText(array $subject, int $line): string
+    {
+        return match ($subject['kind']) {
+            'bytes', 'class-name', 'config-bytes', 'resolved-name' => $this->operand($subject),
+            'local-name', 'name-selector', 'name-expr' => $this->backend->call('text_of', [$this->operand($subject)]),
+            default => throw new Refusal("cannot read a {$subject['kind']} as a name", $line),
+        };
+    }
+
+    /**
+     * How many independent checks the rule's body asks of one node.
+     *
+     * A check is `$x = $this->someError(..)` where the helper builds a rule error: the rule keeps whatever
+     * came back, and moves on to ask the next one. Counted before translation because the answer decides how
+     * the whole body is emitted, and a rule asking one check must emit what it emits today.
+     */
+    private function independentChecks(ClassMethod $processNode): int
+    {
+        $checks = 0;
+        foreach ($processNode->stmts ?? [] as $stmt) {
+            if (! $stmt instanceof Expression || ! $stmt->expr instanceof Assign) {
+                continue;
+            }
+
+            $call = $stmt->expr->expr;
+            if (! $stmt->expr->var instanceof Variable || ! $this->isOwnMethodCall($call)) {
+                continue;
+            }
+
+            $method = $call->name->toString();
+            $declaring = $this->declaringOf($method);
+            if ($declaring !== null && $this->buildsRuleError($this->findMethod($declaring['class'], $method))) {
+                ++$checks;
+            }
+        }
+
+        return $checks;
+    }
+
+    /**
+     * Where this check's statements begin, or null when the rule is not emitted per check.
+     *
+     * In check mode each check gets its own method, so the flattening {@see refuseASecondCheck} guards against
+     * cannot happen and the refusal does not apply. {@see closeCheck} moves the statements out once the helper
+     * has reported; a helper that turns out to bind a value rather than report leaves the mark unused.
+     */
+    private function openCheck(int $line): ?int
+    {
+        if ($this->checkMode && $this->inlineDepth === 0) {
+            return count($this->lines);
+        }
+
+        $this->refuseASecondCheck($line);
+
+        return null;
+    }
+
+    /**
+     * Emit whatever an inlined helper decided, and move it into its own method when in check mode.
+     *
+     * @param int|null                            $checkStart where this check's statements begin, or null outside check mode
+     * @param array<string, array<string, mixed>> $available  the locals bound at the call site
+     */
+    private function finishCheck(?int $checkStart, string $method, array $available): void
+    {
+        $reported = $this->emitHelperReports();
+        if ($reported && $this->inlineDepth === 1) {
+            // Depth 1 is the outermost inline: the check whose guards land in the rule body.
+            ++$this->checksReported;
+        }
+
+        if ($checkStart === null) {
+            return;
+        }
+
+        // A helper that took a message rather than collecting conditions reports once, after its guards.
+        // Outside check mode the rule appends that report itself; here it belongs to the check, because the
+        // check is what the guards above it decline.
+        if (! $reported) {
+            $this->lines[] = $this->reportNode();
+        }
+
+        $this->closeCheck($checkStart, $method, $available);
+    }
+
+    /**
+     * Move the statements one check emitted out of the rule body and into a private method of the plugin.
+     *
+     * The point of the method is its `return`: a guard inside it declines *this* check, where the same guard
+     * in the rule body would decline every check after it too. The statements are already rendered at the
+     * body's indentation, which a method body shares, so they move across unchanged.
+     *
+     * The method takes whatever locals the rule had bound and the check's statements name — the prologue's
+     * work, done once and passed in rather than repeated per check. They are typed `mixed`: the transpiler
+     * tracks each local's shape well enough to render it, not well enough to name a PHP type for it, and a
+     * guessed type is a `TypeError` at analysis time rather than a refusal here.
+     *
+     * @param array<string, array<string, mixed>> $available the locals bound at the call site
+     */
+    private function closeCheck(int $from, string $method, array $available): void
+    {
+        $body = '';
+        foreach (array_splice($this->lines, $from) as $statement) {
+            $body .= $this->backend->render($statement);
+        }
+
+        $parameters = ['NodeAnalysisContext $context'];
+        $arguments = ['$context'];
+        foreach ($this->checkSubjects($available) as $variable) {
+            if (preg_match('/(?<![\w$])' . preg_quote($variable, '/') . '\b/', $body) !== 1) {
+                continue;
+            }
+
+            $parameters[] = 'mixed ' . $variable;
+            $arguments[] = $variable;
+        }
+
+        $name = 'check' . ucfirst((string) preg_replace('/[^A-Za-z0-9]/', '', $method));
+
+        $this->checks[] = [
+            'name' => $name,
+            'signature' => implode(', ', $parameters),
+            'body' => $body,
+        ];
+
+        $this->lines[] = new Stm('check-call', [
+            'name' => $name,
+            'arguments' => implode(', ', $arguments),
+        ], $this->indent);
+
+        // Every check reports for itself, so the rule has no trailing report to make.
+        $this->reportedInline = true;
+    }
+
+    /**
+     * The variables a check method can be handed, in the order they were bound.
+     *
+     * The hook node first, then the rule's own locals — but only those that are a plain variable. A local
+     * bound to an expression is not something a parameter can carry, and one is not needed: the check's
+     * statements name the variable or they do not.
+     *
+     * @param array<string, array<string, mixed>> $available
+     *
+     * @return list<string>
+     */
+    private function checkSubjects(array $available): array
+    {
+        $subjects = ['$node'];
+        foreach ($available as $local) {
+            // A descriptor carries a PHP rendering only where one was needed. Absent is the same answer as
+            // "not a plain variable": there is nothing a parameter could carry.
+            $php = $local['php'] ?? null;
+            if (is_string($php) && preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $php) === 1) {
+                $subjects[] = $php;
+            }
+        }
+
+        return array_values(array_unique($subjects));
     }
 
     private function translateErrorHelperReturn(Return_ $stmt): void
@@ -3090,7 +3325,7 @@ PHP;
             $this->reportedErrors[$target->name] = true;
         }
 
-        $this->refuseASecondCheck($line);
+        $checkStart = $this->openCheck($line);
 
         $declaring = $this->currentClass instanceof ClassLike
             ? $this->declaringOf($method)
@@ -3107,6 +3342,7 @@ PHP;
         // afterwards would restore the polluted scope, leaving `$reflectionProvider` and `$site` visible to
         // whatever the rule does next.
         $savedLocals = $this->locals;
+        $savedLiterals = $this->literals;
 
         // A shim forwards and nothing else: `return $this->other(..);`. Following it is what lets the check
         // below see the builder two levels down instead of refusing the shim for not being one. Followed one
@@ -3140,6 +3376,7 @@ PHP;
                     // The caller's scope, plus the one binding this produced. Anything a shim or a consumer
                     // bound on the way in has served its purpose and must not outlive the inline.
                     $this->locals = $savedLocals;
+                    $this->literals = $savedLiterals;
                     $this->locals[$target->name] = $produced;
 
                     return;
@@ -3152,6 +3389,7 @@ PHP;
                 $local = $this->snake($target->name);
                 $this->lines[] = new Stm('declare', ['target' => $local, 'value' => $classified], $this->indent);
                 $this->locals = $savedLocals;
+                $this->literals = $savedLiterals;
                 $this->locals[$target->name] = [
                     'rust' => $local,
                     'kind' => 'bytes',
@@ -3192,10 +3430,9 @@ PHP;
                 $this->translateStatement($statement);
             }
 
-            if ($this->emitHelperReports() && $this->inlineDepth === 1) {
-                // Depth 1 is the outermost inline: the check whose guards land in the rule body.
-                ++$this->checksReported;
-            }
+            // The caller's locals, not the helper's: the parameters a check method needs are the ones the
+            // rule had bound before it asked, and `$this->locals` here is the helper's own scope.
+            $this->finishCheck($checkStart, $method, $savedLocals);
 
             // Whatever this helper took has now been emitted, or handed to the rule's trailing report. A rule
             // that asks several helpers in one pass is free to take a different message from the next one.
@@ -3205,6 +3442,7 @@ PHP;
             $this->reportConditions = $savedConditions;
             $this->inErrorHelper = $savedInHelper;
             $this->locals = $savedLocals;
+            $this->literals = $savedLiterals;
             $this->constants = $savedConstants;
             $this->intConstants = $savedInts;
             $this->arrayConstants = $savedArrayConstants;
@@ -3395,6 +3633,8 @@ PHP;
         }
 
         $savedLocals = $this->locals;
+
+        $savedLiterals = $this->literals;
         $savedConstants = $this->constants;
         $savedInts = $this->intConstants;
         $savedArrayConstants = $this->arrayConstants;
@@ -3431,6 +3671,7 @@ PHP;
             $this->recordFields = $savedFields;
             $this->inErrorHelper = $savedInHelper;
             $this->locals = $savedLocals;
+            $this->literals = $savedLiterals;
             $this->constants = $savedConstants;
             $this->intConstants = $savedInts;
             $this->arrayConstants = $savedArrayConstants;
@@ -3612,6 +3853,7 @@ PHP;
     private function renderClassifier(array $cases, ClassMethod $helper, array $args, string $method, array $declaring, int $line): string
     {
         $savedLocals = $this->locals;
+        $savedLiterals = $this->literals;
         $savedConstants = $this->constants;
         $savedInts = $this->intConstants;
         $savedArrayConstants = $this->arrayConstants;
@@ -3643,6 +3885,7 @@ PHP;
         } finally {
             --$this->inlineDepth;
             $this->locals = $savedLocals;
+            $this->literals = $savedLiterals;
             $this->constants = $savedConstants;
             $this->intConstants = $savedInts;
             $this->arrayConstants = $savedArrayConstants;
@@ -4410,6 +4653,7 @@ PHP;
         // nothing to iterate: it collapses, and only the inner one is emitted.
         if ($subject['kind'] === 'collected' && $stmt->keyVar instanceof Expr) {
             $savedLocals = $this->locals;
+            $savedLiterals = $this->literals;
             $this->locals[$stmt->valueVar->name] = ['rust' => $subject['rust'], 'kind' => 'collected'];
             try {
                 foreach ($stmt->stmts as $inner) {
@@ -4417,6 +4661,7 @@ PHP;
                 }
             } finally {
                 $this->locals = $savedLocals;
+                $this->literals = $savedLiterals;
             }
 
             return;
@@ -4439,6 +4684,8 @@ PHP;
         $variable = $this->snake($stmt->valueVar->name);
 
         $savedLocals = $this->locals;
+
+        $savedLiterals = $this->literals;
         $savedLoop = $this->inLoop;
         $this->locals[$stmt->valueVar->name] = ['rust' => $variable, 'kind' => $iterable['item']];
         if (isset($subject['as'])) {
@@ -4472,6 +4719,7 @@ PHP;
             $this->inLoop = $savedLoop;
             --$this->loopDepth;
             $this->locals = $savedLocals;
+            $this->literals = $savedLiterals;
         }
 
         $this->lines[] = new Stm('block-close', [], $this->indent);
@@ -4495,6 +4743,8 @@ PHP;
         }
 
         $savedLocals = $this->locals;
+
+        $savedLiterals = $this->literals;
         $savedLoop = $this->inLoop;
         $this->inLoop = true;
         ++$this->loopDepth;
@@ -4534,6 +4784,7 @@ PHP;
             $this->inLoop = $savedLoop;
             --$this->loopDepth;
             $this->locals = $savedLocals;
+            $this->literals = $savedLiterals;
             $this->reportSpan = $savedSpan;
         }
 
@@ -4776,6 +5027,7 @@ PHP;
                 }
 
                 $this->identifier = $identifier;
+                $this->identifiers[] = $identifier;
             }
 
             // `->line($classMethod->getLine())` moves the finding off the node the hook fired for and onto the
@@ -5988,11 +6240,14 @@ PHP;
             }
 
             $saved = $this->locals;
-            $this->locals[$parameter->name] = ['rust' => 'item', 'kind' => 'bytes', 'php' => '$item'];
+            $savedLiterals = $this->literals;
+            unset($this->literals[$parameter->name]);
             try {
+                $this->locals[$parameter->name] = ['rust' => 'item', 'kind' => 'bytes', 'php' => '$item'];
                 $predicate = $this->translateCondition($closure->expr);
             } finally {
                 $this->locals = $saved;
+                $this->literals = $savedLiterals;
             }
 
             $list = $this->byteSliceList($options);
@@ -6774,7 +7029,7 @@ PHP;
             return [
                 'rust' => self::PHP_ONLY,
                 'kind' => 'bytes',
-                'php' => $this->backend->call('function_name', ['$context', $this->operand($named)]),
+                'php' => $this->backend->call('function_name', ['$context', $this->nameText($named, $line)]),
             ];
         }
 
@@ -8027,6 +8282,14 @@ REPORT, ['{ANCHOR}' => $this->anchor ?? $this->defaultAnchor()]);
 
         $constructor = $this->emitConstructor();
 
+        // One method per check, in the order the rule asks them. Empty for every rule that asks one, which is
+        // what keeps those files byte-identical.
+        $checkMethods = '';
+        foreach ($this->checks as $check) {
+            $checkMethods .= "\n    private function {$check['name']}({$check['signature']}): void\n"
+                . "    {\n{$check['body']}    }\n";
+        }
+
         return <<<PHP
 <?php
 
@@ -8079,7 +8342,7 @@ final class {$className} implements Plugin, NodeAnalysisHook
         \$node = \$context->node;
 
 {$body}{$trailingReport}    }
-
+{$checkMethods}
 }
 
 PHP;

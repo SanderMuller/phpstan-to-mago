@@ -20,19 +20,22 @@ final readonly class PhpstanReport
      * The findings for one rule, keyed by file base name, each entry `line: message`.
      *
      * `$identifier` is matched as a prefix, because a rule that classifies what it found reports under a
-     * computed code and the leading literal is what every code it can report has in common.
+     * computed code and the leading literal is what every code it can report has in common. A list matches any
+     * of them, which is what a merged rule needs: it reports under one identifier per check.
      *
      * `$relativeTo` decides what a file is called. A per-rule gate compares base names, because its two
      * sandboxes put the same example at different absolute paths. A corpus differential cannot: two files can
      * share a base name, and collapsing them makes one rule's finding look like another's. Passing the corpus
      * root keys by path relative to it, which is what the other engine's report is normalised to.
      *
-     * @return array<string, list<string>>
      *
+     *
+     * @param string|list<string> $identifier one prefix, or every prefix a merged rule reports under
+     * @return array<string, list<string>>
      * @throws RuntimeException when the output is not a shape this understands, which means PHPStan did not
      *                          run and there is nothing to compare
      */
-    public static function findings(string $output, string $identifier, string $context = 'the rule', ?string $relativeTo = null): array
+    public static function findings(string $output, string|array $identifier, string $context = 'the rule', ?string $relativeTo = null): array
     {
         $start = strpos($output, '{');
         /** @var array<string, mixed>|null $decoded */
@@ -71,18 +74,33 @@ final readonly class PhpstanReport
     }
 
     /**
-     * The messages of one identifier, as `line: message` keyed by file base name.
+     * The messages of the rule's own identifiers, as `line: message` keyed by file base name.
      *
      * @param array<string, list<array{line?: int, identifier?: string, message?: string}>> $byFile
+     * @param string|list<string>                                                             $identifier
      *
      * @return array<string, list<string>>
      */
-    private static function collect(array $byFile, string $identifier, ?string $relativeTo = null): array
+    private static function collect(array $byFile, string|array $identifier, ?string $relativeTo = null): array
     {
+        // A merged rule reports under one identifier per check, so matching a single prefix would compare one
+        // check and read the others' absence as agreement.
+        $prefixes = array_filter(is_array($identifier) ? $identifier : [$identifier], static fn (string $prefix): bool => $prefix !== '');
+
         $findings = [];
         foreach ($byFile as $path => $messages) {
             foreach ($messages as $message) {
-                if (! str_starts_with((string) ($message['identifier'] ?? ''), $identifier)) {
+                $found = (string) ($message['identifier'] ?? '');
+                $matched = false;
+                foreach ($prefixes as $prefix) {
+                    if (str_starts_with($found, $prefix)) {
+                        $matched = true;
+
+                        break;
+                    }
+                }
+
+                if (! $matched) {
                     continue;
                 }
 

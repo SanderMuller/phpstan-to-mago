@@ -68,6 +68,8 @@ final class PhpBackend implements Backend
                 return "{$pad}\${$this->name($a['target'])} = [];\n";
             case 'append':
                 return "{$pad}\${$this->name($a['target'])}[] = {$this->checked($a['value'])};\n";
+            case 'check-call':
+                return "{$pad}\$this->{$a['name']}({$a['arguments']});\n";
             case 'blank':
                 return "\n";
             case 'report':

@@ -122,7 +122,7 @@ final readonly class FiresGate
      */
     public function magoFindings(string $rule, string $ruleFile): array
     {
-        $identifier = $this->identifierPrefixOf($ruleFile);
+        $prefixes = $this->identifierPrefixesOf($ruleFile);
         $sandbox = $this->sandbox($rule, $ruleFile);
         $output = $this->run(['./mago', 'analyze', '--reporting-format', 'json'], $sandbox);
 
@@ -138,7 +138,17 @@ final readonly class FiresGate
             // and other native diagnostics on the same run, and PHPStan reports its own level-0 errors;
             // counting either would compare two different things. Mago spells the code
             // `transpiled/<kebab-plugin>/<rule identifier>`, PHPStan spells it `<rule identifier>`.
-            if (! str_contains((string) ($issue['code'] ?? ''), '/' . $identifier)) {
+            $code = (string) ($issue['code'] ?? '');
+            $mine = false;
+            foreach ($prefixes as $prefix) {
+                if (str_contains($code, '/' . $prefix)) {
+                    $mine = true;
+
+                    break;
+                }
+            }
+
+            if (! $mine) {
                 continue;
             }
 
@@ -170,7 +180,7 @@ final readonly class FiresGate
             '--autoload-file=' . $this->repositoryRoot . '/vendor/autoload.php',
         ], $sandbox);
 
-        return PhpstanReport::findings($output, $this->identifierPrefixOf($ruleFile), $rule);
+        return PhpstanReport::findings($output, $this->identifierPrefixesOf($ruleFile), $rule);
     }
 
     /**
@@ -220,7 +230,10 @@ final readonly class FiresGate
             mkdir($sandbox . '/stubs', 0o777, true);
         }
 
-        copy($this->examplesRoot . '/stubs/Framework.php', $sandbox . '/stubs/Framework.php');
+        $stubs = glob($this->examplesRoot . '/stubs/*.php');
+        foreach ($stubs === false ? [] : $stubs as $stub) {
+            copy($stub, $sandbox . '/stubs/' . basename($stub));
+        }
 
         // A relative `command` resolves from the config file's directory, and the binary is symlinked
         // in so the sandbox needs no absolute path baked into a committed file.
@@ -278,23 +291,30 @@ final readonly class FiresGate
      * so there is no single literal to match. The leading literal is common to every code the rule can
      * report, and matching on it keeps the comparison over exactly that rule's findings.
      */
-    private function identifierPrefixOf(string $ruleFile): string
+    /**
+     * Every identifier prefix the rule reports under.
+     *
+     * A merged rule takes one identifier per check, and comparing on the last one alone measured a single
+     * check while the other two passed on being ignored. So the whole set, not `identifier`.
+     *
+     * @return list<string>
+     */
+    private function identifierPrefixesOf(string $ruleFile): array
     {
-        $identifier = $this->identifierOf($ruleFile);
-        if (! str_contains($identifier, "'")) {
-            return $identifier;
+        $identifiers = $this->transpiled($ruleFile)['identifiers'] ?? [];
+
+        $prefixes = [];
+        foreach (is_array($identifiers) ? $identifiers : [] as $identifier) {
+            if (! is_string($identifier) || $identifier === '') {
+                continue;
+            }
+
+            // A computed code arrives as the expression that builds it, and the leading literal is what every
+            // code it can report has in common: `'hihaho.debug.noDebugIn' . $namespace`.
+            $prefixes[] = str_contains($identifier, "'") ? (explode("'", $identifier)[1] ?? $identifier) : $identifier;
         }
 
-        $quoted = explode("'", $identifier);
-
-        return $quoted[1] ?? $identifier;
-    }
-
-    private function identifierOf(string $ruleFile): string
-    {
-        $identifier = $this->transpiled($ruleFile)['identifier'];
-
-        return is_string($identifier) ? $identifier : '';
+        return array_values(array_unique($prefixes));
     }
 
     private function transpile(string $ruleFile): string

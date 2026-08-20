@@ -429,7 +429,11 @@ final class Support
 
     public static function nameEquals(?Part $part, string $literal): bool
     {
-        return $part instanceof Part && strcasecmp($part->text, $literal) === 0;
+        // A leading `\` is dropped on both sides, because the rule's literal is written the way php-parser
+        // spells a name and php-parser does not keep it: `\Livewire\invade(..)` and `Livewire\invade(..)` both
+        // read back as `Livewire\invade`. Mago keeps the separator, so comparing the text as written made the
+        // port silent on exactly the fully-qualified spelling the rule exists to catch.
+        return $part instanceof Part && strcasecmp(ltrim($part->text, '\\'), ltrim($literal, '\\')) === 0;
     }
 
     /** The selector's own name, which is case sensitive in PHP as method names are compared. */
