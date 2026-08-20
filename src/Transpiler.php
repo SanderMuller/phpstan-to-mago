@@ -3483,11 +3483,11 @@ PHP;
      * restricted itself to classes. Trait is absent on purpose: PHPStan's `InClassNode` does not fire for a
      * trait either, which the same control showed.
      *
-     * Read *after* the body is translated, which is what makes it exact: `$narrowedToClass` is set by the
-     * translation of the rule's own `instanceof Class_`, so it records what the emitted code actually did rather
-     * than what a scan of the source guessed. A syntactic pre-pass stood here and was wrong in the dangerous
-     * direction — a call named `isClass()` anywhere in the hierarchy, for any receiver and under any condition,
-     * narrowed the targets and made the plugin miss the enum and interface findings the rule reports.
+     * Every class-like kind, unconditionally, because the rule's own class test is now asked at runtime rather
+     * than folded away — see {@see classHookIsClass()}. Two earlier attempts tried to decide the breadth from
+     * whether the rule narrows: a syntactic pre-pass over the source, then the flag the fold set during
+     * translation. Both were wrong in the same direction, because neither the presence of the predicate nor its
+     * translation proves the *rule* is class-only: compounded or negated, it is not. Not deciding is exact.
      *
      * @param array<string, string>|array<string, null>|array<string, bool> $hook
      *
@@ -3497,9 +3497,9 @@ PHP;
     {
         $kind = (string) $hook['kind'];
 
-        return $this->narrowedToClass || ($hook['classOnly'] ?? false) !== true
-            ? [$kind]
-            : [$kind, 'Enum', 'Interface'];
+        return ($hook['classOnly'] ?? false) === true
+            ? [$kind, 'Enum', 'Interface']
+            : [$kind];
     }
 
     /**
@@ -6309,9 +6309,7 @@ PHP;
         }
 
         if ($wanted === Class_::class && $subject['kind'] === 'hook-node') {
-            $this->narrowedToClass = true;
-
-            return $this->alwaysHolds('the class declaration hook fires for classes, never for an interface');
+            return $this->classHookIsClass();
         }
 
         if ($subject['kind'] === 'hint-option' || $subject['kind'] === 'hint') {
@@ -7340,17 +7338,30 @@ PHP;
     }
 
     /**
-     * `$classReflection->isClass()` inside the class declaration hook.
+     * `$classReflection->isClass()`, and `$node->getOriginalNode() instanceof Class_`, inside the class
+     * declaration hook. The same question, asked two ways.
      *
-     * Always true there, and recording it means the rule counts as narrowed: PHPStan's `InClassNode`
-     * visits interfaces, traits and enums, this guard discards them, and the class hook does the same
-     * by never firing.
+     * The PHP target asks it. It used to fold to "always true" and record the rule as narrowed, which was
+     * wrong twice over: the fold is only sound where the plugin visits classes alone, and the recording claimed
+     * a narrowing the predicate alone does not prove. `isClass() && $somethingElse` inside an exiting guard
+     * leaves the rule reporting on enums and interfaces, and `! isClass()` reporting *only* there — but both
+     * spellings set the flag, so the plugin dropped those targets and went silent on the very declarations the
+     * rule is about.
+     *
+     * Asking at runtime costs a node-kind comparison and makes the guard the rule's own again, whatever it is
+     * compounded with or negated by. The Rust target keeps the fold: its class hook fires for classes alone, so
+     * the predicate really is always true there, and a rule that does *not* narrow is refused outright rather
+     * than emitted — see the `classOnly` check in {@see emit()}.
      */
     private function classHookIsClass(): string
     {
-        $this->narrowedToClass = true;
+        if (self::$target !== 'php') {
+            $this->narrowedToClass = true;
 
-        return $this->alwaysHolds('the class declaration hook fires for classes, never for an interface');
+            return $this->alwaysHolds('the class declaration hook fires for classes, never for an interface');
+        }
+
+        return $this->backend->call('declaration_kind_is', ['$context', '$node', $this->backend->bytes('Class')]);
     }
 
     /**

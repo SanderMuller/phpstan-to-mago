@@ -606,16 +606,25 @@ alone. A rule that asks about every class-like therefore needs all three targets
 `Class_` itself must keep the single target: that narrowing is folded away as always holding *because* the hook
 is class-only, so widening the targets without dropping the fold reports on exactly what the rule excludes.
 
-The breadth is read from what the translation **did**: `$narrowedToClass` is set where the rule's own
-`instanceof Class_` is translated, and the targets are chosen after the body is emitted. That is exact.
+So the PHP target **registers all three, always, and asks the rule's own class test at runtime**. Nothing is
+decided, which is what makes it right.
 
-It was a syntactic pre-pass first, because the `isInterface()` fold seemed to need the answer before
-translation — and the fold and the targets then each wanted the other's answer first. The pre-pass was wrong in
-the dangerous direction: a call named `isClass()` anywhere in the hierarchy, for any receiver and under any
-condition, narrowed the targets and made the plugin miss the enum and interface findings the rule reports. The
-circularity is gone instead of guessed: `isInterface()` and `isEnum()` are never folded, so nothing needs the
-answer early. Where the plugin targets classes alone the runtime answer is simply always no, at the cost of one
-node-kind comparison.
+Two attempts came before that, and both were wrong in the same direction. First a syntactic pre-pass over the
+rule's source; then the flag the `instanceof Class_` fold sets during translation. The trap is that neither the
+presence of the predicate nor its translation proves the *rule* is class-only:
+
+```php
+if ($reflection->isClass() && $somethingElse) { return []; }   // still reports on enums and interfaces
+if (! $reflection->isClass()) { return [$error]; }             // reports *only* on them
+```
+
+Folding `isClass()` to "always true" is sound only where the plugin visits classes alone — and dropping the
+enum and interface targets on the strength of that fold is what made the port go silent on exactly the
+declarations such a rule is about. `CompoundClassGuardRule` is the fixture for it: an enum both tools report,
+which the port misses the moment the fold comes back.
+
+The Rust target keeps the fold. Its class hook fires for classes alone, so the predicate really is always true
+there, and a rule that does not narrow is refused outright rather than emitted.
 
 `TraitRequiresInterfaceRule` is what makes this provable: the pairs it exists for in a real project are enum
 concerns, and its example pair reports on an enum and a class. Forced back to one target, the port misses the

@@ -71,6 +71,11 @@ final class TranspilesToPhpTest extends TestCase
         // in its own method so its guards decline that check rather than the rule, and a prologue local passed
         // into both. The fires-gate proves it runs; this proves a refactor did not change the shape.
         yield 'two independent checks of one node' => ['TwoChecksRule'];
+        // PHP only. The class test is asked at runtime rather than folded away, and the plugin registers every
+        // class-like kind — which is what PHPStan's `InClassNode` visits. Snapshotted because the two earlier
+        // attempts at deciding that breadth both went silent on an enum, and the emitted targets are where the
+        // decision is visible.
+        yield 'a class test compounded with another condition' => ['CompoundClassGuardRule'];
     }
 
     #[DataProvider('supportedRules')]
