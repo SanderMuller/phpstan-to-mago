@@ -1,3 +1,43 @@
+# The baseline is debt, not a standard
+
+`phpstan-baseline.neon` holds the errors this code arrived with when it moved out of research. It came down
+from 559 by installing the Mago SDK so the runtime type-checks, replacing 92 calls to php-parser's deprecated
+`getLine()`, typing the vocabulary tables and the descriptor shape everything flows through, extracting
+`ExampleReader`, and splitting the worst predicate method. It now holds 40 entries covering 71 errors.
+
+Prefer emptying it over adding to it. Check the current figure rather than quoting this one — a number in a
+guideline goes stale, and the file is one command away.
+
+## What remains is mostly class complexity, and needs a real refactor
+
+`Transpiler` scores 1229 against a limit of 80, and `Runtime\Support` 267. Splitting methods inside either
+does not move that number, because the class total is roughly the sum of its methods. Fixing `Transpiler`
+properly means separating the four jobs it does — orchestration, statement translation, expression
+translation, emission — which all share mutable state (`$locals`, `$lines`, `$indent`, `$refinements`,
+`$nodeKind`). That is a deliberate refactor behind a shared context object, not something to bolt onto a
+cleanup.
+
+---
+
+# Dependencies with known conflicts
+
+## `rector/type-perfect` is deliberately absent
+
+The repo-init baseline ships both `rector/type-perfect` and `tomasvotruba/type-coverage`. Since type-coverage
+2.3 absorbed type-perfect's rules under the same namespace, both register
+`Rector\TypePerfect\Reflection\MethodNodeAnalyser`, and PHPStan aborts before analysing with "Multiple
+services of type ... found". `hihaho/phpstan-rules` v3.15.1 fixed this the same way. Do not re-add it.
+
+## The rule packages are installed to be read, not run
+
+All four — `symplify/phpstan-rules`, `hihaho/phpstan-rules`, `tomasvotruba/type-coverage`,
+`tomasvotruba/cognitive-complexity` — are dev dependencies so that CI resolves the same corpus a contributor
+does, which is what makes the census meaningful. `hihaho/phpstan-rules` is listed under
+`extra."phpstan/extension-installer".ignore`, because registering a corpus's rules against this repository's
+own source is not what a corpus is for. Add a new corpus package the same way.
+
+---
+
 # Git safety
 
 Each of these failed *silently* — the build stayed green and the status looked plausible.
@@ -73,6 +113,33 @@ number, in the tool itself where possible, or a reader will conclude the tool is
 ## CPU and counts survive contention; wall clock does not
 
 Prefer them when the machine is shared and coordination is not possible.
+
+---
+
+# The two invariants
+
+Both hold for every change to the transpiler. Weakening either has already shipped broken plugins.
+
+## The emitted output is the contract, not the source
+
+Every target has a reviewed snapshot under `tests/Fixtures/expected` and `tests/Fixtures/expected-rust`, and
+`tests/Fixtures/expected/census.md` records what happens to all 129 rules in the four rule packages. A
+refactor that changes what is emitted fails those, which is the point: pint and rector have each rewritten
+`src/Transpiler.php` wholesale, and the snapshots proved the output was untouched.
+
+If a snapshot or the census changes, decide whether the new output is right **before** updating it, and say
+why in the commit.
+
+## Refuse rather than approximate
+
+The generator refuses a construct outside `Vocabulary`, naming it and its line, and `PhpBackend::checked()`
+refuses any operand it was handed and could not render. Both checks are load-bearing. Weakening them
+produced, at different times, files that did not parse and files that parsed *while still containing Rust* —
+the second kind is worse, because it loads and misbehaves.
+
+A plausible-but-wrong rule is the failure mode to design against, because you would trust it. And some
+refusals are simply the right answer: a node hook receives inferred types only at the positions it asks for
+through `FileAnalysisRequirement`, so where the subject is not one of those positions, refusing is correct.
 
 ---
 

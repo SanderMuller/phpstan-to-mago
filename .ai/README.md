@@ -30,6 +30,10 @@ is done and removed. What it established lives in the three docs above; its git 
 
 ## Guidelines
 
+- `guidelines/transpiler-invariants.md` — the two rules every transpiler change is held to.
+- `guidelines/dependencies.md` — the dependency conflict that aborts PHPStan, and why the rule packages are
+  installed but not registered.
+- `guidelines/baseline.md` — what the PHPStan baseline is, and why what is left needs a refactor.
 - `guidelines/verification.md` — evidence before claims.
 - `guidelines/measurement.md` — honest numbers.
 - `guidelines/git-safety.md` — the silent, destructive git failures.
