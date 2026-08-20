@@ -330,7 +330,12 @@ final class Transpiler
      * which is one guard followed by the report the rule already appends. Collecting them rather than
      * emitting each in place keeps the emitted shape the one everything else assumes.
      *
-     * @var list<string>
+     * Each entry carries what that branch reports, because a helper may report different things in different
+     * branches — `invadeUsageError()` returns one of two findings, each with its own message and identifier.
+     * Where every branch reports the same thing the emitted shape is unchanged, which is what keeps the
+     * reviewed snapshots reviewed.
+     *
+     * @var list<array{condition: string, message: string, code: string, anchor: string}>
      */
     private array $reportConditions = [];
 
@@ -424,6 +429,23 @@ final class Transpiler
     /** The class-like whose `self::` constants are currently in scope, i.e. the one being inlined. */
     private ?ClassLike $currentClass = null;
 
+    /**
+     * The rule's own class, which `$this` means however deep an inline has gone.
+     *
+     * `$currentClass` is swapped to whichever trait or parent is being inlined, so a name is resolved against
+     * that file's imports. But `$this` does not move: a method on one trait calling a method on a *sibling*
+     * trait is ordinary PHP, and looking it up on the trait alone finds nothing — `DetectsInvadeUsage` calls
+     * `namespaceStartsWith()`, which lives on `ChecksNamespace`, and both are used by the rule.
+     */
+    private ?ClassLike $ruleClass = null;
+
+    /**
+     * The rule's own import map, for the same reason.
+     *
+     * @var array<string, string>
+     */
+    private array $ruleUses = [];
+
     /** Guards against a helper that calls itself. */
     private int $inlineDepth = 0;
 
@@ -452,7 +474,7 @@ final class Transpiler
     }
 
     /**
-     * @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, messages: list<string>} the emitted rule, plus what the caller needs to register and attribute it
+     * @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, arguments: array<string, mixed>, messages: list<string>} the emitted rule, plus what the caller needs to register and attribute it
      */
     public function transpile(): array
     {
@@ -467,6 +489,8 @@ final class Transpiler
         $className = (string) $class->name;
 
         $this->currentClass = $class;
+        $this->ruleClass = $class;
+        $this->ruleUses = $this->useMap;
         $this->collectConstants($class);
 
         // A collector-and-consumer pair has no per-file body to translate, so it is recognised and re-emitted
@@ -508,6 +532,7 @@ final class Transpiler
             return [
                 'name' => $className,
                 'trait' => $hook['trait'],
+                'arguments' => [],
                 'node' => $short,
                 'kind' => $hook['kind'],
                 'module' => $this->snake($className),
@@ -547,6 +572,10 @@ final class Transpiler
             'module' => $this->snake($className),
             'rust' => $rust,
             'identifier' => $this->identifier,
+            // The configured values the generated plugin carries as constructor defaults, read from the
+            // package's own neon. Handed back so a harness can register the *original* rule with the same
+            // values: a rule whose two sides are configured differently is not a comparison.
+            'arguments' => array_map(static fn (array $configured): mixed => $configured['default'], $this->configured),
             'messages' => array_values($this->constants === [] ? [] : array_filter(
                 $this->constants,
                 static fn (string $name): bool => str_contains($name, 'MESSAGE'),
@@ -717,7 +746,7 @@ final class Transpiler
      * configured threshold as a constructor default, the rule's own message and code, and one finding per
      * declaration that is missing a type, anchored where the declaration is.
      *
-     * @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, messages: list<string>}
+     * @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, arguments: array<string, mixed>, messages: list<string>}
      */
     private function emitAggregate(string $className, AggregateRule $aggregate): array
     {
@@ -815,6 +844,7 @@ PHP;
             'kind' => 'CollectedData',
             'module' => $this->snake($className),
             'rust' => $rust,
+            'arguments' => [],
             'identifier' => $aggregate->identifier,
             'messages' => [$aggregate->message],
         ];
@@ -2513,10 +2543,67 @@ PHP;
             return false;
         }
 
+        // Read after taking the message, so each branch records the message and identifier *it* reports
+        // under rather than whichever was taken last.
         $this->takeMessage($only->expr);
-        $this->reportConditions[] = $this->stripOuterParentheses($this->translateCondition($stmt->cond));
+        $this->reportConditions[] = [
+            'condition' => $this->stripOuterParentheses($this->translateCondition($stmt->cond)),
+            'message' => $this->reportedMessage(),
+            'code' => $this->reportedCode(),
+            'anchor' => $this->anchor ?? $this->defaultAnchor(),
+        ];
+        // The next branch is free to report something else: this one is now accounted for.
+        $this->reportTaken = true;
 
         return true;
+    }
+
+    /**
+     * The reports an inlined error helper's branches add up to.
+     *
+     * One shape when every branch reports the same thing: a single guard that bails unless one of the
+     * conditions holds, and the rule's own trailing report says what. Another when they differ: a report per
+     * branch, and no trailing one. The first is the dominant shape in the corpus and its emitted output is
+     * unchanged by this method existing.
+     */
+    private function emitHelperReports(): void
+    {
+        if ($this->reportConditions === []) {
+            return;
+        }
+
+        $reports = [];
+        foreach ($this->reportConditions as $branch) {
+            $reports[$branch['message'] . '|' . $branch['code'] . '|' . $branch['anchor']] = true;
+        }
+
+        if (count($reports) === 1) {
+            // The helper reports when any of them holds, so the rule bails when none does.
+            $this->lines[] = new Stm('guard', [
+                'condition' => '!((' . implode(' || ', array_column($this->reportConditions, 'condition')) . '))',
+                'exit' => $this->backend->bail(),
+            ], $this->indent);
+
+            return;
+        }
+
+        if (self::$target !== 'php') {
+            throw new Refusal('a helper reporting different findings per branch, which only the PHP target carries');
+        }
+
+        foreach ($this->reportConditions as $branch) {
+            $this->lines[] = new Stm('if-open', ['condition' => $branch['condition']], $this->indent);
+            $this->indent += 4;
+            $this->lines[] = new Stm('report', [
+                'anchor' => $branch['anchor'],
+                'message' => $branch['message'],
+                'code' => $branch['code'],
+            ], $this->indent);
+            $this->indent -= 4;
+            $this->lines[] = new Stm('block-close', [], $this->indent);
+        }
+
+        $this->reportedInline = true;
     }
 
     private function translateErrorHelperReturn(Return_ $stmt): void
@@ -2586,7 +2673,7 @@ PHP;
     private function inlineErrorHelper(string $method, array $args, int $line, ?Expr $target = null): void
     {
         $declaring = $this->currentClass instanceof ClassLike
-            ? $this->hierarchy()->declaring($this->currentClass, $method, $this->useMap)
+            ? $this->declaringOf($method)
             : null;
 
         if ($declaring === null) {
@@ -2685,13 +2772,7 @@ PHP;
                 $this->translateStatement($statement);
             }
 
-            if ($this->reportConditions !== []) {
-                // The helper reports when any of them holds, so the rule bails when none does.
-                $this->lines[] = new Stm('guard', [
-                    'condition' => '!((' . implode(' || ', $this->reportConditions) . '))',
-                    'exit' => $this->backend->bail(),
-                ], $this->indent);
-            }
+            $this->emitHelperReports();
         } finally {
             --$this->inlineDepth;
             $this->reportConditions = $savedConditions;
@@ -2764,7 +2845,7 @@ PHP;
 
         $builder = $this->memberName($builderCall->name, $line);
         $declaring = $this->currentClass instanceof ClassLike
-            ? $this->hierarchy()->declaring($this->currentClass, $builder, $this->useMap)
+            ? $this->declaringOf($builder)
             : null;
         if ($declaring === null) {
             return null;
@@ -2833,7 +2914,7 @@ PHP;
     {
         $name = $this->memberName($call->name, $line);
         $declaring = $this->currentClass instanceof ClassLike
-            ? $this->hierarchy()->declaring($this->currentClass, $name, $this->useMap)
+            ? $this->declaringOf($name)
             : null;
         if ($declaring === null) {
             throw new Refusal("no method {$name}() on the rule, its traits or its parents", $line);
@@ -3019,7 +3100,7 @@ PHP;
         }
 
         $declaresForwarded = $this->currentClass instanceof ClassLike
-            ? $this->hierarchy()->declaring($this->currentClass, $forwarded, $this->useMap)
+            ? $this->declaringOf($forwarded)
             : null;
         if ($declaresForwarded === null) {
             return null;
@@ -3193,9 +3274,7 @@ PHP;
      */
     private function inlineOwnHelper(string $method, array $args, int $line): string
     {
-        $declaring = $this->currentClass instanceof ClassLike
-            ? $this->hierarchy()->declaring($this->currentClass, $method, $this->useMap)
-            : null;
+        $declaring = $this->declaringOf($method);
 
         if ($declaring === null) {
             throw new Refusal("no method {$method}() on the rule, its traits or its parents", $line);
@@ -3208,6 +3287,24 @@ PHP;
      * The hierarchy walker, sharing this transpiler's cross-file lookup so a trait or base class resolves
      * exactly the way a static helper reference already does.
      */
+    /**
+     * Where a `$this->method()` call is declared, looking at the rule itself when the inlined file has no it.
+     *
+     * @return array{class: ClassLike, uses: array<string, string>}|null
+     */
+    private function declaringOf(string $method): ?array
+    {
+        $found = $this->currentClass instanceof ClassLike
+            ? $this->hierarchy()->declaring($this->currentClass, $method, $this->useMap)
+            : null;
+
+        if ($found !== null || ! $this->ruleClass instanceof ClassLike || $this->ruleClass === $this->currentClass) {
+            return $found;
+        }
+
+        return $this->hierarchy()->declaring($this->ruleClass, $method, $this->ruleUses);
+    }
+
     private function hierarchy(): Hierarchy
     {
         return new Hierarchy(fn (string $shortName): ?array => $this->findClassByName($shortName));
@@ -4090,6 +4187,15 @@ PHP;
      * Rust keeps the finished text, so its output stays byte-identical; PHP carries the pieces and lets
      * the backend format them, since the two languages do not agree on how a report is written.
      */
+    /** The message a report carries, quoted when the rule wrote a literal and bare when it computed one. */
+    private function reportedMessage(): string
+    {
+        $message = $this->message ?? throw new Refusal('reporting before the message is known');
+        $literal = str_starts_with($message, '"') && str_ends_with($message, '"');
+
+        return $literal ? $this->backend->bytes(substr($message, 1, -1)) : $message;
+    }
+
     private function reportNode(): Stm
     {
         if (self::$target !== 'php') {
@@ -4100,8 +4206,6 @@ PHP;
             throw new Refusal('reporting before the message is known');
         }
 
-        $literal = str_starts_with($this->message, '"') && str_ends_with($this->message, '"');
-
         if ($this->anchorNeedsLoop && ! $this->inLoop) {
             throw new Refusal(
                 'a report anchored on a loop item but emitted outside the loop, where the item is no longer bound',
@@ -4110,7 +4214,7 @@ PHP;
 
         return new Stm('report', [
             'anchor' => $this->anchor ?? $this->defaultAnchor(),
-            'message' => $literal ? $this->backend->bytes(substr($this->message, 1, -1)) : $this->message,
+            'message' => $this->reportedMessage(),
             // PHPStan's own identifier is the code, so a finding is labelled the same by both tools. Written
             // as PHP here rather than in the backend: a rule that classifies what it found computes its code,
             // and only this side knows whether the code is a literal to quote or an expression to keep.

@@ -18,7 +18,7 @@ final class ModuleEmitter
      * @param mixed[][] $rules
      */
     /**
-     * @param list<array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, messages: list<string>}> $rules
+     * @param list<array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, arguments: array<string, mixed>, messages: list<string>}> $rules
      */
     public static function module(array $rules): string
     {

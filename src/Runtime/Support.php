@@ -204,13 +204,25 @@ final class Support
      * `ClassLikeMetadata->name` is **lowercased** — measured, not read: `Examples\Flags\Sender` comes back as
      * `examples\flags\sender`. A rule comparing a declaring class against a namespace prefix therefore matched
      * nothing, and the whole rule went silent while every other guard passed. `originalName` keeps the case.
+     *
+     * The *method* list is lowercased for the same reason, and matching it exactly cost a second silence that
+     * hid longer: every example method in this repository was a single lowercase word — `send`, `toggle`,
+     * `handle` — so `setEnabled` was the first name that could show it, and it took the gate reaching
+     * `hihaho/phpstan-rules` to write one. PHP compares method names case-insensitively; so does this.
      */
     private static function declaringClassName(NodeAnalysisContext $context, string $class, string $method): ?string
     {
+        $wanted = strtolower($method);
         foreach ([$class, ...$context->codebase->getClassAncestors($class)] as $candidate) {
             $own = $context->codebase->getClass($candidate);
-            if ($own instanceof ClassLikeMetadata && in_array($method, $own->methods, true)) {
-                return $own->originalName;
+            if (! $own instanceof ClassLikeMetadata) {
+                continue;
+            }
+
+            foreach ($own->methods as $declared) {
+                if (strtolower($declared) === $wanted) {
+                    return $own->originalName;
+                }
             }
         }
 

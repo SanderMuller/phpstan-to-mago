@@ -77,7 +77,7 @@ final readonly class FiresGate
         services:
             -
                 class: {class}
-                tags: [phpstan.rules.rule]
+        {arguments}        tags: [phpstan.rules.rule]
         NEON;
 
     public function __construct(
@@ -195,6 +195,7 @@ final readonly class FiresGate
         file_put_contents($sandbox . '/mago.toml', strtr(self::MAGO_CONFIG, ['{ROOT}' => $this->repositoryRoot]) . "\n");
         file_put_contents($sandbox . '/phpstan.neon', strtr(self::PHPSTAN_CONFIG, [
             '{class}' => $ruleClass,
+            '{arguments}' => $this->arguments($ruleFile),
         ]) . "\n");
 
         // Copied keeping any directories the example sits in, because a rule may ask about its own path:
@@ -231,6 +232,40 @@ final readonly class FiresGate
     }
 
     /**
+     * The configured values to register the original rule with, as neon.
+     *
+     * Taken from the transpiler, which read them from the rule package's own neon and put them in the
+     * generated plugin as constructor defaults. Both sides then run at the package's defaults — a rule whose
+     * two sides are configured differently is not a comparison, and PHPStan refuses to construct a rule whose
+     * scalar parameter nobody supplied, which is why these rules were outside the gate until now.
+     */
+    private function arguments(string $ruleFile): string
+    {
+        /** @var array<string, mixed> $arguments */
+        $arguments = $this->transpiled($ruleFile)['arguments'];
+        if ($arguments === []) {
+            return '';
+        }
+
+        $lines = ['        arguments:'];
+        foreach ($arguments as $name => $value) {
+            if (! is_array($value)) {
+                $lines[] = '            ' . $name . ': ' . json_encode($value, JSON_THROW_ON_ERROR);
+
+                continue;
+            }
+
+            $lines[] = '            ' . $name . ':';
+            /** @var mixed $item */
+            foreach ($value as $item) {
+                $lines[] = '                - ' . json_encode($item, JSON_THROW_ON_ERROR);
+            }
+        }
+
+        return implode("\n", $lines) . "\n";
+    }
+
+    /**
      * The identifier the transpiled rule reports under, taken from the transpiler rather than guessed.
      *
      * Both sides of the comparison filter on it: mago spells a finding's code
@@ -257,20 +292,24 @@ final readonly class FiresGate
 
     private function identifierOf(string $ruleFile): string
     {
-        $target = Transpiler::$target;
-        $survey = Transpiler::$survey;
-        Transpiler::$target = 'php';
-        Transpiler::$survey = false;
+        $identifier = $this->transpiled($ruleFile)['identifier'];
 
-        try {
-            return (string) (new Transpiler($ruleFile))->transpile()['identifier'];
-        } finally {
-            Transpiler::$target = $target;
-            Transpiler::$survey = $survey;
-        }
+        return is_string($identifier) ? $identifier : '';
     }
 
     private function transpile(string $ruleFile): string
+    {
+        $rust = $this->transpiled($ruleFile)['rust'];
+
+        return is_string($rust) ? $rust : throw new RuntimeException('the transpiler produced no source');
+    }
+
+    /**
+     * The transpiler's whole answer for a rule, with the target pinned.
+     *
+     * @return array<string, mixed>
+     */
+    private function transpiled(string $ruleFile): array
     {
         $target = Transpiler::$target;
         $survey = Transpiler::$survey;
@@ -278,7 +317,7 @@ final readonly class FiresGate
         Transpiler::$survey = false;
 
         try {
-            return (new Transpiler($ruleFile))->transpile()['rust'];
+            return (new Transpiler($ruleFile))->transpile();
         } finally {
             Transpiler::$target = $target;
             Transpiler::$survey = $survey;

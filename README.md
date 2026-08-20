@@ -185,7 +185,7 @@ adds or rewrites a rule shows up as a diff there rather than as a stale table he
 | package | rules | emit | refused |
 |:--|--:|--:|--:|
 | `symplify/phpstan-rules` | 96 | 31 | 65 |
-| `hihaho/phpstan-rules` | 20 | 3 | 17 |
+| `hihaho/phpstan-rules` | 20 | 4 | 16 |
 | `tomasvotruba/type-coverage` | 10 | 0 | 10 |
 | `tomasvotruba/cognitive-complexity` | 3 | 0 | 3 |
 

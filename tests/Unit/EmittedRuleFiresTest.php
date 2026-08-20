@@ -26,7 +26,19 @@ final class EmittedRuleFiresTest extends TestCase
 {
     private const string EXAMPLES = __DIR__ . '/../Fixtures/examples';
 
-    private const string CORPUS = __DIR__ . '/../../vendor/symplify/phpstan-rules/src';
+    /**
+     * The rule packages the gate covers.
+     *
+     * `hihaho/phpstan-rules` joined once it became a dev dependency: before that a hosted runner could not
+     * resolve it, so its three emitted rules had only ever been checked by hand. An emitted rule nobody runs
+     * is the silence this gate exists to remove, and it does not matter which package it came from.
+     *
+     * @var list<string>
+     */
+    private const array CORPORA = [
+        __DIR__ . '/../../vendor/symplify/phpstan-rules/src',
+        __DIR__ . '/../../vendor/hihaho/phpstan-rules/src',
+    ];
 
     private const string FIXTURES = __DIR__ . '/../Fixtures/Rules';
 
@@ -205,6 +217,9 @@ final class EmittedRuleFiresTest extends TestCase
             . 'node kind, which a search for classes, interfaces, traits and enums never returns',
             // Proof by construction: PHP has no method outside a class-like, so no example can hold the case.
             'a declaration hook fires inside a class-like, so there is always an enclosing class',
+            // The guards ahead of it establish the index; the good examples hold each case they filter — a
+            // named argument, a spread, a non-bool, a call past the end of the parameter list.
+            'an index produced behind guards is never null once those guards have run',
         ];
 
         $unproven = [];
@@ -252,8 +267,17 @@ final class EmittedRuleFiresTest extends TestCase
 
         /** @var array<string, array{string, string}> $rules */
         $rules = [];
-        $found = glob(self::CORPUS . '/Rules/{,*/,*/*/}*Rule.php', GLOB_BRACE);
-        foreach ($found === false ? [] : $found as $file) {
+        $found = [];
+        foreach (self::CORPORA as $corpus) {
+            // Not only `*Rule.php`: `hihaho/phpstan-rules` names two of its rules without the suffix, and a
+            // glob that misses them would pass them by never looking.
+            $paths = glob($corpus . '/Rules/{,*/,*/*/}*.php', GLOB_BRACE);
+            foreach ($paths === false ? [] : $paths as $path) {
+                $found[] = $path;
+            }
+        }
+
+        foreach ($found as $file) {
             $source = (string) file_get_contents($file);
             if (preg_match('/^namespace (.+);$/m', $source, $namespace) !== 1) {
                 continue;

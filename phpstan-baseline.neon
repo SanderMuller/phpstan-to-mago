@@ -49,7 +49,7 @@ parameters:
 			path: src/Runtime/Support.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 324, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 327, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Runtime/Support.php
@@ -61,7 +61,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 1395, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 1400, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php
