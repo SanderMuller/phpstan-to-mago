@@ -620,6 +620,23 @@ Not every rule on that hook needs the breadth. `PublicStaticDataProviderRule` re
 class — so its class-only port was never narrower. A syntactic gate would have refused it wrongly, which is why
 there is no such gate.
 
+## Dropping a rewriting means reproducing what it collapsed
+
+`TraitRequiresInterfaceRule`'s constructor keys its map by each configured name's *declared* spelling. Dropping
+that pass and carrying the configured map is right for what the rule matches — Mago lowercases the names it
+holds, so folding case at the use site asks the same question — but it is not right for what the map *holds*:
+two configured keys naming one trait in different cases became a single pair, and carrying the map as written
+kept both, so the case-insensitive match found both and reported the same finding twice. The port was wider.
+
+So the alias goes through `Support::foldedKeys()`, collapsing case-colliding keys at the point the
+canonicalisation used to happen. `CollapsesConfiguredKeysTest` covers it.
+
+One divergence remains and is not fixable here: where a configured name is written in a case other than its
+declaration's, PHPStan's message prints the declared spelling and the port prints the configured one. Mago's
+class store answers nothing for a trait name, so there is no declared spelling to recover at the use site. The
+findings agree on file and line; only the message text differs, and only for a mis-cased configuration. That is
+why the fires-gate carries a correctly-cased pair and the collapse is covered by a unit test instead.
+
 ## A configured value the package leaves empty
 
 A package may ship a parameter empty and expect each project to fill it. The emitted plugin carries the package

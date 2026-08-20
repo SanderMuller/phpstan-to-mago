@@ -462,6 +462,36 @@ final class Support
         return self::declaringClassOfMethod($context, self::enclosingClassName($context, $subject), $method) !== null;
     }
 
+    /**
+     * A configured map with keys that differ only in case collapsed to one entry, the last winning.
+     *
+     * This stands in for a rewriting the rule did and the plugin does not. The original built its map keyed by
+     * each name's *declared* spelling, so two configured keys naming the same trait in different cases became
+     * one entry and the later assignment won. Carrying the configured map as written kept both, and a
+     * case-insensitive match then found both — reporting the same finding twice.
+     *
+     * Only the keys collapse. The values are compared case-insensitively wherever they are used, so folding
+     * them would change nothing but the spelling a message prints.
+     *
+     * @param array<string, string> $map
+     *
+     * @return array<string, string>
+     */
+    public static function foldedKeys(array $map): array
+    {
+        $folded = [];
+        foreach ($map as $key => $value) {
+            $folded[strtolower(ltrim((string) $key, '\\'))] = [$key, $value];
+        }
+
+        $collapsed = [];
+        foreach ($folded as [$key, $value]) {
+            $collapsed[$key] = $value;
+        }
+
+        return $collapsed;
+    }
+
     /** The enclosing declaration's extends clause, joined as PHPStan prints it. */
     public static function extendsText(NodeAnalysisContext $context, Part|Node|null $subject): string
     {

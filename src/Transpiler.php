@@ -6,6 +6,7 @@ namespace Sandermuller\PhpstanToMago;
 
 use PhpParser\Comment\Doc;
 use PhpParser\Node;
+use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
@@ -1087,7 +1088,15 @@ PHP;
             // {@see canonicalisingPass()} for why that is the same question rather than an approximation.
             $aliased = $this->canonicalisingPass($statement->expr->expr);
             if ($aliased !== null) {
-                $this->pure[$property] = new Variable($aliased);
+                // Through `foldedKeys()`, not as the raw value: the pass being dropped keyed its map by each
+                // name's declared spelling, so two configured keys naming one trait in different cases became a
+                // single entry. Carrying the map as written kept both, and the case-insensitive match at the use
+                // site then found both — the same finding reported twice.
+                $this->pure[$property] = new StaticCall(
+                    new Name('Support'),
+                    'foldedKeys',
+                    [new Arg(new Variable($aliased))],
+                );
 
                 continue;
             }
@@ -1115,7 +1124,7 @@ PHP;
      * through the property the package wires as `@reflectionProvider`, so a rule reaching for some other
      * service still refuses by name.
      *
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      */
     private function reflectionProviderCall(MethodCall $expr, string $method, array $args): ?string
     {
@@ -1185,7 +1194,7 @@ PHP;
      * Written either as a literal or as the selector read off the node under analysis —
      * `$classReflection->hasMethod($node->name->name)` — so both resolve rather than only the literal.
      *
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      *
      * @return Descriptor
      */
@@ -2269,7 +2278,7 @@ PHP;
      * a chain of `if (..) { return <bool>; }` ending in a `return` — because anything else is a
      * different feature (loops, accumulators) rather than a different helper.
      *
-     * @param list<Node\Arg> $args
+     * @param list<Arg> $args
      */
     private function inlineMethod(ClassLike $class, string $methodName, array $args, int $line, ?array $uses = null): string
     {
@@ -2327,7 +2336,7 @@ PHP;
     /**
      * Bind a helper's parameters to the caller's arguments, as descriptors the body can then resolve.
      *
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      *
      * @return array<string, Descriptor>
      */
@@ -3058,7 +3067,7 @@ PHP;
      * anything else, so the ordinary producer path still gets its chance — this is a recogniser, not a
      * fallback.
      *
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      *
      * @return array{rust: string, kind: string, php?: string}|null
      */
@@ -3745,7 +3754,7 @@ PHP;
      * The forwarding `return $error instanceof ... ? [$error] : []` needs no translation: by the time it
      * is reached every guard has been emitted and the message taken.
      *
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      */
     private function inlineErrorHelper(string $method, array $args, int $line, ?Expr $target = null): void
     {
@@ -3910,9 +3919,9 @@ PHP;
      * comes back is the *builder* call to carry on with — `flagError($site['paramName'])`, whose argument now
      * resolves to a binding.
      *
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      *
-     * @return array{string, array<Node\Arg>, array{class: ClassLike, uses: array<string, string>}, ClassMethod}|null
+     * @return array{string, array<Arg>, array{class: ClassLike, uses: array<string, string>}, ClassMethod}|null
      */
     private function recordConsumer(ClassMethod $helper, array $args, int $line): ?array
     {
@@ -4034,7 +4043,7 @@ PHP;
      * path does not fit either. What it *is* is a producer of one value — the same thing a record producer is,
      * with one field instead of several — so it shares the machinery and unwraps the reserved empty key.
      *
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      * @param array{class: ClassLike, uses: array<string, string>} $declaring
      *
      * @return array{rust: string, kind: string, php?: string, reason?: string}|null
@@ -4067,7 +4076,7 @@ PHP;
     }
 
     /**
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      * @param array{class: ClassLike, uses: array<string, string>} $declaring
      *
      * @return RecordFields
@@ -4191,9 +4200,9 @@ PHP;
      * — it decides nothing itself. Following the outermost call means the shim's own name stops being the
      * thing that refuses, and whatever the chain really needs is what gets named instead.
      *
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      *
-     * @return array{string, array<Node\Arg>, array{class: ClassLike, uses: array<string, string>}, ClassMethod}|null
+     * @return array{string, array<Arg>, array{class: ClassLike, uses: array<string, string>}, ClassMethod}|null
      */
     private function forwardedHelper(ClassMethod $helper, string $method, array $args, int $line): ?array
     {
@@ -4254,7 +4263,7 @@ PHP;
      * putting them there to serve this one shape would let any string arithmetic through; `Support` already has
      * the question this asks.
      *
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      *
      * @return array{rust: string, kind: string, php?: string, reason?: string}|null
      */
@@ -4370,7 +4379,7 @@ PHP;
      * `report()` takes its code per call — but a chain of conditionals keeps one report site and one message,
      * which is what the original has, and it stays readable against the rule it came from.
      *
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      * @param array{class: ClassLike, uses: array<string, string>} $declaring
      */
     private function classifierExpression(ClassMethod $helper, array $args, string $method, array $declaring, int $line): ?string
@@ -4409,7 +4418,7 @@ PHP;
 
     /**
      * @param list<array{Expr, string}> $cases
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      * @param array{class: ClassLike, uses: array<string, string>} $declaring
      */
     private function renderClassifier(array $cases, ClassMethod $helper, array $args, string $method, array $declaring, int $line): string
@@ -4502,7 +4511,7 @@ PHP;
      * It is usually not declared on the rule itself: rule packages keep the logic in a trait or an abstract
      * base and leave the rule as a shim, so the declaration has to be found across the hierarchy first.
      *
-     * @param array<Node\Arg> $args
+     * @param array<Arg> $args
      */
     private function inlineOwnHelper(string $method, array $args, int $line): string
     {
