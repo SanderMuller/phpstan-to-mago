@@ -107,6 +107,14 @@ final class Transpiler
     /** Whether the body asks for the receiver's inferred type, which the PHP target must request. */
     private bool $usesReceiverType = false;
 
+    /**
+     * Whether the rule asks for the inferred type of a sub-expression.
+     *
+     * A separate requirement from `ReceiverType`, and a heavier one: it embeds every expression type in the
+     * file, so it is requested only by a rule that asks for a position the ready-made ones do not cover.
+     */
+    private bool $usesExpressionTypes = false;
+
     /** The Rust expression producing the reported message, from the report site. */
     private ?string $message = null;
 
@@ -1049,6 +1057,14 @@ PHP;
         $args = array_values($args);
         if (! isset($args[0])) {
             throw new Refusal("{$method}() with no method name to ask about", $line);
+        }
+
+        // A written name first: `hasMethod('expects')` is a literal, and resolving one as an expression is
+        // both indirect and refused — `Scalar_String` is not an access path.
+        if ($args[0]->value instanceof String_) {
+            $literal = $this->stringLiteral($args[0]->value, $line);
+
+            return ['rust' => $literal, 'kind' => 'bytes', 'php' => $this->backend->bytes($literal)];
         }
 
         $subject = $this->resolve($args[0]->value, $line);
@@ -4391,18 +4407,18 @@ PHP;
             return;
         }
 
-        // $x = $scope->getType(<expr>)
+        // `$x = $scope->getType(<expr>)` — resolved as the expression it is, rather than described here.
+        // This used to bind the *node* with the kind `type` and let the type query substitute the receiver,
+        // which read as a shortcut and was a lie: it worked only because the receiver was the one position a
+        // type could come from. Once any sub-expression can be asked about, the lie emits a helper call with
+        // the node where the type belongs — and `getRequirements()` never learns a type was wanted.
         if ($value instanceof MethodCall
             && (string) $value->name === 'getType'
             && $value->var instanceof Variable
             && $value->var->name === 'scope'
             && count($value->getArgs()) === 1
         ) {
-            $subject = $this->resolve($value->getArgs()[0]->value, $line);
-            $this->locals[$name] = ['rust' => $subject['rust'], 'kind' => 'type', 'key' => $subject['key'] ?? ''];
-            if (isset($subject['php'])) {
-                $this->locals[$name]['php'] = $subject['php'];
-            }
+            $this->locals[$name] = $this->resolve($value, $line);
 
             return;
         }
@@ -4834,6 +4850,28 @@ PHP;
         $wanted = $this->resolveClassName($expr->class);
         $subject = $this->resolve($expr->expr, $expr->getStartLine());
 
+        // `$type instanceof TypeWithClassName` asks whether the type names one class, and every rule that asks
+        // goes on to use that name — so the descriptor is the name, and the test is that there is one. The same
+        // reduction the receiver-typed rules already use for `getObjectClassReflections()`.
+        if ($subject['kind'] === 'type' && $wanted === 'PHPStan\Type\TypeWithClassName') {
+            if (self::$target !== 'php') {
+                throw new Refusal('a class-named type test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return 'Support::soleObjectClass(' . $this->operand($subject) . ') !== null';
+        }
+
+        // `$type instanceof ConstantStringType` asks whether the type is one literal string. Mago renders such
+        // a type as plain `string`, and carries the literal on the scalar's refinement — probed, because the
+        // rendering answers "not constant" for every string there is.
+        if ($subject['kind'] === 'type' && $wanted === 'PHPStan\Type\Constant\ConstantStringType') {
+            if (self::$target !== 'php') {
+                throw new Refusal('a constant-string type test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return 'Support::constantStringOf(' . $this->operand($subject) . ') !== null';
+        }
+
         // `$type instanceof ObjectType` is a *type* test, not a node test.
         if ($wanted === ObjectType::class) {
             if ($subject['kind'] !== 'type') {
@@ -4841,16 +4879,10 @@ PHP;
             }
 
             if (self::$target === 'php') {
-                // The SDK hands types to a node hook at specific positions only, requested through
-                // FileAnalysisRequirement, rather than for any sub-expression. The receiver of a method
-                // call is one of those positions; anything else is refused rather than approximated.
-                if ($subject['rust'] !== 'node.object') {
-                    throw new Refusal("the inferred type of {$subject['rust']} is not a position the SDK exposes");
-                }
-
-                $this->usesReceiverType = true;
-
-                return $this->backend->call('type_is_named_object', ['$context->receiverType']);
+                // The descriptor already carries how the type is reached, and which requirement that needs was
+                // recorded where it was built. This used to insist on the receiver, on the belief that no other
+                // position was exposed; a probe says a node hook can ask about any sub-expression.
+                return $this->backend->call('type_is_named_object', [$this->operand($subject)]);
             }
 
             return "support::type_is_named_object(context, {$subject['rust']})";
@@ -4916,6 +4948,12 @@ PHP;
         // method declaration, so the narrowing holds by construction here.
         if ($subject['kind'] === 'method-decl' && $wanted === ClassMethod::class) {
             return $this->alwaysHolds('the caller passed a method declaration, so this narrowing holds by construction');
+        }
+
+        // `$firstItem instanceof ArrayItem` asks whether the literal has an element at that position, since
+        // php-parser can hold a hole there and the read answers null.
+        if ($subject['kind'] === 'array-element') {
+            return $this->operand($subject) . ' !== null';
         }
 
         // The same test on a method *looked up by name* is a real question, and dropping it was a defect: the
@@ -5004,16 +5042,20 @@ PHP;
         $args = $inner->getArgs();
 
         if ($name === 'hasMethod' && count($args) === 1) {
+            // The name may be a literal or a value the rule computed — the second array element of
+            // `[$this, 'handle']`, read as a constant string — so it arrives as a descriptor either way.
             return $this->negateUnless(
                 $tail === 'yes',
-                $this->typeQuery($inner, 'type_has_method', $this->stringLiteral($args[0]->value, $line), $line),
+                $this->typeQuery($inner, 'type_has_method', $this->methodNameArgument($args, $name, $line), $line),
             );
         }
 
         if ($name === 'isInstanceOf' && count($args) === 1) {
+            $literal = $this->classLiteral($args[0]->value, $line);
+
             return $this->negateUnless(
                 $tail === 'yes',
-                $this->typeQuery($inner, 'type_is_instance_of', $this->classLiteral($args[0]->value, $line), $line),
+                $this->typeQuery($inner, 'type_is_instance_of', ['rust' => $literal, 'kind' => 'bytes', 'php' => $this->backend->bytes($literal)], $line),
             );
         }
 
@@ -5037,24 +5079,25 @@ PHP;
      * The two callers differ only in the helper and how the argument is read, so the part that matters,
      * which position the SDK will answer for, is written once.
      */
-    private function typeQuery(MethodCall $inner, string $helper, string $literal, int $line): string
+    /**
+     * A question asked of an inferred type, with the thing asked about as a descriptor.
+     *
+     * @param Descriptor $about the name the question names
+     */
+    private function typeQuery(MethodCall $inner, string $helper, array $about, int $line): string
     {
         $subject = $this->resolve($inner->var, $line);
         $this->requireType($subject, $line);
 
         if (self::$target !== 'php') {
-            return "support::{$helper}(context, {$subject['rust']}, b\"{$literal}\")";
+            return "support::{$helper}(context, {$subject['rust']}, b\"{$about['rust']}\")";
         }
 
-        // A node hook is handed types only at the positions it asked for, and the receiver of a method
-        // call is one of them. Anything else is refused rather than answered about the wrong expression.
-        if ($subject['rust'] !== 'node.object') {
-            throw new Refusal("the inferred type of {$subject['rust']} is not a position the SDK exposes");
-        }
-
-        $this->usesReceiverType = true;
-
-        return $this->backend->call($helper, ['$context', '$context->receiverType', $this->backend->bytes($literal)]);
+        // Every type descriptor already carries how it is reached — `$context->receiverType` where the SDK
+        // hands it over ready-made, `Support::expressionType()` where the rule asks by node. The old form of
+        // this check refused anything but the receiver, on the belief that nothing else was exposed; a probe
+        // says otherwise, and the requirement each one needs is recorded where the descriptor is built.
+        return $this->backend->call($helper, ['$context', $this->operand($subject), $this->operand($about)]);
     }
 
     /** Keeps a predicate as it is, or negates it, without the caller repeating the ternary. */
@@ -5215,6 +5258,17 @@ PHP;
         // the declaring-method lookup, which is what PHPStan's question means: an inherited method counts.
         if (in_array($method, ['hasConstructor', 'hasMethod'], true) && count($args) <= 1) {
             $subject = $this->resolve($expr->var, $expr->getStartLine());
+
+            // Asked of a *type* rather than of a named class: the class is whichever one the type names, which
+            // is the same reduction `instanceof TypeWithClassName` makes above.
+            if ($subject['kind'] === 'type' && self::$target === 'php') {
+                $subject = [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'named-class',
+                    'php' => 'Support::soleObjectClass(' . $this->operand($subject) . ')',
+                ];
+            }
+
             if ($subject['kind'] === 'named-class') {
                 $name = $method === 'hasConstructor'
                     ? $this->backend->bytes('__construct')
@@ -5499,7 +5553,7 @@ PHP;
 
         // A declaration's parameter list is a plain PHP list, so its length is its length — any number is a
         // meaningful comparison, unlike the sole-receiver question below.
-        if ($subject['kind'] === 'param-decls') {
+        if (in_array($subject['kind'], ['param-decls', 'array-items', 'list'], true)) {
             return 'count(' . $this->operand($subject) . ') === ' . $this->intLiteral($right, $line);
         }
 
@@ -5815,15 +5869,30 @@ PHP;
             $of = $this->resolve($expr->getArgs()[0]->value, $line);
 
             // Compared against the vocabulary's own navigation to this node kind's receiver rather than a
-            // hardcoded path, so a hook whose receiver is reached differently cannot pass by accident.
+            // hardcoded path, so a hook whose receiver is reached differently cannot pass by accident. The
+            // receiver arrives ready-made under `ReceiverType`, so it is preferred where it applies.
             $receiver = Vocabulary::FIELDS[$this->nodeKind]['var'][2] ?? null;
-            if ($receiver === null || ($of['php'] ?? null) !== $receiver) {
-                throw new Refusal("the inferred type of a {$of['kind']} that is not this call's receiver, which is the only position the SDK exposes it for", $line);
+            if ($receiver !== null && ($of['php'] ?? null) === $receiver) {
+                $this->usesReceiverType = true;
+
+                return ['rust' => self::PHP_ONLY, 'kind' => 'type', 'php' => '$context->receiverType'];
             }
 
-            $this->usesReceiverType = true;
+            // Any other position is asked for by node. Probed rather than assumed, because this document and
+            // its correction both had it wrong: a *node* hook that requests `ExpressionTypes` can ask
+            // `$context->analysis->getExpressionType($node)` for any sub-expression, so no after-file hook is
+            // needed. An array element of `[$this, 'handle']` answers `Fixture\Handler`.
+            if (! in_array($of['kind'], ['expr', 'found-node', 'argument', 'const-item'], true)) {
+                throw new Refusal("the inferred type of a {$of['kind']}", $line);
+            }
 
-            return ['rust' => self::PHP_ONLY, 'kind' => 'type', 'php' => '$context->receiverType'];
+            $this->usesExpressionTypes = true;
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'type',
+                'php' => 'Support::expressionType($context, ' . $this->operand($of) . ')',
+            ];
         }
 
         // `Helper::method(..)` where the helper's source is in the package — inlined as a producer, the same
@@ -5854,6 +5923,25 @@ PHP;
             }
 
             return ['rust' => self::PHP_ONLY, 'kind' => 'type-without-null', 'php' => $this->operand($of)];
+        }
+
+        // `->getValue()` on a constant-string type — the literal behind it.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getValue'
+            && $expr->args === []
+        ) {
+            $of = $this->resolve($expr->var, $line);
+            if ($of['kind'] === 'type') {
+                if (self::$target !== 'php') {
+                    throw new Refusal('a constant type\u{2019}s value, which only the PHP target carries', $line);
+                }
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'bytes',
+                    'php' => 'Support::constantStringOf(' . $this->operand($of) . ')',
+                ];
+            }
         }
 
         // `getObjectClassReflections()` on a type. Mago has no reflection object, and a rule only ever asks
@@ -6580,6 +6668,13 @@ PHP;
                 ];
             }
 
+            // `->value` on an array element is the element itself. Probed: the `ArrayElement` category node
+            // and the `ValueArrayElement` beneath it carry the same text and the same inferred type, so there
+            // is nothing to navigate to.
+            if ($base['kind'] === 'array-element' && $property === 'value') {
+                return ['rust' => $base['rust'], 'kind' => 'expr', 'key' => $key, 'php' => $this->operand($base)];
+            }
+
             if ($base['kind'] === 'arg' && $property === 'value') {
                 // `->value` on an argument is the argument itself once bound, since the binding already
                 // unwrapped it, so the rendering carries over unchanged.
@@ -6663,6 +6758,23 @@ PHP;
             }
 
             return ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'php' => 'Support::fileDirectory($context)'];
+        }
+
+        // `$array->items[0]` — an element by position. Null when the literal has fewer, which is what the
+        // rule's own `instanceof ArrayItem` guard then tests.
+        if ($expr instanceof ArrayDimFetch && $expr->dim instanceof Int_) {
+            $list = $this->resolve($expr->var, $line);
+            if ($list['kind'] === 'array-items') {
+                if (self::$target !== 'php') {
+                    throw new Refusal('an array element by position, which only the PHP target carries', $line);
+                }
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'array-element',
+                    'php' => '(' . $this->operand($list) . '[' . $expr->dim->value . '] ?? null)',
+                ];
+            }
         }
 
         // `$matches['name']` — the group's value, or null when the match did not catch it.
@@ -7158,6 +7270,10 @@ REPORT, ['{ANCHOR}' => $this->anchor ?? $this->defaultAnchor()]);
         $requirements = 'FileAnalysisRequirement::TargetSubtree, FileAnalysisRequirement::SourceText';
         if ($this->usesReceiverType) {
             $requirements .= ', FileAnalysisRequirement::ReceiverType';
+        }
+
+        if ($this->usesExpressionTypes) {
+            $requirements .= ', FileAnalysisRequirement::ExpressionTypes';
         }
 
         $constructor = $this->emitConstructor();

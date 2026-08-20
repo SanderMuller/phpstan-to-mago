@@ -91,6 +91,13 @@ final class Vocabulary
         // per operator, so the hook fires for arithmetic and comparison too and the operator itself is a child
         // node — which is why `left`/`right` here are the operands *of a concatenation*, and a rule reaching
         // them is asking about one only after the operator has been checked.
+        // An array literal. A rule reaching one asks about its elements' inferred types, which a node hook can
+        // request; the elements themselves are wrapped in an `ArrayElement` category node, and the type is
+        // available at both that level and the `ValueArrayElement` beneath it.
+        Array_::class => [
+            'trait' => 'ArrayHook', 'method' => 'after_array', 'node' => 'Array', 'kind' => 'Array',
+            'phpOnly' => true,
+        ],
         Concat::class => [
             'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
             'gate' => "Support::binaryOperatorIs(\$context, \$node, '.')", 'phpOnly' => true,
@@ -175,6 +182,11 @@ final class Vocabulary
             // The name as written, short: `$node->name->toString()` on a declaration gives `Something`, not
             // `App\Something`, which is what a rule testing a prefix or a suffix compares against.
             'name' => [self::PHP_ONLY, 'bytes', 'Support::declarationName($context, {base})'],
+        ],
+        // The elements of an array literal, each wrapped in the `ArrayElement` category node. `items` is what
+        // php-parser calls them, and `count($node->items)` is the question a rule asks first.
+        'Array' => [
+            'items' => [self::PHP_ONLY, 'array-items', 'Support::arrayElements($context, {base})'],
         ],
         // The group a `ClassLike` search yields: class, interface, trait or enum, which all name themselves
         // the same way. `class-like-name` is its own kind rather than plain bytes because the only question
@@ -302,6 +314,8 @@ final class Vocabulary
         'args' => ['iter' => self::PHP_ONLY, 'item' => 'argument', 'phpIter' => 'Support::arguments({rust})'],
         // The names of the classes a declaration extends, one written name each.
         'class-names' => ['iter' => self::PHP_ONLY, 'item' => 'class-name', 'phpIter' => '{rust}'],
+        // The elements of an array literal, one wrapped element each.
+        'array-items' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => '{rust}'],
     ];
 
     /**

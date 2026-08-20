@@ -387,13 +387,10 @@ reflection over the SDK classes for metadata — not read off a name.
 correct refusal. An earlier version of this section said five and blamed the SDK for two of the rest; that was
 wrong, and the correction is below.
 
-**Four are now done** — `ForbiddenMultipleClassLikeInOneFileRule`, `StringFileAbsolutePathExistsRule`,
-`PreventParentMethodVisibilityOverrideRule` and `PublicStaticDataProviderRule`, taking `symplify` from 24
-emitted to 28. Attempting the fifth is what found the honest shape of what is left: **three of the remaining
-four want the same one thing**, an after-file hook that can ask for the inferred type of a sub-expression.
-`RequireUniqueEnumConstantRule` looked like a collaborator-inlining problem and turned out to be one of them.
-That mechanism is the next piece of work, and it is worth more than the sum of these four: it also unlocks the
-three `instanceof ConstantStringType` rules the census lists.
+**Five are done** — `ForbiddenMultipleClassLikeInOneFileRule`, `StringFileAbsolutePathExistsRule`,
+`PreventParentMethodVisibilityOverrideRule`, `PublicStaticDataProviderRule` and `ForbiddenArrayMethodCallRule`
+— and two more came free with the last one's mechanism: `NoPropertyNodeAssignRule` and `NoWithOnStubRule`,
+both of which had been refused with the very claim the probe disproved. `symplify` goes from 24 emitted to 31.
 
 ### Buildable with what the SDK already exposes
 
@@ -414,23 +411,37 @@ constructor-injected object or a static call into another class.
 | `RequireUniqueEnumConstantRule` | **now**: access path outside the vocabulary `->getConstants()` | Collaborator inlining is **built**, and it moved this refusal three levels deeper, which is how far it got: `$this->enumAnalyzer->detect()` now inlines, and so does the docblock question behind it (`parseNode()` maps to the declaration's docblock and `getTagsByName('@enum')` to a tag match — the parser itself cannot be inlined, since its own dependencies are PHPStan's `PhpDocParser` and `Lexer`, so the *question* is mapped instead of the collaborator). What blocks it now is the real blocker: `$scope->getType($const->value) instanceof ConstantStringType` is the inferred type of a class-constant initialiser, so this rule wants the **after-file hook** too. A syntactic read of the initialiser would be narrower — `'a' . 'b'` is a constant string and not a literal — which is the trade this project refuses. |
 | ~~`PublicStaticDataProviderRule`~~ **done** | was: access path outside the vocabulary: `DataProviderMethodResolver::match()` | Five features. A static helper inlined as a *producer* (predicate position already worked). `preg_match()` with a named group, bound without emitting anything — each read runs the match again, which is free of consequence because a match is pure. A method looked up by a name computed at analysis time, under its own descriptor kind, because such a lookup can answer null and `instanceof ClassMethod` on it is the rule asking exactly that. Two messages and two identifiers from one rule, allowed to change once the previous has been reported. And a conditional report: `if (c) { $message = ..; $errors[] = ..; }` emits an `if` with a `report` inside rather than a guard. |
 
-### An after-file hook, which is where sub-expression types live
+### Sub-expression types, and the correction of the correction
 
-**Correcting this doc's own earlier claim**, which said a node hook's `FileAnalysisRequirement` positions —
-target, receiver, arguments — were the whole story and that arbitrary sub-expression types needed an upstream
-change. They do not. `FileAnalysisRequirement::ExpressionTypes` exists, and an `AfterFileAnalysisHook`
-receives a `FileAnalysis` carrying `getExpressionType(Node|Span): ?Type`,
-`getMultipleExpressionTypes(array)` and `getAllExpressionTypes()`. Verified by reflection over the vendored
-SDK, and by a probe that asked per array element of `[$this, 'handle']` and got `Handler` for element 0 —
-which is exactly the question `ForbiddenArrayMethodCallRule` asks.
+This section has now been wrong twice about the same thing, in the same comfortable direction. First it said a
+node hook's `FileAnalysisRequirement` positions — target, receiver, arguments — were the whole story and that
+arbitrary sub-expression types needed an upstream change. Then it said the answer was an **after-file hook**,
+which sounded architectural and expensive.
 
-So the work is ours, not upstream's: emit an **after-file** hook for a rule whose question is not answerable
-at a node position, and look the type up by node.
+Neither is right. `NodeAnalysisContext` already carries a `FileAnalysis`, so a **plain node hook** that
+requests `FileAnalysisRequirement::ExpressionTypes` can call `$context->analysis->getExpressionType($node)` for
+any sub-expression. Probed, with a throwaway plugin: element 0 of `[$this, 'handle']` answers `Fixture\Handler`
+and element 1 answers `string`. No new hook shape, no `Support` refactor — one requirement and one helper.
 
-| rule | refusal | what it needs |
-|:--|:--|:--|
-| `ForbiddenArrayMethodCallRule` | no hook mapping for `Expr\Array_` | An after-file hook requesting `ExpressionTypes`, then `getExpressionType()` on the first array element, plus `Codebase` for `hasMethod`. Two CST facts to write it against: an element is wrapped in an `ArrayElement` category node with `ValueArrayElement` beneath it — a kind predicate against the direct children matches nothing, while a text predicate would pass, which is the failure mode this project already has scar tissue about — and the type is available at both levels. |
-| `NoDynamicNameRule` | no hook mapping for `PhpParser\Node\Expr` | Also needs a hook with **several** `getTargets()` kinds and a dispatch on the node's actual kind, where the emitter writes exactly one. The CST is kinder than PHPStan here: dynamic-ness is structural (`$obj->$name()` selects through `ClassLikeMemberSelector → Variable`, `Foo::{$k}` through `ClassLikeConstantSelector → ClassLikeMemberExpressionSelector`), so finding one needs no type question. Both branches then ask for a sub-expression type, and the second reaches it through an injected `CallableTypeAnalyzer` — so this one is gated on collaborator inlining too, not on the SDK. |
+Two things the probe settled that reading would have got wrong:
+
+- **An array element is a grandchild.** `Array → ArrayElement → ValueArrayElement`, and both carry the same
+  text and the same type. A kind predicate against the direct children matches nothing while a text predicate
+  passes — the `Expression`/`Call`/`Access` trap again.
+- **A literal's type renders as `string`.** `'one'` prints as `string`, so reading the rendering answers "not a
+  constant" for every string there is. The literal is in the structure:
+  `ScalarType{kind: String, refinement: StringType{literalValue: 'one'}}`. That is what makes PHPStan's
+  `ConstantStringType` and its `->getValue()` translatable at all.
+
+`ForbiddenArrayMethodCallRule` **emits** on that mechanism, and two rules refused with exactly the claim the
+probe disproved came free with it: `NoPropertyNodeAssignRule` and `NoWithOnStubRule`.
+
+`NoDynamicNameRule` still needs a hook with **several** `getTargets()` kinds and a dispatch on the node's
+actual kind, where the emitter writes exactly one. The CST is kinder than PHPStan there: dynamic-ness is
+structural (`$obj->$name()` selects through `ClassLikeMemberSelector → Variable`, `Foo::{$k}` through
+`ClassLikeConstantSelector → ClassLikeMemberExpressionSelector`), so finding one needs no type question at all.
+Its second branch reaches a type through an injected `CallableTypeAnalyzer`, so it is gated on collaborator
+inlining — which is built — plus that multi-kind hook.
 
 ### Still refused, and this one is the right answer
 
@@ -451,23 +462,27 @@ thing this project refuses.
 
 ### Nothing left here is an SDK boundary
 
-Both "correct forever" verdicts in this document turned out to be verdicts about *node* hooks mistaken for
-verdicts about the SDK, and both were wrong in the same direction — blaming the engine for machinery we have
-not written. What remains unbuilt is ours: an after-file hook for sub-expression types, an after-analysis hook
-fusing a collector with its consumer, collaborator inlining, multi-kind targets.
+Three verdicts in this document turned out to be verdicts about *node* hooks mistaken for verdicts about the
+SDK, each wrong in the same direction — blaming the engine for machinery we had not written, or for machinery
+that turned out to need writing at all. What remains unbuilt is ours: an after-analysis hook fusing a collector
+with its consumer, and multi-kind targets. Collaborator inlining and sub-expression types are built.
 
 The single exception is `NoMissingVariableDimFetchRule`, and even there the reason is not a missing capability
 but a missing *fact*: no general "might this be undefined here". Mago reports `undefined-variable` natively
 anyway, so the rule has somewhere better to live than a port.
 
-Prefer "we have not built it" over "the SDK will not let us" unless a probe says otherwise. This document has
-been wrong twice in the comfortable direction.
+Prefer "we have not built it" over "the SDK will not let us" unless a probe says otherwise — and prefer the
+*cheapest* mechanism that a probe supports over the one that sounds architectural. This document has now been
+wrong three times in the comfortable direction, and the third time the correction itself was too pessimistic:
+what looked like an after-file hook plus a runtime refactor was one requirement and one helper on the hook we
+already emit.
 
-### One caution before adopting `ExpressionTypes` broadly
+### One caution about `ExpressionTypes`
 
-It embeds every expression type in the file, and the requirement is per hook — so a node hook that does not
-ask keeps paying nothing. Measure the per-file payload on a real corpus before reaching for it in a rule that
-does not need it.
+It embeds every expression type in the file, and the requirement is per hook — so a node hook that does not ask
+keeps paying nothing, which is why the emitter adds it only when a rule reaches for a position the ready-made
+types do not cover. `ReceiverType` is still preferred where it applies. The per-file payload on a real corpus
+is unmeasured; the three rules that ask for it are cheap ones, but a broad adoption should measure first.
 
 ## Do not raise the emit count by lowering the bar
 

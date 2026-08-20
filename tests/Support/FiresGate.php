@@ -53,6 +53,14 @@ final readonly class FiresGate
     private const string MAGO_CONFIG = <<<'TOML'
         [source]
         paths = ["src", "stubs"]
+        # The resolution context PHPStan gets from its autoloader, so an example may name a vendored class and
+        # both tools answer about the same hierarchy. Without it mago cannot walk into a vendored parent and a
+        # rule asking about one goes silently narrow — the asymmetry the corpus differential found first.
+        #
+        # Named packages rather than all of `vendor`: this is scanned once per rule, and the whole tree took the
+        # suite from 115s to 346s, past the point where `composer qa-check` gives up. Add a package here when an
+        # example needs to name one of its classes.
+        includes = ["{ROOT}/vendor/nikic", "{ROOT}/vendor/rector/rector/src/Contract"]
 
         [extension-hosts.gate]
         command = ["php", "worker.php"]
@@ -184,7 +192,7 @@ final readonly class FiresGate
             '{autoload}' => $this->repositoryRoot . '/vendor/autoload.php',
             '{rule}' => $rule,
         ]));
-        file_put_contents($sandbox . '/mago.toml', self::MAGO_CONFIG . "\n");
+        file_put_contents($sandbox . '/mago.toml', strtr(self::MAGO_CONFIG, ['{ROOT}' => $this->repositoryRoot]) . "\n");
         file_put_contents($sandbox . '/phpstan.neon', strtr(self::PHPSTAN_CONFIG, [
             '{class}' => $ruleClass,
         ]) . "\n");

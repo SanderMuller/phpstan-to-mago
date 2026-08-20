@@ -12,8 +12,11 @@ use Mago\Sdk\Analyzer\Metadata\ParameterMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
+use Mago\Sdk\Analyzer\Type\ScalarType;
+use Mago\Sdk\Analyzer\Type\ScalarTypeKind;
 use Mago\Sdk\Analyzer\Type\SimpleAtomicType;
 use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
+use Mago\Sdk\Analyzer\Type\StringType;
 use Mago\Sdk\Analyzer\Type\Visibility;
 use Mago\Sdk\Span;
 use Mago\Sdk\Syntax\Node;
@@ -730,6 +733,58 @@ final class Support
         $call = self::concreteCall($part);
 
         return $call?->kind === NodeKind::MethodCall ? $call : null;
+    }
+
+    /**
+     * The object a property access reads from — php-parser's `PropertyFetch->var`.
+     *
+     * Probed: `$this->current` is `Access → PropertyAccess → [Expression($this), ClassLikeMemberSelector]`, so
+     * the target is the access's first expression, one category node down. Null for anything that is not a
+     * property access, which is what makes the rule's own `instanceof PropertyFetch` guard meaningful.
+     */
+    public static function propertyFetchTarget(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        $access = self::concreteAccess($context, $subject, [NodeKind::PropertyAccess, NodeKind::NullSafePropertyAccess]);
+
+        return $access instanceof Part ? self::nthExpression($context, $access, 0) : null;
+    }
+
+    /**
+     * The array an index read reads from — php-parser's `ArrayDimFetch->var`.
+     *
+     * `$arr['k']` is `ArrayAccess → [Expression($arr), Expression('k')]`, with no `Access` category node above
+     * it, which is why this is not the same walk as a property access.
+     */
+    public static function dimFetchTarget(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        $access = self::concreteAccess($context, $subject, [NodeKind::ArrayAccess]);
+
+        return $access instanceof Part ? self::nthExpression($context, $access, 0) : null;
+    }
+
+    /**
+     * A part narrowed to one of the given access kinds, looking through the `Access` category node.
+     *
+     * @param list<NodeKind> $kinds
+     */
+    private static function concreteAccess(NodeAnalysisContext $context, Part|Node|null $subject, array $kinds): ?Part
+    {
+        $part = self::asPart($context, $subject);
+        if (! $part instanceof Part) {
+            return null;
+        }
+
+        if (in_array($part->kind, $kinds, true)) {
+            return $part;
+        }
+
+        foreach ($part->children() as $child) {
+            if (in_array($child->kind, $kinds, true)) {
+                return $child;
+            }
+        }
+
+        return null;
     }
 
     /** Whether the enclosing class-like declaration has an extends clause at all. */
@@ -1574,6 +1629,70 @@ final class Support
         }
 
         return $found;
+    }
+
+    /**
+     * The inferred type of any sub-expression, which is what `$scope->getType($expr)` gives a rule.
+     *
+     * Available to a plain node hook, not only to an after-file one, as long as the plugin asks for
+     * `FileAnalysisRequirement::ExpressionTypes` — probed, because two rounds of this repository's own
+     * documentation said otherwise. Null when the node is not an expression: a class member has no type, and
+     * a rule asking one of those gets nothing rather than a wrong answer.
+     */
+    public static function expressionType(NodeAnalysisContext $context, Part|Node|null $subject): ?Type
+    {
+        $node = self::node($subject);
+
+        return $node instanceof Node ? $context->analysis->getExpressionType($node) : null;
+    }
+
+    /**
+     * The value behind a type that is one literal string, or null when it is not one.
+     *
+     * PHPStan spells this `ConstantStringType` and reads it with `->getValue()`. Mago's `Type` *renders* as
+     * plain `string` either way — the literal is in the structure, on the scalar's refinement — so reading the
+     * rendering would answer "not a constant" for every string in the corpus. Probed, not read.
+     */
+    public static function constantStringOf(?Type $type): ?string
+    {
+        foreach ($type instanceof Type ? $type->atomicTypes : [] as $atomic) {
+            if (! $atomic instanceof ScalarType || $atomic->kind !== ScalarTypeKind::String) {
+                continue;
+            }
+
+            $refinement = $atomic->refinement;
+            if ($refinement instanceof StringType && is_string($refinement->literalValue)) {
+                return $refinement->literalValue;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The elements of an array literal, in order.
+     *
+     * The `ArrayElement` category node rather than the `ValueArrayElement` beneath it: both carry the same text
+     * and the same inferred type, and a kind predicate written against the inner one matches nothing among the
+     * direct children — the trap this project has hit before with `Expression` and `Call`.
+     *
+     * @return list<Part>
+     */
+    public static function arrayElements(NodeAnalysisContext $context, Part|Node|null $array): array
+    {
+        $node = self::node($array);
+        if (! $node instanceof Node) {
+            return [];
+        }
+
+        $elements = [];
+        foreach ($context->source->getChildren($node) as $child) {
+            if ($child->kind === NodeKind::ArrayElement) {
+                $elements[] = self::part($context, $child);
+            }
+        }
+
+        return $elements;
     }
 
     /** Two written names compared the way PHP compares them: case-insensitively, and null matching nothing. */
