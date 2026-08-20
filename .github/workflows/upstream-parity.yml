@@ -54,8 +54,10 @@ jobs:
           fi
           composer update --prefer-stable --prefer-dist --no-interaction
 
+      # Every direct dependency, so the run records which corpus it measured. `show` takes one package at
+      # most, so this is the whole list rather than the four that matter.
       - name: List the corpus versions
-        run: composer show -D symplify/phpstan-rules tomasvotruba/type-coverage tomasvotruba/cognitive-complexity carthage-software/mago
+        run: composer show -D
 
       - name: Execute tests
         id: tests
