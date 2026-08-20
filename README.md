@@ -120,7 +120,7 @@ public function __construct(
 
 Those defaults are read from the package's own `extension.neon`, found through `composer.json`'s
 `extra.phpstan.includes`. `services: arguments:` is what says which constructor argument is a configured
-value and which is a PHPStan service — `%noUnsafeRequestData.namespaces%` against `@reflectionProvider` —
+value and which is a PHPStan service (`%noUnsafeRequestData.namespaces%` against `@reflectionProvider`),
 and only the first can be carried. A rule taking a service is refused, naming the service, because no worker
 can supply a `ReflectionProvider`.
 
@@ -155,8 +155,8 @@ public function __construct(
 }
 ```
 
-Anything else in a derivation — a method call, a `new`, a function outside that set — is refused rather
-than approximated, and only the PHP target carries a derivation at all.
+Anything else in a derivation (a method call, a `new`, a function outside that set) is refused rather than
+approximated, and only the PHP target carries a derivation at all.
 
 ## It refuses rather than approximates
 
@@ -189,7 +189,7 @@ Four rule packages, surveyed with the tool rather than from memory:
 
 Every emitted rule is proven to *run*: the gate transpiles it, starts the real `mago` binary with a worker
 registering only that rule, and compares the findings against PHPStan running the original over the same two
-files — on line **and** message text. A rule that emits and reports nothing fails that gate, which is how
+files, on line **and** message text. A rule that emits and reports nothing fails that gate, which is how
 five rules were found to have been silently dead.
 
 The vocabulary covers guard chains, `foreach` with an inline report, `sprintf` messages, inlined helpers,
@@ -201,20 +201,21 @@ computes. Configured values become constructor parameters carrying the rule pack
 not covered is refused by name.
 
 Reflection is translated at the use site rather than passed through. A rule can resolve the class name written
-at a call site — or read the class off the receiver's inferred type, with `null` stripped first — ask whether
-that class is known, ask for the method's parameter at a position, and put that parameter's name in its message,
-all from Mago's codebase metadata, since there is no reflection object to hand a plugin. `$obj?->m(..)` is a
-separate hook, because Mago makes it a separate node. A rule can also target a closure and ask about its declared
-parameters and their written types, which is how the Symfony config-file rules recognise a config file at all. A
-rule that loops a class-like's own methods reports one finding per method, on the method's line, and can ask each
-one about its visibility, its attributes and its docblock. A rule can search a subtree for every node of a given
-kind, count what it found, and put that count in its message. A package that factors its detection into a
-producer handing back a `{...}` record and a consumer reading one field out of it is followed through: the
-producer's guards become the rule's guards, and the record never exists at analysis time.
+at a call site, or read the class off the receiver's inferred type with `null` stripped first. From there it
+can ask whether that class is known, ask for the method's parameter at a position, and put that parameter's
+name in its message, all from Mago's codebase metadata, since there is no reflection object to hand a plugin.
+`$obj?->m(..)` is a separate hook, because Mago makes it a separate node. A rule can also target a closure and
+ask about its declared parameters and their written types, which is how the Symfony config-file rules
+recognise a config file at all. A rule that loops a class-like's own methods reports one finding per method,
+on the method's line, and can ask each one about its visibility, its attributes and its docblock. A rule can
+search a subtree for every node of a given kind, count what it found, and put that count in its message. A
+package that factors its detection into a producer handing back a `{...}` record and a consumer reading one
+field out of it is followed through: the producer's guards become the rule's guards, and the record never
+exists at analysis time.
 
 ### Where it does not agree yet
 
-On 585 files of dependency-tree source the emitted rules report more than PHPStan does — 214 findings
+On 585 files of dependency-tree source the emitted rules report more than PHPStan does: 214 findings
 against 19, with 17 agreeing. Two things are mixed together in that gap and have not been separated:
 Mago analyses without an autoloader, so the two tools do not see the same resolved classes; and at least
 one port is genuinely wider than its original.
@@ -259,7 +260,7 @@ cover is refused rather than approximated.
 
 ## Requirements
 
-PHP 8.4 for the transpiler — the floor the rule packages themselves set, since `symplify/phpstan-rules` and
+PHP 8.4 for the transpiler. That is the floor the rule packages themselves set: `symplify/phpstan-rules` and
 `tomasvotruba/type-coverage` both require it, and there is nothing to transpile without them. Generated
 plugins target the Mago PHP SDK and run under Mago 1.47.1 or later. 1.47.0 is skipped because its release
 carries no Linux binary, so the package installs and then cannot run.
