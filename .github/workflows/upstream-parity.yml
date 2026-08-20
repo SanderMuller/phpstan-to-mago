@@ -102,7 +102,9 @@ jobs:
           - **Install outcome:** ${{ steps.install.outcome }}
           - **Test outcome:** ${{ steps.tests.outcome }}
 
-          Read the install step first: if `composer update` failed, the break is in resolution, not in a rule.
+          Read the outcomes first. A **skipped** test outcome means the run never reached the suite, so the
+          break is in the workflow or in dependency resolution rather than in a rule — that is how the first
+          two issues this workflow ever filed were produced.
 
           Otherwise the failing test names which kind of drift it is:
 
