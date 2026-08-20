@@ -237,6 +237,11 @@ final class Vocabulary
         'method-decl' => [
             'name' => [self::PHP_ONLY, 'method-name', '{base}'],
         ],
+        // A method reached by name, which may not exist. The fields are the same; what differs is that
+        // `instanceof ClassMethod` on it is a real null check rather than a narrowing that always holds.
+        'maybe-method-decl' => [
+            'name' => [self::PHP_ONLY, 'method-name', '{base}'],
+        ],
         'attr-group' => [
             'attrs' => [self::PHP_ONLY, 'attributes', 'Support::attributesOf({base})'],
         ],

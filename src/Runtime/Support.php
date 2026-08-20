@@ -1298,6 +1298,27 @@ final class Support
         return null;
     }
 
+    /**
+     * One method declaration of a class-like body, by name, or null when it declares none.
+     *
+     * php-parser's `ClassLike::getMethod()`, which a rule uses to reach a method it learned the name of at
+     * analysis time — a data provider named in a docblock. Case insensitive, as PHP method names are.
+     */
+    public static function methodNamed(NodeAnalysisContext $context, Part|Node|null $classLike, ?string $name): ?Part
+    {
+        if ($name === null) {
+            return null;
+        }
+
+        foreach (self::classMethods($context, $classLike) as $method) {
+            if (strcasecmp((string) self::methodName($method), $name) === 0) {
+                return $method;
+            }
+        }
+
+        return null;
+    }
+
     /** A method declaration's own name. */
     public static function methodName(?Part $method): ?string
     {
@@ -1361,6 +1382,24 @@ final class Support
         }
 
         return $subject instanceof Node ? self::part($context, $subject) : null;
+    }
+
+    /**
+     * One named group of a match, or null when the pattern did not match or the group caught nothing.
+     *
+     * An empty capture reads as null here. `preg_match()` fills an unmatched optional group with `''`, and a
+     * rule's `isset($matches['x'])` cannot tell the two apart — so treating `''` as "not caught" matches what
+     * the rule means. No pattern in the corpus has an optional group that can match empty.
+     */
+    public static function captured(string $pattern, ?string $subject, string $group): ?string
+    {
+        if ($subject === null || preg_match($pattern, $subject, $matches) !== 1) {
+            return null;
+        }
+
+        $value = $matches[$group] ?? null;
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     /** Whether a method declaration is written `private`, which php-parser answers from its modifiers. */
