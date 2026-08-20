@@ -520,18 +520,75 @@ folding to the expression it memoises, `isSuperTypeOf` between two constructed `
 ancestry question, a class constant carried into the plugin so a copied derivation can name it, and a
 derivation reading a property the same constructor derived earlier.
 
-And it is **refused anyway**, by a check added for the purpose. A merged rule asks several *independent* checks
-in one pass, and flattening them makes the first check's guards the rule's guards — so `dump()` not being a
-debug call would exit before the `invade` check ran. The emitted plugin reported only its first sub-rule and
-looked complete doing it. The refusal names that shape.
+It was **refused** at first, by a check added for the purpose: flattening several independent checks makes the
+first check's guards the rule's guards, so `dump()` not being a debug call exited before the `invade` check
+ran. The emitted plugin reported only its first sub-rule and looked complete doing it.
 
-What it needs is **per-check blocks**: each check's guards exiting its own block rather than the rule. That is
-the next piece of work on this family, and it is worth doing — it is the difference between 5 rules and the
-three the consumer actually registers.
+### Per-check blocks
 
-`CombinedMethodCallRule` needs that *and* something further out: one of its sub-rules parses the FormRequest's
-`rules()` method out of another file with PHPStan's `Parser`. A merged rule is only portable if every sub-rule
-is.
+The rule is now emitted as **one private method per check**. The point of the method is its `return`: a guard
+inside it declines *that* check, where the same guard in the rule body declines every check after it too. The
+shared prologue stays in `analyze()` and passes whatever locals a check names as parameters, typed `mixed` —
+the transpiler tracks a local's shape well enough to render it, not well enough to name a PHP type, and a
+guessed type is a `TypeError` at analysis time rather than a refusal at transpile time.
+
+Check mode is decided **before** translation, and only for a rule that really asks two checks, so every rule
+that asks one emits exactly what it emitted before. That is what kept the reviewed snapshots byte-identical
+through the change.
+
+Three defects only this shape could expose, each of which had made a check silent:
+
+- `$literals` — the transpile-time map of literal arguments — outlived the inline that bound it.
+  `ChecksNamespace` binds `$namespace` to `'App'` for the singular check and iterates a configured list under
+  the same name for the plural one, so the second check compared every item against the first check's literal.
+  It is scoped like `$locals` now.
+- `Support::nameEquals()` compared a name as written, and Mago keeps the leading `\` where php-parser drops
+  it. The port was silent on exactly the fully-qualified `\Livewire\invade` the rule exists to catch.
+- `hasFunction()` was handed the name *node* where the helper takes text. That is a `TypeError` in the worker,
+  which surfaces as an orchestrator protocol error naming neither the rule nor the argument.
+
+And one in the gate itself, which is the more useful lesson: it filtered both tools on **one** identifier, the
+last one the rule took. A merged rule reports under one identifier per check, so the gate measured one check
+and read the other two's silence as agreement — it passed while two of three checks did nothing. It compares
+every identifier the rule takes now. A harness that looks at one of several outputs is a harness that agrees
+on zero without saying so.
+
+`CombinedMethodCallRule` needs something further out: one of its sub-rules parses the FormRequest's `rules()`
+method out of another file with PHPStan's `Parser`. A merged rule is only portable if every sub-rule is.
+`CombinedStaticCallRule` stops earlier, on a cache declared part-way through a helper — see below.
+
+## A cache is invisible to the answer, but only where it wraps the question
+
+A helper that memoises a pure question emits the question and drops the cache. Two spellings are in the
+corpus, and both are recognised as a *whole body* rather than statement by statement, because `static $cache`
+on its own says nothing about whether dropping it is sound:
+
+```php
+static $cache = []; if (! array_key_exists($k, $cache)) { $cache[$k] = <expr>; } return $cache[$k];
+static $cache = []; $k = ..; if (array_key_exists($k, $cache)) { return $cache[$k]; }
+                    return $cache[$k] = <expr>;
+```
+
+The second spelling binds the key between the declaration and the cache logic. That binding goes away with
+the cache, so it is accepted only when the memoised expression does not read it — otherwise the expression
+would lose a value the recogniser silently dropped.
+
+A cache declared **part-way** through a longer body is refused, and the refusal says so rather than naming the
+token. `DetectsFacadeAlias` fills its cache with runtime reflection, so whether dropping it changes the answer
+depends on what fills it — which is exactly what the whole-body form settles and the statement-position form
+does not.
+
+## An inverted loop is the same question with a different answer
+
+`foreach (..) { if (..) { return true; } } return false;` is "any of them matches". So is
+`foreach (..) { if (..) { return false; } } return true;` — what differs is the answer, not the question. The
+loop's own polarity is read from the return it carries, and every return inside one loop has to agree: two
+polarities in one loop is a different shape, and folding it into one "any of them" would answer the opposite
+question for half the items.
+
+`NoEloquentWithPropertyRule::isEagerLoadingDefault()` is the inverted form — an explicit `$with = []` restates
+Eloquent's own default and is skipped. Assuming the usual polarity made the port report it, which its good
+example now catches.
 
 ## Do not raise the emit count by lowering the bar
 

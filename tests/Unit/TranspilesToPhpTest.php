@@ -63,6 +63,10 @@ final class TranspilesToPhpTest extends TestCase
         yield 'the same, on a nullsafe call' => ['PositionalFlagOnNullsafeReceiverRule'];
         // A closure and its declared parameters, which every Symfony config-closure rule gates on.
         yield 'a closure with one class-typed parameter' => ['ConfigClosureRule'];
+        // PHP only, for the same reason as the namespace rule above. Snapshotted because the interesting part
+        // is what is *absent*: a cache around a pure question, and the key binding that serves it, are dropped
+        // and the guard is the question itself.
+        yield 'a value producer behind a cache' => ['MemoisedLookupRule'];
     }
 
     #[DataProvider('supportedRules')]

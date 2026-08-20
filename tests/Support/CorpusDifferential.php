@@ -69,7 +69,7 @@ final class CorpusDifferential
         )))->run();
         PHP;
 
-    /** @var list<array{name: string, class: string, identifier: string, register: bool}> */
+    /** @var list<array{name: string, class: string, identifiers: list<string>, register: bool}> */
     private array $emitted = [];
 
     /** @var list<array{name: string, reason: string}> */
@@ -127,7 +127,7 @@ final class CorpusDifferential
         return ['emitted' => count($this->emitted), 'refused' => count($this->refused)];
     }
 
-    /** @return list<array{name: string, class: string, identifier: string, register: bool}> */
+    /** @return list<array{name: string, class: string, identifiers: list<string>, register: bool}> */
     public function emittedRules(): array
     {
         return $this->emitted;
@@ -148,7 +148,15 @@ final class CorpusDifferential
     {
         $identifiers = [];
         foreach ($this->emitted as $rule) {
-            $identifiers[$this->identifierPrefix($rule['identifier'])][] = $rule['name'];
+            // Every identifier the rule takes, not only the last: a merged rule reports under one per check,
+            // and comparing on one of them measures a single check while the rest pass by being ignored.
+            foreach ($rule['identifiers'] as $identifier) {
+                $identifiers[$this->identifierPrefix($identifier)][] = $rule['name'];
+            }
+        }
+
+        foreach ($identifiers as $identifier => $rules) {
+            $identifiers[$identifier] = array_values(array_unique($rules));
         }
 
         ksort($identifiers);
@@ -413,7 +421,7 @@ final class CorpusDifferential
         $this->emitted[] = [
             'name' => $name,
             'class' => $this->classOf($file, $name),
-            'identifier' => (string) $rule['identifier'],
+            'identifiers' => $rule['identifiers'],
             'register' => $this->isAutowireable($file),
         ];
     }

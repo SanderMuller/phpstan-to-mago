@@ -104,7 +104,7 @@ EMIT    StringFileAbsolutePathExistsRule
 REFUSE  TaggedIteratorOverRepeatedServiceCallRule
 EMIT    UppercaseConstantRule
 
-## hihaho/phpstan-rules — 6 emitted, 14 refused
+## hihaho/phpstan-rules — 7 emitted, 13 refused
 
 EMIT    ChainedNoDebugInNamespaceRule
 EMIT    CombinedFuncCallRule
@@ -112,7 +112,7 @@ REFUSE  CombinedMethodCallRule
 REFUSE  CombinedStaticCallRule
 REFUSE  FlagArgumentManifestCollector
 EMIT    NoDebugInNamespaceRule
-REFUSE  NoEloquentWithPropertyRule
+EMIT    NoEloquentWithPropertyRule
 EMIT    NoInvadeInAppCode
 REFUSE  NoUnsafeRequestDataRule
 REFUSE  NoUnsafeRequestFacadeRule

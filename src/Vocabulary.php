@@ -254,6 +254,17 @@ final class Vocabulary
         'maybe-method-decl' => [
             'name' => [self::PHP_ONLY, 'method-name', '{base}'],
         ],
+        // A property item — one declared name in `protected $a = 1, $b = 2;`. Probed: an initialised item wraps
+        // its value in an `Expression`, an uninitialised one has no such child, so the read is null-tolerant and
+        // the rule's own `instanceof` is what tells the two apart.
+        'property-item' => [
+            'default' => [self::PHP_ONLY, 'property-default', 'Support::propertyItemDefault({base})'],
+        ],
+        // Kept apart from a bare expression so `->items` is only offered where a property default is what was
+        // asked for. Reading it of anything else would answer "no elements" for a value that is not a list.
+        'property-default' => [
+            'items' => [self::PHP_ONLY, 'array-items', 'Support::arrayElements($context, {base})'],
+        ],
         'attr-group' => [
             'attrs' => [self::PHP_ONLY, 'attributes', 'Support::attributesOf({base})'],
         ],

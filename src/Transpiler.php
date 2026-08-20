@@ -2338,6 +2338,31 @@ PHP;
         return count($conditions) === 1 ? $conditions[0] : '(' . implode(' && ', $conditions) . ')';
     }
 
+    /**
+     * What a loop answers when an item matches, as the boolean literal it returns.
+     *
+     * Every return inside the loop has to agree: two polarities in one loop is a different shape, and folding
+     * it into one "any of them" would answer the opposite question for half the items.
+     */
+    private function loopMatchValue(Foreach_ $statement): string
+    {
+        $values = [];
+        foreach ((new NodeFinder())->findInstanceOf([$statement], Return_::class) as $return) {
+            $literal = $return->expr instanceof Expr ? $this->isBooleanLiteral($return->expr) : null;
+            if ($literal === null) {
+                throw new Refusal('a foreach in an inlined helper returning something other than a boolean', $return->getStartLine());
+            }
+
+            $values[$literal] = true;
+        }
+
+        if (count($values) !== 1) {
+            throw new Refusal('a foreach in an inlined helper returning both booleans', $statement->getStartLine());
+        }
+
+        return array_key_first($values);
+    }
+
     private function anyBody(Stmt $body, int $depth): string
     {
         if ($body instanceof Foreach_) {
@@ -2353,8 +2378,8 @@ PHP;
         }
 
         $returned = $this->soleReturn($body->stmts);
-        if (! $returned instanceof ConstFetch || strtolower($returned->name->toString()) !== 'true') {
-            throw new Refusal('a foreach in an inlined helper that does not return true when it matches', $body->getStartLine());
+        if (! $returned instanceof Expr || $this->isBooleanLiteral($returned) === null) {
+            throw new Refusal('a foreach in an inlined helper that does not return a boolean when it matches', $body->getStartLine());
         }
 
         return $this->stripOuterParentheses($this->translateCondition($body->cond));
@@ -2363,14 +2388,27 @@ PHP;
     /**
      * The expression a memoised helper memoises, or null when the body is not that shape.
      *
-     * `static $cache = []; if (! array_key_exists($k, $cache)) { $cache[$k] = <expr>; } return $cache[$k];` is
-     * a cache around a pure question, and a cache is invisible to the answer — the generated plugin computes
-     * `<expr>` and is done. Recognised as a whole rather than statement by statement, because `static $cache`
-     * on its own says nothing about whether dropping it is sound.
+     * A cache around a pure question is invisible to the answer, so the generated plugin computes the question
+     * and is done. Two spellings, both in the corpus:
+     *
+     *     static $cache = []; if (! array_key_exists($k, $cache)) { $cache[$k] = <expr>; } return $cache[$k];
+     *     static $cache = []; $k = ..; if (array_key_exists($k, $cache)) { return $cache[$k]; }
+     *                         return $cache[$k] = <expr>;
+     *
+     * Recognised as a whole rather than statement by statement, because `static $cache` on its own says nothing
+     * about whether dropping it is sound.
      */
     private function memoisedExpression(ClassMethod $method): ?Expr
     {
         $statements = $method->stmts ?? [];
+
+        // The second spelling binds the key between the declaration and the cache logic. The binding is dropped
+        // with the cache, so it may only serve the key: an expression reading it would lose its value.
+        $keyed = $this->keyedMemoisation($statements);
+        if ($keyed instanceof Expr) {
+            return $keyed;
+        }
+
         if (count($statements) !== 3
             || ! $statements[0] instanceof Static_
             || ! $statements[1] instanceof If_
@@ -2405,6 +2443,88 @@ PHP;
         }
 
         return $only->expr->expr;
+    }
+
+    /**
+     * The expression memoised by the read-first spelling of the cache, or null when the body is not it.
+     *
+     * `static $cache = []; $k = ..; if (array_key_exists($k, $cache)) { return $cache[$k]; }
+     * return $cache[$k] = <expr>;`
+     *
+     * @param array<Stmt> $statements
+     */
+    private function keyedMemoisation(array $statements): ?Expr
+    {
+        if (count($statements) < 3 || ! $statements[0] instanceof Static_) {
+            return null;
+        }
+
+        $declaration = $statements[0];
+        if (count($declaration->vars) !== 1 || ! $declaration->vars[0]->var instanceof Variable) {
+            return null;
+        }
+
+        $cache = $declaration->vars[0]->var->name;
+        if (! is_string($cache)) {
+            return null;
+        }
+
+        $rest = array_slice($statements, 1);
+
+        // Any bindings between the declaration and the cache logic serve the key, and the key goes away with
+        // the cache. Collected so the memoised expression can be checked against them.
+        $bound = [];
+        while (($rest[0] ?? null) instanceof Expression
+            && $rest[0]->expr instanceof Assign
+            && $rest[0]->expr->var instanceof Variable
+            && is_string($rest[0]->expr->var->name)
+        ) {
+            $bound[] = $rest[0]->expr->var->name;
+            array_shift($rest);
+        }
+
+        if (count($rest) !== 2 || ! $rest[0] instanceof If_ || ! $rest[1] instanceof Return_) {
+            return null;
+        }
+
+        [$hit, $miss] = $rest;
+        if (! $this->readsCache($hit, $cache) || ! $miss->expr instanceof Assign) {
+            return null;
+        }
+
+        $fill = $miss->expr;
+        if (! $fill->var instanceof ArrayDimFetch
+            || ! $fill->var->var instanceof Variable
+            || $fill->var->var->name !== $cache
+        ) {
+            return null;
+        }
+
+        foreach ((new NodeFinder())->findInstanceOf([$fill->expr], Variable::class) as $read) {
+            if (is_string($read->name) && in_array($read->name, $bound, true)) {
+                return null;
+            }
+        }
+
+        return $fill->expr;
+    }
+
+    /** `if (array_key_exists($k, $cache)) { return $cache[$k]; }` — the cache-hit branch, and nothing else. */
+    private function readsCache(If_ $hit, string $cache): bool
+    {
+        if ($hit->elseifs !== [] || $hit->else instanceof Else_ || count($hit->stmts) !== 1) {
+            return false;
+        }
+
+        $only = $hit->stmts[0];
+
+        return $only instanceof Return_
+            && $only->expr instanceof ArrayDimFetch
+            && $only->expr->var instanceof Variable
+            && $only->expr->var->name === $cache
+            && $hit->cond instanceof FuncCall
+            && $hit->cond->name instanceof Name
+            && $hit->cond->name->toString() === 'array_key_exists';
     }
 
     /** The accepted helper shapes, as one Rust expression. */
@@ -2459,7 +2579,10 @@ PHP;
             }
 
             if ($statement instanceof Foreach_) {
-                $guards[] = [$this->foreachAsAny($statement), 'true'];
+                // The polarity is the loop's own: a search returns `true` on a hit, and a "nothing disqualifies
+                // it" check returns `false` on one and `true` after the loop. Both are "any of them matches";
+                // what differs is the answer, so reading it here is what keeps the second from inverting.
+                $guards[] = [$this->foreachAsAny($statement), $this->loopMatchValue($statement)];
 
                 continue;
             }
@@ -3660,11 +3783,19 @@ PHP;
         ++$this->inlineDepth;
 
         try {
-            foreach ($helper->stmts ?? [] as $statement) {
-                $this->translateStatement($statement);
-            }
+            // A cache around a pure question is invisible to the answer, and the declaration that opens one is
+            // not a statement this can translate. Recognised before the walk rather than skipped inside it,
+            // because `static $cache` on its own says nothing about whether dropping the cache is sound.
+            $memoised = $this->memoisedExpression($helper);
+            if ($memoised instanceof Expr) {
+                $fields = ['' => $this->recordField($this->resolve($memoised, $line))];
+            } else {
+                foreach ($helper->stmts ?? [] as $statement) {
+                    $this->translateStatement($statement);
+                }
 
-            $fields = $this->recordFields ?? [];
+                $fields = $this->recordFields ?? [];
+            }
         } finally {
             --$this->inlineDepth;
             $this->helperLoopFloor = $savedFloor;
@@ -4403,6 +4534,18 @@ PHP;
             $this->bindCaptures($stmt->expr, $stmt->getStartLine());
 
             return;
+        }
+
+        // A cache the transpiler *can* drop is one wrapping a whole helper, where the body is the question and
+        // nothing else — see {@see memoisedExpression}. Declared part-way through a longer body it is a local
+        // whose lifetime outlives the call, and whether dropping it changes the answer depends on what fills it.
+        // `DetectsFacadeAlias` fills its cache with runtime reflection, so this is not a formality.
+        if ($stmt instanceof Static_) {
+            throw new Refusal(
+                'a cache declared part-way through a helper: only one wrapping the whole helper can be dropped, '
+                . 'because only then is the body the question it caches',
+                $stmt->getStartLine(),
+            );
         }
 
         throw new Refusal('statement outside the vocabulary: ' . $this->describe($stmt), $stmt->getStartLine());

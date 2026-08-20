@@ -2118,6 +2118,35 @@ final class Support
     }
 
     /**
+     * A property item's default value, or null when it declares none.
+     *
+     * The tree, from a probe rather than assumed: an initialised item holds a `PropertyConcreteItem` whose
+     * children are the `DirectVariable` and an `Expression` wrapping the value; an uninitialised one holds a
+     * `PropertyAbstractItem` with only the variable. The `Expression` wrapper is unwrapped, the same way
+     * {@see nthExpression} unwraps it, so what comes back is the value node a rule asks `instanceof` of.
+     */
+    public static function propertyItemDefault(?Part $item): ?Part
+    {
+        if (! $item instanceof Part) {
+            return null;
+        }
+
+        foreach ([$item, ...$item->children()] as $candidate) {
+            foreach ($candidate->children() as $child) {
+                if ($child->kind !== NodeKind::Expression) {
+                    continue;
+                }
+
+                $inner = $child->children()[0] ?? null;
+
+                return $inner ?? $child;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * A property item's name, without the `$`.
      *
      * `$with = ['author']` gives `with`. The name is a `DirectVariable` under a `PropertyConcreteItem` for an
