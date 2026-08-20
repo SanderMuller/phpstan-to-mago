@@ -56,6 +56,8 @@ final class PhpBackend implements Backend
             case 'assign':
             case 'declare':
                 return "{$pad}\${$this->name($a['target'])} = {$this->checked($a['value'])};\n";
+            case 'foreach-keyed-open':
+                return "{$pad}foreach ({$this->checked($a['iterable'])} as \${$this->name($a['key'])} => \${$this->name($a['variable'])}) {\n";
             case 'foreach-open':
                 return "{$pad}foreach ({$this->checked($a['iterable'])} as \${$this->name($a['variable'])}) {\n";
             case 'for-open':

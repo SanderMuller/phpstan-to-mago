@@ -46,7 +46,7 @@ final readonly class FiresGate
             identifier: 'gate/one-rule',
             name: 'One transpiled rule',
             version: '0.0.0',
-            analyzerPlugins: [new \Transpiled\{rule}()],
+            analyzerPlugins: [new \Transpiled\{rule}({pluginArguments})],
         )))->run();
         PHP;
 
@@ -79,6 +79,27 @@ final readonly class FiresGate
                 class: {class}
         {arguments}        tags: [phpstan.rules.rule]
         NEON;
+
+    /**
+     * Configured values a rule needs before it can report at all, per rule.
+     *
+     * A package may ship a parameter empty and expect each project to fill it: `traitRequiresInterface` has no
+     * default pairs, so a plugin carrying the package default reports nothing. Both tools would then be silent,
+     * and two tools agreeing on nothing is the one result this gate must never accept.
+     *
+     * So the values are supplied here, to *both* sides, and the pair proves the rule fires when configured. The
+     * emitted plugin still carries the package default — a consumer overrides it in its own worker, which is
+     * what the constructor parameters are for.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    private const array CONFIGURED = [
+        'TraitRequiresInterfaceRule' => [
+            'traitRequiresInterface' => [
+                'Examples\\Contracts\\Localised' => 'Examples\\Contracts\\LocalisedContract',
+            ],
+        ],
+    ];
 
     public function __construct(
         private string $repositoryRoot,
@@ -201,6 +222,7 @@ final readonly class FiresGate
         file_put_contents($sandbox . '/worker.php', strtr(self::WORKER, [
             '{autoload}' => $this->repositoryRoot . '/vendor/autoload.php',
             '{rule}' => $rule,
+            '{pluginArguments}' => $this->pluginArguments($ruleFile),
         ]));
         file_put_contents($sandbox . '/mago.toml', strtr(self::MAGO_CONFIG, ['{ROOT}' => $this->repositoryRoot]) . "\n");
         file_put_contents($sandbox . '/phpstan.neon', strtr(self::PHPSTAN_CONFIG, [
@@ -254,8 +276,7 @@ final readonly class FiresGate
      */
     private function arguments(string $ruleFile): string
     {
-        /** @var array<string, mixed> $arguments */
-        $arguments = $this->transpiled($ruleFile)['arguments'];
+        $arguments = $this->configuredValues($ruleFile);
         if ($arguments === []) {
             return '';
         }
@@ -270,12 +291,51 @@ final readonly class FiresGate
 
             $lines[] = '            ' . $name . ':';
             /** @var mixed $item */
-            foreach ($value as $item) {
-                $lines[] = '                - ' . json_encode($item, JSON_THROW_ON_ERROR);
+            foreach ($value as $key => $item) {
+                // A map carries its keys — `traitRequiresInterface` is trait => interface, and a list of the
+                // values alone would leave nothing to check them against.
+                $lines[] = is_string($key)
+                    ? '                ' . json_encode($key, JSON_THROW_ON_ERROR) . ': ' . json_encode($item, JSON_THROW_ON_ERROR)
+                    : '                - ' . json_encode($item, JSON_THROW_ON_ERROR);
             }
         }
 
         return implode("\n", $lines) . "\n";
+    }
+
+    /**
+     * The configured values both sides register the rule with: the package's, plus any this gate supplies.
+     *
+     * @return array<string, mixed>
+     */
+    private function configuredValues(string $ruleFile): array
+    {
+        /** @var array<string, mixed> $arguments */
+        $arguments = $this->transpiled($ruleFile)['arguments'];
+
+        return array_merge($arguments, self::CONFIGURED[basename($ruleFile, '.php')] ?? []);
+    }
+
+    /**
+     * The values the worker constructs the plugin with, as PHP named arguments.
+     *
+     * Empty for every rule the package configures itself, which is what keeps those workers unchanged. Where
+     * this gate supplies a value the plugin has to receive the same one, or the two sides are registered
+     * differently and the comparison means nothing.
+     */
+    private function pluginArguments(string $ruleFile): string
+    {
+        $supplied = self::CONFIGURED[basename($ruleFile, '.php')] ?? [];
+        if ($supplied === []) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ($supplied as $name => $value) {
+            $parts[] = $name . ': ' . var_export($value, true);
+        }
+
+        return implode(', ', $parts);
     }
 
     /**

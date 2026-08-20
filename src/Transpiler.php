@@ -120,6 +120,14 @@ final class Transpiler
     /** The Rust expression producing the reported message, from the report site. */
     private ?string $message = null;
 
+    /**
+     * Whether the message is an expression the transpiler built rather than a literal or a `sprintf()`.
+     *
+     * An interpolated message becomes a concatenation, which is neither of the two shapes the emitter used to
+     * accept. Recorded rather than sniffed out of the rendered text: `. ` appears inside message literals too.
+     */
+    private bool $messageIsExpression = false;
+
     /** PHPStan's `->identifier(..)`, which becomes the issue's code so the two tools agree on it. */
     private ?string $identifier = null;
 
@@ -615,6 +623,14 @@ final class Transpiler
 
         $this->nodeKind = $hook['kind'];
         $this->classFrom = $hook['classFrom'] ?? 'scope';
+
+        // Decided before the body is translated, because the folds below depend on it: `isInterface()` is only
+        // "never happens" while the plugin targets classes alone. Discovering the narrowing *during*
+        // translation meant a fold could be emitted before the target set was known, and a rule narrowing
+        // later in its body would have folded under the wrong assumption.
+        if ($hook['classOnly'] ?? false) {
+            $this->narrowedToClass = $this->narrowsToClassDeclaration($class);
+        }
 
         $processNode = $this->findMethod($class, 'processNode');
         $this->checkMode = self::$target === 'php' && $this->independentChecks($processNode) >= 2;
@@ -2091,6 +2107,34 @@ PHP;
             return $this->translateSprintf($expr);
         }
 
+        // `"{$a} uses {$b} but does not implement {$c}."` — a message written as an interpolation rather than
+        // through `sprintf()`. The same pieces, joined the way the target joins strings; each interpolated part
+        // goes through the message-argument renderer, so a part with no string rendering refuses by its kind.
+        if ($expr instanceof InterpolatedString) {
+            if (self::$target !== 'php') {
+                throw new Refusal('an interpolated message, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            $parts = [];
+            foreach ($expr->parts as $part) {
+                if ($part instanceof InterpolatedStringPart) {
+                    $parts[] = $this->backend->bytes($part->value);
+
+                    continue;
+                }
+
+                if (! $part instanceof Expr) {
+                    throw new Refusal('a message interpolates something that is not an expression', $expr->getStartLine());
+                }
+
+                $parts[] = $this->stringValue($part, $expr->getStartLine());
+            }
+
+            $this->messageIsExpression = true;
+
+            return implode(' . ', $parts);
+        }
+
         throw new Refusal('message expression outside the vocabulary: ' . $this->describe($expr), $expr->getStartLine());
     }
 
@@ -2825,6 +2869,50 @@ PHP;
      *
      * @return Descriptor|null
      */
+    /**
+     * `$classReflection->getTraits(true)` — every trait the declaration picks up.
+     *
+     * The `true` asks PHPStan to include traits reached through a parent class or through another trait. Mago's
+     * `usedTraits` already answers that: probed on a class using a trait that uses another, and on a subclass
+     * using neither itself, and both listed both. So there is no walk to write, and the flag is what the field
+     * already means rather than something to reproduce.
+     *
+     * Metadata lowercases the names, so every comparison against one folds case.
+     *
+     * @return Descriptor|null
+     */
+    private function resolveUsedTraitNames(Expr $expr, int $line): ?array
+    {
+        if (! $expr instanceof MethodCall
+            || $this->memberName($expr->name, $expr->getStartLine()) !== 'getTraits'
+        ) {
+            return null;
+        }
+
+        $base = $this->resolve($expr->var, $line);
+        if ($base['kind'] !== 'class-reflection') {
+            throw new Refusal('getTraits() on something other than a class reflection', $line);
+        }
+
+        // Without the flag the question is "traits written on this declaration", which `usedTraits` does not
+        // answer: it is already transitive, so answering with it would be wider than the rule.
+        $arguments = $expr->getArgs();
+        if (count($arguments) !== 1 || $this->isBooleanLiteral($arguments[0]->value) !== 'true') {
+            throw new Refusal('getTraits() without the flag that asks for inherited traits too', $line);
+        }
+
+        if (self::$target !== 'php') {
+            throw new Refusal('the traits a declaration uses, which only the PHP target carries', $line);
+        }
+
+        return ['rust' => self::PHP_ONLY, 'kind' => 'class-names', 'php' => 'Support::usedTraitNames($context, $node)'];
+    }
+
+    /**
+     * `$classReflection->getParentClassesNames()` — the ancestry a rule walks.
+     *
+     * @return Descriptor|null
+     */
     private function resolveParentClassNames(Expr $expr, int $line): ?array
     {
         if (! $expr instanceof MethodCall
@@ -3386,6 +3474,63 @@ PHP;
     }
 
     /**
+     * Whether the rule restricts itself to class declarations.
+     *
+     * PHPStan's `InClassNode` fires for an enum, a class *and* an interface — controlled with a rule that
+     * reports unconditionally — where Mago's `Class` hook fires for the class alone. So a rule that asks about
+     * every class-like needs every one of those targets, and a rule that narrows to `Class_` itself must keep
+     * the single target: that narrowing is folded away as always holding *because* the hook is class-only, and
+     * widening the targets without dropping the fold would report on exactly what the rule set out to exclude.
+     *
+     * A syntactic scan, over the rule and everything it inherits, and deliberately biased: anything it cannot
+     * read as "asks about every class-like" is treated as narrowing, which is the pre-existing behaviour. So a
+     * shape it does not recognise stays as narrow as it is today rather than silently widening.
+     */
+    private function narrowsToClassDeclaration(ClassLike $class): bool
+    {
+        foreach ($this->hierarchy()->selfAndAncestors($class) as $declaration) {
+            $found = (new NodeFinder())->find([$declaration], fn (Node $node): bool => $this->narrowsHere($node));
+            if ($found !== []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** One node that would restrict a class-like rule to classes: the `instanceof` test, or the reflection one. */
+    private function narrowsHere(Node $node): bool
+    {
+        if ($node instanceof Instanceof_ && $node->class instanceof Name) {
+            return $node->class->getLast() === 'Class_';
+        }
+
+        return $node instanceof MethodCall
+            && $node->name instanceof Identifier
+            && $node->name->toString() === 'isClass';
+    }
+
+    /**
+     * The node kinds the emitted plugin registers for.
+     *
+     * One kind for every hook but the class-declaration one, where the breadth is decided by
+     * {@see narrowsToClassDeclaration()}. Trait is absent on purpose: PHPStan's `InClassNode` does not fire for
+     * a trait either, which the same control showed.
+     *
+     * @param array<string, string>|array<string, null>|array<string, bool> $hook
+     *
+     * @return list<string>
+     */
+    private function targetKinds(array $hook): array
+    {
+        $kind = (string) $hook['kind'];
+
+        return $this->narrowedToClass || ($hook['classOnly'] ?? false) !== true
+            ? [$kind]
+            : [$kind, 'Enum', 'Interface'];
+    }
+
+    /**
      * How many independent checks the rule's body asks of one node.
      *
      * A check is `$x = $this->someError(..)` where the helper builds a rule error: the rule keeps whatever
@@ -3898,6 +4043,14 @@ PHP;
             return null;
         }
 
+        // The last segment of a qualified name, which rule packages write out by hand rather than reach for a
+        // helper. Recognised as a whole: `strrpos`/`substr` in general are not in the vocabulary, and this shape
+        // is the only use the corpus makes of them.
+        $segment = $this->lastNameSegmentHelper($helper, $args, $line);
+        if ($segment !== null) {
+            return $segment;
+        }
+
         // A helper that only picks between written words folds to an expression, with no statements emitted.
         // Tried before the statement-walking path because that path translates a `return 'public';` as a
         // rule-body guard and refuses; this shape is recognisable up front, so there is nothing to undo.
@@ -4084,6 +4237,114 @@ PHP;
             $declaresForwarded,
             $this->findMethod($declaresForwarded['class'], $forwarded),
         ];
+    }
+
+    /**
+     * `strrpos` then `substr` — a helper handing back the last segment of a qualified name.
+     *
+     * ```php
+     * $position = strrpos($className, '\\');
+     *
+     * return $position === false ? $className : substr($className, $position + 1);
+     * ```
+     *
+     * Matched whole rather than translated statement by statement. Neither function is in the vocabulary, and
+     * putting them there to serve this one shape would let any string arithmetic through; `Support` already has
+     * the question this asks.
+     *
+     * @param array<Node\Arg> $args
+     *
+     * @return array{rust: string, kind: string, php?: string, reason?: string}|null
+     */
+    private function lastNameSegmentHelper(ClassMethod $helper, array $args, int $line): ?array
+    {
+        $statements = $helper->stmts ?? [];
+        if (count($statements) !== 2
+            || ! $statements[0] instanceof Expression
+            || ! $statements[0]->expr instanceof Assign
+            || ! $statements[0]->expr->var instanceof Variable
+            || ! is_string($statements[0]->expr->var->name)
+            || ! $statements[1] instanceof Return_
+            || ! $statements[1]->expr instanceof Ternary
+            || count($args) !== 1
+        ) {
+            return null;
+        }
+
+        $position = $statements[0]->expr->var->name;
+        $subject = $this->parameterName($helper);
+        if ($subject === null || ! $this->findsLastSeparator($statements[0]->expr->expr, $subject)) {
+            return null;
+        }
+
+        if (! $this->takesTheTail($statements[1]->expr, $position, $subject)) {
+            return null;
+        }
+
+        if (self::$target !== 'php') {
+            throw new Refusal("{$helper->name->toString()}() reads a name's last segment, which only the PHP target carries", $line);
+        }
+
+        $of = $this->resolve($args[0]->value, $line);
+
+        return [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'bytes',
+            'php' => $this->backend->call('last_name_segment', [$this->nameText($of, $line)]),
+        ];
+    }
+
+    /** The sole parameter's name, or null when the helper does not take exactly one simple parameter. */
+    private function parameterName(ClassMethod $helper): ?string
+    {
+        if (count($helper->params) !== 1 || ! $helper->params[0]->var instanceof Variable) {
+            return null;
+        }
+
+        $name = $helper->params[0]->var->name;
+
+        return is_string($name) ? $name : null;
+    }
+
+    /** `strrpos($subject, '\\')` — where the last namespace separator is. */
+    private function findsLastSeparator(Expr $expr, string $subject): bool
+    {
+        return $expr instanceof FuncCall
+            && $expr->name instanceof Name
+            && $expr->name->toString() === 'strrpos'
+            && count($expr->getArgs()) === 2
+            && $expr->getArgs()[0]->value instanceof Variable
+            && $expr->getArgs()[0]->value->name === $subject
+            && $expr->getArgs()[1]->value instanceof String_
+            && $expr->getArgs()[1]->value->value === '\\';
+    }
+
+    /** `$position === false ? $subject : substr($subject, $position + 1)` — the whole name, or what follows. */
+    private function takesTheTail(Ternary $ternary, string $position, string $subject): bool
+    {
+        if (! $ternary->cond instanceof Identical
+            || ! $ternary->cond->left instanceof Variable
+            || $ternary->cond->left->name !== $position
+            || $this->isBooleanLiteral($ternary->cond->right) !== 'false'
+            || ! $ternary->if instanceof Variable
+            || $ternary->if->name !== $subject
+            || ! $ternary->else instanceof FuncCall
+            || ! $ternary->else->name instanceof Name
+            || $ternary->else->name->toString() !== 'substr'
+            || count($ternary->else->getArgs()) !== 2
+        ) {
+            return false;
+        }
+
+        $from = $ternary->else->getArgs()[1]->value;
+
+        return $ternary->else->getArgs()[0]->value instanceof Variable
+            && $ternary->else->getArgs()[0]->value->name === $subject
+            && $from instanceof Plus
+            && $from->left instanceof Variable
+            && $from->left->name === $position
+            && $from->right instanceof Int_
+            && $from->right->value === 1;
     }
 
     /**
@@ -4943,7 +5204,12 @@ PHP;
         }
 
         if ($stmt->keyVar instanceof Expr && ! $this->isCollectedSubject($stmt->expr)) {
-            // The only keyed iteration modelled is over collected data, whose key is the file path.
+            $mapped = $this->translateMapForeach($stmt);
+            if ($mapped) {
+                return;
+            }
+
+            // Otherwise the only keyed iteration modelled is over collected data, whose key is the file path.
             throw new Refusal('foreach with a key', $stmt->getStartLine());
         }
 
@@ -5399,7 +5665,9 @@ PHP;
         }
 
         $item = $this->resolve($value, $line);
-        if (! in_array($item['kind'], ['expr', 'found-node', 'method-decl'], true)) {
+        // A class name renders as a PHP string, so a list of them is as well defined as a list of nodes. The
+        // restriction below is about having a rendering for the item, not about what a list may hold.
+        if (! in_array($item['kind'], ['expr', 'found-node', 'method-decl', 'class-name', 'bytes'], true)) {
             throw new Refusal("appending a {$item['kind']} to a list", $line);
         }
 
@@ -5419,6 +5687,71 @@ PHP;
         }
 
         $this->lines[] = new Stm('append', ['target' => $name, 'value' => $this->operand($item)], $this->indent);
+    }
+
+    /**
+     * `foreach ($configuredMap as $key => $value)` — a configured map walked for both sides.
+     *
+     * The only keyed iteration besides collected data. A configured map is the one thing the plugin holds where
+     * the key carries meaning: `traitRequiresInterface` is trait => interface, and a rule reading only the
+     * values would have nothing to check them against.
+     *
+     * Both sides bind as configured strings, and every comparison against one folds case — metadata lowercases
+     * what it holds, which is the same folding PHPStan gets by canonicalising through reflection.
+     */
+    private function translateMapForeach(Foreach_ $stmt): bool
+    {
+        if (! $stmt->keyVar instanceof Variable
+            || ! is_string($stmt->keyVar->name)
+            || ! $stmt->valueVar instanceof Variable
+            || ! is_string($stmt->valueVar->name)
+        ) {
+            return false;
+        }
+
+        $subject = $this->resolve($stmt->expr, $stmt->getStartLine());
+        if ($subject['kind'] !== 'config-list') {
+            return false;
+        }
+
+        if (self::$target !== 'php') {
+            throw new Refusal('a configured map walked by key, which only the PHP target carries', $stmt->getStartLine());
+        }
+
+        $key = $this->snake($stmt->keyVar->name);
+        $value = $this->snake($stmt->valueVar->name);
+
+        $savedLocals = $this->locals;
+        $savedLiterals = $this->literals;
+        $savedLoop = $this->inLoop;
+        $this->inLoop = true;
+        unset($this->literals[$stmt->keyVar->name], $this->literals[$stmt->valueVar->name]);
+        $this->locals[$stmt->keyVar->name] = ['rust' => $key, 'kind' => 'config-bytes', 'php' => '$' . $key];
+        $this->locals[$stmt->valueVar->name] = ['rust' => $value, 'kind' => 'config-bytes', 'php' => '$' . $value];
+
+        $this->lines[] = new Stm('foreach-keyed-open', [
+            'iterable' => $this->operand($subject),
+            'key' => $key,
+            'variable' => $value,
+        ], $this->indent);
+        $this->indent += 4;
+        ++$this->loopDepth;
+
+        try {
+            foreach ($stmt->stmts as $statement) {
+                $this->translateStatement($statement);
+            }
+        } finally {
+            --$this->loopDepth;
+            $this->indent -= 4;
+            $this->inLoop = $savedLoop;
+            $this->locals = $savedLocals;
+            $this->literals = $savedLiterals;
+        }
+
+        $this->lines[] = new Stm('block-close', [], $this->indent);
+
+        return true;
     }
 
     /**
@@ -6367,7 +6700,7 @@ PHP;
         // Reflection predicates. Inside a declaration hook these come from the class metadata, and
         // two of them are settled by which hook it is: the class hook fires only for classes, and
         // never for anonymous ones, which are a separate node in Mago.
-        if (in_array($method, ['isClass', 'isAnonymous', 'isAbstract', 'isInterface'], true) && $args === []) {
+        if (in_array($method, ['isClass', 'isAnonymous', 'isAbstract', 'isInterface', 'isTrait', 'isEnum'], true) && $args === []) {
             $subject = $this->resolve($expr->var, $expr->getStartLine());
             if ($subject['kind'] !== 'class-reflection') {
                 throw new Refusal("{$method}() on something other than a class reflection", $expr->getStartLine());
@@ -6382,7 +6715,14 @@ PHP;
             return match ($method) {
                 'isClass' => $this->classHookIsClass(),
                 'isAnonymous' => $this->unreachable('an anonymous class is a separate node kind, so the class declaration hook never fires for one'),
-                'isInterface' => $this->unreachable('the class declaration hook fires for classes, never for an interface'),
+                // A trait is never a target: PHPStan's `InClassNode` does not fire for one either, so the
+                // question is settled whichever breadth the rule got.
+                'isTrait' => $this->unreachable('no declaration hook fires for a trait, which InClassNode does not visit either'),
+                // These two are only settled where the rule narrowed to classes itself. Where it did not, the
+                // plugin targets enums and interfaces as well and the question is a real one — folding it there
+                // would report on precisely what the rule excludes.
+                'isInterface' => $this->declarationKindIs('Interface', 'an interface'),
+                'isEnum' => $this->declarationKindIs('Enum', 'an enum'),
                 // The class metadata carries this on the Rust side; on the PHP side the hook's own node *is* the
                 // declaration, so the modifier is right there. Without a rendering here the PHP target emitted
                 // Rust and refused on it one step later, which named the operand instead of the question.
@@ -6390,6 +6730,24 @@ PHP;
                     ? 'Support::declarationIsAbstract($context, $node)'
                     : 'support::metadata_is_abstract(metadata)',
             };
+        }
+
+        // `$classReflection->implementsInterface($name)` — asked of the declaration the hook fired for.
+        if ($method === 'implementsInterface' && count($args) === 1) {
+            $subject = $this->resolve($expr->var, $expr->getStartLine());
+            if ($subject['kind'] !== 'class-reflection') {
+                throw new Refusal('implementsInterface() on something other than a class reflection', $expr->getStartLine());
+            }
+
+            if (self::$target !== 'php') {
+                throw new Refusal('an implemented-interface test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return $this->backend->call('class_implements', [
+                '$context',
+                '$node',
+                $this->nameText($this->resolve($args[0]->value, $expr->getStartLine()), $expr->getStartLine()),
+            ]);
         }
 
         if ($method === 'getName' && $args === []) {
@@ -6582,6 +6940,26 @@ PHP;
             ) {
                 // Loose in_array() compares with ==, which is not what any of these rules mean.
                 throw new Refusal('in_array() without strict comparison', $expr->getStartLine());
+            }
+
+            // A list the plugin computes at analysis time rather than one written in the rule: the traits a
+            // declaration uses, for instance. Compared case-insensitively, because metadata lowercases the names
+            // it holds while the needle keeps whatever spelling its author wrote — a strict comparison between
+            // the two is the silent-miss shape, and folding case is what PHPStan gets by canonicalising both
+            // sides through reflection.
+            // Only where the haystack is not one of the written forms {@see stringList} reads. Resolving those
+            // first refused a literal array by its node kind, which cost an emitting rule.
+            $written = $args[1]->value instanceof Array_ || $args[1]->value instanceof ClassConstFetch;
+            $haystack = $written ? null : $this->resolve($args[1]->value, $expr->getStartLine());
+            if ($haystack !== null && in_array($haystack['kind'], ['class-names', 'list'], true)) {
+                if (self::$target !== 'php') {
+                    throw new Refusal('in_array() over a computed list, which only the PHP target carries', $expr->getStartLine());
+                }
+
+                return $this->backend->call('names_contain', [
+                    $this->operand($haystack),
+                    $this->nameText($this->resolve($args[0]->value, $expr->getStartLine()), $expr->getStartLine()),
+                ]);
             }
 
             $options = $this->stringList($args[1]->value, $expr->getStartLine());
@@ -6979,6 +7357,27 @@ PHP;
         $this->narrowedToClass = true;
 
         return $this->alwaysHolds('the class declaration hook fires for classes, never for an interface');
+    }
+
+    /**
+     * Whether the declaration the hook fired for is of one kind, or the fold when it cannot be.
+     *
+     * A rule that narrowed to `Class_` gets the single class target, so asking is pointless and the answer is
+     * always no. A rule that did not gets every class-like target, and then the question decides which
+     * declarations it skips — `TraitRequiresInterfaceRule` excludes interfaces this way, because an interface
+     * has no implements clause to fix.
+     */
+    private function declarationKindIs(string $kind, string $described): string
+    {
+        if ($this->narrowedToClass) {
+            return $this->unreachable("the class declaration hook fires for classes, never for {$described}");
+        }
+
+        if (self::$target !== 'php') {
+            throw new Refusal("a {$described} declaration test, which only the PHP target carries");
+        }
+
+        return $this->backend->call('declaration_kind_is', ['$context', '$node', $this->backend->bytes($kind)]);
     }
 
     /** The enclosing-class test, from whichever source this hook provides. */
@@ -7379,6 +7778,29 @@ PHP;
             return $parents;
         }
 
+        $traits = $this->resolveUsedTraitNames($expr, $line);
+        if ($traits !== null) {
+            return $traits;
+        }
+
+        // `$classReflection->getDisplayName()` — how PHPStan prints the class in a message, which for a plain
+        // declaration is its fully qualified name.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getDisplayName'
+            && $expr->args === []
+            && $this->resolve($expr->var, $line)['kind'] === 'class-reflection'
+        ) {
+            if (self::$target !== 'php') {
+                throw new Refusal('a class display name, which only the PHP target carries', $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'class-name',
+                'php' => 'Support::enclosingClassName($context, $node)',
+            ];
+        }
+
         // Reflection on the code under analysis, performed at the analyser's own runtime. PHPStan can answer it
         // because larastan boots the application in the same process, so anything that application registers at
         // runtime is loaded by the time a rule asks.
@@ -7676,6 +8098,31 @@ PHP;
             && $this->rawStringLiteral($expr->getArgs()[0]->value, $line) === 'virtualNullsafeMethodCall'
         ) {
             return ['rust' => 'false', 'kind' => 'never', 'php' => 'false'];
+        }
+
+        // `array_values(array_unique($names))` closing a helper that collected names. Both are re-shapings of the
+        // list, and both are kept rather than dropped: a rule that only tests membership would not notice
+        // either, but reasoning about which consumer a producer has is exactly the step that gets a port wrong.
+        // PHP has both functions, so the honest translation is to emit them.
+        if ($expr instanceof FuncCall
+            && $expr->name instanceof Name
+            && in_array($expr->name->toString(), ['array_values', 'array_unique'], true)
+            && count($expr->getArgs()) === 1
+        ) {
+            $subject = $this->resolve($expr->getArgs()[0]->value, $line);
+            if (! isset(Vocabulary::ITERABLES[$subject['kind']]) && $subject['kind'] !== 'list') {
+                throw new Refusal("{$expr->name->toString()}() over a {$subject['kind']}", $line);
+            }
+
+            if (self::$target !== 'php') {
+                throw new Refusal("{$expr->name->toString()}(), which only the PHP target carries", $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => $subject['kind'],
+                'php' => $expr->name->toString() . '(' . $this->operand($subject) . ')',
+            ];
         }
 
         // count(<args>) as a value rather than as one side of a comparison, which {@see equality()} handles.
@@ -8560,7 +9007,7 @@ RUST;
         }
 
         $isLiteral = str_starts_with($this->message, '"') && str_ends_with($this->message, '"');
-        $isFormatted = str_starts_with($this->message, 'sprintf(');
+        $isFormatted = str_starts_with($this->message, 'sprintf(') || $this->messageIsExpression;
         if (! $isLiteral && ! $isFormatted) {
             throw new Refusal('PHP target: message is neither a literal nor a sprintf(): ' . $this->message);
         }
@@ -8604,8 +9051,11 @@ REPORT, ['{ANCHOR}' => $this->anchor ?? $this->defaultAnchor()]);
         // the class-name string, so the worker rejects the target with a type error naming neither the
         // rule nor the kind. The SDK names that case `Class_`, the same trailing-underscore convention
         // this file already uses for Rust keywords, so reserved names take the suffix.
-        $kind = 'NodeKind::' . $hook['kind']
-            . (in_array(strtolower($hook['kind']), self::PHP_RESERVED_KINDS, true) ? '_' : '');
+        $kind = implode(', ', array_map(
+            static fn (string $case): string => 'NodeKind::' . $case
+                . (in_array(strtolower($case), self::PHP_RESERVED_KINDS, true) ? '_' : ''),
+            $this->targetKinds($hook),
+        ));
         $identifier = 'transpiled/' . str_replace('_', '-', $this->snake($className));
 
         // Requirements are opt-in per capability: a rule that reads a type without asking for it gets

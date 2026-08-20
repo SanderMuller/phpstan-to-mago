@@ -590,6 +590,39 @@ question for half the items.
 Eloquent's own default and is skipped. Assuming the usual polarity made the port report it, which its good
 example now catches.
 
+## The class-declaration hook is wider than one node kind
+
+PHPStan's `InClassNode` fires for an **enum, a class and an interface** — controlled with a rule that reports
+unconditionally, so this is measured rather than read off the source. Mago's `Class` hook fires for the class
+alone. A rule that asks about every class-like therefore needs all three targets, and one that narrows to
+`Class_` itself must keep the single target: that narrowing is folded away as always holding *because* the hook
+is class-only, so widening the targets without dropping the fold reports on exactly what the rule excludes.
+
+The decision is made in a **pre-pass**, before the body is translated. It has to be: the folds depend on it, so
+discovering the narrowing while translating meant a fold could be emitted before the target set was known, and
+a rule narrowing later in its body folded under the wrong assumption. The scan is syntactic and biased towards
+"narrows", so a shape it cannot read stays as narrow as it is today rather than silently widening.
+
+`TraitRequiresInterfaceRule` is what makes this provable: the pairs it exists for in a real project are enum
+concerns, and its example pair reports on an enum and a class. Forced back to one target, the port misses the
+enum PHPStan finds.
+
+Not every rule on that hook needs the breadth. `PublicStaticDataProviderRule` restricts itself *semantically* —
+`isTestClass()` asks `$classReflection->is(TestCase::class)`, and neither an enum nor an interface can extend a
+class — so its class-only port was never narrower. A syntactic gate would have refused it wrongly, which is why
+there is no such gate.
+
+## A configured value the package leaves empty
+
+A package may ship a parameter empty and expect each project to fill it. The emitted plugin carries the package
+default and exposes it as a constructor parameter, so a consumer's worker passes its own — verified with a
+control: the same plugin over the same file reports nothing on the default and reports on the supplied value.
+
+That leaves the gate, which registers both sides with the package's values: for an empty parameter both tools
+would be silent, and agreement on nothing is the one result the gate must never accept. So the values are
+supplied by the gate itself, to *both* sides, and the pair proves the rule fires when configured. See
+`FiresGate::CONFIGURED`.
+
 ## Do not raise the emit count by lowering the bar
 
 Partial coverage plus named refusals is the honest, finished result. See `../guidelines/verification.md`.

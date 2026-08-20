@@ -362,6 +362,95 @@ final class Support
         return $subject->text;
     }
 
+    /**
+     * Whether a declaration node is of the named kind.
+     *
+     * A plugin registered for classes, enums and interfaces asks this to skip the ones its rule excludes.
+     * Mago gives each class-like its own node kind, so the question is the node's kind and nothing else.
+     */
+    public static function declarationKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool
+    {
+        $node = self::node($subject);
+
+        return $node instanceof Node && $node->kind->value === $kind;
+    }
+
+    /**
+     * Every trait the enclosing declaration picks up, as metadata spells them.
+     *
+     * `usedTraits` is already transitive and already inherited — probed on a trait using a trait, and on a
+     * subclass using neither itself, and both listed both — so this is the field, not a walk over it. The names
+     * come back lowercased, which is why anything comparing against one folds case.
+     *
+     * @return list<string>
+     */
+    public static function usedTraitNames(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        $className = self::enclosingClassName($context, $subject);
+        if ($className === null) {
+            return [];
+        }
+
+        $metadata = $context->codebase->getClassLike($className);
+
+        return $metadata instanceof ClassLikeMetadata ? array_values(array_unique($metadata->usedTraits)) : [];
+    }
+
+    /**
+     * Whether the enclosing declaration implements an interface, directly or through its hierarchy.
+     *
+     * `parentInterfaces` is the transitive set. Compared case-insensitively because metadata lowercases what it
+     * holds while a configured or written name keeps the spelling its author used — which is the same folding
+     * PHPStan gets by canonicalising both sides through reflection.
+     */
+    public static function classImplements(NodeAnalysisContext $context, Part|Node|null $subject, ?string $interface): bool
+    {
+        if ($interface === null) {
+            return false;
+        }
+
+        $className = self::enclosingClassName($context, $subject);
+        if ($className === null) {
+            return false;
+        }
+
+        $metadata = $context->codebase->getClassLike($className);
+        if (! $metadata instanceof ClassLikeMetadata) {
+            return false;
+        }
+
+        foreach ($metadata->parentInterfaces as $implemented) {
+            if (strcasecmp(ltrim($implemented, '\\'), ltrim($interface, '\\')) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a list of names holds one, folding case.
+     *
+     * The list comes from metadata, which lowercases; the name comes from configuration or from the analysed
+     * source, which does not. A strict comparison between the two is the silent-miss shape.
+     *
+     * @param list<string> $names
+     */
+    public static function namesContain(array $names, ?string $name): bool
+    {
+        if ($name === null) {
+            return false;
+        }
+
+        foreach ($names as $candidate) {
+            if (strcasecmp(ltrim($candidate, '\\'), ltrim($name, '\\')) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** The enclosing declaration's extends clause, joined as PHPStan prints it. */
     public static function extendsText(NodeAnalysisContext $context, Part|Node|null $subject): string
     {

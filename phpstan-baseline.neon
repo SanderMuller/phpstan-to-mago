@@ -49,7 +49,7 @@ parameters:
 			path: src/Runtime/Support.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 355, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 368, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Runtime/Support.php
@@ -61,7 +61,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 1616, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 1692, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php
@@ -85,7 +85,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::functionPredicate()" is 40, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::functionPredicate()" is 46, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
@@ -97,7 +97,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::methodPredicate()" is 64, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::methodPredicate()" is 69, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
@@ -109,7 +109,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::resolveReflection()" is 270, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::resolveReflection()" is 285, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
@@ -140,12 +140,6 @@ parameters:
 
 		-
 			rawMessage: 'Parameter #1 $name of method Sandermuller\PhpstanToMago\Transpiler::snake() expects string, mixed given.'
-			identifier: argument.type
-			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Parameter #1 $string of function strtolower expects string, bool|string|null given.'
 			identifier: argument.type
 			count: 1
 			path: src/Transpiler.php

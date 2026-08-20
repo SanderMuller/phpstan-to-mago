@@ -156,3 +156,19 @@ namespace Doctrine\ODM\MongoDB\Repository;
 
 /** A parent type `RequiredOnlyInAbstractRule` skips, because the pattern is the framework's own there. */
 class DocumentRepository {}
+
+namespace Examples\Contracts;
+
+/**
+ * A trait and the interface every class-like using it must implement, for `TraitRequiresInterfaceRule`.
+ *
+ * The package ships no pairs — each project configures its own — so the fires-gate supplies this one to both
+ * tools. Without a configured pair both would report nothing, and two tools agreeing on nothing is not
+ * evidence that either looked.
+ */
+trait Localised {}
+
+interface LocalisedContract
+{
+    public function locale(): string;
+}
