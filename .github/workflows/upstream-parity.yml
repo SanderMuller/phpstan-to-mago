@@ -114,6 +114,7 @@ jobs:
           | `TranspilesToPhpTest` / `TranspilesToRustTest` | A rule this package snapshots now emits something different. Decide whether the new emission is right before touching the snapshot. |
           | `EmittedRuleFiresTest` | The port and the original no longer agree when run — most often an upstream message text change, which the gate compares as text. |
           | `AggregatesTypeCoverageTest` | The aggregate reimplementation and the real rule diverged. |
+          | A `RuntimeException` saying PHPStan did not run | The corpus itself will not load — a syntax error or a broken registration upstream, most likely on `dev-main`. Nothing to fix here; wait for upstream. |
 
           A new rule appearing in the census as `REFUSE` is not a regression: it is upstream growing a shape
           this vocabulary does not cover yet. Accept it into the census and, if it is worth translating, that
