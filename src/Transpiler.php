@@ -7215,6 +7215,30 @@ PHP;
             return $parents;
         }
 
+        // Reflection on the code under analysis, performed at the analyser's own runtime. PHPStan can answer it
+        // because larastan boots the application in the same process, so anything that application registers at
+        // runtime is loaded by the time a rule asks.
+        //
+        // Probed in a real worker (`internal/probe-facade-alias.php`), because the two halves of this are easy
+        // to assume and were worth separating: a worker autoloading the same vendor tree resolves
+        // `Illuminate\Support\Facades\Cache` but not the alias `Cache`, `AliasLoader` is never loaded, and
+        // `getcwd()` is the config's directory rather than the project root — so the discovery larastan uses to
+        // find `bootstrap/app.php` would not find it either. The same file booted through larastan's bootstrap
+        // resolves all three aliases.
+        //
+        // So a port would load, ask, find nothing, and look complete doing it. Refused by name: booting an
+        // application inside every analyser worker is a decision about what a plugin *is*, not a translation.
+        if ($expr instanceof New_
+            && $expr->class instanceof Name
+            && str_starts_with($expr->class->getLast(), 'Reflection')
+        ) {
+            throw new Refusal(
+                'runtime reflection on the analysed code: a plugin worker autoloads the project but does not '
+                . 'boot it, so a name the application registers at runtime resolves to nothing',
+                $line,
+            );
+        }
+
         // `new NodeFinder()` — php-parser's subtree search. Stateless, so the handle carries nothing and only the
         // calls on it translate. A `find()`/`findFirst()` with a closure filter is refused there by name.
         if ($expr instanceof New_ && $expr->class instanceof Name && $expr->class->getLast() === 'NodeFinder') {
