@@ -451,6 +451,17 @@ final class Support
         return false;
     }
 
+    /**
+     * Whether the enclosing declaration has a method of this name, anywhere in its hierarchy.
+     *
+     * Answered through the same declaring-class lookup a rule reading that class uses, so the two cannot
+     * disagree: a name this says exists is a name that lookup can attribute.
+     */
+    public static function classHasMethod(NodeAnalysisContext $context, Part|Node|null $subject, ?string $method): bool
+    {
+        return self::declaringClassOfMethod($context, self::enclosingClassName($context, $subject), $method) !== null;
+    }
+
     /** The enclosing declaration's extends clause, joined as PHPStan prints it. */
     public static function extendsText(NodeAnalysisContext $context, Part|Node|null $subject): string
     {

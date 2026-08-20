@@ -1205,7 +1205,9 @@ PHP;
         }
 
         $subject = $this->resolve($args[0]->value, $line);
-        if (in_array($subject['kind'], ['bytes', 'class-name', 'resolved-name'], true)) {
+        // `config-bytes` is a name a loop bound from a constant list or a configured one — `$methodName` walking
+        // the methods a rule treats as opaque. Still just a string at runtime.
+        if (in_array($subject['kind'], ['bytes', 'class-name', 'resolved-name', 'config-bytes'], true)) {
             return $subject;
         }
 
@@ -6732,6 +6734,28 @@ PHP;
             };
         }
 
+        // `$classReflection->hasMethod($name)` on the declaration the hook fired for: whether anything in its
+        // hierarchy declares that method. Only that shape — a class the rule *named* has a more direct
+        // translation further down, and answering here would replace it with a lookup saying the same thing
+        // less plainly. Answered through the declaring-class lookup, which is what keeps this consistent with
+        // the declaring-class read that usually follows it: a name it can attribute is a name that exists.
+        if ($method === 'hasMethod'
+            && count($args) === 1
+            && $this->resolve($expr->var, $expr->getStartLine())['kind'] === 'class-reflection'
+        ) {
+            if (self::$target !== 'php') {
+                throw new Refusal('a declared-method test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            // Through the name-argument path, which takes a written literal without resolving it: a
+            // `Scalar_String` is not an access path, and `hasMethod('rules')` is the commonest spelling there is.
+            return $this->backend->call('class_has_method', [
+                '$context',
+                '$node',
+                $this->operand($this->methodNameArgument($args, $method, $expr->getStartLine())),
+            ]);
+        }
+
         // `$classReflection->implementsInterface($name)` — asked of the declaration the hook fired for.
         if ($method === 'implementsInterface' && count($args) === 1) {
             $subject = $this->resolve($expr->var, $expr->getStartLine());
@@ -7703,6 +7727,22 @@ PHP;
             }
         }
 
+        // `getFileName()` on a class the rule resolved — asking where *another* file is so its source can be
+        // parsed. That is the cross-file question, and it is refused by name rather than as an access path
+        // because the obstacle is not the accessor: a node hook is handed one file, and reading another means
+        // either the SDK exposing that file's tree to this hook — unverified — or the plugin carrying a parser
+        // of its own, which is a decision about what a plugin is rather than a translation.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getFileName'
+            && $expr->args === []
+        ) {
+            throw new Refusal(
+                'the file another class is declared in, so its source can be parsed: a node hook is handed one '
+                . 'file, and reading a second is not a translation of this rule but a change to what a plugin is',
+                $line,
+            );
+        }
+
         // `getDeclaringClass()` on a method handle — the class a method *comes from*, not the receiver. A rule
         // gates on it so a first-party class inheriting a vendor method is judged by where the method is
         // declared, and Mago answers exactly that question.
@@ -8330,6 +8370,16 @@ PHP;
             // A class name a loop bound stands for the class, exactly as a reflection handle does.
             if ($subject['kind'] === 'class-name') {
                 $subject['kind'] = 'named-class';
+            }
+
+            // The declaration the hook fired for, asked about its own methods. The handle is a class name and a
+            // method name, so the enclosing class supplies the first exactly as a written name would.
+            if ($subject['kind'] === 'class-reflection' && self::$target === 'php') {
+                $subject = [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'named-class',
+                    'php' => 'Support::enclosingClassName($context, $node)',
+                ];
             }
 
             if ($subject['kind'] === 'named-class') {

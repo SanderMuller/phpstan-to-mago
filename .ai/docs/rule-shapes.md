@@ -553,8 +553,16 @@ and read the other two's silence as agreement — it passed while two of three c
 every identifier the rule takes now. A harness that looks at one of several outputs is a harness that agrees
 on zero without saying so.
 
-`CombinedMethodCallRule` needs something further out: one of its sub-rules parses the FormRequest's `rules()`
-method out of another file with PHPStan's `Parser`. A merged rule is only portable if every sub-rule is.
+`CombinedMethodCallRule` now refuses on that further-out thing rather than on anything before it: one of its
+sub-rules resolves where `rules()` is *declared*, asks for that class's file, and parses it. Everything up to
+that point translates — `hasMethod` and the declaring-class read on the enclosing declaration, a method name a
+loop bound from a constant list, the caches around both lookups.
+
+The refusal names the file read rather than the accessor, because the accessor is not the obstacle. A node hook
+is handed one file. Reading a second means either the SDK exposing another file's tree to *this* hook — which
+the after-analysis probe in `internal/` does not answer, since that is a different hook — or the plugin
+carrying a parser of its own. The second would work and is a decision about what a plugin is, not a translation
+of this rule. A merged rule is only portable if every sub-rule is.
 `CombinedStaticCallRule` stops earlier, on a cache declared part-way through a helper — see below.
 
 ## A cache is invisible to the answer, but only where it wraps the question
