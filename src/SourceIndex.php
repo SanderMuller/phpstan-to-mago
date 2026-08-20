@@ -112,9 +112,16 @@ final class SourceIndex
     }
 
     /**
-     * Where to look. The rule's own package comes first and is the one that matters for traits and base
-     * classes; a `vendor` ancestor is added when there is one, because a helper may reference a third-party
-     * class.
+     * Where to look: the rule's own package, and nothing else.
+     *
+     * A `vendor` ancestor used to be searched too, on the grounds that a helper may reference a third-party
+     * class. It can, and inlining one turned out to be the wrong answer: the *reason* a rule was refused then
+     * depended on a third party's source, so `Strings::match()` gaining a parameter changed the census on one
+     * machine and not another. CI caught it as an unstable census rather than as anything about a rule.
+     *
+     * Dropping it cost no emissions — 34 before and after — and the refusals it changed became shallower and
+     * stable. A rule package's own logic is what this translates; somebody else's utility is a vocabulary
+     * question, and refusing it by name says so.
      *
      * @return list<string>
      */
@@ -136,15 +143,6 @@ final class SourceIndex
 
         if ($package !== '/') {
             $roots[] = $package;
-        }
-
-        $vendor = $absolute;
-        while ($vendor !== '/' && basename($vendor) !== 'vendor') {
-            $vendor = dirname($vendor);
-        }
-
-        if ($vendor !== '/') {
-            $roots[] = $vendor;
         }
 
         return $roots;

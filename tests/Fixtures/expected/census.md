@@ -57,7 +57,7 @@ REFUSE  NoJustPropertyAssignRule: no hook mapping for node type PhpParser\Node\S
 REFUSE  NoLeadingBackslashInNameRule: list contains something other than a string literal
 REFUSE  NoListenerWithoutContractRule: guard translates to a constant with no reason it cannot hold
 REFUSE  NoMissingVariableDimFetchRule: operand is still Rust and has no PHP rendering yet: !(support::variable_is_undefined(context, support::direct_variable_name(var_array_dim_fetch).unwrap_or_default()))
-REFUSE  NoMissnamedDocTagRule: assignment value outside the vocabulary: match() is called with fewer arguments than it declares
+REFUSE  NoMissnamedDocTagRule: assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
 EMIT    NoMockObjectAndRealObjectPropertyRule
 EMIT    NoMockOnlyTestRule
 REFUSE  NoOnlyNullReturnInRefactorRule: operand is still Rust and has no PHP rendering yet: !(support::local_name_is(&node.name, b"refactor"))
@@ -78,7 +78,7 @@ REFUSE  NoTestMocksRule: access path outside the vocabulary: ->getConstantString
 REFUSE  NoValueObjectInServiceConstructorRule: guard translates to a constant with no reason it cannot hold
 EMIT    NoWithOnStubRule
 REFUSE  ParamNameToTypeConventionRule: no hook mapping for node type PhpParser\Node\Param
-REFUSE  PhpUpgradeDowngradeRegisteredInSetRule: assignment value outside the vocabulary: match() is called with fewer arguments than it declares
+REFUSE  PhpUpgradeDowngradeRegisteredInSetRule: assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
 REFUSE  PhpUpgradeImplementsMinPhpVersionInterfaceRule: no mapping for ->namespacedName on a hook-node
 REFUSE  PreferAutowireAttributeOverConfigParamRule: access path outside the vocabulary: Expr_Array
 REFUSE  PreferDirectIsNameRule: in_array() without strict comparison
@@ -142,6 +142,6 @@ REFUSE  ReturnTypeDeclarationCollector: assignment value outside the vocabulary:
 
 ## tomasvotruba/cognitive-complexity — 0 emitted, 3 refused
 
-REFUSE  ClassDependencyTreeRule: method call outside the vocabulary ->isDependencyTreeEnabled()
+REFUSE  ClassDependencyTreeRule: access path outside the vocabulary: ->getDependencyTreeTypes()
 REFUSE  ClassLikeCognitiveComplexityRule: assignment value outside the vocabulary: access path outside the vocabulary: ->analyzeClassLike()
 REFUSE  FunctionLikeCognitiveComplexityRule: no hook mapping for node type PhpParser\Node\FunctionLike

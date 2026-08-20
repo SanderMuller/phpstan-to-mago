@@ -1918,6 +1918,14 @@ PHP;
             }
 
             if (! isset($args[$index])) {
+                // A parameter with a default is optional, and a call that omits it is ordinary PHP. Refusing
+                // those made the *reason* a rule was refused depend on which version of an unrelated vendor
+                // package was installed — `Strings::match()` grew a third parameter — which CI caught as an
+                // unstable census rather than as anything about the rule.
+                if ($param->default instanceof Expr) {
+                    continue;
+                }
+
                 throw new Refusal("{$methodName}() is called with fewer arguments than it declares", $line);
             }
 
