@@ -1561,6 +1561,31 @@ final class Support
         return $node->span;
     }
 
+    /**
+     * The lines of a docblock that carry a tag, which is what `getTagsByName()` hands a rule.
+     *
+     * Matched as a tag rather than as a substring: `@enum` must not be found in `@enumerate`, and a rule
+     * asking for one tag and getting another is the kind of wrong answer that reads as right. The tag has to
+     * be followed by whitespace, a parenthesis, or the end of the line.
+     *
+     * @return list<string>
+     */
+    public static function docblockTags(?string $docblock, string $tag): array
+    {
+        if ($docblock === null) {
+            return [];
+        }
+
+        $found = [];
+        foreach (explode("\n", $docblock) as $line) {
+            if (preg_match('/(?<![\\w@])' . preg_quote($tag, '/') . '(?![\\w-])/', $line) === 1) {
+                $found[] = trim($line);
+            }
+        }
+
+        return $found;
+    }
+
     /** Two written names compared the way PHP compares them: case-insensitively, and null matching nothing. */
     public static function nameIs(?string $written, string $name): bool
     {

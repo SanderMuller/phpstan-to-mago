@@ -387,6 +387,14 @@ reflection over the SDK classes for metadata — not read off a name.
 correct refusal. An earlier version of this section said five and blamed the SDK for two of the rest; that was
 wrong, and the correction is below.
 
+**Four are now done** — `ForbiddenMultipleClassLikeInOneFileRule`, `StringFileAbsolutePathExistsRule`,
+`PreventParentMethodVisibilityOverrideRule` and `PublicStaticDataProviderRule`, taking `symplify` from 24
+emitted to 28. Attempting the fifth is what found the honest shape of what is left: **three of the remaining
+four want the same one thing**, an after-file hook that can ask for the inferred type of a sub-expression.
+`RequireUniqueEnumConstantRule` looked like a collaborator-inlining problem and turned out to be one of them.
+That mechanism is the next piece of work, and it is worth more than the sum of these four: it also unlocks the
+three `instanceof ConstantStringType` rules the census lists.
+
 ### Buildable with what the SDK already exposes
 
 | rule | refusal | what it needs |
@@ -403,7 +411,7 @@ constructor-injected object or a static call into another class.
 
 | rule | refusal | what it needs |
 |:--|:--|:--|
-| `RequireUniqueEnumConstantRule` | method call outside the vocabulary `->detect()` | `EnumAnalyzer::detect()` is three questions we can each already ask — an `@enum` docblock annotation, descent from `MyCLabs\Enum\Enum`, or `\Enum\` in the class name — reached through an injected collaborator that itself injects a doc parser. Also needs collection vocabulary the corpus has not forced yet: duplicate detection over constant values, and `implode` inside the message. |
+| `RequireUniqueEnumConstantRule` | **now**: access path outside the vocabulary `->getConstants()` | Collaborator inlining is **built**, and it moved this refusal three levels deeper, which is how far it got: `$this->enumAnalyzer->detect()` now inlines, and so does the docblock question behind it (`parseNode()` maps to the declaration's docblock and `getTagsByName('@enum')` to a tag match — the parser itself cannot be inlined, since its own dependencies are PHPStan's `PhpDocParser` and `Lexer`, so the *question* is mapped instead of the collaborator). What blocks it now is the real blocker: `$scope->getType($const->value) instanceof ConstantStringType` is the inferred type of a class-constant initialiser, so this rule wants the **after-file hook** too. A syntactic read of the initialiser would be narrower — `'a' . 'b'` is a constant string and not a literal — which is the trade this project refuses. |
 | ~~`PublicStaticDataProviderRule`~~ **done** | was: access path outside the vocabulary: `DataProviderMethodResolver::match()` | Five features. A static helper inlined as a *producer* (predicate position already worked). `preg_match()` with a named group, bound without emitting anything — each read runs the match again, which is free of consequence because a match is pure. A method looked up by a name computed at analysis time, under its own descriptor kind, because such a lookup can answer null and `instanceof ClassMethod` on it is the rule asking exactly that. Two messages and two identifiers from one rule, allowed to change once the previous has been reported. And a conditional report: `if (c) { $message = ..; $errors[] = ..; }` emits an `if` with a `report` inside rather than a guard. |
 
 ### An after-file hook, which is where sub-expression types live

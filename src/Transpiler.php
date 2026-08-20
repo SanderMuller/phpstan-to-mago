@@ -25,6 +25,7 @@ use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\BinaryOp\Smaller;
 use PhpParser\Node\Expr\BinaryOp\SmallerOrEqual;
 use PhpParser\Node\Expr\BooleanNot;
+use PhpParser\Node\Expr\Cast\Bool_;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
@@ -367,6 +368,17 @@ final class Transpiler
      */
     private bool $reportTaken = false;
 
+    /**
+     * Constructor-injected objects whose class this package can read, by property name.
+     *
+     * A rule package puts a small analyzer on its own class and delegates to it — `$this->enumAnalyzer->
+     * detect(..)`. That is the same inlining as a trait's or a parent's method, one indirection further out,
+     * and without it every such helper is a vocabulary gap named after somebody's class.
+     *
+     * @var array<string, string>
+     */
+    private array $collaborators = [];
+
     /** Set when the rule narrows `getOriginalNode()` to `Class_`, which the class hook guarantees. */
     private bool $narrowedToClass = false;
 
@@ -660,6 +672,17 @@ final class Transpiler
         throw new Refusal('no class found');
     }
 
+    private function declaresMethod(ClassLike $class, string $name): bool
+    {
+        foreach ($class->getMethods() as $method) {
+            if ((string) $method->name === $name) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function findMethod(ClassLike $class, string $name): ClassMethod
     {
         foreach ($class->getMethods() as $method) {
@@ -843,6 +866,14 @@ PHP;
                     $this->injected[$name] = $service;
 
                     continue;
+                }
+
+                // A collaborator: an object the rule delegates a question to, whose source is in the package.
+                // Its methods are inlined like a trait's or a parent's, so a package that puts a small analyzer
+                // on its own class does not become a vocabulary gap. Recorded by its declared type, which is
+                // the only thing that says which class to read.
+                if ($param->type instanceof Name) {
+                    $this->collaborators[$name] = $param->type->getLast();
                 }
 
                 // A constructor parameter the neon does not wire and whose type names no service. Recorded so
@@ -2093,6 +2124,53 @@ PHP;
         }
 
         return '(' . $expression . ')';
+    }
+
+    /** `(bool) $tags` — a list used as a condition, which means "there is at least one". */
+    private function boolCast(Bool_ $expr): string
+    {
+        $subject = $this->resolve($expr->expr, $expr->getStartLine());
+        if ($subject['kind'] !== 'docblock-tags') {
+            throw new Refusal("a bool cast of a {$subject['kind']}", $expr->getStartLine());
+        }
+
+        return $this->operand($subject) . ' !== []';
+    }
+
+    /**
+     * A declaration as the part the docblock helpers navigate, whatever it arrived as.
+     *
+     * @param Descriptor $subject
+     *
+     * @return Descriptor
+     */
+    private function asDeclarationPart(array $subject): array
+    {
+        if ($subject['kind'] !== 'hook-node') {
+            return $subject;
+        }
+
+        return ['rust' => self::PHP_ONLY, 'kind' => 'method-decl', 'php' => 'Support::asPart($context, $node)'];
+    }
+
+    /**
+     * The class behind `$this-><property>`, when that property holds a collaborator this package can read.
+     *
+     * @return array{class: ClassLike, uses: array<string, string>}|null
+     */
+    private function collaboratorClass(Expr $receiver, int $line): ?array
+    {
+        if (! $receiver instanceof PropertyFetch
+            || ! $receiver->var instanceof Variable
+            || $receiver->var->name !== 'this'
+        ) {
+            return null;
+        }
+
+        $property = $this->memberName($receiver->name, $line);
+        $type = $this->collaborators[$property] ?? null;
+
+        return $type === null ? null : $this->findClassByName($type);
     }
 
     /**
@@ -4667,10 +4745,25 @@ PHP;
             return $this->intComparison($expr);
         }
 
+        if ($expr instanceof Bool_) {
+            return $this->boolCast($expr);
+        }
+
         if ($expr instanceof Isset_) {
             return $this->issetOverConstant($expr);
         }
 
+        return $this->remainingPredicate($expr);
+    }
+
+    /**
+     * The predicate shapes that are not calls, comparisons or `instanceof`.
+     *
+     * Split off so {@see predicate()} stays a dispatch. A `match` used as a set membership test, and a bare
+     * flag read on an argument, are the two that reach here.
+     */
+    private function remainingPredicate(Expr $expr): string
+    {
         if ($expr instanceof Match_) {
             return $this->matchAsOneOf($expr);
         }
@@ -4834,8 +4927,11 @@ PHP;
 
         // `$docComment instanceof Doc` asks whether the declaration has a docblock at all, and the descriptor is
         // already its text, so the question is whether that text exists.
+        // `$docComment instanceof Doc` asks whether the declaration has a docblock at all, and `$parsed
+        // instanceof PhpDocNode` asks the same of a parse that only happens when there is one. Both are "is
+        // there a docblock here", and the descriptor is already its text.
         if ($subject['kind'] === 'docblock') {
-            if ($wanted !== Doc::class) {
+            if ($wanted !== Doc::class && $wanted !== 'PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocNode') {
                 throw new Refusal("instanceof {$wanted} on a docblock", $expr->getStartLine());
             }
 
@@ -5165,6 +5261,13 @@ PHP;
         }
 
         $this->refuseCallOnService($expr, $method);
+
+        // A collaborator that does not declare this method is not a collaborator for this call, and saying so
+        // by name beats "no method X() to inline", which points at a class the reader had no reason to expect.
+        $collaborator = $this->collaboratorClass($expr->var, $expr->getStartLine());
+        if ($collaborator !== null && $this->declaresMethod($collaborator['class'], $method)) {
+            return $this->inlineMethod($collaborator['class'], $method, array_values($args), $expr->getStartLine(), $collaborator['uses']);
+        }
 
         throw new Refusal("method call outside the vocabulary ->{$method}()", $expr->getStartLine());
     }
@@ -6187,6 +6290,48 @@ PHP;
                 'kind' => 'docblock',
                 'php' => 'Support::docblockText($context, ' . $this->operand($base) . ')',
             ];
+        }
+
+        // `<a doc parser>->parseNode($x)` — the parsed docblock of `$x`. A parsed docblock and its text stand
+        // for the same thing here: the only questions a rule asks of one are which tags it carries, and those
+        // are answered from the text. The parser itself cannot be inlined — its own dependencies are PHPStan's
+        // `PhpDocParser` and `Lexer` — so the *question* is mapped rather than the collaborator.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'parseNode'
+            && count($expr->getArgs()) === 1
+        ) {
+            if (self::$target !== 'php') {
+                throw new Refusal('a parsed docblock, which only the PHP target carries', $line);
+            }
+
+            $of = $this->resolve($expr->getArgs()[0]->value, $line);
+            if (! in_array($of['kind'], ['hook-node', 'method-decl', 'maybe-method-decl', 'property'], true)) {
+                throw new Refusal("a docblock parsed off a {$of['kind']}", $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'docblock',
+                'php' => 'Support::docblockText($context, ' . $this->operand($this->asDeclarationPart($of)) . ')',
+            ];
+        }
+
+        // `getTagsByName('@tag')` on a parsed docblock — the tags it carries under that name. A rule only ever
+        // asks whether there are any, so the descriptor is that list and emptiness is the question.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getTagsByName'
+            && count($expr->getArgs()) === 1
+        ) {
+            $base = $this->resolve($expr->var, $line);
+            if ($base['kind'] === 'docblock') {
+                $tag = $this->stringLiteral($expr->getArgs()[0]->value, $line);
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'docblock-tags',
+                    'php' => 'Support::docblockTags(' . $this->operand($base) . ', ' . $this->backend->bytes($tag) . ')',
+                ];
+            }
         }
 
         // `getText()` on a docblock is the docblock, since the descriptor is already its text.

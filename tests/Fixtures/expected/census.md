@@ -94,7 +94,7 @@ REFUSE  RequireIsGrantedEnumRule: no hook mapping for node type PhpParser\Node\A
 REFUSE  RequireQueryBuilderOnRepositoryRule: statement in an inlined helper outside the vocabulary: Stmt_If
 REFUSE  RequireRouteNameToGenerateControllerRouteRule: no node predicate for instanceof PHPStan\Type\Constant\ConstantStringType on a type
 EMIT    RequireServiceRepositoryParentRule
-REFUSE  RequireUniqueEnumConstantRule: method call outside the vocabulary ->detect()
+REFUSE  RequireUniqueEnumConstantRule: access path outside the vocabulary: ->getConstants()
 EMIT    RequiredOnlyInAbstractRule
 REFUSE  SeeAnnotationToTestRule: not a resolvable list of strings
 REFUSE  ServicesExcludedDirectoryMustExistRule: assignment value outside the vocabulary: access path outside the vocabulary: ->find()
