@@ -40,6 +40,7 @@ use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\InterpolatedStringPart;
@@ -1065,6 +1066,16 @@ PHP;
                 continue;
             }
 
+            // A pass that only validates the configured names and rewrites them to their declared spelling.
+            // The plugin carries the configured map itself and folds case where it compares — see
+            // {@see canonicalisingPass()} for why that is the same question rather than an approximation.
+            $aliased = $this->canonicalisingPass($statement->expr->expr);
+            if ($aliased !== null) {
+                $this->pure[$property] = new Variable($aliased);
+
+                continue;
+            }
+
             // Two different obstacles, and the refusal has to say which. Either the package wires nothing
             // for this rule, so there is no configured value to derive from, or it wires values and the
             // derivation still reaches outside the pure set. Only the second is a transpiler gap.
@@ -1724,6 +1735,159 @@ PHP;
         }
 
         return true;
+    }
+
+    /**
+     * The configured value a constructor derivation is a canonicalising pass over, or null.
+     *
+     * `TraitRequiresInterfaceRule` derives its trait => interface map by walking the configured one, throwing
+     * on a name that is not an existing trait or interface, and storing each name as the reflection reports
+     * it. Neither half survives translation, and neither needs to:
+     *
+     * - The validation throws at construction for a misconfigured pair. A plugin that does not throw is not
+     *   wider in what it *reports*: a trait that does not exist is used by no class, so the pair matches
+     *   nothing either way.
+     * - The rewriting exists so a configured name spelled in a different case still matches. Mago's metadata
+     *   lowercases every name it holds, so a case-insensitive comparison at the use site asks exactly that
+     *   question. Probed, not assumed — `usedTraits` came back lowercased, and transitive.
+     *
+     * So the property is an alias for the configured value, recorded as a derivation whose expression *is*
+     * that value. Everything downstream then works unchanged: the constructor assigns it, and a read of it
+     * resolves like any other carried configuration.
+     *
+     * One divergence, and it is the configured spelling that causes it: where a configured name differs in
+     * case from the declaration, the original's message names the declared spelling and the port names the
+     * configured one. Mago's class store answers nothing for a trait name, so there is no declared spelling
+     * to recover at the use site.
+     */
+    private function canonicalisingPass(Expr $expr): ?string
+    {
+        if (! $this->isOwnMethodCall($expr) || count($expr->getArgs()) !== 1) {
+            return null;
+        }
+
+        $over = $expr->getArgs()[0]->value;
+        if (! $over instanceof Variable || ! is_string($over->name) || ! isset($this->configured[$over->name])) {
+            return null;
+        }
+
+        $declaring = $this->declaringOf($expr->name->toString());
+        if ($declaring === null) {
+            return null;
+        }
+
+        return $this->rewritesNamesOnly($this->findMethod($declaring['class'], $expr->name->toString()), $over->name)
+            ? $over->name
+            : null;
+    }
+
+    /**
+     * Whether a helper walks one map and builds another holding the same names, and does nothing else.
+     *
+     * `$out = []; foreach ($configured as $k => $v) { <guards that throw> $out[<k>] = <v>; } return $out;`
+     * where each side of the assignment is the loop variable itself or that variable put through the
+     * reflection lookup that yields its declared spelling.
+     */
+    private function rewritesNamesOnly(ClassMethod $helper, string $parameter): bool
+    {
+        $statements = $helper->stmts ?? [];
+        if (count($statements) !== 3
+            || ! $statements[0] instanceof Expression
+            || ! $statements[0]->expr instanceof Assign
+            || ! $statements[0]->expr->var instanceof Variable
+            || ! is_string($statements[0]->expr->var->name)
+            || ! $statements[0]->expr->expr instanceof Array_
+            || $statements[0]->expr->expr->items !== []
+            || ! $statements[1] instanceof Foreach_
+            || ! $statements[2] instanceof Return_
+        ) {
+            return false;
+        }
+
+        $built = $statements[0]->expr->var->name;
+        [, $loop, $return] = $statements;
+
+        if (! $return->expr instanceof Variable || $return->expr->name !== $built) {
+            return false;
+        }
+
+        if (! $loop->expr instanceof Variable
+            || $loop->expr->name !== $parameter
+            || ! $loop->keyVar instanceof Variable
+            || ! is_string($loop->keyVar->name)
+            || ! $loop->valueVar instanceof Variable
+            || ! is_string($loop->valueVar->name)
+        ) {
+            return false;
+        }
+
+        return $this->storesBothNames($loop->stmts, $built, $loop->keyVar->name, $loop->valueVar->name);
+    }
+
+    /**
+     * The loop body: guards that only throw, then one assignment carrying both names into the built map.
+     *
+     * @param array<Stmt> $body
+     */
+    private function storesBothNames(array $body, string $built, string $key, string $value): bool
+    {
+        $stored = null;
+        foreach ($body as $statement) {
+            if ($statement instanceof If_ && $this->throwsOnly($statement)) {
+                continue;
+            }
+
+            if ($stored instanceof Assign || ! $statement instanceof Expression || ! $statement->expr instanceof Assign) {
+                return false;
+            }
+
+            $stored = $statement->expr;
+        }
+
+        if (! $stored instanceof Assign
+            || ! $stored->var instanceof ArrayDimFetch
+            || ! $stored->var->var instanceof Variable
+            || $stored->var->var->name !== $built
+            || ! $stored->var->dim instanceof Expr
+        ) {
+            return false;
+        }
+
+        return $this->isDeclaredSpellingOf($stored->var->dim, $key)
+            && $this->isDeclaredSpellingOf($stored->expr, $value);
+    }
+
+    /** A guard whose only job is to reject a misconfiguration, which the generated plugin does not carry. */
+    private function throwsOnly(If_ $guard): bool
+    {
+        return $guard->elseifs === []
+            && ! $guard->else instanceof Else_
+            && count($guard->stmts) === 1
+            && $guard->stmts[0] instanceof Expression
+            && $guard->stmts[0]->expr instanceof Throw_;
+    }
+
+    /** `$name`, or the reflection lookup that rewrites `$name` to the spelling its declaration uses. */
+    private function isDeclaredSpellingOf(Expr $expr, string $name): bool
+    {
+        if ($expr instanceof Variable && $expr->name === $name) {
+            return true;
+        }
+
+        if (! $expr instanceof MethodCall
+            || $this->memberName($expr->name, $expr->getStartLine()) !== 'getName'
+            || ! $expr->var instanceof MethodCall
+            || $this->memberName($expr->var->name, $expr->var->getStartLine()) !== 'getClass'
+            || count($expr->var->getArgs()) !== 1
+        ) {
+            return false;
+        }
+
+        $argument = $expr->var->getArgs()[0]->value;
+
+        return $argument instanceof Variable
+            && $argument->name === $name
+            && $this->serviceBehind($expr->var->var) !== null;
     }
 
     /** One node of a derivation, judged on its own; see {@see isPureDerivation()} for what that means. */
@@ -8432,6 +8596,10 @@ REPORT, ['{ANCHOR}' => $this->anchor ?? $this->defaultAnchor()]);
         $code = $this->identifierIsExpression ? $code : $this->backend->bytes($code);
 
         $trailingReport = str_replace(['{CODE}', '{MESSAGE}'], [$code, $message], $trailingReport);
+        // `NodeKind::Class` does not reference the enum case: PHP special-cases `::class` and yields
+        // the class-name string, so the worker rejects the target with a type error naming neither the
+        // rule nor the kind. The SDK names that case `Class_`, the same trailing-underscore convention
+        // this file already uses for Rust keywords, so reserved names take the suffix.
         // `NodeKind::Class` does not reference the enum case: PHP special-cases `::class` and yields
         // the class-name string, so the worker rejects the target with a type error naming neither the
         // rule nor the kind. The SDK names that case `Class_`, the same trailing-underscore convention
