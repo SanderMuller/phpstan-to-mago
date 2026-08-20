@@ -7,6 +7,7 @@ namespace Sandermuller\PhpstanToMago;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\FuncCall;
@@ -18,6 +19,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\MagicConst\Dir;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassConst;
@@ -41,7 +43,7 @@ use PHPStan\Node\InClassNode;
 final class Vocabulary
 {
     /**
-     * @var array<class-string, array{trait: string, method: string, node: string|null, kind: string, adapter?: string, extra?: string, classFrom?: string, classOnly?: bool, each?: string, phpOnly?: bool}>
+     * @var array<class-string, array{trait: string, method: string, node: string|null, kind: string, adapter?: string, extra?: string, classFrom?: string, classOnly?: bool, each?: string, phpOnly?: bool, gate?: string}>
      */
     public const array HOOKS = [
         MethodCall::class => ['trait' => 'MethodCallHook', 'method' => 'after_method_call', 'node' => 'MethodCall', 'kind' => 'MethodCall'],
@@ -85,6 +87,14 @@ final class Vocabulary
         // file, which is what a rule asking a question about the file as a whole needs. PHP target only, like
         // the other kinds whose Rust trait nothing in the corpus has pinned down.
         FileNode::class => ['trait' => 'ProgramHook', 'method' => 'after_program', 'node' => 'Program', 'kind' => 'Program', 'phpOnly' => true],
+        // String concatenation. Mago has one `Binary` kind for every binary operator rather than a node class
+        // per operator, so the hook fires for arithmetic and comparison too and the operator itself is a child
+        // node — which is why `left`/`right` here are the operands *of a concatenation*, and a rule reaching
+        // them is asking about one only after the operator has been checked.
+        Concat::class => [
+            'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
+            'gate' => "Support::binaryOperatorIs(\$context, \$node, '.')", 'phpOnly' => true,
+        ],
     ];
 
     /**
@@ -170,6 +180,13 @@ final class Vocabulary
         // the same way. `class-like-name` is its own kind rather than plain bytes because the only question
         // asked of it is php-parser's `name instanceof Identifier`, and that question has a structural answer
         // here — see the instanceof handling.
+        // Mago's `Binary` holds its operands as `Expression` children either side of the operator, which the
+        // helpers read by position — probed on `__DIR__ . '/x.php'`, which is `Expression(MagicConstant),
+        // BinaryOperator ., Expression(Literal)`.
+        'Binary' => [
+            'left' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
+            'right' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 1)'],
+        ],
         'ClassLike' => [
             'name' => [self::PHP_ONLY, 'class-like-name', 'Support::declarationName($context, {base})'],
         ],
@@ -336,6 +353,10 @@ final class Vocabulary
         Array_::class => 'is_array',
         Int_::class => 'is_int',
         ArrayDimFetch::class => 'is_array_dim_fetch',
+        // Both PHP-target only, and both take the context because the answer is a node kind rather than
+        // anything readable from the part alone.
+        Dir::class => 'is_dir_constant',
+        String_::class => 'is_literal_string',
     ];
 
     /**

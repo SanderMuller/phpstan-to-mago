@@ -323,6 +323,60 @@ final class Support
         return implode(', ', self::extendsNames($context, $subject));
     }
 
+    /** Whether a binary expression's operator is the one written, which Mago keeps in a child node. */
+    public static function binaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
+    {
+        $node = self::node($subject);
+        if (! $node instanceof Node) {
+            return false;
+        }
+
+        foreach ($context->source->getChildren($node) as $child) {
+            if ($child->kind === NodeKind::BinaryOperator) {
+                return trim($context->source->getText($child)) === $operator;
+            }
+        }
+
+        return false;
+    }
+
+    /** Whether a navigated part is `__DIR__`, which php-parser models as its own node class. */
+    public static function isDirConstant(NodeAnalysisContext $context, ?Part $part): bool
+    {
+        return $part instanceof Part
+            && $part->kind === NodeKind::MagicConstant
+            && strcasecmp(trim($part->text), '__DIR__') === 0;
+    }
+
+    /**
+     * A quoted string's value with its quotes removed, which is php-parser's `String_->value`.
+     *
+     * Null-tolerant for the same reason `constantNameText()` is: reading the value of something that is not a
+     * string literal has no answer, and the rule's own `instanceof String_` guard is what makes sure it never
+     * asks. Escapes are left as written — no rule in the corpus compares against a value that carries one, and
+     * unescaping without a case that needs it would be inventing a behaviour.
+     */
+    public static function literalStringValue(NodeAnalysisContext $context, ?Part $part): ?string
+    {
+        if (! $part instanceof Part) {
+            return null;
+        }
+
+        $literals = self::findKind($context, $part, ['LiteralString']);
+        $text = $literals === [] ? null : trim($literals[0]->text);
+        if ($text === null || strlen($text) < 2) {
+            return null;
+        }
+
+        return substr($text, 1, -1);
+    }
+
+    /** Whether a navigated part is a quoted string, which is php-parser's `Scalar\String_`. */
+    public static function isLiteralString(NodeAnalysisContext $context, ?Part $part): bool
+    {
+        return $part instanceof Part && self::findKind($context, $part, ['LiteralString']) !== [];
+    }
+
     public static function isName(?Part $part): bool
     {
         return $part instanceof Part && in_array($part->kind, self::NAME_KINDS, true);
@@ -1498,6 +1552,33 @@ final class Support
     public static function fileStartsWith(NodeAnalysisContext $context, string $prefix): bool
     {
         return str_starts_with($context->source->path, $prefix);
+    }
+
+    /**
+     * The directory the analysed file sits in, absolute, which is what `dirname($scope->getFile())` gives.
+     *
+     * Absolute matters because the path reaches the reader: `StringFileAbsolutePathExistsRule` puts it in its
+     * message, and Mago's `source->path` is workspace-relative where PHPStan's `getFile()` is absolute. The two
+     * agreed on the line and differed on the text until this resolved, which is why the gate compares messages
+     * rather than lines.
+     */
+    public static function fileDirectory(NodeAnalysisContext $context): string
+    {
+        $path = $context->source->path;
+        $resolved = realpath($path);
+
+        return dirname($resolved === false ? $path : $resolved);
+    }
+
+    /**
+     * Whether a path a rule built exists on disk.
+     *
+     * A plugin is PHP, so it can ask the filesystem the same question the rule asks. Null-tolerant because the
+     * path is built from a string the rule read off a node, and a node that held no string yields none.
+     */
+    public static function pathExists(?string $path): bool
+    {
+        return $path !== null && file_exists($path);
     }
 
     public static function fileContains(NodeAnalysisContext $context, string $needle): bool

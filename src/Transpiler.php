@@ -4515,7 +4515,7 @@ PHP;
             throw new Refusal("no node predicate for instanceof {$wanted} on a {$subject['kind']}", $expr->getStartLine());
         }
 
-        return $this->backend->call(Vocabulary::NODE_PREDICATES[$wanted], [$this->operand($subject)]);
+        return $this->nodePredicate(Vocabulary::NODE_PREDICATES[$wanted], $subject, $wanted, $expr->getStartLine());
     }
 
     /**
@@ -4606,6 +4606,26 @@ PHP;
      * The mirror of {@see unreachable()}. Both record why; which one applies depends on whether the rule asks the
      * question straight or negated, and a guard is dropped when the *bail* folds to false either way.
      */
+    /**
+     * The guard a hook needs before the rule's own body, when Mago's node kind is wider than PHPStan's.
+     *
+     * php-parser has a node class per binary operator; Mago has one `Binary` kind and puts the operator in a
+     * child. So a rule registered for `Concat` translates to a hook that also fires for `+` and `===`, and the
+     * operator check the rule never had to write is what keeps the port exactly as wide as the rule.
+     *
+     * @param array<string, string|null>|array<string, bool> $hook
+     */
+    private function gate(array $hook): string
+    {
+        $condition = $hook['gate'] ?? null;
+        if (! is_string($condition)) {
+            return '';
+        }
+
+        return "        // The hook's node kind is wider than the rule's, so the rule's own kind is checked first.\n"
+            . "        if (! {$condition}) {\n            return;\n        }\n\n";
+    }
+
     /**
      * Where a report lands when the rule anchors it on nothing but the node the hook fired for.
      *
@@ -4868,6 +4888,10 @@ PHP;
             return $this->oneOf($args[0]->value, $options, 'in_array()', $expr->getStartLine());
         }
 
+        if ($name === 'file_exists' && count($args) === 1) {
+            return $this->pathExistsPredicate($args[0]->value, $expr->getStartLine());
+        }
+
         if ($name === 'is_string' && count($args) === 1) {
             $target = $args[0]->value;
             if ($target instanceof PropertyFetch && (string) $target->name === 'name') {
@@ -4882,6 +4906,48 @@ PHP;
         }
 
         throw new Refusal("function call outside the vocabulary {$name}()", $expr->getStartLine());
+    }
+
+    /**
+     * One of the vocabulary's node predicates, called on the operand.
+     *
+     * A predicate that answers from the node's *kind* has to look the node up, so it takes the context; one
+     * that answers from the part alone does not. Named here rather than in the table so the table stays a
+     * mapping from php-parser class to helper.
+     *
+     * @param Descriptor $subject
+     */
+    private function nodePredicate(string $predicate, array $subject, string $wanted, int $line): string
+    {
+        if (! in_array($predicate, ['is_dir_constant', 'is_literal_string'], true)) {
+            return $this->backend->call($predicate, [$this->operand($subject)]);
+        }
+
+        if (self::$target !== 'php') {
+            throw new Refusal("instanceof {$wanted}, which only the PHP target carries", $line);
+        }
+
+        return $this->backend->call($predicate, ['$context', $this->operand($subject)]);
+    }
+
+    /**
+     * `file_exists(<a path the rule built>)`.
+     *
+     * A plugin is PHP, so it asks the filesystem the same question the rule asks. Only of bytes: of anything
+     * else there is no path to look up.
+     */
+    private function pathExistsPredicate(Expr $path, int $line): string
+    {
+        if (self::$target !== 'php') {
+            throw new Refusal('a filesystem check, which only the PHP target carries', $line);
+        }
+
+        $subject = $this->resolve($path, $line);
+        if (! in_array($subject['kind'], ['bytes', 'message'], true)) {
+            throw new Refusal("file_exists() of a {$subject['kind']}", $line);
+        }
+
+        return $this->backend->call('path_exists', [$this->operand($subject)]);
     }
 
     /**
@@ -5889,6 +5955,18 @@ PHP;
                 return $descriptor;
             }
 
+            // `->value` on a plain expression is php-parser's `String_->value`, the quoted string's contents.
+            // Null-tolerant for the same reason as `->name` below, and guarded the same way: the rule's own
+            // `instanceof String_` is what makes sure this is only asked of a string.
+            if ($base['kind'] === 'expr' && $property === 'value' && self::$target === 'php') {
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'bytes',
+                    'key' => $key,
+                    'php' => 'Support::literalStringValue($context, ' . $this->operand($base) . ')',
+                ];
+            }
+
             // `->name` on a plain expression is php-parser's `ConstFetch->name`. Null-tolerant on purpose:
             // reading the name of something that is not a constant name has no answer, and the rule's own
             // `instanceof ConstFetch` guard is what makes sure it never asks.
@@ -5964,6 +6042,26 @@ PHP;
             }
 
             throw new Refusal("no mapping for ->{$property} on a {$base['kind']}", $line);
+        }
+
+        // `dirname($scope->getFile())` — the directory the analysed file sits in, which a rule building an
+        // absolute path from a relative one needs. Only of the file: `dirname()` of anything else is a value
+        // this has no rendering for.
+        if ($expr instanceof FuncCall
+            && $expr->name instanceof Name
+            && $expr->name->toString() === 'dirname'
+            && count($expr->getArgs()) === 1
+        ) {
+            $of = $this->resolve($expr->getArgs()[0]->value, $line);
+            if ($of['kind'] !== 'file') {
+                throw new Refusal("dirname() of a {$of['kind']} rather than of the analysed file", $line);
+            }
+
+            if (self::$target !== 'php') {
+                throw new Refusal('the analysed file’s directory, which only the PHP target carries', $line);
+            }
+
+            return ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'php' => 'Support::fileDirectory($context)'];
         }
 
         // <args>[<a computed index>] — a literal index is folded into a binding earlier; this is the case
@@ -6391,7 +6489,7 @@ RUST;
             throw new Refusal('PHP target: message is neither a literal nor a sprintf(): ' . $this->message);
         }
 
-        $body = $this->renderAll();
+        $body = $this->gate($hook) . $this->renderAll();
 
         // A rule that already reported inside a loop has nothing to report at the end. Emitting it
         // anyway fired on every declaration, and PHP leaves the loop variable set after the loop, so
