@@ -350,14 +350,30 @@ The package still emits nothing, but every refusal has moved past the assignment
 The configuration one is the interesting entry: those rules take `$this->firstPartyNamespaces` and pass it
 to the helper, which is the same problem `docs/dogfooding.md` describes at the config level.
 
-### Refusals that are correct forever
+### Refusals, and which of them are permanent
 
 Two of the 20 are `FlagArgumentManifestCollector` and `WriteNamedArgumentManifestRule`: a collector and its
-`CollectedDataNode` consumer, which aggregate across files. Mago's node hooks see one file at a time. An
-earlier prototype confirmed the boundary precisely: rules rewritten against Mago's `SymbolReferences` and
-`codex` mirrors matched PHPStan exactly, and the only gap left was arbitrary per-file facts.
+`CollectedDataNode` consumer, which aggregate across files. **This was filed here as correct-forever, and that
+was wrong** — the same mistake as the sub-expression claim below, and in the same direction. A *node* hook sees
+one file at a time; an `AfterAnalysisHook` does not. Its `AfterAnalysisContext->analysis` is a
+`ProjectAnalysis` whose `files` is a list of `FileAnalysis`, each yielding a working CST, and it can `report()`.
+Reading a fact out of every file in one pass and reporting once is what a collector plus its consumer *is*.
 
-Three more are ordinary vocabulary gaps: `Expr_Isset` in a condition, `Stmt_Foreach` inside an inlined
+`Runtime\TypeCoverage` in this repository already does it — `declares()` walks `$context->analysis->files` and
+reads each `getSourceFile()` — so the mechanism is not merely available, it is in use next to the paragraph
+that called it impossible.
+
+What is genuinely constrained is narrower: an after-analysis hook hands over **every file's CST, not the
+arbitrary data a PHPStan collector computed**. So a pair cannot map to two hooks; the transpiler has to *fuse*
+them into one after-analysis hook that recomputes the measurement. That is what `AggregateRule` does for
+`type-coverage`, and why `Vocabulary::AGGREGATES` names each measurement by hand: which fact a collector
+contributes is the one thing its body does not tell you. Architecture, not a wall.
+
+Two cautions before building on it, both because the probes behind this were toy-sized: holding a
+whole-project CST is untested at corpus scale, and `AfterAnalysisHook` declares no `getRequirements()`, so how
+per-file data is provisioned at scale is unmeasured.
+
+Three refusals are ordinary vocabulary gaps: `Expr_Isset` in a condition, `Stmt_Foreach` inside an inlined
 helper, and an unknown local `$this`.
 
 ## The eight rules a real consumer enables and we refuse
@@ -424,6 +440,20 @@ the flag only tracks one case:
 So the SDK answers "might this be undefined because a `try` did not complete", and the rule asks "might this
 be undefined here". There is nothing to build against without approximating, and approximating is the one
 thing this project refuses.
+
+### Nothing left here is an SDK boundary
+
+Both "correct forever" verdicts in this document turned out to be verdicts about *node* hooks mistaken for
+verdicts about the SDK, and both were wrong in the same direction — blaming the engine for machinery we have
+not written. What remains unbuilt is ours: an after-file hook for sub-expression types, an after-analysis hook
+fusing a collector with its consumer, collaborator inlining, multi-kind targets.
+
+The single exception is `NoMissingVariableDimFetchRule`, and even there the reason is not a missing capability
+but a missing *fact*: no general "might this be undefined here". Mago reports `undefined-variable` natively
+anyway, so the rule has somewhere better to live than a port.
+
+Prefer "we have not built it" over "the SDK will not let us" unless a probe says otherwise. This document has
+been wrong twice in the comfortable direction.
 
 ### One caution before adopting `ExpressionTypes` broadly
 
