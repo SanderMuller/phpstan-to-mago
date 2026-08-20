@@ -73,8 +73,8 @@ use PHPStan\Type\ObjectType;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 
 /**
- * @phpstan-type Descriptor array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, methodPhp?: string, indexPhp?: string, listPhp?: string, patternPhp?: string, subjectPhp?: string, reason?: string, as?: string, record?: array<string, array{rust: string, kind: string, php?: string, reason?: string}>}
- * @phpstan-type RecordFields array<string, array{rust: string, kind: string, php?: string, reason?: string}>
+ * @phpstan-type Descriptor array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, methodPhp?: string, indexPhp?: string, listPhp?: string, patternPhp?: string, subjectPhp?: string, reason?: string, as?: string, record?: array<string, array{rust: string, kind: string, php?: string, reason?: string, as?: string}>}
+ * @phpstan-type RecordFields array<string, array{rust: string, kind: string, php?: string, reason?: string, as?: string}>
  */
 final class Transpiler
 {
@@ -439,6 +439,18 @@ final class Transpiler
      * @var array<string, true>
      */
     private array $listAccumulators = [];
+
+    /**
+     * What each list accumulator was filled with, by name.
+     *
+     * A list of names metadata produced is compared case-insensitively, because metadata lowercases what it
+     * holds. A list the rule filled with anything else is not: folding case there would be wider than the
+     * strict comparison the rule wrote. The provenance is the only thing that tells the two apart, so it is
+     * recorded where the append happens rather than guessed at the comparison.
+     *
+     * @var array<string, string>
+     */
+    private array $listItemKinds = [];
 
     /** What the report's annotation points at; a loop reports per item, not per node. */
     private string $reportSpan = 'node.span()';
@@ -3443,9 +3455,10 @@ PHP;
      * it. `hihaho/phpstan-rules` merges three rules per node kind exactly like that, for performance.
      *
      * Counted where a check *reports*, not where a helper is inlined: a helper that forwards to another, or
-     * hands back a value, is one check however many methods it spans. The fix for the merged shape is per-check
-     * blocks — each check's guards exiting its own block rather than the rule — which is the next piece of work
-     * on that family and not something to approximate here.
+     * hands back a value, is one check however many methods it spans.
+     *
+     * Reached only outside check mode, where each check gets its own method and the flattening cannot happen —
+     * see {@see openCheck()}. It still stands for the targets that carry no such mode.
      */
     private function refuseASecondCheck(int $line): void
     {
@@ -3719,14 +3732,6 @@ PHP;
      */
     private function inlineErrorHelper(string $method, array $args, int $line, ?Expr $target = null): void
     {
-        // A rule that asks *several* independent helpers in one pass cannot be flattened this way. Each
-        // helper's guards become the rule's guards, so the first helper's "not my case" exits the rule and
-        // every later check is unreachable — the merged rule would report only its first sub-rule and look
-        // complete doing it. `hihaho/phpstan-rules` merges three rules per node kind exactly like that, for
-        // performance, so this refusal names the shape rather than whichever construct came next.
-        //
-        // The fix is per-check blocks: each helper's guards exiting its own block instead of the rule. That is
-        // the next piece of work on this family, not something to approximate here.
         // Remembered so the bookkeeping the original does with the returned error can be dropped: by the time
         // this returns, whatever the helper decided has already been reported.
         if ($target instanceof Variable && is_string($target->name)) {
@@ -4007,7 +4012,7 @@ PHP;
      * @param array<Arg> $args
      * @param array{class: ClassLike, uses: array<string, string>} $declaring
      *
-     * @return array{rust: string, kind: string, php?: string, reason?: string}|null
+     * @return array{rust: string, kind: string, php?: string, reason?: string, as?: string}|null
      */
     private function inlineValueProducer(ClassMethod $helper, array $declaring, string $name, array $args, int $line): ?array
     {
@@ -4118,13 +4123,19 @@ PHP;
      *
      * @param Descriptor $resolved
      *
-     * @return array{rust: string, kind: string, php?: string, reason?: string}
+     * @return array{rust: string, kind: string, php?: string, reason?: string, as?: string}
      */
     private function recordField(array $resolved): array
     {
         $field = ['rust' => $resolved['rust'], 'kind' => $resolved['kind']];
         if (isset($resolved['php'])) {
             $field['php'] = $resolved['php'];
+        }
+
+        // What a list holds survives too. It decides whether a later comparison against one of its items folds
+        // case, and dropping it here made a producer's list indistinguishable from one the rule filled by hand.
+        if (isset($resolved['as'])) {
+            $field['as'] = $resolved['as'];
         }
 
         return $field;
@@ -4226,7 +4237,7 @@ PHP;
      *
      * @param array<Arg> $args
      *
-     * @return array{rust: string, kind: string, php?: string, reason?: string}|null
+     * @return array{rust: string, kind: string, php?: string, reason?: string, as?: string}|null
      */
     private function lastNameSegmentHelper(ClassMethod $helper, array $args, int $line): ?array
     {
@@ -5658,6 +5669,7 @@ PHP;
             $this->listAccumulators[$name] = true;
         }
 
+        $this->listItemKinds[$name] = $item['kind'];
         $this->lines[] = new Stm('append', ['target' => $name, 'value' => $this->operand($item)], $this->indent);
     }
 
@@ -6942,8 +6954,11 @@ PHP;
             // Only where the haystack is not one of the written forms {@see stringList} reads. Resolving those
             // first refused a literal array by its node kind, which cost an emitting rule.
             $written = $args[1]->value instanceof Array_ || $args[1]->value instanceof ClassConstFetch;
+            // Only a list of *names* metadata produced. Those arrive lowercased, so folding case is what the
+            // original's strict comparison against canonical names asks. A list the rule built itself holds
+            // whatever it put there, and folding case for that would be wider than the `true` it was given.
             $haystack = $written ? null : $this->resolve($args[1]->value, $expr->getStartLine());
-            if ($haystack !== null && in_array($haystack['kind'], ['class-names', 'list'], true)) {
+            if ($haystack !== null && $this->holdsMetadataNames($haystack)) {
                 if (self::$target !== 'php') {
                     throw new Refusal('in_array() over a computed list, which only the PHP target carries', $expr->getStartLine());
                 }
@@ -7061,6 +7076,21 @@ PHP;
             : [$this->operand($subject)];
 
         return $this->backend->call($predicate, $arguments);
+    }
+
+    /**
+     * Whether a list holds names that came from Mago's metadata.
+     *
+     * Those arrive lowercased, so comparing against one folds case — which is what the original's strict
+     * comparison against canonical names asks for. A list the rule filled itself holds whatever it put there,
+     * and folding case for that would be wider than the `true` it was given, so it is not treated the same.
+     *
+     * @param Descriptor $haystack
+     */
+    private function holdsMetadataNames(array $haystack): bool
+    {
+        return $haystack['kind'] === 'class-names'
+            || ($haystack['kind'] === 'list' && ($haystack['as'] ?? '') === 'class-name');
     }
 
     /**
@@ -8135,11 +8165,13 @@ PHP;
                 throw new Refusal("{$expr->name->toString()}(), which only the PHP target carries", $line);
             }
 
+            // What the list holds is unchanged by re-shaping it, and it decides whether a later comparison
+            // against one of its items folds case.
             return [
                 'rust' => self::PHP_ONLY,
                 'kind' => $subject['kind'],
                 'php' => $expr->name->toString() . '(' . $this->operand($subject) . ')',
-            ];
+            ] + (isset($subject['as']) ? ['as' => $subject['as']] : []);
         }
 
         // count(<args>) as a value rather than as one side of a comparison, which {@see equality()} handles.
@@ -8436,7 +8468,12 @@ PHP;
             // `hasRouteAnnotationOrAttribute(ClassLike|ClassMethod $node)` does — and answering the hook's node
             // for it read the wrong subtree while looking perfectly reasonable in the emitted file.
             if (isset($this->listAccumulators[$expr->name])) {
-                return ['rust' => self::PHP_ONLY, 'kind' => 'list', 'php' => '$' . $expr->name];
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'list',
+                    'php' => '$' . $expr->name,
+                    'as' => $this->listItemKinds[$expr->name] ?? '',
+                ];
             }
 
             if (isset($this->locals[$expr->name])) {
