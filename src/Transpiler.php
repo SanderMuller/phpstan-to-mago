@@ -2524,7 +2524,11 @@ PHP;
             && $only->expr->var->name === $cache
             && $hit->cond instanceof FuncCall
             && $hit->cond->name instanceof Name
-            && $hit->cond->name->toString() === 'array_key_exists';
+            && $hit->cond->name->toString() === 'array_key_exists'
+            // The table asked about has to be the cache this recognised. Without it a body checking one array
+            // and returning from another would be read as a memoisation of neither.
+            && ($hit->cond->getArgs()[1]->value ?? null) instanceof Variable
+            && $hit->cond->getArgs()[1]->value->name === $cache;
     }
 
     /** The accepted helper shapes, as one Rust expression. */

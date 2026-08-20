@@ -67,6 +67,10 @@ final class TranspilesToPhpTest extends TestCase
         // is what is *absent*: a cache around a pure question, and the key binding that serves it, are dropped
         // and the guard is the question itself.
         yield 'a value producer behind a cache' => ['MemoisedLookupRule'];
+        // PHP only, and the one snapshot of the per-check emission: two independent checks of one node, each
+        // in its own method so its guards decline that check rather than the rule, and a prologue local passed
+        // into both. The fires-gate proves it runs; this proves a refactor did not change the shape.
+        yield 'two independent checks of one node' => ['TwoChecksRule'];
     }
 
     #[DataProvider('supportedRules')]

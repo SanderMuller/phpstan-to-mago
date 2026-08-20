@@ -91,9 +91,17 @@ final class Cli
 
             // What the harness needs to attribute a finding, resolved here because this is where the
             // constants behind `->identifier()` and the message formats are already worked out.
+            //
+            // Attribute on `identifiers`, not on `identifier`: a rule that asks several checks reports under
+            // one identifier per check, and `identifier` is only the last of them. A harness filtering on that
+            // one measures a single check and reads the rest of the rule's silence as agreement.
             $manifest = [];
             foreach ($rules as $rule) {
-                $manifest[$rule['name']] = ['identifier' => $rule['identifier'], 'messages' => $rule['messages']];
+                $manifest[$rule['name']] = [
+                    'identifier' => $rule['identifier'],
+                    'identifiers' => $rule['identifiers'],
+                    'messages' => $rule['messages'],
+                ];
             }
 
             ksort($manifest);
