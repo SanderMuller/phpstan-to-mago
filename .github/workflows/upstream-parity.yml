@@ -1,0 +1,142 @@
+name: upstream-parity
+
+# Nightly drift watch on the rule packages this transpiler translates.
+#
+# `composer.lock` is not committed, so a pushed commit already resolves the corpus afresh and the census
+# (tests/Fixtures/expected/census.md) fails the moment upstream adds, removes or rewrites a rule. This
+# workflow exists for the days nobody pushes, and for the early-warning leg:
+#
+# - released: whatever the constraints resolve to today. Same corpus a contributor would get.
+# - dev-main: the packages' default branches, so a rewrite lands here before it is tagged.
+#
+# The dev-main leg is expected to be redder than the released one — a broken upstream branch fails it, and
+# that is information rather than a defect here. Neither leg gates anything; both file one tracking issue.
+
+permissions:
+  contents: read
+  issues: write
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+jobs:
+  parity:
+    # Silence forks — only run on the canonical repository.
+    if: github.repository == 'SanderMuller/phpstan-to-mago'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { leg: released, constraints: '' }
+          - { leg: dev-main, constraints: 'symplify/phpstan-rules:dev-main tomasvotruba/type-coverage:dev-main tomasvotruba/cognitive-complexity:dev-main' }
+
+    name: P8.4 - corpus ${{ matrix.leg }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Install dependencies
+        id: install
+        run: |
+          if [ -n "${{ matrix.constraints }}" ]; then
+            composer require --dev ${{ matrix.constraints }} --no-interaction --no-update
+          fi
+          composer update --prefer-stable --prefer-dist --no-interaction
+
+      - name: List the corpus versions
+        run: composer show -D symplify/phpstan-rules tomasvotruba/type-coverage tomasvotruba/cognitive-complexity carthage-software/mago
+
+      - name: Execute tests
+        id: tests
+        run: vendor/bin/pest --ci
+
+      # The census writes what it actually saw beside itself when it disagrees, which is the readable form of
+      # the drift. Both the diff and the file are carried out of the run, so the issue says what moved rather
+      # than only that something did.
+      - name: Diff the census
+        if: always() && failure()
+        run: |
+          if [ -f tests/Fixtures/expected/census.md.actual ]; then
+            diff -u tests/Fixtures/expected/census.md tests/Fixtures/expected/census.md.actual \
+              | head -c 4000 > /tmp/census.diff || true
+          fi
+
+      - name: Upload the census the run produced
+        if: always() && failure() && hashFiles('tests/Fixtures/expected/census.md.actual') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: census-${{ matrix.leg }}
+          path: tests/Fixtures/expected/census.md.actual
+
+      - name: Look up existing tracking issue
+        id: lookup
+        if: always() && failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          issue_number=$(gh issue list --state open --search 'in:title "Upstream corpus drift (${{ matrix.leg }})"' --json number --jq '.[0].number // empty')
+          echo "issue_number=${issue_number}" >> "$GITHUB_OUTPUT"
+
+      - name: Compose failure body
+        if: always() && failure()
+        run: |
+          cat > /tmp/drift-body.md <<'EOF'
+          The nightly `${{ matrix.leg }}` corpus run failed.
+
+          - **Run:** <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}>
+          - **Leg:** PHP 8.4 × ${{ matrix.leg }} × prefer-stable × ubuntu-latest
+          - **Commit:** ${{ github.sha }}
+          - **Install outcome:** ${{ steps.install.outcome }}
+          - **Test outcome:** ${{ steps.tests.outcome }}
+
+          Read the install step first: if `composer update` failed, the break is in resolution, not in a rule.
+
+          Otherwise the failing test names which kind of drift it is:
+
+          | Failing test | What moved upstream |
+          |---|---|
+          | `TracksUpstreamDriftTest` | A rule was added, removed, or rewritten into (or out of) a shape the vocabulary covers. The diff below names it. |
+          | `TranspilesToPhpTest` / `TranspilesToRustTest` | A rule this package snapshots now emits something different. Decide whether the new emission is right before touching the snapshot. |
+          | `EmittedRuleFiresTest` | The port and the original no longer agree when run — most often an upstream message text change, which the gate compares as text. |
+          | `AggregatesTypeCoverageTest` | The aggregate reimplementation and the real rule diverged. |
+
+          A new rule appearing in the census as `REFUSE` is not a regression: it is upstream growing a shape
+          this vocabulary does not cover yet. Accept it into the census and, if it is worth translating, that
+          is a `rule-shapes.md` entry rather than a fix.
+          EOF
+          if [ -s /tmp/census.diff ]; then
+            {
+              echo
+              echo '<details><summary>Census diff</summary>'
+              echo
+              echo '```diff'
+              cat /tmp/census.diff
+              echo '```'
+              echo
+              echo '</details>'
+            } >> /tmp/drift-body.md
+          fi
+
+      - name: Create tracking issue
+        if: always() && failure() && steps.lookup.outputs.issue_number == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh issue create --title "Upstream corpus drift (${{ matrix.leg }})" --body-file /tmp/drift-body.md
+
+      - name: Comment on existing issue
+        if: always() && failure() && steps.lookup.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.lookup.outputs.issue_number }}
+        run: gh issue comment "$ISSUE_NUMBER" --body-file /tmp/drift-body.md

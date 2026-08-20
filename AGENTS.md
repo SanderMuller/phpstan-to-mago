@@ -1,3 +1,142 @@
+# Git safety
+
+Each of these failed *silently* — the build stayed green and the status looked plausible.
+
+## Read `git status` before you commit
+
+`git add -A` sweeps up stray artifacts and, through rename detection, can pair unrelated identical files.
+
+`git add -A <pathspec>` is not the containment it looks like either. A `composer qa-check` run triggered a
+`boost sync` post-update hook that deleted and regenerated `AGENTS.md` and `CLAUDE.md`; those deletions were
+already staged, and the commit swallowed 429 lines of guidelines unrelated to the change. Recovery:
+`git reset --soft HEAD~1`, `git restore --source=HEAD --staged --worktree <files>`, recommit.
+
+The lesson is not "use narrower pathspecs" — it is to read the status output, especially after any command
+that runs project hooks. `boost sync` runs on `post-install-cmd` and `post-update-cmd` here.
+
+## A no-op `stash push` pops someone else's work
+
+`git stash push -- src/ ; test ; git stash pop` only works while the fix is uncommitted. Once committed, the
+push saves nothing and, with output silenced, looks like it worked — so the paired `pop` applies **and
+deletes** whatever was already on the stack, and the BEFORE run it produces is identical to AFTER.
+
+To verify an already-committed fix, revert by path instead: `git checkout HEAD~1 -- <files>`, confirm the
+test fails, then `git checkout HEAD -- src/`.
+
+## `git checkout -- <file>` discards uncommitted work, with no confirmation
+
+Reverting a file to HEAD to undo a deliberate mutation also throws away every uncommitted change in it. A
+mutation check had just proved a test caught its bug; `git checkout -- src/Transpiler.php` to restore the
+code silently reverted the uncommitted feature with it, and the whole thing had to be reconstructed.
+
+Before mutating a file on purpose, copy it aside and restore from the copy.
+
+## Do not hand-edit generated files
+
+`AGENTS.md`, `CLAUDE.md` and `.config/boost.php` are managed by boost sync. Edits belong in the source the
+sync reads from, or they are silently reverted on the next `composer install`.
+
+## Exclude the files you own, not the directory they sit in
+
+An exclude entry does not apply to tracked files, so excluding a whole directory can give no protection
+where protection is needed while hiding legitimate new files. Name what you own.
+
+---
+
+# Measurement and honest numbers
+
+## Name what you compared against
+
+The same result is 17x cheaper and 1.4x more expensive depending on the baseline. Transpiled rules against
+**cold** PHPStan: 17x wall, 42x CPU. Against **warm** PHPStan: 2.1x wall but 1.4x *more* CPU, because
+`mago analyze` has no result cache and redoes the whole job every run.
+
+Every earlier figure quoted for this work (62x, 128x, 7.9x) was cold-only and read as general. A number
+without its baseline is overstating the case.
+
+## State n per row
+
+"Best of three" across a table where one row is n=1 is not best of three. A 45-second run does not get
+repeated as often as a 2.5-second one; that is fine, but the table has to say so. Report the spread when it
+is wide, and say whether the machine was contended.
+
+## Give the marginal cost, not only the total
+
+"mago plus the rules" answers a different question from "what do the rules cost". Measure the engine alone
+as well: here the rules add 0.18s wall and 0.94s CPU on 7701 files.
+
+## A count belongs to its configuration
+
+`emitted: 4` and `emitted: 3` were both correct, for different targets. Print the configuration next to the
+number, in the tool itself where possible, or a reader will conclude the tool is inconsistent.
+
+## CPU and counts survive contention; wall clock does not
+
+Prefer them when the machine is shared and coordination is not possible.
+
+---
+
+# Verification
+
+Evidence before claims. Every rule here is a claim that shipped wrong at least once in this codebase.
+
+## "It emitted" is not a result
+
+The generator refuses what it cannot translate, *and* the backend refuses any operand it was handed and
+could not render. Without the second check the tool once reported ten rules emitted where six did not parse
+and two parsed while still containing Rust. A count is worth stating only alongside: the files parse, no
+Rust leaked into a `.php` file, every `Support::` helper it calls exists, and the rules actually ran.
+
+Running matters on its own. A bare snake_case identifier is well-formed PHP — it reads as a constant — so
+nothing before execution catches it.
+
+## A green run over material you wrote is the weakest evidence available
+
+Fixtures and snapshots are authored by the person who wants them to pass. After a change is green, run over
+code nobody wrote for you and diff the findings against the same run before the change.
+
+## Agreement on zero is not evidence
+
+Two tools both reporting nothing is equally consistent with "the code is clean" and "the second tool never
+looked". Dogfooding on an application's own source gave 0 from both tools — expected, since the application
+enables those rules, and useless. The dependency tree gave 25 findings and 25 agreements.
+
+## Prove the mechanism with a control, not with plausibility
+
+When a result has two possible causes, build the case that separates them.
+
+- Mago reported 6395 unresolvable classes and is known to skip such class bodies, so a zero might have meant
+  "never looked". Two files — one plain, one extending an unresolvable parent, same violation — settled it.
+- A survey reporting 4 emitted where a real run emitted 3 looked like leniency in the survey. It was the
+  target: survey honours whatever target is set, and the default was the other one. The plausible story
+  would have sent a fix into the wrong code.
+- The whole rule package refusing with "assignment value outside the vocabulary" while every helper sat in
+  a trait made cross-class resolution look like the blocker. A probe rule with the helper in the *same
+  class* was refused identically. Cross-class resolution turned out necessary but not sufficient, and
+  implementing it changed the count by zero.
+
+In all three the code read correctly at every line. Reading would not have settled any of them.
+
+## Mutation-check a filter you just wrote
+
+A passing test proves the code runs, not that the logic is load-bearing. Break the condition deliberately
+and watch the test fail, then restore it. Making `RulePaths::isRule()` return `true` unconditionally made
+the directory-walk test fail with an abstract base and a trait in its output — that failure *is* the
+evidence.
+
+## Verify a claim at the granularity you are publishing it
+
+"Every one of these 15 refusals is the same shape" was written after reading two of them. Resolving all 15
+mechanically found that two were something else, and one of those was a correct-forever refusal rather than
+part of the story. The number was the part being used to size the work.
+
+## A wrong "why" is worse than none
+
+Reproduction steps, tests and the fix all get built on the stated cause. When you have not traced it, say
+so rather than asserting it.
+
+---
+
 ## AskUserQuestion Phrasing
 
 When writing an `AskUserQuestion` question, option labels, or option descriptions, **avoid first- and second-person pronouns** — `I`, `me`, `my`, `we`, `our`, `you`, `your`. In that tool the user is reading a question *from* the assistant and answering it, so the roles are inverted and these pronouns are ambiguous: the reader cannot tell whether `I`/`my` means the assistant or themselves, nor whether `you`/`your` means them or the assistant.
@@ -105,6 +244,49 @@ These phrases indicate missing verification. Run the command first, then report 
 
 ---
 
+## Voice — Which Rule, Which Surface
+
+This table decides which rule applies to a piece of text. Never apply both to the same words, and never guess.
+
+| Surface | Rule |
+|---|---|
+| Chat replies to the user | Simplified Technical English |
+| PR titles, descriptions, checklists | Simplified Technical English |
+| PR review comments and replies to reviewers | Simplified Technical English |
+| Issue and ticket descriptions, comments, QA testables | Simplified Technical English |
+| Spec files | Simplified Technical English |
+| `AskUserQuestion` questions, options, descriptions | Simplified Technical English — plus the pronoun rules in the `AskUserQuestion Phrasing` guideline, when the project has it |
+| Commit messages | Simplified Technical English — an issue key the project's commit format requires stays as it is |
+| Text an end user reads — in-app copy, translations, release notes, help text, seed content | The project's own tone-of-voice rules, not this guideline |
+| Suggested translation strings inside an issue or ticket | The project's own tone-of-voice rules — the prose around them stays Simplified Technical English |
+| Code and code comments | Neither — the language guidelines own those |
+| Prose the user asks for in a named style, or an artifact whose own skill defines its voice — `humanizer`, `readme`, `release-notes` | That instruction or skill wins. This guideline does not override it |
+
+A surface the table does not list gets Simplified Technical English, unless an end user reads it. Then it gets the project's tone-of-voice rules. A project without documented tone-of-voice rules gets Simplified Technical English everywhere.
+
+This guideline governs **how a sentence is built**. It never overrides what a document is allowed to say: an issue-format doc still owns issue content, and a PR template still owns its sections.
+
+### Simplified Technical English
+
+**Write in ASD-STE100 Simplified Technical English.** Say the same thing in fewer, simpler words.
+
+- One idea per sentence. Keep procedural sentences to 20 words or less, descriptive sentences to 25 or less.
+- Use the active voice. Name the actor. Use the passive only when the actor is unknown.
+- Use simple tenses only — simple present, simple past, simple future, infinitive, imperative. No complex constructions built from auxiliary verbs.
+- Use one word for one meaning. Use the same word for the same thing every time — do not vary it for style.
+- Keep articles (`the`, `a`, `an`) and other small words that make a sentence clear. Simplified is not clipped.
+- One topic per paragraph, six sentences at most. Use a list when there is more than one item.
+- Cut filler, hedging, and repetition. Do not restate the question or summarise what you are about to say.
+- Give the answer first. Add detail after it, and only if the reader needs it.
+- Use everyday words. Write "use", not "utilise"; "help", not "facilitate". Keep technical terms exact — a class name, a flag, or an error message is quoted as it is.
+- Write Latin abbreviations out: "for example", not "eg"; "that is", not "ie"; "and so on", not "etc".
+- Do not shout. No exclamation marks, no capitals for emphasis, and no bold used only to raise the volume. Structural bold that a template defines — `**Before:**`, `**Expected:**`, a table header, a labelled line — is not emphasis and stays.
+- No metaphors, no clichés, no jokes that carry meaning the plain sentence does not.
+
+The sentence limits, the tense list, the article rule, and the paragraph limit come from the ASD-STE100 writing rules. The everyday-words, Latin-abbreviation, no-shouting, and no-metaphor rules come from the GOV.UK content style guide.
+
+---
+
 # Package Boost Guidelines
 
 These guidelines replace Laravel Boost's default foundation for
@@ -195,3 +377,41 @@ explicitly requested or when a behaviour change requires it.
 
 Be concise. Focus on what changed and why. Skip restating what the
 diff already shows.
+
+---
+
+# Release Automation
+
+Conventions the package-boost family shares for release flow. The
+procedural detail lives in the `pre-release` and `release-notes`
+skills — loaded on-demand, not pinned here.
+
+## CHANGELOG is CI-managed
+
+`.github/workflows/update-changelog.yml` prepends the release body to
+`CHANGELOG.md` on `release: released` and commits to the release's
+target branch (typically `main`). Don't hand-edit `CHANGELOG.md` as
+part of a release. Post-release typo fixes are committed directly.
+
+## Release notes live in `internal/release-notes-<version>.md`
+
+`internal/` is gitignored — drafts stay local. The notes file becomes
+the release body. The first line pins the green commit so the pre-tag
+gate can fail closed on drift:
+
+```
+<!-- verified-sha: <full sha> -->
+```
+
+## Tag and title
+
+- Tag: bare version (`0.7.0`) — Composer and Packagist read the tag.
+- Release title: `v`-prefixed (`v0.7.0`) — cosmetic.
+- Notes file: bare (`internal/release-notes-0.7.0.md`).
+
+## Agent handoff
+
+Agents stop at the ready-to-tag handoff. The user runs the pre-tag
+gate and publishes the release (GitHub UI, `gh`, or otherwise). See
+the `pre-release` skill for the full procedure and the no-release-create
+rule.

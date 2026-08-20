@@ -22,7 +22,9 @@ Guidelines are rules, docs are explanations, skills are procedures. Skills are s
 - `docs/rule-shapes.md` — what translates today, and the one shape that blocks a real rule package. Read
   this before trying to raise the emit count.
 - `docs/dogfooding.md` — what the differential runs against real projects showed, the performance numbers
-  with both baselines, and how configuration reaches a generated plugin.
+  with both baselines, and how configuration reaches a generated plugin. The corpus differential lives in
+  `tests/Support/CorpusDifferential.php`; upstream drift is watched nightly by
+  `.github/workflows/upstream-parity.yml` against the census in `tests/Fixtures/expected/census.md`.
 The spec these three were written against — `specs/trustworthy-mvp.md`, which made `emitted` mean `works` —
 is done and removed. What it established lives in the three docs above; its git history has the rest.
 

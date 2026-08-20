@@ -28,6 +28,13 @@ reviewed snapshot under `tests/Fixtures`. pint and rector have each rewritten `T
 and the snapshots proved the output was untouched. If a snapshot changes, decide whether the new output is
 right *before* updating it, and say why in the commit.
 
+The same discipline covers the corpus as a whole. `tests/Fixtures/expected/census.md` records, for every
+rule in every package this repository installs, whether it emits or which reason refuses it —
+`TracksUpstreamDriftTest` regenerates it and compares. `composer.lock` is not committed, so that file is
+where an upstream release announces itself: a rule added, a rule deleted, or a rule rewritten into or out of
+a shape the vocabulary covers. It deliberately records no package versions and no line numbers, because an
+alarm that fires on every routine bump is one nobody reads.
+
 **2. Refuse rather than approximate.** A construct outside the vocabulary is refused by name and line, and
 `PhpBackend::checked()` refuses any operand it was handed and could not render. Both are load-bearing.
 Weakening the first produced files that did not parse. Weakening the second produced files that parsed
@@ -47,6 +54,14 @@ output differing only by the generator name and the runtime import.
 Run it after any change to body translation. Both Rust targets share that code with PHP, which is the whole
 reason they are kept.
 
+**Upstream drift is watched separately**, by `.github/workflows/upstream-parity.yml`, nightly, in two legs:
+the corpus as it resolves today, and the packages' `dev-main` branches as an early warning. Neither gates
+anything; a failure upserts one tracking issue per leg, carrying the census diff and a table mapping the
+failing test to the kind of drift it means. The dev-main leg is expected to be the redder of the two — a
+broken upstream branch fails it, and that is information rather than a defect here. A new rule arriving as
+`REFUSE` is not a regression either: it is upstream growing a shape this vocabulary has not covered yet,
+which is a `rule-shapes.md` entry rather than a fix.
+
 ## Traps that have cost time
 
 - **`NodeKind::Class` does not reference the enum case.** PHP special-cases `::class` and yields a string.
@@ -60,7 +75,10 @@ reason they are kept.
 - **`mago analyze` exits non-zero when it finds issues.** The exit code says nothing about whether a plugin
   worked. Look for orchestrator errors on stderr instead.
 - **A fatal or notice on worker stdout corrupts the frame protocol**, surfacing as "invalid extension frame
-  magic", which points nowhere near the cause. Send worker diagnostics to a file.
+  magic", which points nowhere near the cause. Every worker this repository generates now opens with
+  `ini_set('display_errors', 'stderr')`, which it needed: one deprecated function in a `--prefer-lowest`
+  resolution turned 284 passing tests into 107 errors, and nothing in the failure named the cause. A
+  consumer writing their own worker inherits the same hazard from their own vendor tree.
 - **A count belongs to its target.** `--survey` honours whatever target is set, and a rule can render as
   Rust while failing to render as PHP. Two correct counts for two targets look like a bug in the tool
   unless the target is printed next to the number, which it now is.

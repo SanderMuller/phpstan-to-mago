@@ -13,6 +13,9 @@ storage/logs
 .cache
 /build
 
+# What the census test saw when it disagreed with the committed census: a review artefact, never a commit.
+tests/Fixtures/expected/census.md.actual
+
 # IDE Helper
 _ide_helper.php
 _ide_helper_models.php

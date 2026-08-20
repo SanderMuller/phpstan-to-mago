@@ -178,7 +178,9 @@ because you would trust it. Two consequences worth knowing:
 
 ## What it can translate
 
-Four rule packages, surveyed with the tool rather than from memory:
+Four rule packages, surveyed with the tool rather than from memory. The three this repository installs are
+also pinned rule by rule in `tests/Fixtures/expected/census.md`, which a test regenerates — so an upstream
+release that adds or rewrites a rule shows up as a diff there rather than as a stale table here:
 
 | package | rules | emit | refused |
 |:--|--:|--:|--:|
