@@ -360,6 +360,45 @@ earlier prototype confirmed the boundary precisely: rules rewritten against Mago
 Three more are ordinary vocabulary gaps: `Expr_Isset` in a condition, `Stmt_Foreach` inside an inlined
 helper, and an unknown local `$this`.
 
+## The eight rules a real consumer enables and we refuse
+
+Measured, not chosen: `../hihaho` enables eleven `symplify/phpstan-rules` rules and we emit three
+(`NoArrayMapWithArrayCallableRule`, `NoGlobalConstRule`, `UppercaseConstantRule`). These are the other eight,
+with the refusal traced to what is missing. Every SDK claim below was probed — `mago cst` for node shapes,
+reflection over the SDK classes for metadata — not read off a name.
+
+**Five are reachable, three are not.** Taking the five would move a consumer from 3 of 11 to 8 of 11.
+
+### Buildable with what the SDK already exposes
+
+| rule | refusal | what it needs |
+|:--|:--|:--|
+| `StringFileAbsolutePathExistsRule` | no hook mapping for `BinaryOp\Concat` | A `HOOKS` row for `NodeKind::Binary`, a `BinaryOperator` text predicate for `.`, and a `MagicConstant` kind check. Probed: `__DIR__ . '/x.php'` is `Binary(Expression(MagicConstant → LocalIdentifier __DIR__), BinaryOperator ., Expression(Literal → LiteralString))`. The rule then calls `file_exists()` on a path built from the analysed file's own directory, which a PHP plugin can do and `Support` already reaches (`fileStartsWith`). |
+| `ForbiddenMultipleClassLikeInOneFileRule` | no hook mapping for `PHPStan\Node\FileNode` | A `HOOKS` row for `NodeKind::Program`, which is the CST root and therefore the per-file node. The body is a subtree search for class-likes with a name, then `count > 1` — both already in the vocabulary (`Support::findKind`, the `found-nodes` iterable). The cheapest of the eight. |
+| `PreventParentMethodVisibilityOverrideRule` | access path outside the vocabulary: `->getParentClassesNames()` | All of it is present under different names: `ClassLikeMetadata->parentClasses` is the list, `Codebase::classLikeExists` answers `hasClass`, `Codebase::getDeclaringMethod` answers `hasMethod`/`getMethod`, and `FunctionLikeMetadata->visibility` gives the parent method's visibility. The work is vocabulary rows plus `Support` helpers for a *reflected* method's visibility, as against a declaration's, which we already read. |
+
+### Buildable behind one contained new feature
+
+Both need the same generalisation: **inlining a helper that lives on a collaborator** rather than on the rule,
+a trait, or a parent class. The machinery for inlining exists; what it does not do is follow a
+constructor-injected object or a static call into another class.
+
+| rule | refusal | what it needs |
+|:--|:--|:--|
+| `RequireUniqueEnumConstantRule` | method call outside the vocabulary `->detect()` | `EnumAnalyzer::detect()` is three questions we can each already ask — an `@enum` docblock annotation, descent from `MyCLabs\Enum\Enum`, or `\Enum\` in the class name — reached through an injected collaborator that itself injects a doc parser. Also needs collection vocabulary the corpus has not forced yet: duplicate detection over constant values, and `implode` inside the message. |
+| `PublicStaticDataProviderRule` | access path outside the vocabulary: `DataProviderMethodResolver::match()` | A static call on a helper class, whose body is `preg_match('/@dataProvider\s+(?<method_name>\w+)/', ...)` over a docblock — the named-capture shape already on this list. Two further gaps sit behind it: looking a method up by a name computed at analysis time, and **two different messages from one rule**, where the transpiler tracks one (`Transpiler::$message` is a single `?string`). |
+
+### Not reachable, and the reason is the SDK boundary
+
+| rule | refusal | why it stays refused |
+|:--|:--|:--|
+| `ForbiddenArrayMethodCallRule` | no hook mapping for `Expr\Array_` | The hook is the easy part — `NodeKind::Array` exists and `[$this, 'handle']` is two `ValueArrayElement` children. The rule then asks `$scope->getType($firstItem->value)` for a `TypeWithClassName`: the inferred type of an *array element*. A node hook receives inferred types only at the positions it requests through `FileAnalysisRequirement` — target, receiver, arguments — and an element of an array literal is none of them. |
+| `NoDynamicNameRule` | no hook mapping for `PhpParser\Node\Expr` | Two problems. It registers for the abstract `Expr` and dispatches internally, so it needs a hook with **several** `getTargets()` kinds and a dispatch on the node's actual kind, where the emitter writes exactly one. That part is buildable, and the CST is kinder than PHPStan here — dynamic-ness is structural (`$obj->$name()` selects through `ClassLikeMemberSelector → Variable`, and `Foo::{$k}` through `ClassLikeConstantSelector → ClassLikeMemberExpressionSelector`), so no type question is needed to find one. But the second branch skips a name whose type is closure-or-callable, again the type of a sub-expression. Porting the first branch alone would be a *narrower* rule that looks complete, which is worse than refusing. |
+| `NoMissingVariableDimFetchRule` | operand is still Rust and has no PHP rendering yet | This one already emits for the Rust targets, which have scope information; the PHP `Support` runtime has no `variable_is_undefined` because the SDK exposes no flow or scope analysis at all — `undefined` appears nowhere in it. Nothing to build against without approximating whether a variable is set. |
+
+Two of the three would come free if the SDK exposed inferred types at arbitrary positions; that is the single
+upstream change with the most leverage on the emit count, here and across the corpus.
+
 ## Do not raise the emit count by lowering the bar
 
 Partial coverage plus named refusals is the honest, finished result. See `../guidelines/verification.md`.
