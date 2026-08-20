@@ -189,10 +189,11 @@ final class EmittedRuleFiresTest extends TestCase
      * A dropped guard has to name the proof that lets it be dropped.
      *
      * Dropping a guard widens the rule, so it is only sound where the case the guard filters out cannot
-     * reach the hook at all. Three drops in the corpus are sound that way, and each was checked by putting
-     * the filtered case in a rule's *good* example and watching the port stay silent. A drop with no reason
-     * is refused at translation time; this asserts the emitted side of that contract, so a new drop cannot
-     * arrive carrying the old generic comment.
+     * reach the hook at all. Most drops in the corpus were checked by putting the filtered case in a rule's
+     * *good* example and watching the port stay silent. One cannot be: a method outside a class-like is not
+     * something PHP can express, so "there is always an enclosing class" is proof by construction rather than
+     * by example, and it is listed as such. A drop with no reason is refused at translation time; this asserts
+     * the emitted side of that contract, so a new drop cannot arrive carrying the old generic comment.
      */
     public function test_every_dropped_guard_names_why_it_cannot_hold(): void
     {
@@ -202,6 +203,8 @@ final class EmittedRuleFiresTest extends TestCase
             'the class declaration hook fires for classes, never for an interface',
             'a class-like found by a subtree search is always named: Mago models an anonymous class as its own '
             . 'node kind, which a search for classes, interfaces, traits and enums never returns',
+            // Proof by construction: PHP has no method outside a class-like, so no example can hold the case.
+            'a declaration hook fires inside a class-like, so there is always an enclosing class',
         ];
 
         $unproven = [];

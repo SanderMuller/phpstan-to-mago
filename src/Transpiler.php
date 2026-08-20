@@ -975,7 +975,8 @@ PHP;
             return null;
         }
 
-        return $subject['kind'] === 'resolved-name' ? $this->operand($subject) : null;
+        // A parent class name a loop bound is the same kind of answer: a name known only at analysis time.
+        return in_array($subject['kind'], ['resolved-name', 'class-name'], true) ? $this->operand($subject) : null;
     }
 
     /**
@@ -2058,6 +2059,75 @@ PHP;
     }
 
     /**
+     * A helper that returns one of several string literals, folded into one expression.
+     *
+     * `resolveReflectionMethodVisibilityAsStrings()` is the shape: three `if (c) return '<word>';` and a
+     * closing `return '<word>';`, which is a choice rather than a computation. Returns null when the body is
+     * anything else, so the ordinary producer path still gets its chance — this is a recogniser, not a
+     * fallback.
+     *
+     * @param array<Node\Arg> $args
+     *
+     * @return array{rust: string, kind: string, php?: string}|null
+     */
+    private function translateMethodAsChoice(ClassMethod $helper, array $args, string $name, int $line): ?array
+    {
+        $statements = $helper->stmts ?? [];
+        if ($statements === []) {
+            return null;
+        }
+
+        /** @var list<array{Expr, string}> $guards */
+        $guards = [];
+        $final = null;
+        foreach ($statements as $statement) {
+            if ($statement instanceof If_
+                && $statement->elseifs === []
+                && ! $statement->else instanceof Else_
+                && count($statement->stmts) === 1
+                && $statement->stmts[0] instanceof Return_
+                && $statement->stmts[0]->expr instanceof String_
+            ) {
+                $guards[] = [$statement->cond, $statement->stmts[0]->expr->value];
+
+                continue;
+            }
+
+            if ($statement instanceof Return_ && $statement->expr instanceof String_) {
+                $final = $statement->expr->value;
+
+                continue;
+            }
+
+            return null;
+        }
+
+        if ($final === null || $guards === []) {
+            return null;
+        }
+
+        // Translated only once the shape is settled, because translating a condition can inline another helper
+        // and there is no undoing that if the body turns out not to be a choice after all.
+        $savedLocals = $this->locals;
+        $this->locals = $this->bindParameters($helper, $args, $name, $line) + $this->locals;
+
+        try {
+            $expression = $this->backend->bytes($final);
+            foreach (array_reverse($guards) as [$condition, $word]) {
+                $expression = $this->backend->conditional(
+                    $this->translateCondition($condition),
+                    $this->backend->bytes($word),
+                    $expression,
+                );
+            }
+        } finally {
+            $this->locals = $savedLocals;
+        }
+
+        return ['rust' => '(' . $expression . ')', 'kind' => 'bytes', 'php' => '(' . $expression . ')'];
+    }
+
+    /**
      * The parsed class behind a name, with its own import list.
      *
      * The import list matters: a helper resolves `ClassReflection` or `SymfonyClass::COMMAND` through
@@ -2486,6 +2556,14 @@ PHP;
     {
         if ($this->buildsRuleError($helper)) {
             return null;
+        }
+
+        // A helper that only picks between written words folds to an expression, with no statements emitted.
+        // Tried before the statement-walking path because that path translates a `return 'public';` as a
+        // rule-body guard and refuses; this shape is recognisable up front, so there is nothing to undo.
+        $chosen = $this->translateMethodAsChoice($helper, $args, $name, $line);
+        if ($chosen !== null) {
+            return $chosen;
         }
 
         $produced = $this->inlineProducer($helper, $declaring, $name, $args, $line);
@@ -3922,6 +4000,22 @@ PHP;
             return;
         }
 
+        // $x = <a condition>  — a predicate given a name, which reads better in the rule and inlines here.
+        // Restricted to expressions that can only be conditions, because translating speculatively can inline
+        // a helper as a side effect, and a value that turned out not to be a condition would leave those lines
+        // behind. Refused rather than rebound if the name is already taken: an alias that was reassigned would
+        // silently stand for the first expression everywhere.
+        if ($value instanceof BooleanAnd || $value instanceof BooleanOr || $value instanceof BooleanNot) {
+            if (isset($this->locals[$name])) {
+                throw new Refusal("\${$name} is assigned a condition twice, and the second would be ignored", $line);
+            }
+
+            $condition = '(' . $this->translateCondition($value) . ')';
+            $this->locals[$name] = ['rust' => $condition, 'kind' => 'bool', 'php' => $condition];
+
+            return;
+        }
+
         // $flag = true;  /  $flag = false;  — state carried across loop iterations, which needs a
         // real mutable binding rather than a compile-time alias like every other local here.
         $boolean = $this->isBooleanLiteral($value);
@@ -4758,18 +4852,10 @@ PHP;
             }
         }
 
-        // Questions about a method *declaration*, answered from its modifiers and its name rather than from
-        // metadata: this is the method as written, which is what a rule looping a class-like's body holds.
-        if (in_array($method, ['isPublic', 'isStatic', 'isMagic'], true) && $args === []) {
-            $subject = $this->resolve($expr->var, $expr->getStartLine());
-            if ($subject['kind'] === 'method-decl') {
-                if (self::$target !== 'php') {
-                    throw new Refusal("{$method}() on a declaration, which only the PHP target carries", $expr->getStartLine());
-                }
-
-                $helper = ['isPublic' => 'methodIsPublic', 'isStatic' => 'methodIsStatic', 'isMagic' => 'methodIsMagic'][$method];
-
-                return 'Support::' . $helper . '(' . $this->operand($subject) . ')';
+        if (in_array($method, ['isPublic', 'isPrivate', 'isProtected', 'isStatic', 'isMagic'], true) && $args === []) {
+            $visibility = $this->visibilityPredicate($method, $expr);
+            if ($visibility !== null) {
+                return $visibility;
             }
         }
 
@@ -4906,6 +4992,58 @@ PHP;
         }
 
         throw new Refusal("function call outside the vocabulary {$name}()", $expr->getStartLine());
+    }
+
+    /**
+     * `isPublic()` and friends, of a method the codebase knows or of one as written.
+     *
+     * Two subjects answer the same question differently. A *reflection* answers from
+     * `FunctionLikeMetadata->visibility` — not from its flags, which carry `STATIC`, `ABSTRACT` and `FINAL` and
+     * no visibility at all, so a flags check would answer every method the same. A *declaration* answers from
+     * its modifiers, which is the method as written and what a rule looping a class-like's body holds.
+     *
+     * Returns null when the subject is neither, so the caller keeps looking.
+     */
+    private function visibilityPredicate(string $method, MethodCall $expr): ?string
+    {
+        $subject = $this->resolve($expr->var, $expr->getStartLine());
+        $line = $expr->getStartLine();
+
+        if ($subject['kind'] === 'method-handle' && in_array($method, ['isPublic', 'isPrivate'], true)) {
+            if (self::$target !== 'php') {
+                throw new Refusal("{$method}() on a method reflection, which only the PHP target carries", $line);
+            }
+
+            $helper = $method === 'isPublic' ? 'reflectedMethodIsPublic' : 'reflectedMethodIsPrivate';
+
+            return 'Support::' . $helper . '($context, '
+                . $this->handlePart($subject, 'classPhp', $line) . ', '
+                . $this->handlePart($subject, 'methodPhp', $line) . ')';
+        }
+
+        // The method-declaration hook's own node is the declaration, so the same helpers answer for it — once
+        // it is a part, which is what they navigate.
+        if ($subject['kind'] === 'hook-node' && $this->nodeKind === 'Method') {
+            $subject = ['rust' => self::PHP_ONLY, 'kind' => 'method-decl', 'php' => 'Support::asPart($context, $node)'];
+        }
+
+        if ($subject['kind'] !== 'method-decl') {
+            return null;
+        }
+
+        if (self::$target !== 'php') {
+            throw new Refusal("{$method}() on a declaration, which only the PHP target carries", $line);
+        }
+
+        $helper = [
+            'isPublic' => 'methodIsPublic',
+            'isPrivate' => 'methodIsPrivate',
+            'isProtected' => 'methodIsProtected',
+            'isStatic' => 'methodIsStatic',
+            'isMagic' => 'methodIsMagic',
+        ][$method];
+
+        return 'Support::' . $helper . '(' . $this->operand($subject) . ')';
     }
 
     /**
@@ -5644,6 +5782,29 @@ PHP;
                 'rust' => 'support::metadata_name(metadata)',
                 'kind' => 'class-name',
                 'php' => 'Support::enclosingClassName($context, $node)',
+            ];
+        }
+
+        // `$classReflection->getParentClassesNames()` — the ancestry, parents only. `ClassLikeMetadata` keeps
+        // that list under `parentClasses`, which is not the same as `getClassAncestors()`: that one folds in
+        // interfaces and traits, and a rule walking parents to find an overridden method means parents.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getParentClassesNames'
+            && $expr->args === []
+        ) {
+            $base = $this->resolve($expr->var, $line);
+            if ($base['kind'] !== 'class-reflection') {
+                throw new Refusal('getParentClassesNames() on something other than a class reflection', $line);
+            }
+
+            if (self::$target !== 'php') {
+                throw new Refusal('the parent class names, which only the PHP target carries', $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'class-names',
+                'php' => 'Support::parentClassNames($context, $node)',
             ];
         }
 

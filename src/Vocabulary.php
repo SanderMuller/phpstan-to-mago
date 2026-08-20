@@ -203,7 +203,9 @@ final class Vocabulary
             'type' => ['support::property_hint(node)', 'hint-option', 'Support::propertyHint($context, {base})'],
         ],
         'Method' => [
-            'name' => ['&node.name', 'local-name'],
+            // The declaration's own name. `declarationName()` reads the first identifier child, which for a
+            // method declaration is the method name — modifiers are keywords, not identifiers.
+            'name' => ['&node.name', 'local-name', 'Support::declarationName($context, {base})'],
         ],
         'Instantiation' => [
             'class' => ['node.class', 'name-expr', 'Support::classPart($context, {base})'],
@@ -293,6 +295,8 @@ final class Vocabulary
         // `lastBareFlagIndex()` asks whether any is named or spread, because either breaks the mapping from
         // argument position to parameter position.
         'args' => ['iter' => self::PHP_ONLY, 'item' => 'argument', 'phpIter' => 'Support::arguments({rust})'],
+        // The names of the classes a declaration extends, one written name each.
+        'class-names' => ['iter' => self::PHP_ONLY, 'item' => 'class-name', 'phpIter' => '{rust}'],
     ];
 
     /**

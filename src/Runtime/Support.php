@@ -14,6 +14,7 @@ use Mago\Sdk\Analyzer\Type;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
 use Mago\Sdk\Analyzer\Type\SimpleAtomicType;
 use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
+use Mago\Sdk\Analyzer\Type\Visibility;
 use Mago\Sdk\Span;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
@@ -1346,6 +1347,74 @@ final class Support
         return ! in_array('private', $modifiers, true) && ! in_array('protected', $modifiers, true);
     }
 
+    /**
+     * A node as a navigable part, for the helpers that read a declaration's own children.
+     *
+     * The hook's own node arrives as a `Node`, while a member loop yields a `Part`. The declaration predicates
+     * take a `Part`, and widening them would change the signature every emitted plugin already calls — so the
+     * conversion happens at the call site instead.
+     */
+    public static function asPart(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        if ($subject instanceof Part) {
+            return $subject;
+        }
+
+        return $subject instanceof Node ? self::part($context, $subject) : null;
+    }
+
+    /** Whether a method declaration is written `private`, which php-parser answers from its modifiers. */
+    public static function methodIsPrivate(?Part $method): bool
+    {
+        return $method instanceof Part && in_array('private', self::methodModifiers($method), true);
+    }
+
+    /** Whether a method declaration is written `protected`. */
+    public static function methodIsProtected(?Part $method): bool
+    {
+        return $method instanceof Part && in_array('protected', self::methodModifiers($method), true);
+    }
+
+    /**
+     * The visibility of a method as the codebase knows it, which is what a rule asks of a reflection.
+     *
+     * Read from `FunctionLikeMetadata->visibility` rather than from `flags`: `MetadataFlags` carries `STATIC`,
+     * `ABSTRACT` and `FINAL` and no visibility at all, so a flags check would answer every method the same.
+     * Null when the method is not found, so each predicate below decides for itself what absence means.
+     */
+    public static function reflectedMethodVisibility(NodeAnalysisContext $context, ?string $class, ?string $method): ?Visibility
+    {
+        if ($class === null || $method === null) {
+            return null;
+        }
+
+        $declaring = $context->codebase->getDeclaringMethod($class, $method);
+
+        return $declaring instanceof FunctionLikeMetadata ? $declaring->visibility : null;
+    }
+
+    /** Whether the codebase's method is public. A method that is not found is not public. */
+    public static function reflectedMethodIsPublic(NodeAnalysisContext $context, ?string $class, ?string $method): bool
+    {
+        return self::reflectedMethodVisibility($context, $class, $method) === Visibility::Public;
+    }
+
+    /** Whether the codebase's method is private. */
+    public static function reflectedMethodIsPrivate(NodeAnalysisContext $context, ?string $class, ?string $method): bool
+    {
+        return self::reflectedMethodVisibility($context, $class, $method) === Visibility::Private;
+    }
+
+    /** The word a rule prints for the codebase's method visibility, which defaults the way PHP does. */
+    public static function reflectedMethodVisibilityName(NodeAnalysisContext $context, ?string $class, ?string $method): string
+    {
+        return match (self::reflectedMethodVisibility($context, $class, $method)) {
+            Visibility::Private => 'private',
+            Visibility::Protected => 'protected',
+            default => 'public',
+        };
+    }
+
     public static function methodIsStatic(?Part $method): bool
     {
         return in_array('static', self::methodModifiers($method), true);
@@ -1804,6 +1873,27 @@ final class Support
         }
 
         return false;
+    }
+
+    /**
+     * The classes the enclosing declaration extends, nearest first, as written.
+     *
+     * `ClassLikeMetadata->parentClasses` rather than `Codebase::getClassAncestors()`: that one folds in
+     * interfaces and traits, and a rule walking parents to find an overridden method means parents. Names
+     * arrive lowercased from metadata, which is fine for looking a class up again and wrong for printing.
+     *
+     * @return list<string>
+     */
+    public static function parentClassNames(NodeAnalysisContext $context, Part|Node|null $node): array
+    {
+        $className = self::enclosingClassName($context, $node);
+        if ($className === null) {
+            return [];
+        }
+
+        $metadata = $context->codebase->getClassLike($className);
+
+        return $metadata instanceof ClassLikeMetadata ? array_values($metadata->parentClasses) : [];
     }
 
     /** The class-declaration hook's `metadata_is`, which asks the same question. */
