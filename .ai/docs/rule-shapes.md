@@ -492,6 +492,47 @@ keeps paying nothing, which is why the emitter adds it only when a rule reaches 
 types do not cover. `ReceiverType` is still preferred where it applies. The per-file payload on a real corpus
 is unmeasured; the three rules that ask for it are cheap ones, but a broad adoption should measure first.
 
+## Moving `hihaho/phpstan-rules`, and the shape of what is left
+
+That package went 3 → 5 emitted, and the count is the least useful part of the result.
+
+**The gate covers it now**, which it could not before the package became a dev dependency, and that alone found
+two silences in rules that had been counted emitted for weeks:
+
+- `declaringClassOfMethod()` matched metadata method names case-sensitively, and metadata lowercases them. Both
+  positional-flag rules went quiet for any method whose name is not one lowercase word. Every example method in
+  this repository was `send`, `toggle` or `handle`, so `setEnabled` is the first name that could show it.
+- The same helper then missed a method a **trait** provides: `Illuminate\Support\Collection` lists 115 methods
+  and `dump` is not among them, because `EnumeratesValues` provides it. It reads
+  `getDeclaringMethod()->identifier->class` now, which covers traits and is correctly cased — and maps a trait
+  back to the class *using* it, because PHPStan flattens traits and the rule was written against PHPStan.
+
+Two rules take a configured constructor value, so PHPStan refuses to construct them bare — which is why they
+sat outside the gate. The transpiler hands back the values it read from the package's neon, and the gate
+registers the original with the same ones: a rule whose two sides are configured differently is not a
+comparison.
+
+### The `Combined*` rules, and why one of them is refused rather than emitted
+
+hihaho merges its rules into three `Combined*` classes to share node visits, and those are the ones its neon
+registers. `CombinedFuncCallRule` **transpiles** — it took a dozen features, including a memoised pure helper
+folding to the expression it memoises, `isSuperTypeOf` between two constructed `ObjectType`s becoming an
+ancestry question, a class constant carried into the plugin so a copied derivation can name it, and a
+derivation reading a property the same constructor derived earlier.
+
+And it is **refused anyway**, by a check added for the purpose. A merged rule asks several *independent* checks
+in one pass, and flattening them makes the first check's guards the rule's guards — so `dump()` not being a
+debug call would exit before the `invade` check ran. The emitted plugin reported only its first sub-rule and
+looked complete doing it. The refusal names that shape.
+
+What it needs is **per-check blocks**: each check's guards exiting its own block rather than the rule. That is
+the next piece of work on this family, and it is worth doing — it is the difference between 5 rules and the
+three the consumer actually registers.
+
+`CombinedMethodCallRule` needs that *and* something further out: one of its sub-rules parses the FormRequest's
+`rules()` method out of another file with PHPStan's `Parser`. A merged rule is only portable if every sub-rule
+is.
+
 ## Do not raise the emit count by lowering the bar
 
 Partial coverage plus named refusals is the honest, finished result. See `../guidelines/verification.md`.

@@ -68,6 +68,39 @@ final readonly class Hierarchy
     }
 
     /**
+     * Every class-like a `self::` reference can see: the class itself, its traits, and its parents.
+     *
+     * `self::SOME_CONSTANT` resolves through the hierarchy in PHP, so a transpiler collecting constants from
+     * the class alone misses the ones a base class declares — which is most of them, in a package that keeps
+     * its shared tables on an abstract rule.
+     *
+     * @return list<ClassLike>
+     */
+    public function selfAndAncestors(ClassLike $class, int $depth = 0): array
+    {
+        if ($depth >= self::DEPTH_LIMIT) {
+            return [];
+        }
+
+        $found = [$class];
+        foreach ($this->traitNames($class) as $name) {
+            $resolved = ($this->lookup)($name);
+            if ($resolved !== null) {
+                $found = [...$found, ...$this->selfAndAncestors($resolved['class'], $depth + 1)];
+            }
+        }
+
+        if ($class instanceof Class_ && $class->extends instanceof Name) {
+            $resolved = ($this->lookup)($class->extends->getLast());
+            if ($resolved !== null) {
+                $found = [...$found, ...$this->selfAndAncestors($resolved['class'], $depth + 1)];
+            }
+        }
+
+        return $found;
+    }
+
+    /**
      * @return array{class: ClassLike, uses: array<string, string>}|null
      */
     private function through(string $shortName, string $method, int $depth): ?array

@@ -199,29 +199,58 @@ final class Support
     }
 
     /**
-     * The name of the class that declares a method, spelled as it was written.
+     * The class PHPStan would call a method's declaring class, spelled as it was written.
      *
-     * `ClassLikeMetadata->name` is **lowercased** — measured, not read: `Examples\Flags\Sender` comes back as
-     * `examples\flags\sender`. A rule comparing a declaring class against a namespace prefix therefore matched
-     * nothing, and the whole rule went silent while every other guard passed. `originalName` keeps the case.
+     * Read from `getDeclaringMethod()->identifier->class`, which is the only answer that covers a method a
+     * *trait* provides. Two earlier versions walked the class's own `methods` list instead and were wrong twice
+     * over: that list is lowercased, so a camelCase method matched nothing, and it does not contain
+     * trait-provided methods at all — `Illuminate\Support\Collection` has 115 methods and `dump` is not among
+     * them, because `EnumeratesValues` provides it. Each time, the rule went quiet while every other guard
+     * passed.
      *
-     * The *method* list is lowercased for the same reason, and matching it exactly cost a second silence that
-     * hid longer: every example method in this repository was a single lowercase word — `send`, `toggle`,
-     * `handle` — so `setEnabled` was the first name that could show it, and it took the gate reaching
-     * `hihaho/phpstan-rules` to write one. PHP compares method names case-insensitively; so does this.
+     * Where the two engines disagree, PHPStan wins, because that is what the rule was written against: it
+     * flattens traits, so a trait method's declaring class is the class that *uses* the trait. Mago names the
+     * trait, so a trait is mapped back to the using class here.
      */
     private static function declaringClassName(NodeAnalysisContext $context, string $class, string $method): ?string
     {
-        $wanted = strtolower($method);
+        $declaring = $context->codebase->getDeclaringMethod($class, $method);
+        if (! $declaring instanceof FunctionLikeMetadata) {
+            return null;
+        }
+
+        $declared = $declaring->identifier->class;
+        if ($declared === null) {
+            return null;
+        }
+
+        $using = self::classUsingTrait($context, $class, $declared);
+        if ($using !== null) {
+            return $using;
+        }
+
+        $metadata = $context->codebase->getClass($declared);
+
+        return $metadata instanceof ClassLikeMetadata ? $metadata->originalName : $declared;
+    }
+
+    /**
+     * The class in `$class`'s hierarchy that uses `$trait`, or null when `$trait` is not a trait it uses.
+     *
+     * PHPStan attributes a trait method to the class using the trait, and a rule asking where a method comes
+     * from means that. Names are compared case-insensitively because metadata lowercases `usedTraits`.
+     */
+    private static function classUsingTrait(NodeAnalysisContext $context, string $class, string $trait): ?string
+    {
         foreach ([$class, ...$context->codebase->getClassAncestors($class)] as $candidate) {
-            $own = $context->codebase->getClass($candidate);
-            if (! $own instanceof ClassLikeMetadata) {
+            $metadata = $context->codebase->getClass($candidate);
+            if (! $metadata instanceof ClassLikeMetadata) {
                 continue;
             }
 
-            foreach ($own->methods as $declared) {
-                if (strtolower($declared) === $wanted) {
-                    return $own->originalName;
+            foreach ($metadata->usedTraits as $used) {
+                if (strcasecmp($used, $trait) === 0) {
+                    return $metadata->originalName;
                 }
             }
         }
@@ -672,6 +701,114 @@ final class Support
     public static function lowerBytes(?string $text): ?string
     {
         return $text === null ? null : strtolower($text);
+    }
+
+    /**
+     * Every class a type names, which is what `getObjectClassReflections()` hands a rule.
+     *
+     * The list rather than the single-class reduction `soleObjectClass()` makes: a rule that loops these is
+     * asking about each member of a union, and answering with one would go quiet on exactly the receivers the
+     * loop exists for. Names as written — metadata lowercases them, and a rule comparing against a namespace
+     * prefix needs the case.
+     *
+     * @return list<string>
+     */
+    public static function objectClasses(?Type $type): array
+    {
+        $names = [];
+        foreach ($type instanceof Type ? $type->atomicTypes : [] as $atomic) {
+            if ($atomic instanceof NamedObjectType) {
+                $names[] = $atomic->name;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * Whether a class *is* another, or descends from it — PHPStan's `isSuperTypeOf` between two object types.
+     *
+     * Case-insensitive because `getClassAncestors()` answers in lowercase, the same trap that silenced an
+     * earlier port. A class the codebase does not know descends from nothing, which is the safe answer: the
+     * rule asking is looking for a reason to report.
+     */
+    public static function classDescendsFrom(NodeAnalysisContext $context, ?string $class, string $parent): bool
+    {
+        if ($class === null || $class === '') {
+            return false;
+        }
+
+        if (strcasecmp($class, $parent) === 0) {
+            return true;
+        }
+
+        foreach ($context->codebase->getClassAncestors($class) as $ancestor) {
+            if (strcasecmp($ancestor, $parent) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The last segment of a written name — php-parser's `Name::getLast()`.
+     *
+     * A leading backslash is part of how the name was written, not part of the segment, so `\Acme\request`
+     * and `request` both answer `request`.
+     */
+    public static function lastNameSegment(?string $name): ?string
+    {
+        if ($name === null) {
+            return null;
+        }
+
+        $position = strrpos($name, '\\');
+
+        return $position === false ? $name : substr($name, $position + 1);
+    }
+
+    /**
+     * Whether the codebase knows a function by this name — PHPStan's `hasFunction()`.
+     *
+     * A name written in a namespace resolves the way PHP resolves it: `Acme\request()` falls back to the
+     * global `request()` when the namespace declares none, so both are tried.
+     */
+    public static function functionExists(NodeAnalysisContext $context, ?string $name): bool
+    {
+        return self::functionName($context, $name) !== null;
+    }
+
+    /**
+     * The name the codebase knows a function under, as declared, or null when it knows none.
+     *
+     * What `$reflectionProvider->getFunction($name, $scope)->getName()` gives a rule: the *resolved* name, so
+     * a rule comparing it against `request` sees through a namespaced call that falls back to the global one.
+     */
+    public static function functionName(NodeAnalysisContext $context, ?string $name): ?string
+    {
+        if ($name === null || $name === '') {
+            return null;
+        }
+
+        foreach ([$name, self::lastNameSegment($name)] as $candidate) {
+            if ($candidate === null) {
+                continue;
+            }
+
+            $function = $context->codebase->getFunction($candidate);
+            if ($function instanceof FunctionLikeMetadata) {
+                return $function->originalName;
+            }
+        }
+
+        return null;
+    }
+
+    /** The other half of `lowerBytes()`, for a rule that folds the other way. */
+    public static function upperBytes(?string $text): ?string
+    {
+        return $text === null ? null : strtoupper($text);
     }
 
     /**
@@ -1734,13 +1871,17 @@ final class Support
      * it, so a method with no docblock cannot inherit its neighbour's. A declaration's span includes its
      * attribute list, which is what makes `\/** doc *\/ #[Attr] public function` associate correctly.
      */
-    public static function docblockText(NodeAnalysisContext $context, ?Part $declaration): ?string
+    public static function docblockText(NodeAnalysisContext $context, Part|Node|null $declaration): ?string
     {
-        if (! $declaration instanceof Part) {
+        // Either shape: a member loop yields a `Part`, a hook hands over its own `Node`. Typed to `Part` alone
+        // this threw a TypeError inside the worker, which surfaces as an orchestrator error naming the
+        // *protocol* rather than the argument.
+        $node = self::node($declaration);
+        if (! $node instanceof Node) {
             return null;
         }
 
-        $start = $declaration->node->span->start;
+        $start = $node->span->start;
 
         foreach ($context->source->getTrivia() as $trivia) {
             if ($trivia->kind !== TriviaKind::DocBlockComment || $trivia->span->end > $start) {

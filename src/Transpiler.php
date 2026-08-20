@@ -60,6 +60,7 @@ use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\Node\Stmt\Static_;
 use PhpParser\Node\UnionType;
 use PhpParser\NodeFinder;
 use PhpParser\ParserFactory;
@@ -70,7 +71,7 @@ use PHPStan\Type\ObjectType;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 
 /**
- * @phpstan-type Descriptor array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, methodPhp?: string, indexPhp?: string, patternPhp?: string, subjectPhp?: string, reason?: string, as?: string, record?: array<string, array{rust: string, kind: string, php?: string, reason?: string}>}
+ * @phpstan-type Descriptor array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, methodPhp?: string, indexPhp?: string, listPhp?: string, patternPhp?: string, subjectPhp?: string, reason?: string, as?: string, record?: array<string, array{rust: string, kind: string, php?: string, reason?: string}>}
  * @phpstan-type RecordFields array<string, array{rust: string, kind: string, php?: string, reason?: string}>
  */
 final class Transpiler
@@ -338,6 +339,31 @@ final class Transpiler
      * @var list<array{condition: string, message: string, code: string, anchor: string}>
      */
     private array $reportConditions = [];
+
+    /**
+     * Array constants the generated plugin has to declare, because a carried derivation names them.
+     *
+     * The value expression rather than a resolved list: a lookup table is written `['dump' => true]`, whose
+     * data is in the keys, and the derivation is copied verbatim — so the constant is printed verbatim too.
+     *
+     * @var array<string, Expr>
+     */
+    private array $carriedConstants = [];
+
+    /** How many independent checks have reported at rule level; see {@see inlineErrorHelper()}. */
+    private int $checksReported = 0;
+
+    /**
+     * Locals holding an error an inlined helper already reported.
+     *
+     * A rule that checks several things in one pass writes `$e = $this->someError(..); if ($e instanceof
+     * RuleError) { $errors[] = $e; }` — three statements of bookkeeping around a decision the helper already
+     * made. Inlining emits the report where the helper decides, so the bookkeeping translates to nothing, and
+     * knowing *which* locals those are is what makes dropping it safe rather than a guess.
+     *
+     * @var array<string, true>
+     */
+    private array $reportedErrors = [];
 
     /** Set once a report has been emitted inside the body; suppresses the trailing one. */
     private bool $reportedInline = false;
@@ -1031,6 +1057,16 @@ PHP;
             return null;
         }
 
+        // `hasFunction($name, $scope)` — whether the codebase knows a function. The scope argument is how
+        // PHPStan resolves a namespaced name against the current file; the helper resolves it the same way.
+        if ($method === 'hasFunction' && count($args) >= 1) {
+            if (self::$target !== 'php') {
+                throw new Refusal('a function-existence question, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return $this->backend->call('function_exists', ['$context', $this->operand($this->resolve($args[0]->value, $expr->getStartLine()))]);
+        }
+
         if ($method === 'hasClass' && count($args) === 1) {
             // The name can be a literal — `hasClass(Foo::class)` — or a name read out of the analysed file by
             // `$scope->resolveName()`. The second is what the positional-flag rules do, and it is the whole
@@ -1181,7 +1217,18 @@ PHP;
         // A derived property is assigned in the body, from the parameters above. The rule's own parameter
         // names are kept, which is what lets the derivation be copied rather than rewritten.
         $body = $assignments === [] ? ' {}' : " {\n" . implode("\n", $assignments) . "\n    }";
-        $properties = $derived === [] ? '' : implode("\n", $derived) . "\n";
+
+        // A constant the derivation names, declared here so the copy has something to refer to. Written with
+        // the rule's own name and values, because the derivation is copied verbatim.
+        $constants = [];
+        foreach ($this->carriedConstants as $name => $value) {
+            $constants[] = '    /** Carried from the rule, whose derivation names it. */';
+            $constants[] = '    private const array ' . $name . ' = '
+                . (new Standard(['shortArraySyntax' => true]))->prettyPrintExpr($value) . ';';
+            $constants[] = '';
+        }
+
+        $properties = implode("\n", $constants) . ($derived === [] ? '' : implode("\n", $derived) . "\n");
         // A rule may derive a property without taking any configured value, and an empty parameter list read
         // as a formatting accident rather than as "this takes nothing".
         $signature = $parameters === []
@@ -1339,6 +1386,21 @@ PHP;
             return 'isset(' . $this->operand($property) . '[' . $this->stringValue($fetch->dim, $expr->getStartLine()) . '])';
         }
 
+        // The same table reached through a parameter: a helper takes `$this->unsafeMethodsLookup` as an
+        // argument, so inside it the lookup is a local. Still the plugin's own property at runtime.
+        if ($table instanceof Variable && is_string($table->name) && isset($this->locals[$table->name])) {
+            if (self::$target !== 'php') {
+                throw new Refusal('isset() over a lookup table passed to a helper, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            $bound = $this->locals[$table->name];
+            if (in_array($bound['kind'], ['lookup', 'config-list'], true)) {
+                return 'isset(' . $this->operand($bound) . '[' . $this->stringValue($fetch->dim, $expr->getStartLine()) . '])';
+            }
+
+            throw new Refusal("isset() over a {$bound['kind']}", $expr->getStartLine());
+        }
+
         if (! $table instanceof ClassConstFetch
             || ! $table->class instanceof Name
             || ! in_array($table->class->toString(), ['self', 'static'], true)
@@ -1363,7 +1425,14 @@ PHP;
      */
     private function stringComparison(Expr $left, Expr $right, int $line): ?string
     {
-        if (! $left instanceof Variable && ! $right instanceof Variable) {
+        // A variable on either side is the common shape. A *call* against a written literal is the other one —
+        // `strtolower($node->name->getLast()) !== 'request'`. Only against a literal: `strtoupper($x) === $x`
+        // is a different question with its own translation, and matching it here would answer "are these two
+        // strings equal" where the rule asked "is this already uppercase".
+        $callAgainstLiteral = ($left instanceof FuncCall && $right instanceof String_)
+            || ($right instanceof FuncCall && $left instanceof String_);
+
+        if (! $left instanceof Variable && ! $right instanceof Variable && ! $callAgainstLiteral) {
             return null;
         }
 
@@ -1603,35 +1672,91 @@ PHP;
     private function isPureDerivation(Expr $expr): bool
     {
         foreach ((new NodeFinder())->find([$expr], static fn (Node $node): bool => true) as $node) {
-            if ($node instanceof MethodCall || $node instanceof StaticCall || $node instanceof New_) {
-                return false;
-            }
-
-            if ($node instanceof PropertyFetch) {
-                return false;
-            }
-
-            // A class constant is not carried into the generated plugin, so copying a derivation that reads one
-            // emits a reference to something that does not exist. Found by a fixture whose derivation was
-            // `self::BASE + [..]`: it emitted, and the plugin could not load.
-            if ($node instanceof ClassConstFetch) {
-                return false;
-            }
-
-            if ($node instanceof FuncCall) {
-                if (! $node->name instanceof Name || ! in_array($node->name->toString(), self::PURE_FUNCTIONS, true)) {
-                    return false;
-                }
-
-                continue;
-            }
-
-            if ($node instanceof Variable && is_string($node->name) && ! isset($this->configured[$node->name])) {
+            if (! $this->isPureNode($node)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    /** One node of a derivation, judged on its own; see {@see isPureDerivation()} for what that means. */
+    private function isPureNode(Node $node): bool
+    {
+        if ($node instanceof MethodCall || $node instanceof StaticCall || $node instanceof New_) {
+            return false;
+        }
+
+        // `$this->earlier` where `earlier` is a property this same constructor already derived: the generated
+        // constructor assigns them in order, so the copy reads exactly what the original read. Any other
+        // property read is state the plugin does not have.
+        if ($node instanceof PropertyFetch) {
+            return $node->var instanceof Variable
+                && $node->var->name === 'this'
+                && isset($this->pure[$this->memberName($node->name, $node->getStartLine())]);
+        }
+
+        // A class constant used to make a derivation impure, because the generated plugin carried no constants
+        // and copying the derivation emitted a reference to nothing. The plugin can carry it instead, so the
+        // constant is *taken* here and declared alongside the constructor.
+        if ($node instanceof ClassConstFetch) {
+            return $this->takeDerivedConstant($node);
+        }
+
+        if ($node instanceof FuncCall) {
+            return $node->name instanceof Name && in_array($node->name->toString(), self::PURE_FUNCTIONS, true);
+        }
+
+        // `$this` is not a value the derivation reads, it is the receiver of a property read judged above.
+        if ($node instanceof Variable && $node->name === 'this') {
+            return true;
+        }
+
+        return ! $node instanceof Variable || ! is_string($node->name) || isset($this->configured[$node->name]);
+    }
+
+    /**
+     * Records a class constant a derivation reads, so the generated plugin can declare it.
+     *
+     * Only `self::` or `static::` naming an array constant this class or its hierarchy declares: a constant on
+     * *another* class is that class's business, and a scalar has not been needed. False leaves the derivation
+     * impure, which is the safe answer.
+     */
+    private function takeDerivedConstant(ClassConstFetch $fetch): bool
+    {
+        if (self::$target !== 'php'
+            || ! $fetch->class instanceof Name
+            || ! in_array($fetch->class->toString(), ['self', 'static'], true)
+            || ! $fetch->name instanceof Identifier
+        ) {
+            return false;
+        }
+
+        $name = $fetch->name->toString();
+        $value = $this->currentClass instanceof ClassLike ? $this->constantValue($this->currentClass, $name) : null;
+        if (! $value instanceof Array_) {
+            return false;
+        }
+
+        $this->carriedConstants[$name] = $value;
+
+        return true;
+    }
+
+    /** A constant's value expression, looked up the way `self::` resolves it: this class, then its ancestry. */
+    private function constantValue(ClassLike $class, string $name): ?Expr
+    {
+        foreach ($this->hierarchy()->selfAndAncestors($class) as $declaring) {
+            foreach ($declaring->getConstants() as $const) {
+                foreach ($const->consts as $candidate) {
+                    if ($candidate->name->toString() === $name) {
+                        return $candidate->value;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     /** The PHPStan service an expression reaches for, if any. */
@@ -1679,6 +1804,16 @@ PHP;
     }
 
     private function collectConstants(ClassLike $class): void
+    {
+        // The hierarchy, not just the class: `self::METHOD_DEBUG_STATEMENTS` is declared on the abstract rule
+        // three of `hihaho/phpstan-rules`' own rules extend, and PHP resolves it from there. Collected
+        // nearest-first so a class that redeclares a constant wins, as it does at runtime.
+        foreach (array_reverse($this->hierarchy()->selfAndAncestors($class)) as $declaring) {
+            $this->collectOwnConstants($declaring);
+        }
+    }
+
+    private function collectOwnConstants(ClassLike $class): void
     {
         foreach ($class->getConstants() as $const) {
             foreach ($const->consts as $c) {
@@ -2048,11 +2183,19 @@ PHP;
         }
 
         $body = $statement->stmts;
-        if (count($body) !== 1) {
-            throw new Refusal('a foreach in an inlined helper whose body is not a single guard', $statement->getStartLine());
-        }
 
         $subject = $this->resolve($statement->expr, $statement->getStartLine());
+
+        // The classes a type names, iterated: the same list a loop in the rule's own body gets, and for the
+        // same reason — the single-class reduction would go quiet on a union receiver.
+        if ($subject['kind'] === 'sole-class' && self::$target === 'php') {
+            $subject = [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'class-names',
+                'php' => $this->handlePart($subject, 'listPhp', $statement->getStartLine()),
+            ];
+        }
+
         if (! isset(Vocabulary::ITERABLES[$subject['kind']])) {
             throw new Refusal("no iteration mapped for a {$subject['kind']} in an inlined helper", $statement->getStartLine());
         }
@@ -2066,7 +2209,7 @@ PHP;
         ] + (isset($subject['as']) ? ['as' => $subject['as']] : []);
 
         try {
-            $predicate = $this->anyBody($body[0], $depth);
+            $predicate = $this->anyBodies($body, $depth);
         } finally {
             $this->locals = $saved;
         }
@@ -2091,6 +2234,55 @@ PHP;
      * way to ask "does it carry this attribute". One level cannot express that, and flattening the two into one
      * would be inventing a shape the source does not have.
      */
+    /**
+     * A loop body reduced to the predicate "this item matches".
+     *
+     * One guard is the common shape. A longer body is accepted when every statement before the last is either
+     * a `continue` guard — a reason this item does *not* match — or a local binding the last one reads:
+     * `isDebugHelperMethodCall()` skips a class with no such method, reads the declaring class, then matches on
+     * its prefix. Folded, that is `! skipped && matched`, which is what the loop computes.
+     *
+     * @param array<Stmt> $body
+     */
+    private function anyBodies(array $body, int $depth): string
+    {
+        if ($body === []) {
+            throw new Refusal('a foreach in an inlined helper with an empty body');
+        }
+
+        $last = array_pop($body);
+        $conditions = [];
+        foreach ($body as $statement) {
+            // A binding the final condition reads. Bound rather than emitted: this is one expression.
+            if ($statement instanceof Expression && $statement->expr instanceof Assign) {
+                $this->bindLocal($statement->expr, $statement->getStartLine());
+
+                continue;
+            }
+
+            if ($statement instanceof If_
+                && $statement->elseifs === []
+                && ! $statement->else instanceof Else_
+                && count($statement->stmts) === 1
+                && $statement->stmts[0] instanceof Continue_
+            ) {
+                // `continue` says this item does not match, so the loop matches when the guard does *not* hold.
+                $conditions[] = '!(' . $this->stripOuterParentheses($this->translateCondition($statement->cond)) . ')';
+
+                continue;
+            }
+
+            throw new Refusal(
+                'a foreach in an inlined helper whose body is not a guard chain: ' . $this->describe($statement),
+                $statement->getStartLine(),
+            );
+        }
+
+        $conditions[] = $this->anyBody($last, $depth);
+
+        return count($conditions) === 1 ? $conditions[0] : '(' . implode(' && ', $conditions) . ')';
+    }
+
     private function anyBody(Stmt $body, int $depth): string
     {
         if ($body instanceof Foreach_) {
@@ -2113,9 +2305,61 @@ PHP;
         return $this->stripOuterParentheses($this->translateCondition($body->cond));
     }
 
+    /**
+     * The expression a memoised helper memoises, or null when the body is not that shape.
+     *
+     * `static $cache = []; if (! array_key_exists($k, $cache)) { $cache[$k] = <expr>; } return $cache[$k];` is
+     * a cache around a pure question, and a cache is invisible to the answer — the generated plugin computes
+     * `<expr>` and is done. Recognised as a whole rather than statement by statement, because `static $cache`
+     * on its own says nothing about whether dropping it is sound.
+     */
+    private function memoisedExpression(ClassMethod $method): ?Expr
+    {
+        $statements = $method->stmts ?? [];
+        if (count($statements) !== 3
+            || ! $statements[0] instanceof Static_
+            || ! $statements[1] instanceof If_
+            || ! $statements[2] instanceof Return_
+        ) {
+            return null;
+        }
+
+        [$declaration, $fill, $return] = $statements;
+        if (count($declaration->vars) !== 1 || ! $declaration->vars[0]->var instanceof Variable) {
+            return null;
+        }
+
+        $cache = $declaration->vars[0]->var->name;
+        if (! is_string($cache)
+            || ! $return->expr instanceof ArrayDimFetch
+            || ! $return->expr->var instanceof Variable
+            || $return->expr->var->name !== $cache
+            || count($fill->stmts) !== 1
+        ) {
+            return null;
+        }
+
+        $only = $fill->stmts[0];
+        if (! $only instanceof Expression
+            || ! $only->expr instanceof Assign
+            || ! $only->expr->var instanceof ArrayDimFetch
+            || ! $only->expr->var->var instanceof Variable
+            || $only->expr->var->var->name !== $cache
+        ) {
+            return null;
+        }
+
+        return $only->expr->expr;
+    }
+
     /** The accepted helper shapes, as one Rust expression. */
     private function translateMethodAsPredicate(ClassMethod $method, int $line): string
     {
+        $memoised = $this->memoisedExpression($method);
+        if ($memoised instanceof Expr) {
+            return '(' . $this->translateCondition($memoised) . ')';
+        }
+
         /** @var list<array{string, string}> condition and the value returned when it holds */
         $guards = [];
         $final = null;
@@ -2298,6 +2542,53 @@ PHP;
     }
 
     /**
+     * One branch of a choice, as a PHP string expression.
+     *
+     * An interpolation is the interesting case: `"request('{$firstArg->value}')"` is a label built around
+     * something read off the node, and it becomes a concatenation of the literal parts with the value between
+     * them. Only the PHP target, which is where a produced value is a PHP string in the first place.
+     */
+    /**
+     * Whether a branch returns a written string rather than a computed value.
+     *
+     * The recogniser has to be narrow: a helper returning `$firstItemType` also looks like a two-branch choice,
+     * and rendering a *type* as a string is not a translation, it is a wrong answer.
+     *
+     * @phpstan-assert-if-true Expr $expr
+     */
+    private function isChoiceValue(?Node $expr): bool
+    {
+        return $expr instanceof String_
+            || $expr instanceof InterpolatedString
+            || $expr instanceof ClassConstFetch
+            || ($expr instanceof FuncCall && $expr->name instanceof Name && $expr->name->toString() === 'sprintf');
+    }
+
+    private function choiceValue(Expr $expr): string
+    {
+        if ($expr instanceof String_) {
+            return $this->backend->bytes($expr->value);
+        }
+
+        if ($expr instanceof InterpolatedString) {
+            if (self::$target !== 'php') {
+                throw new Refusal('an interpolated value, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            $parts = [];
+            foreach ($expr->parts as $part) {
+                $parts[] = $part instanceof InterpolatedStringPart
+                    ? $this->backend->bytes($part->value)
+                    : $this->stringValue($part, $expr->getStartLine());
+            }
+
+            return '(' . implode(' . ', $parts) . ')';
+        }
+
+        return $this->translateMessageExpression($expr);
+    }
+
+    /**
      * `Helper::method(..)` in value position, inlined from the helper's own source.
      *
      * Null when the class is not one this package can find or the method is not on it, so the caller keeps
@@ -2342,24 +2633,34 @@ PHP;
             return null;
         }
 
-        /** @var list<array{Expr, string}> $guards */
+        /** @var list<array{Expr, Expr}> $guards */
         $guards = [];
         $final = null;
+        $bindings = [];
         foreach ($statements as $statement) {
+            // A local the branches read: `$firstArg = $node->getArgs()[0]->value;` before choosing on it.
+            // Collected rather than bound here, because binding is a side effect and the shape is not settled
+            // until every statement has been seen.
+            if ($statement instanceof Expression && $statement->expr instanceof Assign) {
+                $bindings[] = $statement->expr;
+
+                continue;
+            }
+
             if ($statement instanceof If_
                 && $statement->elseifs === []
                 && ! $statement->else instanceof Else_
                 && count($statement->stmts) === 1
                 && $statement->stmts[0] instanceof Return_
-                && $statement->stmts[0]->expr instanceof String_
+                && $this->isChoiceValue($statement->stmts[0]->expr)
             ) {
-                $guards[] = [$statement->cond, $statement->stmts[0]->expr->value];
+                $guards[] = [$statement->cond, $statement->stmts[0]->expr];
 
                 continue;
             }
 
-            if ($statement instanceof Return_ && $statement->expr instanceof String_) {
-                $final = $statement->expr->value;
+            if ($statement instanceof Return_ && $this->isChoiceValue($statement->expr)) {
+                $final = $statement->expr;
 
                 continue;
             }
@@ -2367,7 +2668,7 @@ PHP;
             return null;
         }
 
-        if ($final === null || $guards === []) {
+        if (! $final instanceof Expr || $guards === []) {
             return null;
         }
 
@@ -2377,11 +2678,18 @@ PHP;
         $this->locals = $this->bindParameters($helper, $args, $name, $line) + $this->locals;
 
         try {
-            $expression = $this->backend->bytes($final);
-            foreach (array_reverse($guards) as [$condition, $word]) {
+            foreach ($bindings as $binding) {
+                $this->bindLocal($binding, $line);
+            }
+
+            // Each branch is rendered the way a message is: a written word, a class constant, or a string built
+            // from something read off the node. `requestHelperCallLabel()` returns `request('key')` or
+            // `request(...)`, and the first of those is an interpolation.
+            $expression = $this->choiceValue($final);
+            foreach (array_reverse($guards) as [$condition, $value]) {
                 $expression = $this->backend->conditional(
                     $this->translateCondition($condition),
-                    $this->backend->bytes($word),
+                    $this->choiceValue($value),
                     $expression,
                 );
             }
@@ -2441,6 +2749,23 @@ PHP;
             return;
         }
 
+        // `if ($e instanceof RuleError) { $errors[] = $e; }` where `$e` holds an error an inlined helper
+        // already reported. The original is collecting what it will hand back; the plugin has nothing to
+        // collect, so this is bookkeeping and translates to nothing.
+        if ($this->isReportedErrorBookkeeping($stmt)) {
+            return;
+        }
+
+        // `return $errors;` — an early return of the findings accumulated so far, which is what a rule that
+        // checks several things in one pass writes when it decides to stop looking. Every one of those findings
+        // was already reported where it was found, so this is the same exit as `return []`: the difference is
+        // in what the *original* still has to hand back, and the emitted plugin hands back nothing.
+        if ($this->isReturnAccumulator($stmt->stmts)) {
+            $this->translateGuard($stmt->cond, $this->backend->bail());
+
+            return;
+        }
+
         // `return []` leaves the whole rule; `continue` only ends this iteration. Which one it
         // is comes from the guard's own body, not from whether we happen to be in a loop.
         if ($this->isReturnEmptyArray($stmt->stmts)) {
@@ -2464,6 +2789,60 @@ PHP;
         }
 
         $this->translateGuard($stmt->cond, $exit);
+    }
+
+    /**
+     * Whether an `if` only files an already-reported error into an accumulator.
+     *
+     * Both halves are checked: the condition has to be an `instanceof` on a local this transpiler knows was
+     * reported, and the body has to append *that* local and nothing else. A looser match would silently drop
+     * a guard that does something.
+     */
+    private function isReportedErrorBookkeeping(If_ $stmt): bool
+    {
+        $condition = $stmt->cond;
+        if (! $condition instanceof Instanceof_
+            || ! $condition->expr instanceof Variable
+            || ! is_string($condition->expr->name)
+            || ! isset($this->reportedErrors[$condition->expr->name])
+            || count($stmt->stmts) !== 1
+            || $stmt->elseifs !== []
+            || $stmt->else instanceof Else_
+        ) {
+            return false;
+        }
+
+        $only = $stmt->stmts[0];
+
+        return $only instanceof Expression
+            && $only->expr instanceof Assign
+            && $only->expr->var instanceof ArrayDimFetch
+            && ! $only->expr->var->dim instanceof Expr
+            && $only->expr->expr instanceof Variable
+            && $only->expr->expr->name === $condition->expr->name;
+    }
+
+    /**
+     * Whether a block is `return <a report accumulator>;`.
+     *
+     * Only a *report* accumulator: a list a rule built holds nodes, and returning one of those is a value the
+     * caller reads rather than an exit.
+     *
+     * @param array<Stmt> $statements
+     */
+    private function isReturnAccumulator(array $statements): bool
+    {
+        if (count($statements) !== 1) {
+            return false;
+        }
+
+        $only = $statements[0];
+
+        return $only instanceof Return_
+            && $only->expr instanceof Variable
+            && is_string($only->expr->name)
+            && ($this->locals[$only->expr->name]['kind'] ?? null) === 'accumulator'
+            && ! isset($this->listAccumulators[$only->expr->name]);
     }
 
     /**
@@ -2566,10 +2945,10 @@ PHP;
      * branch, and no trailing one. The first is the dominant shape in the corpus and its emitted output is
      * unchanged by this method existing.
      */
-    private function emitHelperReports(): void
+    private function emitHelperReports(): bool
     {
         if ($this->reportConditions === []) {
-            return;
+            return false;
         }
 
         $reports = [];
@@ -2584,7 +2963,7 @@ PHP;
                 'exit' => $this->backend->bail(),
             ], $this->indent);
 
-            return;
+            return true;
         }
 
         if (self::$target !== 'php') {
@@ -2604,6 +2983,31 @@ PHP;
         }
 
         $this->reportedInline = true;
+
+        return true;
+    }
+
+    /**
+     * Refuses a rule that asks a *second* independent check in one pass.
+     *
+     * Each check's guards become the rule's guards, so the first one's "not my case" exits the rule and every
+     * later check is unreachable — the merged rule would report only its first sub-rule and look complete doing
+     * it. `hihaho/phpstan-rules` merges three rules per node kind exactly like that, for performance.
+     *
+     * Counted where a check *reports*, not where a helper is inlined: a helper that forwards to another, or
+     * hands back a value, is one check however many methods it spans. The fix for the merged shape is per-check
+     * blocks — each check's guards exiting its own block rather than the rule — which is the next piece of work
+     * on that family and not something to approximate here.
+     */
+    private function refuseASecondCheck(int $line): void
+    {
+        if ($this->inlineDepth === 0 && $this->checksReported >= 1) {
+            throw new Refusal(
+                'a rule that asks several independent checks in one pass: flattening them would let the first '
+                . "one's guards exit the rule, leaving the rest unreachable",
+                $line,
+            );
+        }
     }
 
     private function translateErrorHelperReturn(Return_ $stmt): void
@@ -2672,6 +3076,22 @@ PHP;
      */
     private function inlineErrorHelper(string $method, array $args, int $line, ?Expr $target = null): void
     {
+        // A rule that asks *several* independent helpers in one pass cannot be flattened this way. Each
+        // helper's guards become the rule's guards, so the first helper's "not my case" exits the rule and
+        // every later check is unreachable — the merged rule would report only its first sub-rule and look
+        // complete doing it. `hihaho/phpstan-rules` merges three rules per node kind exactly like that, for
+        // performance, so this refusal names the shape rather than whichever construct came next.
+        //
+        // The fix is per-check blocks: each helper's guards exiting its own block instead of the rule. That is
+        // the next piece of work on this family, not something to approximate here.
+        // Remembered so the bookkeeping the original does with the returned error can be dropped: by the time
+        // this returns, whatever the helper decided has already been reported.
+        if ($target instanceof Variable && is_string($target->name)) {
+            $this->reportedErrors[$target->name] = true;
+        }
+
+        $this->refuseASecondCheck($line);
+
         $declaring = $this->currentClass instanceof ClassLike
             ? $this->declaringOf($method)
             : null;
@@ -2772,7 +3192,14 @@ PHP;
                 $this->translateStatement($statement);
             }
 
-            $this->emitHelperReports();
+            if ($this->emitHelperReports() && $this->inlineDepth === 1) {
+                // Depth 1 is the outermost inline: the check whose guards land in the rule body.
+                ++$this->checksReported;
+            }
+
+            // Whatever this helper took has now been emitted, or handed to the rule's trailing report. A rule
+            // that asks several helpers in one pass is free to take a different message from the next one.
+            $this->reportTaken = true;
         } finally {
             --$this->inlineDepth;
             $this->reportConditions = $savedConditions;
@@ -3995,6 +4422,15 @@ PHP;
             return;
         }
 
+        // A rule looping the classes a type names iterates the list, not the single-class reduction.
+        if ($subject['kind'] === 'sole-class' && self::$target === 'php') {
+            $subject = [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'class-names',
+                'php' => $this->handlePart($subject, 'listPhp', $stmt->getStartLine()),
+            ];
+        }
+
         if (! isset(Vocabulary::ITERABLES[$subject['kind']])) {
             throw new Refusal("no iteration mapped for a {$subject['kind']}", $stmt->getStartLine());
         }
@@ -4326,6 +4762,10 @@ PHP;
     {
         while ($chain instanceof MethodCall) {
             if ((string) $chain->name === 'identifier' && count($chain->getArgs()) === 1) {
+                // Reset first: a rule that reports several things may compute one code and write the next as a
+                // literal, and a flag that only ever turns on left the literal unquoted — a plugin naming an
+                // undefined constant. `interpolatedIdentifier()` turns it back on when it applies.
+                $this->identifierIsExpression = false;
                 $identifier = $this->interpolatedIdentifier($chain->getArgs()[0]->value, $chain->getStartLine())
                     ?? $this->rawStringLiteral($chain->getArgs()[0]->value, $chain->getStartLine());
                 // A second identifier is only a problem if the first was never reported under: a rule that
@@ -5162,6 +5602,24 @@ PHP;
             );
         }
 
+        // `(new ObjectType(A))->isSuperTypeOf(new ObjectType($b))->yes()` — "is `$b` an A", asked between two
+        // types the rule constructed rather than inferred. Mago answers it from the codebase's ancestry, which
+        // is the same question without the intermediate objects.
+        if ($name === 'isSuperTypeOf' && count($args) === 1) {
+            $parent = $this->objectTypeName($inner->var, $line);
+            $child = $this->objectTypeName($args[0]->value, $line);
+            if ($parent !== null && $child !== null) {
+                if (self::$target !== 'php') {
+                    throw new Refusal('a class-ancestry test between constructed types, which only the PHP target carries', $line);
+                }
+
+                return $this->negateUnless(
+                    $tail === 'yes',
+                    $this->backend->call('class_descends_from', ['$context', $child, $parent]),
+                );
+            }
+        }
+
         if ($name === 'isInstanceOf' && count($args) === 1) {
             $literal = $this->classLiteral($args[0]->value, $line);
 
@@ -5210,6 +5668,35 @@ PHP;
         // this check refused anything but the receiver, on the belief that nothing else was exposed; a probe
         // says otherwise, and the requirement each one needs is recorded where the descriptor is built.
         return $this->backend->call($helper, ['$context', $this->operand($subject), $this->operand($about)]);
+    }
+
+    /**
+     * The class `new ObjectType(<name>)` names, as a PHP expression, or null when the expression is not one.
+     *
+     * A rule building a type to compare against writes `new ObjectType(Request::class)`; the name is all that
+     * survives the translation, because the comparison becomes an ancestry question on the codebase.
+     */
+    private function objectTypeName(Expr $expr, int $line): ?string
+    {
+        if (! $expr instanceof New_
+            || ! $expr->class instanceof Name
+            || $expr->class->getLast() !== 'ObjectType'
+            || count($expr->getArgs()) !== 1
+        ) {
+            return null;
+        }
+
+        $argument = $expr->getArgs()[0]->value;
+
+        try {
+            return $this->backend->bytes($this->classLiteral($argument, $line));
+        } catch (Refusal) {
+            $resolved = $this->resolve($argument, $line);
+
+            return in_array($resolved['kind'], ['class-name', 'bytes', 'resolved-name'], true)
+                ? $this->operand($resolved)
+                : null;
+        }
     }
 
     /** Keeps a predicate as it is, or negates it, without the caller repeating the ternary. */
@@ -5344,6 +5831,7 @@ PHP;
 
         if ($method === 'getName' && $args === []) {
             $subject = $this->resolve($expr->var, $expr->getStartLine());
+
             if ($subject['kind'] !== 'class-reflection') {
                 throw new Refusal('getName() on something other than a class reflection', $expr->getStartLine());
             }
@@ -5370,6 +5858,13 @@ PHP;
         // the declaring-method lookup, which is what PHPStan's question means: an inherited method counts.
         if (in_array($method, ['hasConstructor', 'hasMethod'], true) && count($args) <= 1) {
             $subject = $this->resolve($expr->var, $expr->getStartLine());
+
+            // A class name a loop bound — one of the classes a type names — answers the same question a
+            // reflection handle does: both are just the name.
+            if ($subject['kind'] === 'class-name') {
+                $subject = ['rust' => $subject['rust'], 'kind' => 'named-class'] + $subject;
+                $subject['kind'] = 'named-class';
+            }
 
             // Asked of a *type* rather than of a named class: the class is whichever one the type names, which
             // is the same reduction `instanceof TypeWithClassName` makes above.
@@ -5687,6 +6182,21 @@ PHP;
             . " {$equals} " . $this->intLiteral($right, $line);
     }
 
+    /**
+     * `$classReflections === []` — "the type names no class at all".
+     *
+     * The *list* being empty, not the single-class reduction being null: a union receiver names two classes and
+     * satisfies neither reading of the other one.
+     *
+     * @param Descriptor $subject
+     */
+    private function noClassNamed(array $subject, int $line): ?string
+    {
+        return $subject['kind'] === 'sole-class' && self::$target === 'php'
+            ? $this->handlePart($subject, 'listPhp', $line) . ' === []'
+            : null;
+    }
+
     /** `count($node->getArgs()) === N` and `$args === []`. */
     private function equality(Expr $left, Expr $right, int $line): string
     {
@@ -5716,6 +6226,11 @@ PHP;
                     . (self::$target === 'php' ? ' === 0' : ' == 0');
             }
 
+            $emptyClasses = $this->noClassNamed($subject, $line);
+            if ($emptyClasses !== null) {
+                return $emptyClasses;
+            }
+
             if (isset(Vocabulary::ITERABLES[$subject['kind']])) {
                 if (self::$target === 'php') {
                     return $this->operand($subject) . ' === []';
@@ -5742,11 +6257,6 @@ PHP;
             return $againstNull;
         }
 
-        $betweenStrings = $this->stringComparison($left, $right, $line);
-        if ($betweenStrings !== null) {
-            return $betweenStrings;
-        }
-
         // strtoupper($x) === $x  — the idiomatic "is this already uppercase" test
         if ($left instanceof FuncCall
             && $left->name instanceof Name
@@ -5760,6 +6270,11 @@ PHP;
             }
 
             return $this->backend->call('is_uppercase', [$this->operand($inner)]);
+        }
+
+        $betweenStrings = $this->stringComparison($left, $right, $line);
+        if ($betweenStrings !== null) {
+            return $betweenStrings;
         }
 
         // <name>->toString() === 'literal'   /   <string local> === 'literal'
@@ -5790,6 +6305,13 @@ PHP;
         $subject = $this->resolve($left, $line);
         if (in_array($subject['kind'], ['name-selector', 'name-expr', 'extends', 'hint', 'hint-option'], true)) {
             return $this->nameEquals($subject, $this->stringLiteral($right, $line), $line);
+        }
+
+        // A value the rule computed, against a literal: `strtolower($name->getLast()) !== 'request'` is two
+        // strings, and the case fold is the rule's own. Compared as strings rather than through the name
+        // helpers, which fold case again and would make the fold invisible.
+        if (in_array($subject['kind'], ['bytes', 'class-name'], true) && self::$target === 'php') {
+            return $this->operand($subject) . ' === ' . $this->backend->bytes($this->stringLiteral($right, $line));
         }
 
         throw new Refusal(
@@ -6007,6 +6529,26 @@ PHP;
             ];
         }
 
+        // `$this->helper(..)` in value position — a label a rule builds for its message, most often. Reached
+        // through the same producer machinery as an assignment, since it is the same helper either way.
+        if ($this->isOwnMethodCall($expr)) {
+            $method = $expr->name->toString();
+            $declaring = $this->declaringOf($method);
+            if ($declaring !== null) {
+                $produced = $this->inlineValueProducer(
+                    $this->findMethod($declaring['class'], $method),
+                    $declaring,
+                    $method,
+                    array_values($expr->getArgs()),
+                    $line,
+                );
+
+                if ($produced !== null) {
+                    return $produced;
+                }
+            }
+        }
+
         // `Helper::method(..)` where the helper's source is in the package — inlined as a producer, the same
         // way a static helper in a *condition* already is. A rule package puts small resolvers on their own
         // classes, and hand-translating each one is how a vocabulary gap becomes a per-package special case.
@@ -6059,8 +6601,10 @@ PHP;
         // `getObjectClassReflections()` on a type. Mago has no reflection object, and a rule only ever asks
         // this to find out whether the receiver is one concrete class and which — so the list stands for that
         // one name, and `count(..) === 1` becomes "there is a name".
+        // `getObjectClassNames()` asks for the same list as `getObjectClassReflections()` — the names rather
+        // than reflections of them, and the names are all this translation ever kept.
         if ($expr instanceof MethodCall
-            && $this->memberName($expr->name, $expr->getStartLine()) === 'getObjectClassReflections'
+            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getObjectClassReflections', 'getObjectClassNames'], true)
         ) {
             $of = $this->resolve($expr->var, $line);
             if (! in_array($of['kind'], ['type', 'type-without-null'], true)) {
@@ -6069,10 +6613,15 @@ PHP;
 
             $helper = $of['kind'] === 'type-without-null' ? 'soleObjectClassIgnoringNull' : 'soleObjectClass';
 
+            // Two renderings of one question, because rules ask it two ways. Most ask `count(..) === 1` and
+            // then use the name, which is what `sole-class` is for. One iterates the list instead, and giving
+            // that the single-class reduction would go silent on a union receiver — narrower than the rule, in
+            // the direction this project refuses. So the list travels with it.
             return [
                 'rust' => self::PHP_ONLY,
                 'kind' => 'sole-class',
                 'php' => 'Support::' . $helper . '(' . $this->operand($of) . ')',
+                'listPhp' => 'Support::objectClasses(' . $this->operand($of) . ')',
             ];
         }
 
@@ -6206,199 +6755,57 @@ PHP;
             }
         }
 
-        // `getName()` on a class handle is the name the handle already is.
+        // `$reflectionProvider->getFunction($name, $scope)->getName()` — the name the codebase knows the
+        // function under, which is what a rule compares against when a namespaced call may fall back to a
+        // global function.
         if ($expr instanceof MethodCall
             && $this->memberName($expr->name, $expr->getStartLine()) === 'getName'
             && $expr->args === []
-        ) {
-            $subject = $this->resolve($expr->var, $line);
-            if ($subject['kind'] === 'named-class') {
-                return ['rust' => self::PHP_ONLY, 'kind' => 'class-name', 'php' => $this->operand($subject)];
-            }
-
-            if ($subject['kind'] === 'parameter') {
-                return [
-                    'rust' => self::PHP_ONLY,
-                    'kind' => 'bytes',
-                    'php' => $this->parameterQuestion('parameter_name', $subject, $line),
-                ];
-            }
-        }
-
-        $looked = $this->resolveMethodLookup($expr, $line);
-        if ($looked !== null) {
-            return $looked;
-        }
-
-        // `getConstructor()` and `getMethod($name, $scope)` on a class handle. Mago has no reflection object,
-        // and every question a rule asks of one — a parameter's name, whether it is variadic, which class
-        // declares it — takes the class and the method name, so the handle is that pair.
-        if ($expr instanceof MethodCall
-            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getConstructor', 'getMethod'], true)
-        ) {
-            $subject = $this->resolve($expr->var, $line);
-            if ($subject['kind'] === 'named-class') {
-                $asked = $this->memberName($expr->name, $expr->getStartLine());
-                $named = $asked === 'getConstructor'
-                    ? $this->backend->bytes('__construct')
-                    : $this->operand($this->methodNameArgument($expr->getArgs(), $asked, $line));
-
-                return [
-                    'rust' => self::PHP_ONLY,
-                    'kind' => 'method-handle',
-                    'php' => self::PHP_ONLY,
-                    'classPhp' => $this->operand($subject),
-                    'methodPhp' => $named,
-                ];
-            }
-        }
-
-        // $reflectionProvider->getClass($className) — a handle on a class named at analysis time. Mago has no
-        // reflection object to stand in for one, and needs none: every question a rule asks of it takes the
-        // class name, so the handle *is* the name.
-        if ($expr instanceof MethodCall
-            && $this->memberName($expr->name, $expr->getStartLine()) === 'getClass'
-            && count($expr->getArgs()) === 1
-            && $this->serviceArgument($expr->var, $line) === 'reflectionProvider'
+            && $expr->var instanceof MethodCall
+            && $this->memberName($expr->var->name, $expr->var->getStartLine()) === 'getFunction'
+            && count($expr->var->getArgs()) >= 1
         ) {
             if (self::$target !== 'php') {
-                throw new Refusal('getClass(), which only the PHP target carries', $line);
+                throw new Refusal('a resolved function name, which only the PHP target carries', $line);
             }
 
-            $named = $this->resolve($expr->getArgs()[0]->value, $line);
-            if (! in_array($named['kind'], ['resolved-name', 'class-name', 'bytes'], true)) {
-                throw new Refusal("getClass() of a {$named['kind']} rather than of a class name", $line);
-            }
-
-            return ['rust' => self::PHP_ONLY, 'kind' => 'named-class', 'php' => $this->operand($named)];
-        }
-
-        // $scope->resolveName($node->class) — the written name with the file's imports and namespace applied
-        if ($expr instanceof MethodCall
-            && $this->memberName($expr->name, $expr->getStartLine()) === 'resolveName'
-            && $expr->var instanceof Variable
-            && $expr->var->name === 'scope'
-            && count($expr->getArgs()) === 1
-        ) {
-            if (self::$target !== 'php') {
-                throw new Refusal('resolveName(), which only the PHP target carries', $line);
-            }
-
-            $written = $this->resolve($expr->getArgs()[0]->value, $line);
-            if ($written['kind'] !== 'name-expr') {
-                throw new Refusal('resolveName() over something other than a written name', $line);
-            }
+            $named = $this->resolve($expr->var->getArgs()[0]->value, $line);
 
             return [
-                'rust' => $this->unreachable('resolveName() is refused before this on the Rust targets'),
-                'kind' => 'resolved-name',
-                'php' => 'Support::resolvedName($context, ' . $this->operand($written) . ')',
+                'rust' => self::PHP_ONLY,
+                'kind' => 'bytes',
+                'php' => $this->backend->call('function_name', ['$context', $this->operand($named)]),
             ];
-        }
-
-        return null;
-    }
-
-    /**
-     * The descriptor for a PHP expression: how to say it in the target, and what kind of thing it is.
-     *
-     * `rust` and `php` are the same expression rendered for each target. A descriptor with no `php` key
-     * has no navigation recipe yet, and {@see operand} refuses rather than guessing.
-     *
-     * @return Descriptor
-     */
-    private function resolve(Expr $expr, int $line): array
-    {
-        if ($expr instanceof Variable && is_string($expr->name)) {
-            // Locals first, then the hook's node. A helper is free to call its parameter `$node` —
-            // `hasRouteAnnotationOrAttribute(ClassLike|ClassMethod $node)` does — and answering the hook's node
-            // for it read the wrong subtree while looking perfectly reasonable in the emitted file.
-            if (isset($this->listAccumulators[$expr->name])) {
-                return ['rust' => self::PHP_ONLY, 'kind' => 'list', 'php' => '$' . $expr->name];
-            }
-
-            if (isset($this->locals[$expr->name])) {
-                return $this->locals[$expr->name];
-            }
-
-            if ($expr->name === 'node') {
-                return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
-            }
-
-            throw new Refusal("unknown local \${$expr->name}", $line);
-        }
-
-        $namespace = $this->resolveScopeNamespace($expr, $line);
-        if ($namespace !== null) {
-            return $namespace;
-        }
-
-        if ($expr instanceof MethodCall
-            // `getNodes()` on the file node is the same handle: it hands back the file's statements, and a
-            // search from the `Program` node covers exactly those, since the root itself is never a match for
-            // anything a rule looks for in them.
-            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getOriginalNode', 'getNodes'], true)
-            && $expr->var instanceof Variable
-            && $expr->var->name === 'node'
-        ) {
-            return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
-        }
-
-        if ($expr instanceof MethodCall
-            // `getFileDescription()` is the same path for our purposes: PHPStan uses it for messages, and a
-            // rule that tests it against a suffix is asking about the file either way.
-            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getFile', 'getFileDescription'], true)
-            && $expr->var instanceof Variable
-            && $expr->var->name === 'scope'
-        ) {
-            return ['rust' => 'context', 'kind' => 'file', 'php' => '$context'];
-        }
-
-        // Reflection, inferred types and the handles they produce — a block of its own so `resolve()` stays a
-        // dispatch rather than growing a second one inside it.
-        $reflected = $this->resolveReflection($expr, $line);
-        if ($reflected !== null) {
-            return $reflected;
-        }
-
-        if ($expr instanceof MethodCall
-            && $this->memberName($expr->name, $expr->getStartLine()) === 'getClassReflection'
-            && $expr->var instanceof Variable
-            && in_array($expr->var->name, ['scope', 'node'], true)
-        ) {
-            return ['rust' => 'context', 'kind' => 'class-reflection'];
-        }
-
-        // $node->get(SomeCollector::class)
-        if ($expr instanceof MethodCall
-            && $this->memberName($expr->name, $expr->getStartLine()) === 'get'
-            && $expr->var instanceof Variable
-            && $expr->var->name === 'node'
-            && count($expr->getArgs()) === 1
-        ) {
-            $collector = $this->rawStringLiteral($expr->getArgs()[0]->value, $line);
-            $short = substr($collector, (int) strrpos('\\' . $collector, '\\'));
-
-            return ['rust' => "support::collected(\"{$short}\")", 'kind' => 'collected', 'collector' => $short];
         }
 
         if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getName' && $expr->args === []) {
             $base = $this->resolve($expr->var, $line);
-            if ($base['kind'] !== 'class-reflection') {
-                throw new Refusal('getName() on something other than a class reflection', $line);
+
+            // A class this transpiler already reduced to its name answers `getName()` with itself:
+            // `getDeclaringClass()->getName()` and a class a loop bound both arrive here.
+            if (in_array($base['kind'], ['named-class', 'class-name'], true)) {
+                return ['rust' => $base['rust'], 'kind' => 'class-name'] + $base;
             }
 
-            if ($this->classFrom !== 'metadata') {
-                throw new Refusal('getName() outside a declaration hook', $line);
+            // Falls through rather than refusing when the base is something else — a parameter, for one, whose
+            // `getName()` a later branch answers. Refusing here made this the only answer to `getName()` there
+            // is, which cost three emitting rules the moment a bound class started arriving.
+            if ($base['kind'] === 'class-reflection') {
+                // Rust reads the name off the declaration hook's metadata, which only that hook is handed. The
+                // PHP helper walks up to the enclosing class-like from whatever node fired, so any hook can
+                // ask — and a rule asking "which class am I in" from a call hook is ordinary.
+                if ($this->classFrom !== 'metadata' && self::$target !== 'php') {
+                    throw new Refusal('getName() outside a declaration hook', $line);
+                }
+
+                $this->usesMetadata = $this->classFrom === 'metadata';
+
+                return [
+                    'rust' => 'support::metadata_name(metadata)',
+                    'kind' => 'class-name',
+                    'php' => 'Support::enclosingClassName($context, $node)',
+                ];
             }
-
-            $this->usesMetadata = true;
-
-            return [
-                'rust' => 'support::metadata_name(metadata)',
-                'kind' => 'class-name',
-                'php' => 'Support::enclosingClassName($context, $node)',
-            ];
         }
 
         $parents = $this->resolveParentClassNames($expr, $line);
@@ -6850,6 +7257,236 @@ PHP;
             }
 
             throw new Refusal("no mapping for ->{$property} on a {$base['kind']}", $line);
+        }
+
+        // `getName()` on a class handle is the name the handle already is.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getName'
+            && $expr->args === []
+        ) {
+            $subject = $this->resolve($expr->var, $line);
+            if ($subject['kind'] === 'named-class') {
+                return ['rust' => self::PHP_ONLY, 'kind' => 'class-name', 'php' => $this->operand($subject)];
+            }
+
+            if ($subject['kind'] === 'parameter') {
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'bytes',
+                    'php' => $this->parameterQuestion('parameter_name', $subject, $line),
+                ];
+            }
+        }
+
+        $looked = $this->resolveMethodLookup($expr, $line);
+        if ($looked !== null) {
+            return $looked;
+        }
+
+        // `getConstructor()` and `getMethod($name, $scope)` on a class handle. Mago has no reflection object,
+        // and every question a rule asks of one — a parameter's name, whether it is variadic, which class
+        // declares it — takes the class and the method name, so the handle is that pair.
+        if ($expr instanceof MethodCall
+            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getConstructor', 'getMethod'], true)
+        ) {
+            $subject = $this->resolve($expr->var, $line);
+            // A class name a loop bound stands for the class, exactly as a reflection handle does.
+            if ($subject['kind'] === 'class-name') {
+                $subject['kind'] = 'named-class';
+            }
+
+            if ($subject['kind'] === 'named-class') {
+                $asked = $this->memberName($expr->name, $expr->getStartLine());
+                $named = $asked === 'getConstructor'
+                    ? $this->backend->bytes('__construct')
+                    : $this->operand($this->methodNameArgument($expr->getArgs(), $asked, $line));
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'method-handle',
+                    'php' => self::PHP_ONLY,
+                    'classPhp' => $this->operand($subject),
+                    'methodPhp' => $named,
+                ];
+            }
+        }
+
+        // $reflectionProvider->getClass($className) — a handle on a class named at analysis time. Mago has no
+        // reflection object to stand in for one, and needs none: every question a rule asks of it takes the
+        // class name, so the handle *is* the name.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getClass'
+            && count($expr->getArgs()) === 1
+            && $this->serviceArgument($expr->var, $line) === 'reflectionProvider'
+        ) {
+            if (self::$target !== 'php') {
+                throw new Refusal('getClass(), which only the PHP target carries', $line);
+            }
+
+            $named = $this->resolve($expr->getArgs()[0]->value, $line);
+            if (! in_array($named['kind'], ['resolved-name', 'class-name', 'bytes'], true)) {
+                throw new Refusal("getClass() of a {$named['kind']} rather than of a class name", $line);
+            }
+
+            return ['rust' => self::PHP_ONLY, 'kind' => 'named-class', 'php' => $this->operand($named)];
+        }
+
+        // $scope->resolveName($node->class) — the written name with the file's imports and namespace applied
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'resolveName'
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'scope'
+            && count($expr->getArgs()) === 1
+        ) {
+            if (self::$target !== 'php') {
+                throw new Refusal('resolveName(), which only the PHP target carries', $line);
+            }
+
+            $written = $this->resolve($expr->getArgs()[0]->value, $line);
+            if ($written['kind'] !== 'name-expr') {
+                throw new Refusal('resolveName() over something other than a written name', $line);
+            }
+
+            return [
+                'rust' => $this->unreachable('resolveName() is refused before this on the Rust targets'),
+                'kind' => 'resolved-name',
+                'php' => 'Support::resolvedName($context, ' . $this->operand($written) . ')',
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * The descriptor for a PHP expression: how to say it in the target, and what kind of thing it is.
+     *
+     * `rust` and `php` are the same expression rendered for each target. A descriptor with no `php` key
+     * has no navigation recipe yet, and {@see operand} refuses rather than guessing.
+     *
+     * @return Descriptor
+     */
+    private function resolve(Expr $expr, int $line): array
+    {
+        if ($expr instanceof Variable && is_string($expr->name)) {
+            // Locals first, then the hook's node. A helper is free to call its parameter `$node` —
+            // `hasRouteAnnotationOrAttribute(ClassLike|ClassMethod $node)` does — and answering the hook's node
+            // for it read the wrong subtree while looking perfectly reasonable in the emitted file.
+            if (isset($this->listAccumulators[$expr->name])) {
+                return ['rust' => self::PHP_ONLY, 'kind' => 'list', 'php' => '$' . $expr->name];
+            }
+
+            if (isset($this->locals[$expr->name])) {
+                return $this->locals[$expr->name];
+            }
+
+            if ($expr->name === 'node') {
+                return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
+            }
+
+            throw new Refusal("unknown local \${$expr->name}", $line);
+        }
+
+        $namespace = $this->resolveScopeNamespace($expr, $line);
+        if ($namespace !== null) {
+            return $namespace;
+        }
+
+        if ($expr instanceof MethodCall
+            // `getNodes()` on the file node is the same handle: it hands back the file's statements, and a
+            // search from the `Program` node covers exactly those, since the root itself is never a match for
+            // anything a rule looks for in them.
+            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getOriginalNode', 'getNodes'], true)
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'node'
+        ) {
+            return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
+        }
+
+        if ($expr instanceof MethodCall
+            // `getFileDescription()` is the same path for our purposes: PHPStan uses it for messages, and a
+            // rule that tests it against a suffix is asking about the file either way.
+            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getFile', 'getFileDescription'], true)
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'scope'
+        ) {
+            return ['rust' => 'context', 'kind' => 'file', 'php' => '$context'];
+        }
+
+        // Reflection, inferred types and the handles they produce — a block of its own so `resolve()` stays a
+        // dispatch rather than growing a second one inside it.
+        $reflected = $this->resolveReflection($expr, $line);
+        if ($reflected !== null) {
+            return $reflected;
+        }
+
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getClassReflection'
+            && $expr->var instanceof Variable
+            && in_array($expr->var->name, ['scope', 'node'], true)
+        ) {
+            return ['rust' => 'context', 'kind' => 'class-reflection'];
+        }
+
+        // $node->get(SomeCollector::class)
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'get'
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'node'
+            && count($expr->getArgs()) === 1
+        ) {
+            $collector = $this->rawStringLiteral($expr->getArgs()[0]->value, $line);
+            $short = substr($collector, (int) strrpos('\\' . $collector, '\\'));
+
+            return ['rust' => "support::collected(\"{$short}\")", 'kind' => 'collected', 'collector' => $short];
+        }
+
+        // `$name->getLast()` — the last segment of a written name, which is what a rule comparing a function
+        // name case-insensitively against `request` asks for: `\Acme\request` and `request` both answer
+        // `request`.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getLast'
+            && $expr->args === []
+        ) {
+            $of = $this->resolve($expr->var, $line);
+            if (in_array($of['kind'], ['name-expr', 'name-selector', 'local-name', 'bytes', 'class-name'], true)) {
+                if (self::$target !== 'php') {
+                    throw new Refusal('a name\u{2019}s last segment, which only the PHP target carries', $line);
+                }
+
+                $text = in_array($of['kind'], ['bytes', 'class-name'], true)
+                    ? $this->operand($of)
+                    : $this->backend->call('text_of', [$this->operand($of)]);
+
+                return ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'php' => $this->backend->call('last_name_segment', [$text])];
+            }
+        }
+
+        // `strtolower($x)` / `strtoupper($x)` as a *value*. Already in the pure set for a constructor
+        // derivation; this is the same function reached at analysis time, where a rule folds a name's case
+        // before looking it up in a table.
+        if ($expr instanceof FuncCall
+            && $expr->name instanceof Name
+            && in_array($expr->name->toString(), ['strtolower', 'strtoupper'], true)
+            && count($expr->getArgs()) === 1
+        ) {
+            $of = $this->resolve($expr->getArgs()[0]->value, $line);
+            if (! in_array($of['kind'], ['bytes', 'class-name', 'name-selector', 'local-name', 'name-expr'], true)) {
+                throw new Refusal("{$expr->name->toString()}() of a {$of['kind']}", $line);
+            }
+
+            if (self::$target !== 'php') {
+                throw new Refusal('a case fold as a value, which only the PHP target carries', $line);
+            }
+
+            $text = in_array($of['kind'], ['name-selector', 'local-name', 'name-expr'], true)
+                ? $this->backend->call('text_of', [$this->operand($of)])
+                : $this->operand($of);
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'bytes',
+                'php' => $this->backend->call($expr->name->toString() === 'strtolower' ? 'lower_bytes' : 'upper_bytes', [$text]),
+            ];
         }
 
         // `dirname($scope->getFile())` — the directory the analysed file sits in, which a rule building an

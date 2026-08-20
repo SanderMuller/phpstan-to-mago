@@ -60,7 +60,7 @@ final readonly class FiresGate
         # Named packages rather than all of `vendor`: this is scanned once per rule, and the whole tree took the
         # suite from 115s to 346s, past the point where `composer qa-check` gives up. Add a package here when an
         # example needs to name one of its classes.
-        includes = ["{ROOT}/vendor/nikic", "{ROOT}/vendor/rector/rector/src/Contract"]
+        includes = ["{ROOT}/vendor/nikic", "{ROOT}/vendor/rector/rector/src/Contract", "{ROOT}/vendor/laravel/framework/src/Illuminate/Collections"]
 
         [extension-hosts.gate]
         command = ["php", "worker.php"]
