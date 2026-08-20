@@ -36,16 +36,18 @@ final class TracksUpstreamDriftTest extends TestCase
     private const string CENSUS = __DIR__ . '/../Fixtures/expected/census.md';
 
     /**
-     * The packages CI can install, which is what the census can speak for.
+     * The rule packages this repository installs, which is what the census speaks for.
      *
-     * `hihaho/phpstan-rules` is deliberately absent: it is not a dependency of this package, so a hosted
-     * runner cannot resolve it and a census including it would pass or fail depending on whose machine ran
-     * it. Its three emitted rules are covered by the corpus differential instead.
+     * Each is a dev dependency so that a hosted runner resolves the same corpus a contributor does — a census
+     * that depended on whose machine ran it would be worthless. `hihaho/phpstan-rules` is installed to be
+     * *read* rather than run: `composer.json` tells the extension installer to ignore it, because registering
+     * its rules against this repository's own source is not what a corpus is for.
      *
      * @var list<string>
      */
     private const array PACKAGES = [
         'symplify/phpstan-rules',
+        'hihaho/phpstan-rules',
         'tomasvotruba/type-coverage',
         'tomasvotruba/cognitive-complexity',
     ];

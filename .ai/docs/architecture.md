@@ -28,8 +28,8 @@ reviewed snapshot under `tests/Fixtures`. pint and rector have each rewritten `T
 and the snapshots proved the output was untouched. If a snapshot changes, decide whether the new output is
 right *before* updating it, and say why in the commit.
 
-The same discipline covers the corpus as a whole. `tests/Fixtures/expected/census.md` records, for every
-rule in every package this repository installs, whether it emits or which reason refuses it —
+The same discipline covers the corpus as a whole. `tests/Fixtures/expected/census.md` records, for all 129
+rules in the four packages, whether each emits or which reason refuses it —
 `TracksUpstreamDriftTest` regenerates it and compares. `composer.lock` is not committed, so that file is
 where an upstream release announces itself: a rule added, a rule deleted, or a rule rewritten into or out of
 a shape the vocabulary covers. It deliberately records no package versions and no line numbers, because an
@@ -53,6 +53,10 @@ output differing only by the generator name and the runtime import.
 
 Run it after any change to body translation. Both Rust targets share that code with PHP, which is the whole
 reason they are kept.
+
+All four rule packages are dev dependencies so a runner resolves the same corpus a contributor does.
+`hihaho/phpstan-rules` is installed to be *read*, not run: `composer.json` tells the extension installer to
+ignore it, because registering its rules against this repository's own source is not what a corpus is for.
 
 **Upstream drift is watched separately**, by `.github/workflows/upstream-parity.yml`, nightly, in two legs:
 the corpus as it resolves today, and the packages' `dev-main` branches as an early warning. Neither gates

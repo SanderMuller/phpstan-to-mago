@@ -104,6 +104,29 @@ REFUSE  StringFileAbsolutePathExistsRule: no hook mapping for node type PhpParse
 REFUSE  TaggedIteratorOverRepeatedServiceCallRule: no iteration mapped for a subtree
 EMIT    UppercaseConstantRule
 
+## hihaho/phpstan-rules — 3 emitted, 17 refused
+
+REFUSE  ChainedNoDebugInNamespaceRule: empty-array comparison against a sole-class
+REFUSE  CombinedFuncCallRule: $interestingFuncNames is computed in the constructor and the derivation reaches outside the set the generated constructor can carry
+REFUSE  CombinedMethodCallRule: guard body is neither `return []` nor `continue`
+REFUSE  CombinedStaticCallRule: statement outside the vocabulary: Stmt_Static
+REFUSE  FlagArgumentManifestCollector: every rule that consumes this collector reports nothing and writes a file instead, so the pair cannot become a plugin whatever the collector body does
+EMIT    NoDebugInNamespaceRule
+REFUSE  NoEloquentWithPropertyRule: a foreach in an inlined helper whose body is not a single guard
+REFUSE  NoInvadeInAppCode: more than one distinct identifier in one rule
+REFUSE  NoUnsafeRequestDataRule: $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
+REFUSE  NoUnsafeRequestFacadeRule: $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
+REFUSE  NoUnsafeRequestHelperRule: $namespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Validation\NoUnsafeRequestHelperRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+REFUSE  OnlyAllowFacadeAliasInBlade: statement outside the vocabulary: Stmt_Static
+EMIT    PositionalFlagArgumentConstructorRule
+REFUSE  PositionalFlagArgumentMethodCallRule: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+EMIT    PositionalFlagArgumentNullsafeMethodCallRule
+REFUSE  PositionalFlagArgumentStaticCallRule: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+REFUSE  StaticChainedNoDebugInNamespaceRule: statement in an inlined helper outside the vocabulary: Stmt_If
+REFUSE  TraitRequiresInterfaceRule: $pairs is computed in the constructor and the derivation reaches outside the set the generated constructor can carry
+REFUSE  UnvalidatedFormRequestFieldRule: $fieldAccessorsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
+REFUSE  WriteNamedArgumentManifestRule: this rule reports nothing: it writes a file and returns no findings, so there is nothing for a plugin to report. An analyzer plugin's only output is report(), and agreement has no meaning for a build artefact
+
 ## tomasvotruba/type-coverage — 0 emitted, 10 refused
 
 REFUSE  ConstantTypeCoverageRule: no aggregate mapped for the collector ConstantTypeDeclarationCollector

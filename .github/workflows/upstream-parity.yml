@@ -33,7 +33,7 @@ jobs:
       matrix:
         include:
           - { leg: released, constraints: '' }
-          - { leg: dev-main, constraints: 'symplify/phpstan-rules:dev-main tomasvotruba/type-coverage:dev-main tomasvotruba/cognitive-complexity:dev-main' }
+          - { leg: dev-main, constraints: 'symplify/phpstan-rules:dev-main hihaho/phpstan-rules:dev-main tomasvotruba/type-coverage:dev-main tomasvotruba/cognitive-complexity:dev-main' }
 
     name: P8.4 - corpus ${{ matrix.leg }}
 
