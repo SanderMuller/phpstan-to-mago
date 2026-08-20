@@ -7,141 +7,141 @@ added, removed, or rewritten into a shape the vocabulary does or does not cover.
 
 ## symplify/phpstan-rules — 31 emitted, 65 refused
 
-REFUSE  AlreadyRegisteredAutodiscoveryServiceRule: assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
+REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
 EMIT    AvoidAnyExpectsRule
-REFUSE  AvoidFeatureSetAttributeInRectorRule: unknown local $ruleError
-REFUSE  CheckRequiredInterfaceInContractNamespaceRule: no hook mapping for node type PhpParser\Node\Stmt\Interface_
-REFUSE  ClassNameRespectsParentSuffixRule: could not find the reported message
-REFUSE  ExplicitClassPrefixSuffixRule: no hook mapping for node type PhpParser\Node\Stmt\ClassLike
+REFUSE  AvoidFeatureSetAttributeInRectorRule
+REFUSE  CheckRequiredInterfaceInContractNamespaceRule
+REFUSE  ClassNameRespectsParentSuffixRule
+REFUSE  ExplicitClassPrefixSuffixRule
 EMIT    ExplicitExpectsMockMethodRule
-REFUSE  FileNameMatchesExtensionRule: assignment value outside the vocabulary: access path outside the vocabulary: Expr_ConstFetch
+REFUSE  FileNameMatchesExtensionRule
 EMIT    ForbiddenArrayMethodCallRule
-REFUSE  ForbiddenExtendOfNonAbstractClassRule: assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
-REFUSE  ForbiddenFuncCallRule: assignment value outside the vocabulary: access path outside the vocabulary: ->normalizeConfig()
+REFUSE  ForbiddenExtendOfNonAbstractClassRule
+REFUSE  ForbiddenFuncCallRule
 EMIT    ForbiddenMultipleClassLikeInOneFileRule
-REFUSE  ForbiddenNewArgumentRule: in_array() without strict comparison
-REFUSE  ForbiddenNodeRule: no hook mapping for node type PhpParser\Node
+REFUSE  ForbiddenNewArgumentRule
+REFUSE  ForbiddenNodeRule
 EMIT    ForbiddenStaticClassConstFetchRule
 EMIT    ForeachCeptionRule
-REFUSE  FormTypeClassNameRule: no mapping for ->namespacedName on a hook-node
-REFUSE  NewOverSettersRule: no aggregate mapped for the collector NewWithFollowingSettersCollector
-REFUSE  NewWithFollowingSettersCollector: no hook mapping for node type PhpParser\Node
-REFUSE  NoAbstractControllerConstructorRule: method call outside the vocabulary ->getMethod()
+REFUSE  FormTypeClassNameRule
+REFUSE  NewOverSettersRule
+REFUSE  NewWithFollowingSettersCollector
+REFUSE  NoAbstractControllerConstructorRule
 EMIT    NoArrayMapWithArrayCallableRule
 EMIT    NoAssertFuncCallInTestsRule
-REFUSE  NoBareAndSecurityIsGrantedContentsRule: no hook mapping for node type PhpParser\Node\Attribute
+REFUSE  NoBareAndSecurityIsGrantedContentsRule
 EMIT    NoBundleResourceConfigRule
-REFUSE  NoClassLevelRouteRule: no node predicate for instanceof PhpParser\Node\Stmt\ClassMethod on a hook-node
-REFUSE  NoClassReflectionStaticReflectionRule: early return from a helper that is not a boolean literal
-REFUSE  NoConstructorAndRequiredTogetherRule: isAnonymous() on something other than a class reflection
-REFUSE  NoConstructorOverrideRule: function call outside the vocabulary fast_node_named()
-REFUSE  NoControllerMethodInjectionRule: getParams() of a method-decl rather than of the declaration under analysis
-REFUSE  NoDoctrineListenerWithoutContractRule: guard translates to a constant with no reason it cannot hold
-REFUSE  NoDocumentMockingRule: access path outside the vocabulary: Expr_Array
+REFUSE  NoClassLevelRouteRule
+REFUSE  NoClassReflectionStaticReflectionRule
+REFUSE  NoConstructorAndRequiredTogetherRule
+REFUSE  NoConstructorOverrideRule
+REFUSE  NoControllerMethodInjectionRule
+REFUSE  NoDoctrineListenerWithoutContractRule
+REFUSE  NoDocumentMockingRule
 EMIT    NoDoubleConsecutiveTestMockRule
-REFUSE  NoDuplicateArgAutowireByTypeRule: no node predicate for instanceof PhpParser\Node\Expr\FuncCall on a expr
-REFUSE  NoDuplicateArgsAutowireByTypeRule: assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
-REFUSE  NoDynamicNameRule: no hook mapping for node type PhpParser\Node\Expr
-REFUSE  NoEntityMockingRule: access path outside the vocabulary: ->getConstantStrings()
-REFUSE  NoEntityOutsideEntityNamespaceRule: no mapping for ->attrGroups on a hook-node
+REFUSE  NoDuplicateArgAutowireByTypeRule
+REFUSE  NoDuplicateArgsAutowireByTypeRule
+REFUSE  NoDynamicNameRule
+REFUSE  NoEntityMockingRule
+REFUSE  NoEntityOutsideEntityNamespaceRule
 EMIT    NoFindTaggedServiceIdsCallRule
 EMIT    NoGetDoctrineInControllerRule
 EMIT    NoGetInCommandRule
 EMIT    NoGetInControllerRule
-REFUSE  NoGetRepositoryOnServiceRepositoryEntityRule: access path outside the vocabulary: ->resolveFromEntityClass()
-REFUSE  NoGetRepositoryOutsideServiceRule: statement in an inlined helper outside the vocabulary: Stmt_If
+REFUSE  NoGetRepositoryOnServiceRepositoryEntityRule
+REFUSE  NoGetRepositoryOutsideServiceRule
 EMIT    NoGlobalConstRule
-REFUSE  NoInstanceOfStaticReflectionRule: no hook mapping for node type PhpParser\Node\Expr
-REFUSE  NoIntegerRefactorReturnRule: no mapping for ->returnType on a hook-node
-REFUSE  NoJustPropertyAssignRule: no hook mapping for node type PhpParser\Node\Stmt\Expression
-REFUSE  NoLeadingBackslashInNameRule: list contains something other than a string literal
-REFUSE  NoListenerWithoutContractRule: guard translates to a constant with no reason it cannot hold
-REFUSE  NoMissingVariableDimFetchRule: operand is still Rust and has no PHP rendering yet: !(support::variable_is_undefined(context, support::direct_variable_name(var_array_dim_fetch).unwrap_or_default()))
-REFUSE  NoMissnamedDocTagRule: assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
+REFUSE  NoInstanceOfStaticReflectionRule
+REFUSE  NoIntegerRefactorReturnRule
+REFUSE  NoJustPropertyAssignRule
+REFUSE  NoLeadingBackslashInNameRule
+REFUSE  NoListenerWithoutContractRule
+REFUSE  NoMissingVariableDimFetchRule
+REFUSE  NoMissnamedDocTagRule
 EMIT    NoMockObjectAndRealObjectPropertyRule
 EMIT    NoMockOnlyTestRule
-REFUSE  NoOnlyNullReturnInRefactorRule: operand is still Rust and has no PHP rendering yet: !(support::local_name_is(&node.name, b"refactor"))
+REFUSE  NoOnlyNullReturnInRefactorRule
 EMIT    NoParentRepositoryRule
 EMIT    NoPropertyNodeAssignRule
-REFUSE  NoProtectedClassStmtRule: no iteration mapped for a subtree
-REFUSE  NoReferenceRule: no hook mapping for node type PhpParser\Node
+REFUSE  NoProtectedClassStmtRule
+REFUSE  NoReferenceRule
 EMIT    NoRepositoryCallInDataFixtureRule
 EMIT    NoRequiredOutsideClassRule
-REFUSE  NoReturnSetterMethodRule: no mapping for ->attrGroups on a hook-node
-REFUSE  NoRouteTrailingSlashPathRule: comparison outside the vocabulary: Expr_Variable against Scalar_String
-REFUSE  NoRoutingPrefixRule: no node predicate for instanceof PhpParser\Node\Identifier on a bytes
-REFUSE  NoServiceAutowireDuplicateRule: no iteration mapped for a subtree
-REFUSE  NoServiceSameNameSetClassRule: no node predicate for instanceof PhpParser\Node\Expr\ClassConstFetch on a expr
-REFUSE  NoSetClassServiceDuplicationRule: expected a string literal
-REFUSE  NoStringInGetSubscribedEventsRule: null comparison against a subtree
-REFUSE  NoTestMocksRule: access path outside the vocabulary: ->getConstantStrings()
-REFUSE  NoValueObjectInServiceConstructorRule: guard translates to a constant with no reason it cannot hold
+REFUSE  NoReturnSetterMethodRule
+REFUSE  NoRouteTrailingSlashPathRule
+REFUSE  NoRoutingPrefixRule
+REFUSE  NoServiceAutowireDuplicateRule
+REFUSE  NoServiceSameNameSetClassRule
+REFUSE  NoSetClassServiceDuplicationRule
+REFUSE  NoStringInGetSubscribedEventsRule
+REFUSE  NoTestMocksRule
+REFUSE  NoValueObjectInServiceConstructorRule
 EMIT    NoWithOnStubRule
-REFUSE  ParamNameToTypeConventionRule: no hook mapping for node type PhpParser\Node\Param
-REFUSE  PhpUpgradeDowngradeRegisteredInSetRule: assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
-REFUSE  PhpUpgradeImplementsMinPhpVersionInterfaceRule: no mapping for ->namespacedName on a hook-node
-REFUSE  PreferAutowireAttributeOverConfigParamRule: access path outside the vocabulary: Expr_Array
-REFUSE  PreferDirectIsNameRule: in_array() without strict comparison
-REFUSE  PreferredClassRule: no hook mapping for node type PhpParser\Node
+REFUSE  ParamNameToTypeConventionRule
+REFUSE  PhpUpgradeDowngradeRegisteredInSetRule
+REFUSE  PhpUpgradeImplementsMinPhpVersionInterfaceRule
+REFUSE  PreferAutowireAttributeOverConfigParamRule
+REFUSE  PreferDirectIsNameRule
+REFUSE  PreferredClassRule
 EMIT    PreventParentMethodVisibilityOverrideRule
 EMIT    PublicStaticDataProviderRule
 EMIT    RequireAtLeastOneRule
-REFUSE  RequireAttributeNameRule: no hook mapping for node type PhpParser\Node\AttributeGroup
-REFUSE  RequireAttributeNamespaceRule: method call outside the vocabulary ->isAttributeClass()
+REFUSE  RequireAttributeNameRule
+REFUSE  RequireAttributeNamespaceRule
 EMIT    RequireExceptionNamespaceRule
-REFUSE  RequireInvokableControllerRule: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
-REFUSE  RequireIsGrantedEnumRule: no hook mapping for node type PhpParser\Node\Attribute
-REFUSE  RequireQueryBuilderOnRepositoryRule: statement in an inlined helper outside the vocabulary: Stmt_If
-REFUSE  RequireRouteNameToGenerateControllerRouteRule: expected a string literal
+REFUSE  RequireInvokableControllerRule
+REFUSE  RequireIsGrantedEnumRule
+REFUSE  RequireQueryBuilderOnRepositoryRule
+REFUSE  RequireRouteNameToGenerateControllerRouteRule
 EMIT    RequireServiceRepositoryParentRule
-REFUSE  RequireUniqueEnumConstantRule: access path outside the vocabulary: ->getConstants()
+REFUSE  RequireUniqueEnumConstantRule
 EMIT    RequiredOnlyInAbstractRule
-REFUSE  SeeAnnotationToTestRule: not a resolvable list of strings
-REFUSE  ServicesExcludedDirectoryMustExistRule: assignment value outside the vocabulary: access path outside the vocabulary: ->find()
+REFUSE  SeeAnnotationToTestRule
+REFUSE  ServicesExcludedDirectoryMustExistRule
 EMIT    SingleArgEventDispatchRule
-REFUSE  SingleRequiredMethodRule: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
+REFUSE  SingleRequiredMethodRule
 EMIT    StringFileAbsolutePathExistsRule
-REFUSE  TaggedIteratorOverRepeatedServiceCallRule: no iteration mapped for a subtree
+REFUSE  TaggedIteratorOverRepeatedServiceCallRule
 EMIT    UppercaseConstantRule
 
 ## hihaho/phpstan-rules — 3 emitted, 17 refused
 
-REFUSE  ChainedNoDebugInNamespaceRule: empty-array comparison against a sole-class
-REFUSE  CombinedFuncCallRule: $interestingFuncNames is computed in the constructor and the derivation reaches outside the set the generated constructor can carry
-REFUSE  CombinedMethodCallRule: guard body is neither `return []` nor `continue`
-REFUSE  CombinedStaticCallRule: statement outside the vocabulary: Stmt_Static
-REFUSE  FlagArgumentManifestCollector: every rule that consumes this collector reports nothing and writes a file instead, so the pair cannot become a plugin whatever the collector body does
+REFUSE  ChainedNoDebugInNamespaceRule
+REFUSE  CombinedFuncCallRule
+REFUSE  CombinedMethodCallRule
+REFUSE  CombinedStaticCallRule
+REFUSE  FlagArgumentManifestCollector
 EMIT    NoDebugInNamespaceRule
-REFUSE  NoEloquentWithPropertyRule: a foreach in an inlined helper whose body is not a single guard
-REFUSE  NoInvadeInAppCode: a second identifier before the first was reported
-REFUSE  NoUnsafeRequestDataRule: $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
-REFUSE  NoUnsafeRequestFacadeRule: $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
-REFUSE  NoUnsafeRequestHelperRule: $namespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Validation\NoUnsafeRequestHelperRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
-REFUSE  OnlyAllowFacadeAliasInBlade: statement outside the vocabulary: Stmt_Static
+REFUSE  NoEloquentWithPropertyRule
+REFUSE  NoInvadeInAppCode
+REFUSE  NoUnsafeRequestDataRule
+REFUSE  NoUnsafeRequestFacadeRule
+REFUSE  NoUnsafeRequestHelperRule
+REFUSE  OnlyAllowFacadeAliasInBlade
 EMIT    PositionalFlagArgumentConstructorRule
-REFUSE  PositionalFlagArgumentMethodCallRule: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+REFUSE  PositionalFlagArgumentMethodCallRule
 EMIT    PositionalFlagArgumentNullsafeMethodCallRule
-REFUSE  PositionalFlagArgumentStaticCallRule: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
-REFUSE  StaticChainedNoDebugInNamespaceRule: statement in an inlined helper outside the vocabulary: Stmt_If
-REFUSE  TraitRequiresInterfaceRule: $pairs is computed in the constructor and the derivation reaches outside the set the generated constructor can carry
-REFUSE  UnvalidatedFormRequestFieldRule: $fieldAccessorsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
-REFUSE  WriteNamedArgumentManifestRule: this rule reports nothing: it writes a file and returns no findings, so there is nothing for a plugin to report. An analyzer plugin's only output is report(), and agreement has no meaning for a build artefact
+REFUSE  PositionalFlagArgumentStaticCallRule
+REFUSE  StaticChainedNoDebugInNamespaceRule
+REFUSE  TraitRequiresInterfaceRule
+REFUSE  UnvalidatedFormRequestFieldRule
+REFUSE  WriteNamedArgumentManifestRule
 
 ## tomasvotruba/type-coverage — 0 emitted, 10 refused
 
-REFUSE  ConstantTypeCoverageRule: no aggregate mapped for the collector ConstantTypeDeclarationCollector
-REFUSE  ConstantTypeDeclarationCollector: no hook mapping for node type PHPStan\Node\ClassConstantsNode
-REFUSE  DeclareCollector: no iteration mapped for a hook-node
-REFUSE  DeclareCoverageRule: no aggregate mapped for the collector DeclareCollector
-REFUSE  ParamTypeCoverageRule: the parameter aggregate disagrees with the original at corpus scale: on 585 files PHPStan counted 4057 parameters with 1994 typed (49.1%) where this counts 3079 with 2927 (95.0%). Two known causes: only class methods are counted, where the collector targets every FunctionLike; and ParameterMetadata->declaredType is not php-parser's native $param->type
-REFUSE  ParamTypeDeclarationCollector: no hook mapping for node type PhpParser\Node\FunctionLike
-REFUSE  PropertyTypeCoverageRule: no aggregate mapped for the collector PropertyTypeDeclarationCollector
-REFUSE  PropertyTypeDeclarationCollector: no mapping for ->props on a property
-REFUSE  ReturnTypeCoverageRule: no aggregate mapped for the collector ReturnTypeDeclarationCollector
-REFUSE  ReturnTypeDeclarationCollector: assignment value outside the vocabulary: access path outside the vocabulary: Expr_ConstFetch
+REFUSE  ConstantTypeCoverageRule
+REFUSE  ConstantTypeDeclarationCollector
+REFUSE  DeclareCollector
+REFUSE  DeclareCoverageRule
+REFUSE  ParamTypeCoverageRule
+REFUSE  ParamTypeDeclarationCollector
+REFUSE  PropertyTypeCoverageRule
+REFUSE  PropertyTypeDeclarationCollector
+REFUSE  ReturnTypeCoverageRule
+REFUSE  ReturnTypeDeclarationCollector
 
 ## tomasvotruba/cognitive-complexity — 0 emitted, 3 refused
 
-REFUSE  ClassDependencyTreeRule: access path outside the vocabulary: ->getDependencyTreeTypes()
-REFUSE  ClassLikeCognitiveComplexityRule: assignment value outside the vocabulary: access path outside the vocabulary: ->analyzeClassLike()
-REFUSE  FunctionLikeCognitiveComplexityRule: no hook mapping for node type PhpParser\Node\FunctionLike
+REFUSE  ClassDependencyTreeRule
+REFUSE  ClassLikeCognitiveComplexityRule
+REFUSE  FunctionLikeCognitiveComplexityRule

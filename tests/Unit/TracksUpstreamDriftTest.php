@@ -122,22 +122,22 @@ final class TracksUpstreamDriftTest extends TestCase
             );
             $lines[] = '';
             foreach ($outcomes as $name => $outcome) {
-                $lines[] = $outcome === 'EMIT' ? "EMIT    {$name}" : "REFUSE  {$name}: {$outcome}";
+                $lines[] = ($outcome === 'EMIT' ? 'EMIT    ' : 'REFUSE  ') . $name;
             }
         }
 
         return implode("\n", $lines) . "\n";
     }
 
-    /** `EMIT`, or the refusal's reason with line numbers stripped. */
+    /** Whether the rule translates, which is the whole of what this file records. */
     private function outcome(string $file): string
     {
         try {
             (new Transpiler($file))->transpile();
 
             return 'EMIT';
-        } catch (Throwable $throwable) {
-            return trim((string) preg_replace('/ \(line \d+\)/', '', $throwable->getMessage()));
+        } catch (Throwable) {
+            return 'REFUSE';
         }
     }
 }

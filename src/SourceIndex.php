@@ -24,7 +24,7 @@ use SplFileInfo;
  */
 final class SourceIndex
 {
-    /** @var array<string, list<string>> short name -> paths */
+    /** @var array<string, array<string, list<string>>> root -> short name -> paths */
     private static array $files = [];
 
     /** @var array<string, true> roots already walked */
@@ -33,13 +33,22 @@ final class SourceIndex
     /** @var array<string, array{class: ClassLike, uses: array<string, string>}> */
     private static array $parsed = [];
 
+    /** Cleared between rules only in tests; the roots stay indexed, since the filesystem has not changed. */
+    public static function forget(): void
+    {
+        self::$parsed = [];
+    }
+
     /**
      * @return array{class: ClassLike, uses: array<string, string>}|null
      */
     public function find(string $shortName, string $ruleFile): ?array
     {
-        if (isset(self::$parsed[$shortName])) {
-            return self::$parsed[$shortName];
+        // Keyed by the roots too: the same short name means different classes in different packages, and a
+        // flat key handed the second package whatever the first one resolved.
+        $key = $shortName . '|' . implode('|', $this->roots($ruleFile));
+        if (isset(self::$parsed[$key])) {
+            return self::$parsed[$key];
         }
 
         foreach ($this->paths($shortName, $ruleFile) as $path) {
@@ -53,9 +62,9 @@ final class SourceIndex
                 continue;
             }
 
-            self::$parsed[$shortName] = ['class' => $class, 'uses' => Uses::collect($ast)];
+            self::$parsed[$key] = ['class' => $class, 'uses' => Uses::collect($ast)];
 
-            return self::$parsed[$shortName];
+            return self::$parsed[$key];
         }
 
         return null;
@@ -75,12 +84,27 @@ final class SourceIndex
             /** @var SplFileInfo $entry */
             foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)) as $entry) {
                 if ($entry->isFile() && $entry->getExtension() === 'php') {
-                    self::$files[$entry->getBasename('.php')][] = $entry->getPathname();
+                    self::$files[$root][$entry->getBasename('.php')][] = $entry->getPathname();
                 }
             }
         }
 
-        return self::$files[$shortName] ?? [];
+        $paths = [];
+        foreach ($this->roots($ruleFile) as $root) {
+            foreach (self::$files[$root][$shortName] ?? [] as $path) {
+                $paths[] = $path;
+            }
+        }
+
+        // Sorted, because a directory iterator yields the filesystem's order and that differs between machines.
+        // Two files can declare one short name — `symplify/phpstan-rules` and a copy vendored inside
+        // `rector/rector` both declare a `SymfonyClass` — so which one wins has to be the same everywhere for
+        // the census to mean anything. Sorting does not make the choice *right*; the caller's imports would,
+        // and that is a change with its own risk, since the accidental order is what several translations were
+        // built on.
+        sort($paths);
+
+        return $paths;
     }
 
     /**
@@ -125,7 +149,7 @@ final class SourceIndex
      *
      * @return list<string>
      */
-    private function roots(string $ruleFile): array
+    public function roots(string $ruleFile): array
     {
         // Absolute first: walking up from a relative path stops at "." and finds neither root, so a rule
         // given as `tests/Fixtures/Rules/X.php` resolved no cross-file name at all.

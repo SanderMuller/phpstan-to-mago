@@ -29,11 +29,13 @@ and the snapshots proved the output was untouched. If a snapshot changes, decide
 right *before* updating it, and say why in the commit.
 
 The same discipline covers the corpus as a whole. `tests/Fixtures/expected/census.md` records, for all 129
-rules in the four packages, whether each emits or which reason refuses it —
+rules in the four packages, whether each emits —
 `TracksUpstreamDriftTest` regenerates it and compares. `composer.lock` is not committed, so that file is
 where an upstream release announces itself: a rule added, a rule deleted, or a rule rewritten into or out of
-a shape the vocabulary covers. It deliberately records no package versions and no line numbers, because an
-alarm that fires on every routine bump is one nobody reads.
+a shape the vocabulary covers. It records no package versions and **no refusal reasons** — the first version
+recorded reasons, and a reason turned out to depend on process state, since `SourceIndex` is a per-process
+cache and the suite runs in random order. Four false alarms in, the trade was clear: an alarm that cries wolf
+is worse than a narrower one. `--survey` prints the reasons when you want them.
 
 **2. Refuse rather than approximate.** A construct outside the vocabulary is refused by name and line, and
 `PhpBackend::checked()` refuses any operand it was handed and could not render. Both are load-bearing.
