@@ -116,18 +116,21 @@ $original = $differential->phpstanFindings();
 $agree = 0;
 $onlyOriginal = 0;
 $onlyPort = 0;
+$suppressed = 0;
 foreach ($differential->compare($original, $port) as $identifier => $result) {
     $rules = implode(', ', $differential->identifiers()[$identifier]);
     $agree += count($result['agree']);
     $onlyOriginal += count($result['onlyOriginal']);
     $onlyPort += count($result['onlyPort']);
+    $suppressed += count($result['suppressed']);
 
     printf(
-        "%-46s agree %3d  only-original %3d  only-port %3d   %s\n",
+        "%-46s agree %3d  only-original %3d  only-port %3d  suppressed %3d   %s\n",
         $identifier,
         count($result['agree']),
         count($result['onlyOriginal']),
         count($result['onlyPort']),
+        count($result['suppressed']),
         $rules,
     );
 
@@ -139,11 +142,16 @@ foreach ($differential->compare($original, $port) as $identifier => $result) {
         echo "    only-port      {$site}\n";
     }
 
+    foreach ($result['suppressed'] as $site) {
+        echo "    suppressed     {$site}\n";
+    }
+
     foreach ($result['differingMessages'] as $site) {
         echo "    same site, different message  {$site}\n";
     }
 }
 
-echo "\ntotal: agree {$agree}, only-original {$onlyOriginal}, only-port {$onlyPort}\n";
+echo "\ntotal: agree {$agree}, only-original {$onlyOriginal}, only-port {$onlyPort}",
+$suppressed === 0 ? "\n" : ", suppressed {$suppressed} (the original finds these too, and the consumer silenced them with @phpstan-ignore)\n";
 
 exit($onlyOriginal === 0 && $onlyPort === 0 ? 0 : 1);

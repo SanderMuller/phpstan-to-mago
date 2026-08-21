@@ -212,6 +212,20 @@ final class Support
      * Where the two engines disagree, PHPStan wins, because that is what the rule was written against: it
      * flattens traits, so a trait method's declaring class is the class that *uses* the trait. Mago names the
      * trait, so a trait is mapped back to the using class here.
+     *
+     * The **most ancestral** user, not the nearest, and that distinction was worth 26 wrong findings on a real
+     * project. `ClassLikeMetadata->usedTraits` is flattened: `App\Collections\AnswerCollection extends
+     * Illuminate\Support\Collection` lists `EnumeratesValues` itself, though its parent is what writes the
+     * `use`. Taking the first candidate therefore answered `App\Collections\AnswerCollection` for
+     * `->where(…)`, so a rule gating on first-party code reported every Eloquent collection call while
+     * PHPStan resolved the same method to `Illuminate\Support\Collection` and declined. Measured in
+     * `internal/probe-flattened-used-traits.php`.
+     *
+     * Metadata carries no "directly used" list and a node hook cannot read another file's `use` statements, so
+     * the most ancestral user is the best available answer. It is exact wherever one class writes the `use`.
+     * A subclass that *re-uses* the same trait is a real divergence — PHPStan attributes the method to the
+     * subclass there — and it is named rather than handled, because nothing in metadata separates a re-use
+     * from the flattening this fixes.
      */
     private static function declaringClassName(NodeAnalysisContext $context, string $class, string $method): ?string
     {
@@ -243,20 +257,37 @@ final class Support
      */
     private static function classUsingTrait(NodeAnalysisContext $context, string $class, string $trait): ?string
     {
+        $name = null;
+        $depth = null;
         foreach ([$class, ...$context->codebase->getClassAncestors($class)] as $candidate) {
             $metadata = $context->codebase->getClass($candidate);
             if (! $metadata instanceof ClassLikeMetadata) {
                 continue;
             }
 
+            $uses = false;
             foreach ($metadata->usedTraits as $used) {
                 if (strcasecmp($used, $trait) === 0) {
-                    return $metadata->originalName;
+                    $uses = true;
+
+                    break;
                 }
+            }
+
+            if (! $uses) {
+                continue;
+            }
+
+            // The most ancestral user wins, and "most ancestral" is decided by how many ancestors a candidate
+            // has rather than by the order they arrive in, which nothing documents.
+            $candidateDepth = count($context->codebase->getClassAncestors($candidate));
+            if ($depth === null || $candidateDepth < $depth) {
+                $name = $metadata->originalName;
+                $depth = $candidateDepth;
             }
         }
 
-        return null;
+        return $name;
     }
 
     /** Declaration kinds, by backed value: see the note in {@see enclosingClassName}. */

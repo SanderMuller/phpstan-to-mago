@@ -50,11 +50,6 @@ final class EmittedRuleFiresTest extends TestCase
         // a rule whose hook only the PHP target carries then refuses here instead of emitting.
         Transpiler::$target = 'php';
         Transpiler::$survey = false;
-        // `CombinedMethodCallRule` is withheld by default because it disagrees with the original at corpus
-        // scale — see `Vocabulary::unverifiedRule()`. The flag is what the withholding exists for: the
-        // emission stays exercisable, so the checks that *do* agree keep their proof and the number can be
-        // improved rather than guessed at.
-        Transpiler::$allowUnverified = true;
 
         $this->gate = new FiresGate(
             dirname(__DIR__, 2),

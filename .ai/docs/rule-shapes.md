@@ -796,6 +796,46 @@ dev-only dependency into shipped code, and the property that makes a new corpus 
 that a package appears only as a string in a table. `rector.php` skips the two rules that would rewrite
 those strings.
 
+## A rule that is only a whole-project pass, and the two things that decided its design
+
+When *every* check of a rule goes to a whole-project pass, the plugin is the after hook alone: no node hook,
+no targets, no requirements. Registering a node hook there would declare targets the plugin never looks at.
+`OnlyAllowFacadeAliasInBlade` is the shape — one check, and it needs a fact no node has.
+
+**Ask the framework, do not copy it.** That rule resolves a bare name with `new ReflectionClass()`, which a
+worker cannot answer because it autoloads the project without booting it. The refusal was right about the
+route and wrong to stop there: `Facade::defaultAliases()` is a boot-free `public static` returning literals,
+and `internal/probe-facade-alias-map-in-worker.php` measured it running inside a worker and returning 46
+exact entries. So the alias map is the *consumer's own* Laravel version's, with no table here to drift and no
+CST read that silently gives nothing when `vendor` is outside mago's paths. `is_subclass_of()` on a mapped
+value is sound for the same reason — the value is a framework class, not analysed code.
+
+**Read the resolved name, not the written one.** This looks like a detail and decides which code the rule sees
+at all. Measured with php-parser's own `NameResolver`, which is what PHPStan hands a rule:
+
+```
+Bare::get()                                  -> App\Reporting\Bare       3 segments, skipped
+use Illuminate\Support\Facades\Cache; Cache::  -> Illuminate\…\Cache       4 segments, skipped
+use Cache; Cache::get()                      -> Cache                    1 segment,  candidate
+\Cache::get()                                 -> Cache                    1 segment,  candidate
+```
+
+An *unimported* bare name in a namespaced file is not an alias use — PHP resolves it inside the current
+namespace. Reading the written text reported exactly those and skipped the leading-backslash form that is the
+commonest real alias use: wrong in both directions, from one mistake. The fires-gate named both halves —
+PHPStan reported nothing on the bad example, and the port reported the good one's imported facade.
+
+Two things such a rule needs from its examples, and neither is optional:
+
+- **Construct the corpus.** A real 1899-file application had six distinct bare-name static references and not
+  one alias among them, because it imports its facades. The differential can only show the port adds no false
+  positive there; the positive path lives in an example pair.
+- **Reproduce the original's operating conditions.** Without the alias loader registered, PHPStan resolves no
+  alias, both tools report nothing, and the pair passes by agreeing on silence. The gate registers it from the
+  same map the port reads — the narrowest thing that reproduces larastan's own bootstrap.
+- **Include an alias that is not a facade.** `Arr`, `Str`, `Number`, `Date`, `Js` and `Uri` alias plain helper
+  classes. Mutating the subclass test away changed nothing until the good example named one.
+
 ## Do not raise the emit count by lowering the bar
 
 Partial coverage plus named refusals is the honest, finished result. See `../guidelines/verification.md`.

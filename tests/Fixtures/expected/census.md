@@ -104,11 +104,11 @@ EMIT    StringFileAbsolutePathExistsRule  (the package registers it nowhere)
 REFUSE  TaggedIteratorOverRepeatedServiceCallRule
 EMIT    UppercaseConstantRule
 
-## hihaho/phpstan-rules — 5 of 9 the package registers emit, 0 covered by the engine, 4 refuse, 11 it registers nowhere
+## hihaho/phpstan-rules — 6 of 9 the package registers emit, 0 covered by the engine, 3 refuse, 11 it registers nowhere
 
 EMIT    ChainedNoDebugInNamespaceRule  (the package registers it nowhere)
 EMIT    CombinedFuncCallRule
-REFUSE  CombinedMethodCallRule
+EMIT    CombinedMethodCallRule
 REFUSE  CombinedStaticCallRule
 REFUSE  FlagArgumentManifestCollector
 EMIT    NoDebugInNamespaceRule  (the package registers it nowhere)
@@ -117,7 +117,7 @@ EMIT    NoInvadeInAppCode  (the package registers it nowhere)
 REFUSE  NoUnsafeRequestDataRule  (the package registers it nowhere)
 REFUSE  NoUnsafeRequestFacadeRule  (the package registers it nowhere)
 REFUSE  NoUnsafeRequestHelperRule  (the package registers it nowhere)
-REFUSE  OnlyAllowFacadeAliasInBlade  (the package registers it nowhere)
+EMIT    OnlyAllowFacadeAliasInBlade  (the package registers it nowhere)
 EMIT    PositionalFlagArgumentConstructorRule
 REFUSE  PositionalFlagArgumentMethodCallRule  (the package registers it nowhere)
 EMIT    PositionalFlagArgumentNullsafeMethodCallRule

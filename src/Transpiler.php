@@ -90,10 +90,13 @@ final class Transpiler
      * Whether to emit a rule whose numbers do not yet agree with the original.
      *
      * Off by default, and the refusal it produces carries the measurement that says why — see
-     * {@see Vocabulary::unverifiedAggregate()} for an aggregate and {@see Vocabulary::unverifiedRule()} for a
-     * whole rule. The flag exists so the emission can be exercised and measured without the default being a
-     * rule that reports 95 % where the original reports 49 %, or one that reports 33 findings on a real
-     * project that the original does not.
+     * {@see Vocabulary::unverifiedAggregate()}. The flag exists so the emission can be exercised and measured
+     * without the default being a rule that reports 95 % where the original reports 49 %.
+     *
+     * A rule-level counterpart existed briefly, for `CombinedMethodCallRule` reporting 33 findings on a real
+     * project that the original did not. It is gone because the disagreement is: 26 were a real defect
+     * (`Support::declaringClassName()` reading a flattened `usedTraits` list) and 7 were the consumer's own
+     * phpstan-ignore comments, which the differential now accounts for separately.
      */
     public static bool $allowUnverified = false;
 
@@ -628,8 +631,6 @@ final class Transpiler
         $this->ruleNamespace = SourceIndex::namespaceOf($ast, $className);
         $this->collectConstants($class);
 
-        $this->refuseAnUnverifiedRule($className);
-
         // A collector-and-consumer pair has no per-file body to translate, so it is recognised and re-emitted
         // rather than walked. Checked before anything else reads the body, because reading it would refuse on
         // constructs that are beside the point for this shape.
@@ -746,26 +747,6 @@ final class Transpiler
                 ARRAY_FILTER_USE_KEY,
             )),
         ];
-    }
-
-    /**
-     * Refuse a rule that emits and disagrees with the original, before its body is read.
-     *
-     * Read before the walk so the refusal names the disagreement rather than whatever the walk would have hit
-     * first, and only on the PHP target, because the measurement behind it is of the PHP plugin. The survey
-     * still reports what the body would need: withholding is a statement about shipping it, not about whether
-     * it translates.
-     */
-    private function refuseAnUnverifiedRule(string $className): void
-    {
-        if (self::$target !== 'php' || self::$allowUnverified || self::$survey) {
-            return;
-        }
-
-        $withheld = Vocabulary::unverifiedRule($className);
-        if ($withheld !== null) {
-            throw new Refusal($withheld);
-        }
     }
 
     /** Whether this class is a PHPStan Collector, i.e. the per-file half of a cross-file rule. */
@@ -9870,6 +9851,110 @@ RUST;
      * hook table's `kind` already names the Mago node kind the SDK's `NodeKind` uses.
      * @param array<string, string>|array<string, null>|array<string, bool> $hook
      */
+    /**
+     * The rule's message, and whether it is already an expression rather than a quoted literal.
+     *
+     * A missing message means nothing found the report; one that is neither a literal nor a `sprintf()` is a
+     * shape the emitter has no recipe for. Both are refusals rather than a guessed string, because a plugin
+     * reporting the wrong text is a plugin nobody can check against the original.
+     *
+     * @return array{string, bool}
+     */
+    private function reportableMessage(): array
+    {
+        if ($this->message === null) {
+            throw new Refusal('could not find the reported message');
+        }
+
+        $isLiteral = str_starts_with($this->message, '"') && str_ends_with($this->message, '"');
+        $isFormatted = str_starts_with($this->message, 'sprintf(') || $this->messageIsExpression;
+        if (! $isLiteral && ! $isFormatted) {
+            throw new Refusal('PHP target: message is neither a literal nor a sprintf(): ' . $this->message);
+        }
+
+        return [$this->message, $isFormatted];
+    }
+
+    /**
+     * A plugin that is an after-analysis hook and nothing else.
+     *
+     * For a rule whose every check was handed to a whole-project pass: there is no node to dispatch on, so
+     * registering a node hook would mean declaring targets the plugin never looks at. `getTargets()` and
+     * `getRequirements()` still exist because the interface asks for them, empty, exactly as
+     * {@see emitAggregate()} leaves them.
+     */
+    private function emitAfterOnly(string $className): string
+    {
+        $identifier = 'transpiled/' . str_replace('_', '-', $this->snake($className));
+        $constructor = $this->emitConstructor();
+        $passes = '';
+        $runtime = [];
+        foreach ($this->afterChecks as $pass) {
+            $passes .= "        {$pass};\n";
+            $runtime[explode('::', $pass)[0]] = true;
+        }
+
+        ksort($runtime);
+        $imports = '';
+        foreach (array_keys($runtime) as $class) {
+            $imports .= "use Sandermuller\\PhpstanToMago\\Runtime\\{$class};\n";
+        }
+
+        return <<<PHP
+<?php
+
+declare(strict_types=1);
+
+// GENERATED by phpstan-to-mago from {$className}. Do not edit by hand.
+
+namespace Transpiled;
+
+use Mago\Sdk\Analyzer\AfterAnalysisContext;
+use Mago\Sdk\Analyzer\AfterAnalysisHook;
+use Mago\Sdk\Analyzer\Plugin;
+use Mago\Sdk\Analyzer\PluginDefinition;
+use Mago\Sdk\Analyzer\PluginRegistry;
+{$imports}
+final class {$className} implements AfterAnalysisHook, Plugin
+{
+{$constructor}
+    public function getDefinition(): PluginDefinition
+    {
+        return new PluginDefinition(
+            identifier: '{$identifier}',
+            name: '{$className}',
+            description: 'Transpiled from PHPStan\'s {$className}.',
+        );
+    }
+
+    public function register(PluginRegistry \$registry): void
+    {
+        \$registry->registerAfterAnalysisHook(\$this);
+    }
+
+    /** @return list<never> */
+    public function getTargets(): array
+    {
+        return [];
+    }
+
+    /** @return list<never> */
+    public function getRequirements(): array
+    {
+        return [];
+    }
+
+    public function afterAnalysis(AfterAnalysisContext \$context): void
+    {
+{$passes}    }
+}
+
+PHP;
+    }
+
+    /**
+     * @param array<string, string>|array<string, null>|array<string, bool> $hook
+     */
     private function emitPhp(string $className, array $hook): string
     {
         if ($hook['node'] === null) {
@@ -9880,15 +9965,13 @@ RUST;
             throw new Refusal('PHP target: collectors are not wrapped yet');
         }
 
-        if ($this->message === null) {
-            throw new Refusal('could not find the reported message');
+        // Every check this rule has is a whole-project pass, so there is nothing for a node hook to do and no
+        // message for it to report. The plugin is the after hook alone — the same shape an aggregate takes.
+        if ($this->message === null && $this->afterChecks !== []) {
+            return $this->emitAfterOnly($className);
         }
 
-        $isLiteral = str_starts_with($this->message, '"') && str_ends_with($this->message, '"');
-        $isFormatted = str_starts_with($this->message, 'sprintf(') || $this->messageIsExpression;
-        if (! $isLiteral && ! $isFormatted) {
-            throw new Refusal('PHP target: message is neither a literal nor a sprintf(): ' . $this->message);
-        }
+        [$reported, $isFormatted] = $this->reportableMessage();
 
         $body = $this->gate($hook) . $this->renderAll();
 
@@ -9914,7 +9997,7 @@ RUST;
         );
 
 REPORT, ['{ANCHOR}' => $this->anchor ?? $this->defaultAnchor()]);
-        $message = $isFormatted ? $this->message : $this->backend->bytes(substr($this->message, 1, -1));
+        $message = $isFormatted ? $reported : $this->backend->bytes(substr($reported, 1, -1));
         // A rule that classifies what it found reports under a code decided at analysis time, so the code is
         // an expression there; quoting it would report under the source text of the interpolation.
         $code = $this->identifier ?? 'transpiled.' . $this->snake($className);

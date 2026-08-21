@@ -381,7 +381,7 @@ final class CorpusDifferential
      * @param array<string, list<string>> $original
      * @param array<string, list<string>> $port
      *
-     * @return array<string, array{agree: list<string>, onlyOriginal: list<string>, onlyPort: list<string>, differingMessages: list<string>}>
+     * @return array<string, array{agree: list<string>, onlyOriginal: list<string>, onlyPort: list<string>, suppressed: list<string>, differingMessages: list<string>}>
      */
     public function compare(array $original, array $port): array
     {
@@ -403,10 +403,16 @@ final class CorpusDifferential
                 }
             }
 
+            [$onlyPort, $suppressed] = (new Suppressions($this->consumerRoot))->split(
+                array_values(array_diff(array_keys($right), array_keys($left))),
+                $identifier,
+            );
+
             $comparison[$identifier] = [
                 'agree' => $agree,
                 'onlyOriginal' => array_values(array_diff(array_keys($left), array_keys($right))),
-                'onlyPort' => array_values(array_diff(array_keys($right), array_keys($left))),
+                'onlyPort' => $onlyPort,
+                'suppressed' => $suppressed,
                 'differingMessages' => $differing,
             ];
         }

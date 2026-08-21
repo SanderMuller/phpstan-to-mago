@@ -415,33 +415,11 @@ final class Vocabulary
             'pass' => 'FormRequestFields::report',
             'arguments' => [4, 5, 6],
         ],
+        'Hihaho\PhpstanRules\Traits\DetectsFacadeAlias::facadeAliasError' => [
+            'pass' => 'FacadeAliases::report',
+            'arguments' => [],
+        ],
     ];
-
-    /**
-     * Why a rule is not emitted by default, or null when it agrees with the original.
-     *
-     * The rule-level counterpart of {@see unverifiedAggregate()}, and it exists for the same reason: a rule
-     * that emits, loads, runs and *disagrees* with the original on real code is worse than a refusal, because
-     * a reader trusts it. Keeping the emission and refusing here — rather than un-mapping whatever made it
-     * reachable — means the refusal names a number, and `--unverified` still exercises it so the number can
-     * be improved.
-     *
-     * An entry leaves when the corpus differential agrees, not when a fixture pair does.
-     */
-    public static function unverifiedRule(string $className): ?string
-    {
-        return match ($className) {
-            'CombinedMethodCallRule' => 'the rule emits and its cross-file check agrees with the original, but two '
-                . 'of its node-shaped checks disagree at corpus scale: on 2716 files the port reports 26 '
-                . 'positionalFlagArgument findings and 7 noUnsafeRequestData findings the original does not, and '
-                . 'none that it misses. The original is active on that project — its own baseline carries four '
-                . 'noUnsafeRequestData entries — so this is disagreement, not an unregistered rule. The cause '
-                . 'is not traced: the emitted check does carry the first-party gate, and a probe shows '
-                . 'Support::declaringClassOfMethod() answering correctly for a resolvable vendor parent, so '
-                . 'what makes 26 first-party calls out of Illuminate ones is still open',
-            default => null,
-        };
-    }
 
     /**
      * Why a mapped aggregate is not emitted by default, or null once it agrees with the original.

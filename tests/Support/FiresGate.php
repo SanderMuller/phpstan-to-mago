@@ -70,6 +70,32 @@ final readonly class FiresGate
         command = ["php", "worker.php"]
         TOML;
 
+    /**
+     * The conditions the facade-alias rule was written to run under.
+     *
+     * `DetectsFacadeAlias` resolves a bare short name with `new ReflectionClass($name)`, and its own comment
+     * says why: aliases are registered lazily by `AliasLoader`, an SPL autoloader. Under PHPStan that works
+     * only because larastan's `bootstrapFiles` boots the application, which runs `RegisterFacades`. Without
+     * something equivalent here the original resolves nothing, both tools report nothing, and the pair would
+     * pass by agreeing on silence.
+     *
+     * So the loader is registered directly from `Facade::defaultAliases()` — the same map the port reads, and
+     * the narrowest thing that reproduces the original's operating conditions without booting an application
+     * in a test. Guarded, so a repository without Laravel installed simply gets no aliases.
+     */
+    private const string PHPSTAN_BOOTSTRAP = <<<'PHP'
+        <?php
+
+        declare(strict_types=1);
+
+        $facade = Illuminate\Support\Facades\Facade::class;
+        $loader = Illuminate\Foundation\AliasLoader::class;
+        if (class_exists($facade) && class_exists($loader)) {
+            $aliases = $facade::defaultAliases();
+            $loader::getInstance(is_array($aliases) ? $aliases : $aliases->all())->register();
+        }
+        PHP;
+
     private const string PHPSTAN_CONFIG = <<<'NEON'
         parameters:
             # Inside the sandbox, and deleted whenever the sandbox is written. PHPStan's result cache keys on the
@@ -78,6 +104,8 @@ final readonly class FiresGate
             # detour: a fixture I had just corrected still failed with the old fixture's disagreement.
             tmpDir: phpstan-tmp
             level: 0
+            bootstrapFiles:
+                - bootstrap.php
             reportUnmatchedIgnoredErrors: false
             paths:
                 - src
@@ -254,6 +282,7 @@ final readonly class FiresGate
             '{pluginArguments}' => $this->pluginArguments($ruleFile),
         ]));
         file_put_contents($sandbox . '/mago.toml', strtr(self::MAGO_CONFIG, ['{ROOT}' => $this->repositoryRoot]) . "\n");
+        file_put_contents($sandbox . '/bootstrap.php', self::PHPSTAN_BOOTSTRAP . "\n");
         file_put_contents($sandbox . '/phpstan.neon', strtr(self::PHPSTAN_CONFIG, [
             '{class}' => $ruleClass,
             '{arguments}' => $this->arguments($ruleFile),

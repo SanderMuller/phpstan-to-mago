@@ -31,11 +31,6 @@ final class TranspilesToPhpTest extends TestCase
     {
         Transpiler::$target = 'php';
         Transpiler::$survey = false;
-        // `CombinedMethodCallRule` is withheld by default because it disagrees with the original at corpus
-        // scale — see `Vocabulary::unverifiedRule()`. The flag is what the withholding exists for: the
-        // emission stays exercisable, so the checks that *do* agree keep their proof and the number can be
-        // improved rather than guessed at.
-        Transpiler::$allowUnverified = true;
     }
 
     /**
@@ -55,6 +50,15 @@ final class TranspilesToPhpTest extends TestCase
         yield 'a check handed to a whole-project pass' => [
             'CombinedMethodCallRule',
             __DIR__ . '/../../vendor/hihaho/phpstan-rules/src/Rules/CombinedMethodCallRule.php',
+        ];
+
+        // The other end of the same mechanism: a rule whose *every* check is a whole-project pass, so there is
+        // no node to dispatch on and the plugin is the after hook alone. Pinned because what is interesting is
+        // absent — no node hook, no targets, no requirements — and an emitter that registered them anyway
+        // would declare targets it never looks at.
+        yield 'a rule that is only a whole-project pass' => [
+            'OnlyAllowFacadeAliasInBlade',
+            __DIR__ . '/../../vendor/hihaho/phpstan-rules/src/Rules/OnlyAllowFacadeAliasInBlade.php',
         ];
     }
 
