@@ -30,18 +30,21 @@ final readonly class Hierarchy
     private const int DEPTH_LIMIT = 6;
 
     /**
-     * @param Closure(string): ?array{class: ClassLike, uses: array<string, string>} $lookup resolves a
-     *        short class-like name to its parsed declaration and its own import map
+     * @param Closure(string): ?array{class: ClassLike, uses: array<string, string>, namespace: string|null} $lookup
+     *        resolves a short class-like name to its parsed declaration, its own import map and the namespace
+     *        it was declared in
      */
     public function __construct(private Closure $lookup) {}
 
     /**
-     * @param array<string, string> $uses the import map of the file `$class` was declared in
+     * @param array<string, string> $uses      the import map of the file `$class` was declared in
+     * @param string|null           $namespace the namespace `$class` was declared in, so a caller that needs
+     *                                         a fully qualified name has one without re-deriving it
      *
-     * @return array{class: ClassLike, uses: array<string, string>}|null null when nothing in the
-     *         hierarchy declares the method, which is a refusal for the caller to report
+     * @return array{class: ClassLike, uses: array<string, string>, namespace: string|null}|null null when
+     *         nothing in the hierarchy declares the method, which is a refusal for the caller to report
      */
-    public function declaring(ClassLike $class, string $method, array $uses, int $depth = 0): ?array
+    public function declaring(ClassLike $class, string $method, array $uses, ?string $namespace = null, int $depth = 0): ?array
     {
         if ($depth >= self::DEPTH_LIMIT) {
             return null;
@@ -49,7 +52,7 @@ final readonly class Hierarchy
 
         foreach ($class->getMethods() as $candidate) {
             if ($candidate->name->toString() === $method) {
-                return ['class' => $class, 'uses' => $uses];
+                return ['class' => $class, 'uses' => $uses, 'namespace' => $namespace];
             }
         }
 
@@ -101,15 +104,24 @@ final readonly class Hierarchy
     }
 
     /**
-     * @return array{class: ClassLike, uses: array<string, string>}|null
+     * @return array{class: ClassLike, uses: array<string, string>, namespace: string|null}|null
      */
     private function through(string $shortName, string $method, int $depth): ?array
     {
         $resolved = ($this->lookup)($shortName);
+        if ($resolved === null) {
+            return null;
+        }
 
-        // The import map travels with the declaration: a helper resolves the names it mentions through
-        // the `use` statements of *its own* file, never the calling rule's.
-        return $resolved === null ? null : $this->declaring($resolved['class'], $method, $resolved['uses'], $depth + 1);
+        // The import map and the namespace travel with the declaration: a helper resolves the names it
+        // mentions through the `use` statements of *its own* file, never the calling rule's.
+        return $this->declaring(
+            $resolved['class'],
+            $method,
+            $resolved['uses'],
+            $resolved['namespace'],
+            $depth + 1,
+        );
     }
 
     /**

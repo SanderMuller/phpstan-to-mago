@@ -172,3 +172,75 @@ interface LocalisedContract
 {
     public function locale(): string;
 }
+
+namespace Illuminate\Foundation\Http;
+
+/**
+ * Laravel's form-request base, for the `unvalidatedFormRequestField` check in `CombinedMethodCallRule`.
+ *
+ * Cut down to what decides the check: `rules()` for a subclass to declare, and the accessors it reads a
+ * field through. The three methods a subclass can override to rewrite the validated data are declared
+ * *here* on purpose — the rule treats an override by the framework as harmless and one by user code as
+ * making the class opaque, so a stub without them would make every example opaque and the pair would prove
+ * nothing.
+ */
+class FormRequest
+{
+    /** @return array<string, mixed> */
+    public function rules(): array
+    {
+        return [];
+    }
+
+    public function input(?string $key = null, mixed $default = null): mixed
+    {
+        return $default;
+    }
+
+    public function string(string $key, string $default = ''): string
+    {
+        return $default;
+    }
+
+    /** @return array<string, mixed> */
+    public function all(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, mixed> */
+    public function validationData(): array
+    {
+        return [];
+    }
+
+    protected function prepareForValidation(): void {}
+}
+
+namespace Illuminate\Support;
+
+/**
+ * The debug helper the chained-debug check looks for, for `CombinedMethodCallRule`.
+ *
+ * The check only flags `->dump()` when the method is declared by a Laravel class, so the receiver has to
+ * resolve to one. PHPStan reads the real class through the gate's autoload file; mago reads only the
+ * sandbox's source paths, which is what this is here for.
+ */
+class Collection
+{
+    public function dump(): static
+    {
+        return $this;
+    }
+}
+
+namespace Illuminate\Http;
+
+/** The receiver the unsafe-request-data check requires, for the same reason. */
+class Request
+{
+    public function query(?string $key = null, mixed $default = null): mixed
+    {
+        return $default;
+    }
+}

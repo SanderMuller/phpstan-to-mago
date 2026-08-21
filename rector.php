@@ -3,6 +3,7 @@
 use Rector\Caching\ValueObject\Storage\FileCacheStorage;
 use Rector\CodeQuality\Rector\ClassMethod\InlineArrayReturnAssignRector;
 use Rector\CodeQuality\Rector\If_\ExplicitBoolCompareRector;
+use Rector\CodingStyle\Rector\String_\UseClassKeywordForClassNameResolutionRector;
 use Rector\Config\RectorConfig;
 use Rector\DeadCode\Rector\ClassMethod\RemoveUselessParamTagRector;
 use Rector\DeadCode\Rector\ClassMethod\RemoveUselessReturnTagRector;
@@ -60,4 +61,10 @@ return RectorConfig::configure()
         // *input* for the transpiler, excluded from analysis, so a `::class` constant on one is a symbol
         // PHPStan cannot resolve.
         StringClassNameToClassConstantRector::class,
+        // The same reason one level up, and it matters more in `src/`: a corpus package is *data* in a
+        // vocabulary table, not a dependency of the transpiler. Turning a key into `SomeTrait::class` would
+        // add an import from a dev-only rule package into shipped code, so a consumer installing without dev
+        // dependencies would see `src/` name a class it does not have — and the property that makes a new
+        // corpus cheap to adopt is exactly that packages are named as data.
+        UseClassKeywordForClassNameResolutionRector::class,
     ]);

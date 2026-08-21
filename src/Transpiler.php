@@ -75,6 +75,7 @@ use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 
 /**
  * @phpstan-type Descriptor array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, methodPhp?: string, indexPhp?: string, listPhp?: string, patternPhp?: string, subjectPhp?: string, reason?: string, as?: string, record?: array<string, array{rust: string, kind: string, php?: string, reason?: string, as?: string}>}
+ * @phpstan-type Declaration array{class: ClassLike, uses: array<string, string>, namespace: string|null}
  * @phpstan-type RecordFields array<string, array{rust: string, kind: string, php?: string, reason?: string, as?: string}>
  */
 final class Transpiler
@@ -86,13 +87,15 @@ final class Transpiler
     public static string $target = 'php';
 
     /**
-     * Whether to emit an aggregate rule whose numbers do not yet agree with the original.
+     * Whether to emit a rule whose numbers do not yet agree with the original.
      *
      * Off by default, and the refusal it produces carries the measurement that says why — see
-     * {@see Vocabulary::UNVERIFIED_AGGREGATES}. The flag exists so the emission can be exercised and measured
-     * without the default being a rule that reports 95 % where the original reports 49 %.
+     * {@see Vocabulary::unverifiedAggregate()} for an aggregate and {@see Vocabulary::unverifiedRule()} for a
+     * whole rule. The flag exists so the emission can be exercised and measured without the default being a
+     * rule that reports 95 % where the original reports 49 %, or one that reports 33 findings on a real
+     * project that the original does not.
      */
-    public static bool $allowUnverifiedAggregates = false;
+    public static bool $allowUnverified = false;
 
     /**
      * Where to read the good and bad examples a linter rule embeds in its metadata.
@@ -143,6 +146,18 @@ final class Transpiler
      * @var list<string>
      */
     private array $identifiers = [];
+
+    /**
+     * Whole-project passes this rule's checks were handed to, rendered as calls.
+     *
+     * A rule with any of these is emitted as both a node hook and an after-analysis hook — one plugin, two
+     * hook kinds, which `internal/probe-dual-hook-plugin.php` measured works. Nothing crosses between them:
+     * `internal/probe-collect-across-workers.php` measured `afterAnalysis` running in a different process
+     * than the node hooks above one worker, so a pass finds its own subjects.
+     *
+     * @var list<string>
+     */
+    private array $afterChecks = [];
 
     /** @var array<string, string> the rule's own string constants, by name */
     private array $constants = [];
@@ -559,6 +574,12 @@ final class Transpiler
      */
     private array $ruleUses = [];
 
+    /**
+     * The namespace the rule file declares, so a helper found in the rule's own class-like can be named
+     * fully. A helper found through a trait or a parent carries its own, from {@see SourceIndex}.
+     */
+    private ?string $ruleNamespace = null;
+
     /** Guards against a helper that calls itself. */
     private int $inlineDepth = 0;
 
@@ -604,7 +625,10 @@ final class Transpiler
         $this->currentClass = $class;
         $this->ruleClass = $class;
         $this->ruleUses = $this->useMap;
+        $this->ruleNamespace = SourceIndex::namespaceOf($ast, $className);
         $this->collectConstants($class);
+
+        $this->refuseAnUnverifiedRule($className);
 
         // A collector-and-consumer pair has no per-file body to translate, so it is recognised and re-emitted
         // rather than walked. Checked before anything else reads the body, because reading it would refuse on
@@ -722,6 +746,26 @@ final class Transpiler
                 ARRAY_FILTER_USE_KEY,
             )),
         ];
+    }
+
+    /**
+     * Refuse a rule that emits and disagrees with the original, before its body is read.
+     *
+     * Read before the walk so the refusal names the disagreement rather than whatever the walk would have hit
+     * first, and only on the PHP target, because the measurement behind it is of the PHP plugin. The survey
+     * still reports what the body would need: withholding is a statement about shipping it, not about whether
+     * it translates.
+     */
+    private function refuseAnUnverifiedRule(string $className): void
+    {
+        if (self::$target !== 'php' || self::$allowUnverified || self::$survey) {
+            return;
+        }
+
+        $withheld = Vocabulary::unverifiedRule($className);
+        if ($withheld !== null) {
+            throw new Refusal($withheld);
+        }
     }
 
     /** Whether this class is a PHPStan Collector, i.e. the per-file half of a cross-file rule. */
@@ -2923,7 +2967,7 @@ PHP;
     /**
      * The class behind `$this-><property>`, when that property holds a collaborator this package can read.
      *
-     * @return array{class: ClassLike, uses: array<string, string>}|null
+     * @return Declaration|null
      */
     private function collaboratorClass(Expr $receiver, int $line): ?array
     {
@@ -3224,7 +3268,7 @@ PHP;
      * the `use` statements of *its* file, not the calling rule's. Sharing the caller's map silently
      * resolved names to the wrong thing, or failed to resolve them at all.
      *
-     * @return array{class: ClassLike, uses: array<string, string>}|null
+     * @return Declaration|null
      */
     private function findClassByName(string $shortName): ?array
     {
@@ -4035,6 +4079,105 @@ PHP;
     }
 
     /**
+     * Hand one check to a whole-project pass, when its question is one no node hook can answer.
+     *
+     * The check is not translated: {@see Vocabulary::CROSS_FILE_CHECKS} names the pass that answers it, the
+     * same way {@see Vocabulary::AGGREGATES} names the metric a collector contributes to. Everything the
+     * rule's own source *can* supply still comes from it — the argument expressions are resolved by the
+     * ordinary resolver, and the identifier is read out of the class that builds the finding.
+     *
+     * Only on the PHP target. The Rust targets have no equivalent pass, and falling through leaves them with
+     * the refusal that names the real obstacle rather than a silently missing check.
+     *
+     * @param array<Arg> $args
+     *
+     * @return bool whether the check was taken, so the caller emits nothing for it
+     */
+    private function takeCrossFileCheck(string $method, array $args, int $line): bool
+    {
+        if (self::$target !== 'php' || ! $this->currentClass instanceof ClassLike) {
+            return false;
+        }
+
+        $declaring = $this->declaringOf($method);
+        if ($declaring === null) {
+            return false;
+        }
+
+        $entry = Vocabulary::CROSS_FILE_CHECKS[$this->fullyQualified($declaring) . '::' . $method] ?? null;
+        if ($entry === null) {
+            return false;
+        }
+
+        $identifier = $this->reportedIdentifierIn($declaring['class'], $line);
+        $arguments = ['$context'];
+        foreach ($entry['arguments'] as $position) {
+            $argument = $args[$position] ?? null;
+            if (! $argument instanceof Arg) {
+                throw new Refusal("{$method}() has no argument {$position} for its whole-project pass", $line);
+            }
+
+            $arguments[] = $this->operand($this->resolve($argument->value, $line));
+        }
+
+        $arguments[] = $this->backend->bytes($identifier);
+        $this->afterChecks[] = $entry['pass'] . '(' . implode(', ', $arguments) . ')';
+        $this->identifiers[] = $identifier;
+
+        return true;
+    }
+
+    /**
+     * The fully qualified name of a class-like the hierarchy resolved a method to.
+     *
+     * This transpiler does not run php-parser's `NameResolver`, so a `ClassLike` node carries no
+     * `namespacedName`; the namespace travels alongside it instead, read from the file that declared it. A
+     * table keyed on the qualified name cannot be matched by a same-named class in another package, which a
+     * short name plus a path check only made unlikely.
+     *
+     * @param Declaration $declaring
+     */
+    private function fullyQualified(array $declaring): string
+    {
+        $name = (string) $declaring['class']->name;
+        $namespace = $declaring['namespace'];
+
+        return $namespace === null ? $name : $namespace . '\\' . $name;
+    }
+
+    /**
+     * The single identifier a class builds its findings under.
+     *
+     * Read rather than tabulated, so an upstream rename flows through instead of being carried in this
+     * repository. More than one means the class reports several different things and nothing here says which
+     * this check is, so it is refused rather than guessed.
+     */
+    private function reportedIdentifierIn(ClassLike $class, int $line): string
+    {
+        $found = [];
+        foreach ((new NodeFinder())->findInstanceOf([$class], MethodCall::class) as $call) {
+            if ($this->memberName($call->name, $call->getStartLine()) !== 'identifier') {
+                continue;
+            }
+
+            $argument = $call->getArgs()[0] ?? null;
+            if ($argument instanceof Arg && $argument->value instanceof String_) {
+                $found[] = $argument->value->value;
+            }
+        }
+
+        $found = array_values(array_unique($found));
+        if (count($found) !== 1) {
+            throw new Refusal(sprintf(
+                'the class behind this check reports under %d identifiers, so which one it uses is not readable',
+                count($found),
+            ), $line);
+        }
+
+        return $found[0];
+    }
+
+    /**
      * Inline a helper whose return value *is* the finding, in statement position.
      *
      * The dominant shape in a real rule package. The rule is a shim:
@@ -4059,6 +4202,10 @@ PHP;
         // this returns, whatever the helper decided has already been reported.
         if ($target instanceof Variable && is_string($target->name)) {
             $this->reportedErrors[$target->name] = true;
+        }
+
+        if ($this->takeCrossFileCheck($method, $args, $line)) {
+            return;
         }
 
         $checkStart = $this->openCheck($line);
@@ -4214,7 +4361,7 @@ PHP;
      *
      * @param array<Arg> $args
      *
-     * @return array{string, array<Arg>, array{class: ClassLike, uses: array<string, string>}, ClassMethod}|null
+     * @return array{string, array<Arg>, Declaration, ClassMethod}|null
      */
     private function recordConsumer(ClassMethod $helper, array $args, int $line): ?array
     {
@@ -4337,7 +4484,7 @@ PHP;
      * with one field instead of several — so it shares the machinery and unwraps the reserved empty key.
      *
      * @param array<Arg> $args
-     * @param array{class: ClassLike, uses: array<string, string>} $declaring
+     * @param Declaration $declaring
      *
      * @return array{rust: string, kind: string, php?: string, reason?: string, as?: string}|null
      */
@@ -4376,7 +4523,7 @@ PHP;
 
     /**
      * @param array<Arg> $args
-     * @param array{class: ClassLike, uses: array<string, string>} $declaring
+     * @param Declaration $declaring
      *
      * @return RecordFields
      */
@@ -4510,7 +4657,7 @@ PHP;
      *
      * @param array<Arg> $args
      *
-     * @return array{string, array<Arg>, array{class: ClassLike, uses: array<string, string>}, ClassMethod}|null
+     * @return array{string, array<Arg>, Declaration, ClassMethod}|null
      */
     private function forwardedHelper(ClassMethod $helper, string $method, array $args, int $line): ?array
     {
@@ -4829,7 +4976,7 @@ PHP;
      * which is what the original has, and it stays readable against the rule it came from.
      *
      * @param array<Arg> $args
-     * @param array{class: ClassLike, uses: array<string, string>} $declaring
+     * @param Declaration $declaring
      */
     private function classifierExpression(ClassMethod $helper, array $args, string $method, array $declaring, int $line): ?string
     {
@@ -4868,7 +5015,7 @@ PHP;
     /**
      * @param list<array{Expr, string}> $cases
      * @param array<Arg> $args
-     * @param array{class: ClassLike, uses: array<string, string>} $declaring
+     * @param Declaration $declaring
      */
     private function renderClassifier(array $cases, ClassMethod $helper, array $args, string $method, array $declaring, int $line): string
     {
@@ -4982,19 +5129,19 @@ PHP;
     /**
      * Where a `$this->method()` call is declared, looking at the rule itself when the inlined file has no it.
      *
-     * @return array{class: ClassLike, uses: array<string, string>}|null
+     * @return Declaration|null
      */
     private function declaringOf(string $method): ?array
     {
         $found = $this->currentClass instanceof ClassLike
-            ? $this->hierarchy()->declaring($this->currentClass, $method, $this->useMap)
+            ? $this->hierarchy()->declaring($this->currentClass, $method, $this->useMap, $this->ruleNamespace)
             : null;
 
         if ($found !== null || ! $this->ruleClass instanceof ClassLike || $this->ruleClass === $this->currentClass) {
             return $found;
         }
 
-        return $this->hierarchy()->declaring($this->ruleClass, $method, $this->ruleUses);
+        return $this->hierarchy()->declaring($this->ruleClass, $method, $this->ruleUses, $this->ruleNamespace);
     }
 
     private function hierarchy(): Hierarchy
@@ -9802,6 +9949,34 @@ REPORT, ['{ANCHOR}' => $this->anchor ?? $this->defaultAnchor()]);
 
         $constructor = $this->emitConstructor();
 
+        // A rule with a whole-project check is both hook kinds at once, in one plugin. The node hook keeps
+        // per-node dispatch and the requirements above for the checks that are node-shaped; the pass runs
+        // once over the finished analysis. Empty for every other rule, which is what keeps those files
+        // byte-identical.
+        $implements = 'Plugin, NodeAnalysisHook';
+        $afterImports = '';
+        $runtimeImports = '';
+        $afterRegister = '';
+        $afterMethod = '';
+        if ($this->afterChecks !== []) {
+            $implements = 'Plugin, NodeAnalysisHook, AfterAnalysisHook';
+            $afterImports = "use Mago\Sdk\Analyzer\AfterAnalysisContext;\nuse Mago\Sdk\Analyzer\AfterAnalysisHook;\n";
+            $afterRegister = "\n        \$registry->registerAfterAnalysisHook(\$this);";
+            $passes = '';
+            $runtime = [];
+            foreach ($this->afterChecks as $pass) {
+                $passes .= "        {$pass};\n";
+                $runtime[explode('::', $pass)[0]] = true;
+            }
+
+            ksort($runtime);
+            foreach (array_keys($runtime) as $class) {
+                $runtimeImports .= "use Sandermuller\\PhpstanToMago\\Runtime\\{$class};\n";
+            }
+
+            $afterMethod = "\n    public function afterAnalysis(AfterAnalysisContext \$context): void\n    {\n{$passes}    }\n";
+        }
+
         // One method per check, in the order the rule asks them. Empty for every rule that asks one, which is
         // what keeps those files byte-identical.
         $checkMethods = '';
@@ -9819,7 +9994,7 @@ declare(strict_types=1);
 
 namespace Transpiled;
 
-use Mago\Sdk\Analyzer\FileAnalysisRequirement;
+{$afterImports}use Mago\Sdk\Analyzer\FileAnalysisRequirement;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\NodeAnalysisHook;
 use Mago\Sdk\Analyzer\Plugin;
@@ -9828,9 +10003,9 @@ use Mago\Sdk\Analyzer\PluginRegistry;
 use Mago\Sdk\Reporting\Issue;
 use Mago\Sdk\Reporting\Level;
 use Mago\Sdk\Syntax\NodeKind;
-use Sandermuller\PhpstanToMago\Runtime\Support;
+{$runtimeImports}use Sandermuller\PhpstanToMago\Runtime\Support;
 
-final class {$className} implements Plugin, NodeAnalysisHook
+final class {$className} implements {$implements}
 {
 {$constructor}
     public function getDefinition(): PluginDefinition
@@ -9844,7 +10019,7 @@ final class {$className} implements Plugin, NodeAnalysisHook
 
     public function register(PluginRegistry \$registry): void
     {
-        \$registry->registerNodeAnalysisHook(\$this);
+        \$registry->registerNodeAnalysisHook(\$this);{$afterRegister}
     }
 
     public function getTargets(): array
@@ -9862,7 +10037,7 @@ final class {$className} implements Plugin, NodeAnalysisHook
         \$node = \$context->node;
 
 {$body}{$trailingReport}    }
-{$checkMethods}
+{$afterMethod}{$checkMethods}
 }
 
 PHP;

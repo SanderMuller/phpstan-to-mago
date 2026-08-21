@@ -110,6 +110,23 @@ final readonly class FiresGate
         ],
     ];
 
+    /**
+     * PHPStan service arguments a rule needs, per rule, for the PHPStan side only.
+     *
+     * Separate from {@see CONFIGURED} because a service is not a configured value: it goes to PHPStan as a
+     * container reference and has no counterpart on the plugin, whose whole point is that it asks Mago the
+     * same question without the service. `CombinedMethodCallRule` takes `PHPStan\Parser\Parser` so it can
+     * parse the file another class is declared in; without it PHPStan cannot construct the rule at all, and
+     * the pair would look like a rule that reports nothing.
+     *
+     * @var array<string, array<string, string>>
+     */
+    private const array SERVICES = [
+        'CombinedMethodCallRule' => [
+            'parser' => '@defaultAnalysisParser',
+        ],
+    ];
+
     public function __construct(
         private string $repositoryRoot,
         private string $examplesRoot,
@@ -289,11 +306,17 @@ final readonly class FiresGate
     private function arguments(string $ruleFile): string
     {
         $arguments = $this->configuredValues($ruleFile);
-        if ($arguments === []) {
+        $services = self::SERVICES[basename($ruleFile, '.php')] ?? [];
+        if ($arguments === [] && $services === []) {
             return '';
         }
 
         $lines = ['        arguments:'];
+        foreach ($services as $name => $reference) {
+            // Written raw: neon reads `@name` as a service reference, and quoting it hands the rule a string.
+            $lines[] = '            ' . $name . ': ' . $reference;
+        }
+
         foreach ($arguments as $name => $value) {
             if (! is_array($value)) {
                 $lines[] = '            ' . $name . ': ' . json_encode($value, JSON_THROW_ON_ERROR);

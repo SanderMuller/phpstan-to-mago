@@ -100,7 +100,15 @@ $differential->writePhpstanConfig();
 
 echo "emitted: {$counts['emitted']}, refused: {$counts['refused']} (target: php)\n";
 echo 'corpus: ', count($files), " files\n";
-echo 'identifiers under test: ', count($differential->identifiers()), "\n\n";
+echo 'identifiers under test: ', count($differential->identifiers()), "\n";
+
+$unregistered = $differential->notRegisteredHere();
+if ($unregistered !== []) {
+    echo 'not registered by this harness (constructor takes a configured value, so the original runs only if ',
+    "the consumer's own config registers it): ", implode(', ', $unregistered), "\n";
+}
+
+echo "\n";
 
 $port = $differential->magoFindings($threads);
 $original = $differential->phpstanFindings();

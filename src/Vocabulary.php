@@ -377,6 +377,73 @@ final class Vocabulary
     ];
 
     /**
+     * A check whose question no node hook can answer, and the whole-project pass that answers it instead.
+     *
+     * The same shape as {@see AGGREGATES} one level down. There the rule's *source* cannot be translated
+     * because PHPStan collects across files and Mago has no collector; here one *check* of a rule cannot,
+     * because it reads a method body that may be declared in another file. `getFileName()` plus
+     * `Parser::parseFile()` is PHPStan's route; the SDK's is `getDeclaringMethod()` plus that file's CST, and
+     * `internal/probe-declaring-file-body.php` measured that only an after-analysis pass can take it.
+     *
+     * Keyed by the declaring class-like's fully qualified name and the method, because that is what a rule's
+     * own source names and it cannot collide across corpora. This transpiler does not run php-parser's
+     * `NameResolver`, so the namespace travels with the declaration from `SourceIndex` rather than off the
+     * node. `arguments` are call-site argument positions, rendered by the ordinary resolver — the accessor
+     * list and namespaces come from the rule, not from here.
+     *
+     * What is named here is only what the source cannot say: *which* pass answers the question.
+     *
+     * {@see unverifiedAggregate()} withholds a mapped aggregate until a *corpus* differential agrees, and
+     * there is no counterpart here because that bar cannot be met — for a measured reason rather than an
+     * assumed one. `../hihaho` reports nothing under `unvalidatedFormRequestField`, because every `rules()`
+     * on a class extending a request base there is conditional and so opaque to the original too. A corpus
+     * differential would agree on zero, and two tools agreeing on nothing is the one result that proves
+     * neither looked.
+     *
+     * So the proof is split, and both halves ran. The corpus differential answers the *negative* direction —
+     * no false positive on real code. The fires-gate answers the positive one, and it is not a snapshot: it
+     * runs the real rule under real PHPStan against the emitted plugin under real mago and compares line and
+     * message, including one example whose `rules()` is declared in another file. Breaking the resolver on
+     * purpose turns that comparison red and names the two findings that vanish, which is what says the pass
+     * is load-bearing rather than incidental. An entry whose pass ever *does* need withholding gets the
+     * `unverifiedAggregate()` treatment then, with its number.
+     *
+     * @var array<string, array{pass: string, arguments: list<int>}>
+     */
+    public const array CROSS_FILE_CHECKS = [
+        'Hihaho\PhpstanRules\Traits\ResolvesFormRequestRuleKeys::unvalidatedFormRequestFieldError' => [
+            'pass' => 'FormRequestFields::report',
+            'arguments' => [4, 5, 6],
+        ],
+    ];
+
+    /**
+     * Why a rule is not emitted by default, or null when it agrees with the original.
+     *
+     * The rule-level counterpart of {@see unverifiedAggregate()}, and it exists for the same reason: a rule
+     * that emits, loads, runs and *disagrees* with the original on real code is worse than a refusal, because
+     * a reader trusts it. Keeping the emission and refusing here — rather than un-mapping whatever made it
+     * reachable — means the refusal names a number, and `--unverified` still exercises it so the number can
+     * be improved.
+     *
+     * An entry leaves when the corpus differential agrees, not when a fixture pair does.
+     */
+    public static function unverifiedRule(string $className): ?string
+    {
+        return match ($className) {
+            'CombinedMethodCallRule' => 'the rule emits and its cross-file check agrees with the original, but two '
+                . 'of its node-shaped checks disagree at corpus scale: on 2716 files the port reports 26 '
+                . 'positionalFlagArgument findings and 7 noUnsafeRequestData findings the original does not, and '
+                . 'none that it misses. The original is active on that project — its own baseline carries four '
+                . 'noUnsafeRequestData entries — so this is disagreement, not an unregistered rule. The cause '
+                . 'is not traced: the emitted check does carry the first-party gate, and a probe shows '
+                . 'Support::declaringClassOfMethod() answering correctly for a resolvable vendor parent, so '
+                . 'what makes 26 first-party calls out of Illuminate ones is still open',
+            default => null,
+        };
+    }
+
+    /**
      * Why a mapped aggregate is not emitted by default, or null once it agrees with the original.
      *
      * The parameter metric agreed exactly with the original on a small fixture and then disagreed on a

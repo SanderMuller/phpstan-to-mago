@@ -77,7 +77,7 @@ final class TracksUpstreamDriftTest extends TestCase
     {
         Transpiler::$target = 'php';
         Transpiler::$survey = false;
-        Transpiler::$allowUnverifiedAggregates = false;
+        Transpiler::$allowUnverified = false;
     }
 
     public function test_the_corpus_still_translates_the_way_the_census_says(): void

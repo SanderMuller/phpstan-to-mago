@@ -31,12 +31,37 @@ final class TranspilesToPhpTest extends TestCase
     {
         Transpiler::$target = 'php';
         Transpiler::$survey = false;
+        // `CombinedMethodCallRule` is withheld by default because it disagrees with the original at corpus
+        // scale — see `Vocabulary::unverifiedRule()`. The flag is what the withholding exists for: the
+        // emission stays exercisable, so the checks that *do* agree keep their proof and the number can be
+        // improved rather than guessed at.
+        Transpiler::$allowUnverified = true;
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function supportedRules(): iterable
+    {
+        foreach (self::fixtures() as $label => [$rule]) {
+            yield $label => [$rule, self::RULES . '/' . $rule . '.php'];
+        }
+
+        // The one snapshot taken from the corpus rather than from a fixture. The dual-hook shape — a node
+        // hook and an after-analysis hook in one plugin — is triggered by a `Vocabulary::CROSS_FILE_CHECKS`
+        // entry keyed to a corpus trait, so no fixture can reach it without inventing a second runtime pass
+        // to point the entry at. Snapshotted here instead, for the reason every snapshot exists: the
+        // fires-gate proves it runs, and this proves a refactor did not change what it emits.
+        yield 'a check handed to a whole-project pass' => [
+            'CombinedMethodCallRule',
+            __DIR__ . '/../../vendor/hihaho/phpstan-rules/src/Rules/CombinedMethodCallRule.php',
+        ];
     }
 
     /**
      * @return iterable<string, array{string}>
      */
-    public static function supportedRules(): iterable
+    private static function fixtures(): iterable
     {
         yield 'guard chain' => ['ForbiddenStaticConstFetchRule'];
         yield 'loop with a formatted message' => ['UppercaseConstantRule'];
@@ -86,22 +111,22 @@ final class TranspilesToPhpTest extends TestCase
     }
 
     #[DataProvider('supportedRules')]
-    public function test_emits_the_reviewed_plugin(string $rule): void
+    public function test_emits_the_reviewed_plugin(string $rule, string $file): void
     {
-        $emitted = $this->transpile($rule);
+        $emitted = $this->transpile($file);
 
         $this->assertSame(file_get_contents(self::EXPECTED . '/' . $rule . '.php'), $emitted . "\n", "Emitted plugin for {$rule} differs from the reviewed snapshot.");
     }
 
     #[DataProvider('supportedRules')]
-    public function test_emitted_plugin_parses(string $rule): void
+    public function test_emitted_plugin_parses(string $rule, string $file): void
     {
         // Parsed with the same parser the transpiler reads rules with, rather than shelling out to
         // `php -l`: no subprocess, and the failure names the offending line.
         $parser = (new ParserFactory())->createForHostVersion();
 
         try {
-            $statements = $parser->parse($this->transpile($rule));
+            $statements = $parser->parse($this->transpile($file));
         } catch (Error $error) {
             self::fail("Emitted plugin for {$rule} does not parse: " . $error->getMessage());
         }
@@ -114,9 +139,9 @@ final class TranspilesToPhpTest extends TestCase
      * constant. Untranslated Rust is what produces those, and it must never reach a `.php` file.
      */
     #[DataProvider('supportedRules')]
-    public function test_emitted_plugin_contains_no_rust(string $rule): void
+    public function test_emitted_plugin_contains_no_rust(string $rule, string $file): void
     {
-        $emitted = $this->transpile($rule);
+        $emitted = $this->transpile($file);
 
         foreach (['support::', 'b"', 'Ok(', '&node.', '.iter()', '.as_slice()', '|item|'] as $marker) {
             $this->assertStringNotContainsString($marker, $emitted, "Rust leaked into {$rule}: {$marker}");
@@ -128,9 +153,9 @@ final class TranspilesToPhpTest extends TestCase
      * but not the helper.
      */
     #[DataProvider('supportedRules')]
-    public function test_every_helper_it_calls_exists(string $rule): void
+    public function test_every_helper_it_calls_exists(string $rule, string $file): void
     {
-        preg_match_all('/Support::([a-zA-Z]+)\(/', $this->transpile($rule), $matches);
+        preg_match_all('/Support::([a-zA-Z]+)\(/', $this->transpile($file), $matches);
 
         foreach (array_unique($matches[1]) as $helper) {
             $this->assertTrue(method_exists(Support::class, $helper), "Emitted plugin for {$rule} calls Support::{$helper}(), which does not exist.");
@@ -210,7 +235,7 @@ final class TranspilesToPhpTest extends TestCase
         $this->expectException(Refusal::class);
         $this->expectExceptionMessage('anchored on a loop item');
 
-        $this->transpile('AnchorEscapesLoopRule');
+        $this->transpile(self::RULES . '/AnchorEscapesLoopRule.php');
     }
 
     public function test_refuses_a_construct_outside_the_vocabulary(): void
@@ -218,11 +243,11 @@ final class TranspilesToPhpTest extends TestCase
         $this->expectException(Refusal::class);
         $this->expectExceptionMessage('->isString()');
 
-        $this->transpile('UnsupportedRule');
+        $this->transpile(self::RULES . '/UnsupportedRule.php');
     }
 
-    private function transpile(string $rule): string
+    private function transpile(string $file): string
     {
-        return (new Transpiler(self::RULES . '/' . $rule . '.php'))->transpile()['rust'];
+        return (new Transpiler($file))->transpile()['rust'];
     }
 }

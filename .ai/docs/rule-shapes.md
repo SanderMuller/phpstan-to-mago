@@ -741,6 +741,61 @@ Also worth knowing: `--survey` assumes a hook exists in order to see what a body
 refusal for such a rule names something from the body while a real run refuses on the hook. Read the real run
 before quoting a reason.
 
+## A check whose question needs another file, and the shape that turned out wrong
+
+One check of a merged rule can need a fact no node hook has. `CombinedMethodCallRule`'s
+`unvalidatedFormRequestField` resolves a class's `rules()`, which may be declared in a parent or a trait in
+another file. A node hook is handed one file, so the check cannot answer it — but the rule does not have to
+move: one plugin registers a node hook **and** an after-analysis hook, so the emitter picks a hook per
+*check*.
+
+**The shape to reach for first is wrong, and it passes its tests.** The obvious design is the one PHPStan
+uses: the node hook collects call sites, the after hook resolves and reports them. Measured on 8 files
+(`internal/probe-collect-across-workers.php`):
+
+```
+workers = 1   AFTER collected=8   analysisFiles=8
+workers = 2   AFTER collected=0   analysisFiles=8
+workers = 4   AFTER collected=0   analysisFiles=8
+```
+
+`afterAnalysis` fires once per run, and above one worker it fires in a **different process** than the node
+hooks. So collected state is gone — and at `workers = 1`, which is what a small sandbox runs, everything
+passes. A rule built that way is green in the gate and silent on every real project.
+
+What holds at every worker count is `analysis->files`. So a cross-file check is **self-contained** in the
+after pass: it finds its own subjects with `getNodes()`, names the enclosing class with `getAncestors()`,
+resolves through `getDeclaringMethod()` plus the declaring file's CST, and reports there. Nothing crosses a
+hook boundary.
+
+Two SDK facts worth knowing before writing one, both measured rather than read
+(`internal/probe-after-hook-self-contained.php`):
+
+- **`getLiteralString()` returns null in an after pass.** Decoded literals are a snapshot requirement and
+  `FileAnalysisRequirement` has no case for them. Decode the text, and accept only the unambiguous quoted
+  shape — a mis-decoded key is a finding about a field that *is* validated.
+- **An `Array` node's children are `ArrayElement` wrappers**, each holding the
+  `KeyValueArrayElement` / `ValueArrayElement` / `VariadicArrayElement` that says which kind of entry it is.
+  Comparing the wrapper's kind called every array opaque and reported nothing.
+
+The check itself is not translated statement by statement: the original resolves its key set with a
+`NodeTraverser` and an anonymous `NodeVisitor` subclass, and recognising that as an idiom is the
+plausible-but-wrong trap. `Vocabulary::CROSS_FILE_CHECKS` names the pass that answers the question instead —
+the same move `Vocabulary::AGGREGATES` makes for a collector — while the accessor list, the namespaces and
+the identifier still come from the rule's own source.
+
+Key it on the declaring class-like's **fully qualified** name. A short name plus a check on the rule's path
+makes a collision across two corpora unlikely rather than impossible, and the failure it leaves open is the
+bad kind: two packages shipping a trait with the same short name and method would get each other's pass, as
+a wrong emission rather than a refusal. This transpiler does not run php-parser's `NameResolver`, so a
+`ClassLike` node carries no `namespacedName` — `SourceIndex` reads the namespace from the declaring file and
+`Hierarchy` carries it alongside the declaration.
+
+Name a corpus package as *data*, never as an import. A `::class` constant on a rule package would put a
+dev-only dependency into shipped code, and the property that makes a new corpus cheap to adopt is exactly
+that a package appears only as a string in a table. `rector.php` skips the two rules that would rewrite
+those strings.
+
 ## Do not raise the emit count by lowering the bar
 
 Partial coverage plus named refusals is the honest, finished result. See `../guidelines/verification.md`.

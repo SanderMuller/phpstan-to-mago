@@ -30,7 +30,7 @@ final class SourceIndex
     /** @var array<string, true> roots already walked */
     private static array $indexed = [];
 
-    /** @var array<string, array{class: ClassLike, uses: array<string, string>}> */
+    /** @var array<string, array{class: ClassLike, uses: array<string, string>, namespace: string|null}> */
     private static array $parsed = [];
 
     /** Cleared between rules only in tests; the roots stay indexed, since the filesystem has not changed. */
@@ -40,7 +40,7 @@ final class SourceIndex
     }
 
     /**
-     * @return array{class: ClassLike, uses: array<string, string>}|null
+     * @return array{class: ClassLike, uses: array<string, string>, namespace: string|null}|null
      */
     public function find(string $shortName, string $ruleFile): ?array
     {
@@ -62,7 +62,11 @@ final class SourceIndex
                 continue;
             }
 
-            self::$parsed[$key] = ['class' => $class, 'uses' => Uses::collect($ast)];
+            self::$parsed[$key] = [
+                'class' => $class,
+                'uses' => Uses::collect($ast),
+                'namespace' => self::namespaceOf($ast, $shortName),
+            ];
 
             return self::$parsed[$key];
         }
@@ -129,6 +133,27 @@ final class SourceIndex
 
             if ($stmt instanceof ClassLike && $stmt->name?->toString() === $shortName) {
                 return $stmt;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The namespace a short name is declared in, or null for a file that declares none.
+     *
+     * Read rather than derived from the path: a package's directory layout is not its namespace, and a caller
+     * that needs a fully qualified name needs the declared one. {@see declaredAs()} descends into
+     * `Namespace_` without recording which one it went through, so the question is asked separately instead
+     * of changing what that returns for every caller.
+     *
+     * @param Stmt[] $ast
+     */
+    public static function namespaceOf(array $ast, string $shortName): ?string
+    {
+        foreach ($ast as $stmt) {
+            if ($stmt instanceof Namespace_ && self::declaredAs($stmt->stmts, $shortName) instanceof ClassLike) {
+                return $stmt->name?->toString();
             }
         }
 

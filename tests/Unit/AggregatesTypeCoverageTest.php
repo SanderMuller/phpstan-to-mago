@@ -115,14 +115,14 @@ final class AggregatesTypeCoverageTest extends TestCase
 
     protected function tearDown(): void
     {
-        Transpiler::$allowUnverifiedAggregates = false;
+        Transpiler::$allowUnverified = false;
     }
 
     public function test_the_transpiler_refuses_the_rule_until_a_corpus_differential_agrees(): void
     {
         Transpiler::$target = 'php';
         Transpiler::$survey = false;
-        Transpiler::$allowUnverifiedAggregates = false;
+        Transpiler::$allowUnverified = false;
 
         // The emission works — it produced this fixture — and is deliberately not mapped, because fixture
         // agreement turned out not to generalise. Refusing is the honest state, and this pins it so the
@@ -139,7 +139,7 @@ final class AggregatesTypeCoverageTest extends TestCase
     {
         Transpiler::$target = 'php';
         Transpiler::$survey = false;
-        Transpiler::$allowUnverifiedAggregates = true;
+        Transpiler::$allowUnverified = true;
 
         $emitted = (new Transpiler(
             dirname(__DIR__, 2) . '/vendor/tomasvotruba/type-coverage/src/Rules/ParamTypeCoverageRule.php',

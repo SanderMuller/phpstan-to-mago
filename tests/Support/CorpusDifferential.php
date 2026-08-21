@@ -90,6 +90,29 @@ final class CorpusDifferential
     ) {}
 
     /**
+     * The rules this harness did **not** register itself, because their constructor takes a configured value.
+     *
+     * Printed next to the counts, because a count belongs to its configuration. Such a rule may still be
+     * running — the package's own `extension.neon` registers it with real values, and the consumer's config
+     * includes that — or it may be running nowhere, in which case every `only-port` finding under its
+     * identifiers is an artefact rather than a disagreement. Nothing here can tell those apart, and reading a
+     * report that did not say so produced exactly the wrong conclusion once.
+     *
+     * @return list<string>
+     */
+    public function notRegisteredHere(): array
+    {
+        $names = [];
+        foreach ($this->emitted as $rule) {
+            if (! $rule['register']) {
+                $names[] = $rule['name'];
+            }
+        }
+
+        return $names;
+    }
+
+    /**
      * Transpiles every rule in the configured packages, writing the plugins and their worker.
      *
      * The counts this returns are the run's own, taken from the same emission the comparison uses. A survey

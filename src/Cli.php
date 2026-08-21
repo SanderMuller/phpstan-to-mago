@@ -32,7 +32,7 @@ final class Cli
 
         Transpiler::$target = $options->target;
         Transpiler::$survey = $options->survey;
-        Transpiler::$allowUnverifiedAggregates = $options->unverifiedAggregates;
+        Transpiler::$allowUnverified = $options->unverified;
         if ($options->examplesDir !== null) {
             Transpiler::$examplesDir = $options->examplesDir;
         }

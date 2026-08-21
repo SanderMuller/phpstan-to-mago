@@ -66,7 +66,7 @@ final readonly class AggregateRule
 
         $metric = Vocabulary::AGGREGATES[$collector];
         $withheld = Vocabulary::unverifiedAggregate($metric);
-        if ($withheld !== null && ! Transpiler::$allowUnverifiedAggregates) {
+        if ($withheld !== null && ! Transpiler::$allowUnverified) {
             throw new Refusal($withheld);
         }
 
