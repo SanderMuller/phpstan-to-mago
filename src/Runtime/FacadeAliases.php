@@ -70,7 +70,6 @@ final class FacadeAliases
         }
 
         foreach ($context->analysis->files as $analysis) {
-            // The rule ignores Blade, which is the one place an alias is allowed.
             if (str_ends_with($analysis->file, '.blade.php')) {
                 continue;
             }
