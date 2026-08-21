@@ -7735,17 +7735,26 @@ PHP;
         }
 
         // `getFileName()` on a class the rule resolved — asking where *another* file is so its source can be
-        // parsed. That is the cross-file question, and it is refused by name rather than as an access path
-        // because the obstacle is not the accessor: a node hook is handed one file, and reading another means
-        // either the SDK exposing that file's tree to this hook — unverified — or the plugin carrying a parser
-        // of its own, which is a decision about what a plugin is rather than a translation.
+        // parsed. Refused by name rather than as an access path, because the accessor is not the obstacle and
+        // the reason is not that the SDK cannot answer it. It can, and the route is measured
+        // (`internal/probe-declaring-file-body.php`): `Codebase::getDeclaringMethod()` gives the declaring
+        // file, `AfterAnalysisContext->analysis->files` finds that file's analysis, and `getSourceFile()` hands
+        // over its tree. What cannot do it is a *node* hook — `FileAnalysis::getSourceFile()` and
+        // `getNodeSourceFile()` both take no argument and answer about the one file the hook was given.
+        //
+        // So the obstacle is the hook kind, and the cost is the rule's other checks: a merged rule bundles
+        // sub-rules that are node-shaped and translate today, and moving the whole rule to a whole-project hook
+        // to serve one of them gives up the per-node dispatch and the inferred types the rest depend on. The
+        // transpiler would also have to choose the hook from what a rule needs rather than from its
+        // `getNodeType()` — the same change the collector-shaped rules want, and theirs to land with.
         if ($expr instanceof MethodCall
             && $this->memberName($expr->name, $expr->getStartLine()) === 'getFileName'
             && $expr->args === []
         ) {
             throw new Refusal(
-                'the file another class is declared in, so its source can be parsed: a node hook is handed one '
-                . 'file, and reading a second is not a translation of this rule but a change to what a plugin is',
+                'the file another class is declared in, so its source can be parsed. Reachable, but only from a '
+                . 'whole-project hook: a node hook is handed one file. Moving a merged rule there to serve one '
+                . 'of its checks gives up the per-node dispatch its other checks need',
                 $line,
             );
         }
@@ -7867,7 +7876,8 @@ PHP;
         ) {
             throw new Refusal(
                 'runtime reflection on the analysed code: a plugin worker autoloads the project but does not '
-                . 'boot it, so a name the application registers at runtime resolves to nothing',
+                . 'boot it, so a name the application registers at runtime resolves to nothing. The worker is '
+                . 'an ordinary PHP file and could be given a boot; what that costs is the reason not to',
                 $line,
             );
         }

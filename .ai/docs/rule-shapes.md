@@ -558,11 +558,22 @@ sub-rules resolves where `rules()` is *declared*, asks for that class's file, an
 that point translates — `hasMethod` and the declaring-class read on the enclosing declaration, a method name a
 loop bound from a constant list, the caches around both lookups.
 
-The refusal names the file read rather than the accessor, because the accessor is not the obstacle. A node hook
-is handed one file. Reading a second means either the SDK exposing another file's tree to *this* hook — which
-the after-analysis probe in `internal/` does not answer, since that is a different hook — or the plugin
-carrying a parser of its own. The second would work and is a decision about what a plugin is, not a translation
-of this rule. A merged rule is only portable if every sub-rule is.
+The refusal names the file read rather than the accessor, because the accessor is not the obstacle — and nor is
+the SDK. That read is **reachable, and measured** (`internal/probe-declaring-file-body.php`):
+`Codebase::getDeclaringMethod()` resolves the inheritance and names the declaring file,
+`AfterAnalysisContext->analysis->files` finds that file's analysis, and `getSourceFile()` hands over its tree.
+The probe reads all three keys out of a parent class in another file. No parser in the plugin.
+
+What cannot do it is a **node** hook. `FileAnalysis::getSourceFile()` and `getNodeSourceFile()` both take no
+argument and answer about the one file the hook was given. So the obstacle is the hook kind.
+
+Which makes this a trade rather than a blocker, and the trade is the reason it stays refused: a merged rule
+bundles sub-rules that are node-shaped and translate today, and re-homing the whole rule to a whole-project
+hook to serve one of them gives up the per-node dispatch and the inferred types the rest depend on — each
+would have to be rewritten as a whole-file walk. The transpiler would also have to pick the hook from what a
+rule needs rather than from its `getNodeType()`, which is the same architectural change the collector-shaped
+rules want, and theirs to land with. Untested: whether whole-project CST access is affordable on a real
+corpus. A merged rule is only portable if every sub-rule is.
 `CombinedStaticCallRule` stops earlier, on a cache declared part-way through a helper — see below.
 
 ## A cache is invisible to the answer, but only where it wraps the question
