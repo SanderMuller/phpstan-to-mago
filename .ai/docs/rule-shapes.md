@@ -681,15 +681,34 @@ A rule can return an *abstract* php-parser class from `getNodeType()` and branch
 types" — and its body then handles `ClassConstFetch`/`StaticPropertyFetch` in one branch and
 `MethodCall`/`StaticCall`/`FuncCall`/`PropertyFetch` in another.
 
-That is not a missing hook mapping, and the refusal now says so. Mago's hooks are per node kind and
-`getTargets()` returns a list, so the shape is reachable. What is missing is narrower and deeper: each
-`instanceof` branch would have to **rebind which kind the body is reading**, because `$node->name` means a
-different child under `MethodCall` than under `ClassConstantAccess` and the field table is keyed by one kind
-per rule. `$this->nodeKind` is that key, and it is set once per rule today.
+It emits. `Vocabulary::HOOK_KINDS` maps such a class to the kinds it covers, the plugin registers one target
+each, and every `instanceof` becomes a node-kind test. No rebinding of `$this->nodeKind` was needed after all —
+the fear was that `$node->name` means a different child per kind, and it does, but a *family field* answers for
+all of them: `Support::namePart()` reads the selector under five kinds and the called expression under
+`FunctionCall`.
 
-Two rules already wanted a version of this — the class-declaration hook, solved by registering every
-class-like kind and asking the rule's own class test at runtime, and this one. The difference is that the
-class-like kinds answer `->name` the same way (which is what `FIELD_GROUPS` records) and these do not.
+Each branch becomes its own method, the same per-check machinery a merged rule uses. A branch here is
+`if (<this is my case>) { <guards> return [$error]; }` and its guards decline that case rather than the rule —
+which is the whole point, since a rule over six kinds has one branch per family.
+
+Two things had to be probed rather than reasoned:
+
+- **A written name is structural, not textual.** A static property's written name *is* `$prop`, so a leading
+  `$` proves nothing. Probed: written names hold a `LocalIdentifier`, a written static property a
+  `DirectVariable`, a written function name an `Identifier`; computed ones hold `NestedVariable`, `Variable` or
+  `ClassLikeMemberExpressionSelector`.
+- **The two spellings need different helpers.** `$node->class instanceof Expr` asks about a part that arrives
+  unwrapped, so a written one is a name node. `$node->name instanceof Expr` asks about a *selector*, which is
+  never a name node — asking `isName()` of one answers false for every call there is, and the guard would then
+  report on all of them. Caught by reading the emitted output; the example pair catches it too, which is what
+  `EveryExpressionRule`'s snapshot and pair are for.
+
+Every expression kind is registered, not only the ones a rule's branches name: PHPStan really does visit them
+all, and a branch declining a kind is the rule's own business.
+
+The class-declaration hook wanted a version of this and got a different answer — register every class-like kind
+and ask the rule's own class test at runtime. The difference is that those kinds answer `->name` identically,
+which is what `FIELD_GROUPS` records.
 
 Also worth knowing: `--survey` assumes a hook exists in order to see what a body would need, so a survey
 refusal for such a rule names something from the body while a real run refuses on the hook. Read the real run

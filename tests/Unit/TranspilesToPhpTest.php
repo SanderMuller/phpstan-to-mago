@@ -76,6 +76,10 @@ final class TranspilesToPhpTest extends TestCase
         // attempts at deciding that breadth both went silent on an enum, and the emitted targets are where the
         // decision is visible.
         yield 'a class test compounded with another condition' => ['CompoundClassGuardRule'];
+        // PHP only, and the snapshot of the widest hook shape: one rule over several node kinds, registering a
+        // target per kind its branches name and emitting a method per branch. Pinned because the emission is
+        // where the target set and the per-branch split are visible, and the gate can only prove it fires.
+        yield 'one rule over several node kinds' => ['EveryExpressionRule'];
     }
 
     #[DataProvider('supportedRules')]

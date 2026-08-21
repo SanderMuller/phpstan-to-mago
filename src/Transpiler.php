@@ -475,6 +475,20 @@ final class Transpiler
      */
     private array $collaborators = [];
 
+    /**
+     * The node kinds this rule's hook registers, when it registers more than one.
+     *
+     * Empty for every hook that is one kind, which is all but the expression family. A branch testing
+     * `instanceof MethodCall` needs to know whether that kind is among the targets: if it is, the test is a
+     * node-kind test; if it is not, the branch never runs.
+     *
+     * @var list<string>
+     */
+    private array $hookKinds = [];
+
+    /** The php-parser class the rule's `getNodeType()` names, which decides how many kinds the hook covers. */
+    private string $nodeType = '';
+
     /** Set when the rule narrows `getOriginalNode()` to `Class_`, which the class hook guarantees. */
     private bool $narrowedToClass = false;
 
@@ -652,6 +666,12 @@ final class Transpiler
 
         $this->nodeKind = $hook['kind'];
         $this->classFrom = $hook['classFrom'] ?? 'scope';
+
+        $this->nodeType = $nodeType;
+        $this->hookKinds = $this->targetKinds($hook);
+        if (count($this->hookKinds) < 2) {
+            $this->hookKinds = [];
+        }
 
         $processNode = $this->findMethod($class, 'processNode');
         $this->checkMode = self::$target === 'php' && $this->independentChecks($processNode) >= 2;
@@ -1227,10 +1247,12 @@ PHP;
 
         // A written name first: `hasMethod('expects')` is a literal, and resolving one as an expression is
         // both indirect and refused — `Scalar_String` is not an access path.
-        if ($args[0]->value instanceof String_) {
-            $literal = $this->stringLiteral($args[0]->value, $line);
+        // A written name, or a constant standing for one: `hasMethod(MethodName::INVOKE)` names `__invoke`
+        // through a class of constants, and the value is known here exactly as a literal would be.
+        if ($args[0]->value instanceof String_ || $args[0]->value instanceof ClassConstFetch) {
+            $literal = $this->rawStringLiteral($args[0]->value, $line);
 
-            return ['rust' => $literal, 'kind' => 'bytes', 'php' => $this->backend->bytes($literal)];
+            return ['rust' => $this->backend->bytes($literal), 'kind' => 'bytes', 'php' => $this->backend->bytes($literal)];
         }
 
         $subject = $this->resolve($args[0]->value, $line);
@@ -3187,6 +3209,14 @@ PHP;
      */
     private function translateIf(If_ $stmt): void
     {
+        // A branch handling one of several node kinds the plugin registers for, with its own guards and its own
+        // report. Its own method, so `return []` inside it declines that branch rather than the whole rule.
+        if ($this->checkMode && $this->inlineDepth === 0 && $this->isBranchCheck($stmt)) {
+            $this->translateBranchCheck($stmt);
+
+            return;
+        }
+
         // if (COND) { $message = ..; $errors[] = RuleErrorBuilder::..; }  — a conditional report rather than a
         // guard. A rule that reports two different things about the same subject writes one of these per
         // finding, and each carries its own message and identifier.
@@ -3518,12 +3548,20 @@ PHP;
      * translation. Both were wrong in the same direction, because neither the presence of the predicate nor its
      * translation proves the *rule* is class-only: compounded or negated, it is not. Not deciding is exact.
      *
+     * A rule naming an *abstract* php-parser class asks PHPStan for every node beneath it and branches on the
+     * concrete kind, so the plugin registers each — see {@see Vocabulary::HOOK_KINDS}.
+     *
      * @param array<string, string>|array<string, null>|array<string, bool> $hook
      *
      * @return list<string>
      */
     private function targetKinds(array $hook): array
     {
+        $named = Vocabulary::HOOK_KINDS[$this->nodeType] ?? null;
+        if ($named !== null) {
+            return $named;
+        }
+
         $kind = (string) $hook['kind'];
 
         return ($hook['classOnly'] ?? false) === true
@@ -3558,7 +3596,116 @@ PHP;
             }
         }
 
+        return $checks + $this->branchChecks($processNode);
+    }
+
+    /**
+     * How many of the rule's checks are written as a branch rather than a helper call.
+     *
+     * `if (<this is my case>) { <guards> return [$error]; }`, twice over, is how a rule registered for several
+     * node kinds handles each of them — `NoDynamicNameRule` has one branch for the two static accesses and one
+     * for the four calls. Each is a check in the same sense a helper is: its guards decline that case, not the
+     * rule, and `return []` inside one has to mean "not this branch" rather than "not this node".
+     */
+    private function branchChecks(ClassMethod $processNode): int
+    {
+        $checks = 0;
+        foreach ($processNode->stmts ?? [] as $statement) {
+            if ($statement instanceof If_ && $this->isBranchCheck($statement)) {
+                ++$checks;
+            }
+        }
+
         return $checks;
+    }
+
+    /** A branch whose body is a guard chain ending in a built rule error, which is a check. */
+    private function isBranchCheck(If_ $statement): bool
+    {
+        if ($statement->elseifs !== [] || $statement->else instanceof Else_ || count($statement->stmts) < 2) {
+            return false;
+        }
+
+        $last = $statement->stmts[count($statement->stmts) - 1];
+        if (! $last instanceof Return_ || ! $last->expr instanceof Array_ || count($last->expr->items) !== 1) {
+            return false;
+        }
+
+        $returned = $last->expr->items[0]->value ?? null;
+
+        // The error is built into a local first — `$ruleError = RuleErrorBuilder::..` — and returned wrapped.
+        // Anything else returned from a branch is not a finding this can place.
+        return $returned instanceof Variable
+            && is_string($returned->name)
+            && $this->buildsErrorInto($statement->stmts, $returned->name);
+    }
+
+    /**
+     * Whether one of these statements assigns a built rule error to that name.
+     *
+     * @param array<Stmt> $statements
+     */
+    private function buildsErrorInto(array $statements, string $name): bool
+    {
+        foreach ($statements as $statement) {
+            if ($statement instanceof Expression
+                && $statement->expr instanceof Assign
+                && $statement->expr->var instanceof Variable
+                && $statement->expr->var->name === $name
+                && $this->isRuleErrorBuilder($statement->expr->expr)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A branch check, as its own method on the plugin.
+     *
+     * The branch's condition becomes the check's first guard, negated: it says which case this is, so anything
+     * else declines. The statements after it are ordinary rule-body statements — guards, bindings, the built
+     * error — and the report lands where {@see finishCheck} puts it.
+     */
+    private function translateBranchCheck(If_ $statement): void
+    {
+        $checkStart = count($this->lines);
+
+        $this->lines[] = new Stm('guard', [
+            'condition' => '!(' . $this->stripOuterParentheses($this->translateCondition($statement->cond)) . ')',
+            'exit' => $this->backend->bail(),
+        ], $this->indent);
+
+        foreach ($statement->stmts as $inner) {
+            $this->translateStatement($inner);
+        }
+
+        $this->lines[] = $this->reportNode();
+        $this->closeCheck($checkStart, $this->branchCheckName($statement), $this->locals);
+        $this->reportTaken = true;
+    }
+
+    /**
+     * What to call a branch check, taken from the first node kind its condition names.
+     *
+     * A branch has no method name to borrow, and numbering them says nothing. The kind does: a reader of the
+     * emitted plugin sees `checkClassConstantAccess` and knows which of the registered targets it handles.
+     */
+    private function branchCheckName(If_ $statement): string
+    {
+        foreach ((new NodeFinder())->findInstanceOf([$statement->cond], Instanceof_::class) as $test) {
+            if (! $test->class instanceof Name) {
+                continue;
+            }
+
+            $kind = Vocabulary::EXPRESSION_KINDS[$this->resolveClassName($test->class)] ?? null;
+            if ($kind !== null) {
+                return $kind;
+            }
+        }
+
+        return 'branch' . (count($this->checks) + 1);
     }
 
     /**
@@ -6469,7 +6616,8 @@ PHP;
 
         // `$type instanceof ObjectType` is a *type* test, not a node test.
         if ($wanted === ObjectType::class) {
-            if ($subject['kind'] !== 'type') {
+            // A null-stripped type is still a type; the kind only records that `removeNull` was applied.
+            if (! in_array($subject['kind'], ['type', 'type-without-null'], true)) {
                 throw new Refusal('ObjectType test on something that is not a resolved type', $expr->getStartLine());
             }
 
@@ -6481,6 +6629,62 @@ PHP;
             }
 
             return "support::type_is_named_object(context, {$subject['rust']})";
+        }
+
+        // `$node instanceof MethodCall` on the hook node of a rule registered for every expression: the branch
+        // says which concrete kind it handles, and the plugin registered all of them, so the test is a
+        // node-kind test. Only where the hook names its kinds — elsewhere the hook *is* the kind and the
+        // question is settled by which hook fired.
+        // `$type instanceof UnionType` — Mago models a type as its atomic parts, so a union is one with more
+        // than one part. True of `A|null` on both sides, which is the case a count would otherwise disagree on.
+        if ($wanted === 'PHPStan\\Type\\UnionType' && in_array($subject['kind'], ['type', 'type-without-null'], true)) {
+            if (self::$target !== 'php') {
+                throw new Refusal('a union-type test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return $this->backend->call('type_is_union', [$this->operand($subject)]);
+        }
+
+        // `$node->name instanceof Identifier` — php-parser types a written member name as an identifier and a
+        // computed one as an expression. Mago spells the same split structurally, which is what this reads.
+        if ($wanted === Identifier::class && $subject['kind'] === 'name-part') {
+            if (self::$target !== 'php') {
+                throw new Refusal('a written-name test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return $this->backend->call('is_written_name', [$this->operand($subject)]);
+        }
+
+        // `$node->class instanceof Expr` — php-parser types a written class part as `Name` and anything computed
+        // as an expression, so this asks "is the class dynamic". Mago has no such split in the tree; the
+        // question is whether the part is a written name.
+        if ($wanted === Expr::class && in_array($subject['kind'], ['expr', 'name-expr', 'name-part'], true)) {
+            if (self::$target !== 'php') {
+                throw new Refusal('a dynamic-name test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            // Two spellings of the same question, and they need different helpers. A *class* part arrives
+            // unwrapped, so a written one is a name node. A *member* part arrives as its selector, which is
+            // never a name node — asking `isName()` of one answers false for every call there is, and the
+            // guard would then report on all of them.
+            $helper = $subject['kind'] === 'name-part' ? 'is_written_name' : 'is_name';
+
+            return '! ' . $this->backend->call($helper, [$this->operand($subject)]);
+        }
+
+        if ($subject['kind'] === 'hook-node'
+            && isset(Vocabulary::EXPRESSION_KINDS[$wanted])
+            && $this->hookKinds !== []
+        ) {
+            if (! in_array(Vocabulary::EXPRESSION_KINDS[$wanted], $this->hookKinds, true)) {
+                return $this->unreachable("this plugin does not register {$wanted}, so the branch never runs");
+            }
+
+            return $this->backend->call('node_kind_is', [
+                '$context',
+                '$node',
+                $this->backend->bytes(Vocabulary::EXPRESSION_KINDS[$wanted]),
+            ]);
         }
 
         if ($wanted === Class_::class && $subject['kind'] === 'hook-node') {
@@ -6659,6 +6863,19 @@ PHP;
                     $this->backend->call('class_descends_from', ['$context', $child, $parent]),
                 );
             }
+        }
+
+        // `$type->isCallable()->yes()` — whether the type can be called. Mago carries a callable as one of a
+        // type's atomic parts, and a closure as a named object, which is what the helper reads.
+        if ($name === 'isCallable' && $args === []) {
+            if (self::$target !== 'php') {
+                throw new Refusal('a callable-type test, which only the PHP target carries', $line);
+            }
+
+            return $this->negateUnless(
+                $tail === 'yes',
+                $this->backend->call('type_is_callable', [$this->operand($this->resolve($inner->var, $line))]),
+            );
         }
 
         if ($name === 'isInstanceOf' && count($args) === 1) {
@@ -7513,6 +7730,9 @@ PHP;
             // the AST.
             'attribute-name' => 'Support::nameIs(Support::attributeName($context, ' . $this->operand($subject) . '), ' . $this->backend->bytes($literal) . ')',
             'method-name' => 'Support::nameIs(Support::methodName(' . $this->operand($subject) . '), ' . $this->backend->bytes($literal) . ')',
+            // `$node->name->toString() === 'class'` on a member name: the part carries its own text, and PHP
+            // compares member names case-insensitively, which `nameIs()` already does.
+            'name-part' => 'Support::nameIs(Support::textOf(' . $this->operand($subject) . '), ' . $this->backend->bytes($literal) . ')',
             'expr' => "support::expression_selector_is({$subject['rust']}, b\"{$literal}\")",
             default => throw new Refusal("name comparison against a {$subject['kind']}", $line),
         };
@@ -7597,7 +7817,9 @@ PHP;
      */
     private function requireType(array $subject, int $line): void
     {
-        if ($subject['kind'] !== 'type') {
+        // A null-stripped type answers every question a type does; the kind only records that `removeNull` was
+        // applied on the way.
+        if (! in_array($subject['kind'], ['type', 'type-without-null'], true)) {
             throw new Refusal('type query on something that is not a resolved type', $line);
         }
     }
@@ -7677,7 +7899,9 @@ PHP;
             // its correction both had it wrong: a *node* hook that requests `ExpressionTypes` can ask
             // `$context->analysis->getExpressionType($node)` for any sub-expression, so no after-file hook is
             // needed. An array element of `[$this, 'handle']` answers `Fixture\Handler`.
-            if (! in_array($of['kind'], ['expr', 'found-node', 'argument', 'const-item'], true)) {
+            // A member name is a sub-expression like any other where it is computed — `$o->$n` names it with a
+            // variable, and asking its type is how a rule tells a callable apart from a plain string.
+            if (! in_array($of['kind'], ['expr', 'found-node', 'argument', 'const-item', 'name-part'], true)) {
                 throw new Refusal("the inferred type of a {$of['kind']}", $line);
             }
 
@@ -8018,6 +8242,25 @@ PHP;
                     'php' => 'Support::constantDeclarations($context, ' . $this->operand($of) . ')',
                 ];
             }
+        }
+
+        // `$scope->getFunctionName()` — the function or method the node sits in, which a rule uses to exempt
+        // magic accessors from a rule about dynamic names.
+        if ($expr instanceof MethodCall
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'scope'
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getFunctionName'
+            && $expr->args === []
+        ) {
+            if (self::$target !== 'php') {
+                throw new Refusal('the enclosing function name, which only the PHP target carries', $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'bytes',
+                'php' => 'Support::enclosingFunctionName($context, $node)',
+            ];
         }
 
         $traits = $this->resolveUsedTraitNames($expr, $line);

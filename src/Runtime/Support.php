@@ -11,6 +11,7 @@ use Mago\Sdk\Analyzer\Metadata\MetadataFlags;
 use Mago\Sdk\Analyzer\Metadata\ParameterMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
+use Mago\Sdk\Analyzer\Type\CallableType;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
 use Mago\Sdk\Analyzer\Type\ScalarType;
 use Mago\Sdk\Analyzer\Type\ScalarTypeKind;
@@ -264,6 +265,20 @@ final class Support
     /** Kinds that stand in for `instanceof PhpParser\Node\Name`. */
     private const array NAME_KINDS = [NodeKind::Identifier, NodeKind::Keyword, NodeKind::LocalIdentifier];
 
+    /**
+     * The node kinds a *written* member name is spelled with, as opposed to a computed one.
+     *
+     * Probed across the six accesses php-parser puts a `->name` on. `DirectVariable` belongs here because a
+     * static property's written name is `$prop`, which is a variable in the tree and an identifier to the rule.
+     *
+     * @var list<NodeKind>
+     */
+    private const array WRITTEN_NAME_KINDS = [
+        NodeKind::Identifier,
+        NodeKind::LocalIdentifier,
+        NodeKind::DirectVariable,
+    ];
+
     private static function part(NodeAnalysisContext $context, Node $node): Part
     {
         return new Part($node->kind, trim($context->source->getText($node)), $node, $context->source);
@@ -515,6 +530,156 @@ final class Support
         }
 
         return $collapsed;
+    }
+
+    /**
+     * The name of the function or method the node sits in, or null outside one.
+     *
+     * What `$scope->getFunctionName()` gives a rule. A closure and an arrow function are anonymous, so a node
+     * inside one has no enclosing *name* — the walk stops there rather than continuing to the method around it,
+     * which is what PHPStan answers too.
+     */
+    public static function enclosingFunctionName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        $node = self::node($subject);
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        [$file, $located] = self::locate($context, $node);
+
+        foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
+            if ($ancestor->kind === NodeKind::Closure || $ancestor->kind === NodeKind::ArrowFunction) {
+                return null;
+            }
+
+            if ($ancestor->kind !== NodeKind::Method && $ancestor->kind !== NodeKind::Function) {
+                continue;
+            }
+
+            foreach ($file->getChildren($ancestor) as $child) {
+                if ($child->kind === NodeKind::LocalIdentifier || $child->kind === NodeKind::Identifier) {
+                    return trim($file->getText($child));
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether an inferred type is callable, which is `$type->isCallable()->yes()`.
+     *
+     * Mago models a type as its atomic parts, and a callable is one of them. A closure object is a named object
+     * rather than a `CallableType`, so it is matched by name — that is the shape `Closure::fromCallable()` and a
+     * closure literal both produce.
+     */
+    public static function typeIsCallable(?Type $type): bool
+    {
+        if (! $type instanceof Type) {
+            return false;
+        }
+
+        foreach ($type->atomicTypes as $atomic) {
+            if ($atomic instanceof CallableType) {
+                return true;
+            }
+
+            if ($atomic instanceof NamedObjectType && strcasecmp(ltrim($atomic->name, '\\'), 'Closure') === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether an inferred type is a union, which is what `$type instanceof UnionType` asks.
+     *
+     * Mago models a type as its atomic parts, so a union is simply a type with more than one of them. That
+     * matches PHPStan on the nullable case too: `A|null` is a `UnionType` there and two atomic types here.
+     */
+    public static function typeIsUnion(?Type $type): bool
+    {
+        return $type instanceof Type && count($type->atomicTypes) > 1;
+    }
+
+    /**
+     * Whether the node the hook fired for is of one kind.
+     *
+     * A plugin registered for several kinds asks this where the rule branched on the concrete one. Mago gives
+     * each its own kind, so the question is the node's kind and nothing else.
+     */
+    public static function nodeKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool
+    {
+        $node = self::node($subject);
+
+        return $node instanceof Node && $node->kind->value === $kind;
+    }
+
+    /**
+     * The part a node names its member by, whatever kind of access or call it is.
+     *
+     * php-parser puts this on `->name` for six different classes and a rule asking "is this name written or
+     * computed" asks it of all of them. Mago spells it three ways, probed rather than assumed:
+     *
+     *   ClassConstantAccess    `Holder::FIXED`   ClassLikeConstantSelector
+     *   StaticPropertyAccess   `Holder::$prop`   Variable
+     *   MethodCall             `$o->m()`         ClassLikeMemberSelector
+     *   StaticMethodCall       `Holder::m()`     ClassLikeMemberSelector
+     *   PropertyAccess         `$o->inst`        ClassLikeMemberSelector
+     *   FunctionCall           `target()`        the first Expression child, there being no selector
+     */
+    public static function namePart(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        $node = self::node($subject);
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        $wanted = [NodeKind::ClassLikeConstantSelector, NodeKind::ClassLikeMemberSelector, NodeKind::Variable];
+        foreach ($context->source->getChildren($node) as $child) {
+            if (in_array($child->kind, $wanted, true)) {
+                return self::part($context, $child);
+            }
+        }
+
+        // A function call names its target with an expression rather than a selector.
+        return $node->kind === NodeKind::FunctionCall ? self::nthExpression($context, $node, 0) : null;
+    }
+
+    /**
+     * Whether a node names its member dynamically — computed at runtime rather than written out.
+     *
+     * The question `! $node->name instanceof Expr` asks, inverted: php-parser gives an `Identifier` for a
+     * written name and an expression for anything else. Mago has no such split, so the answer comes from the
+     * spelling: a selector holding a variable or a braced expression is dynamic, a bare word is not.
+     */
+    public static function hasDynamicName(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return ! self::isWrittenName(self::namePart($context, $subject));
+    }
+
+    /**
+     * Whether a name part is written out rather than computed.
+     *
+     * Structural, not textual: a static property's *written* name is `$prop`, so a leading `$` proves nothing.
+     * Probed instead — a written name holds a `LocalIdentifier`, a written static property a `DirectVariable`,
+     * a written function name an `Identifier`. Everything else is computed: `NestedVariable` for `Holder::$$n`,
+     * `Variable` for `$o->$n`, `ClassLikeMemberExpressionSelector` for either braced form.
+     *
+     * This is what php-parser answers with the type of `->name`: an `Identifier` where it is written, an
+     * expression where it is not.
+     */
+    public static function isWrittenName(?Part $part): bool
+    {
+        if (! $part instanceof Part) {
+            return false;
+        }
+
+        $inner = $part->children()[0] ?? null;
+
+        return in_array(($inner instanceof Part ? $inner : $part)->kind, self::WRITTEN_NAME_KINDS, true);
     }
 
     /** The enclosing declaration's extends clause, joined as PHPStan prints it. */

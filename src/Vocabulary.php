@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago;
 
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
@@ -16,6 +17,7 @@ use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\StaticPropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
@@ -98,6 +100,12 @@ final class Vocabulary
             'trait' => 'ArrayHook', 'method' => 'after_array', 'node' => 'Array', 'kind' => 'Array',
             'phpOnly' => true,
         ],
+        // A rule naming the abstract `Expr` asks PHPStan for every expression and branches on the concrete
+        // ones — `NoDynamicNameRule` calls that "a trick to allow multiple node types" in its own comment. A
+        // plugin registers all six kinds and the body's `instanceof` branches become kind tests. The fields
+        // below answer for every one of them, which is what makes one `kind` enough: `->name` is a selector
+        // under five and the called expression under `FunctionCall`, and `namePart()` covers both.
+        Expr::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'Expr', 'phpOnly' => true],
         Concat::class => [
             'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
             'gate' => "Support::binaryOperatorIs(\$context, \$node, '.')", 'phpOnly' => true,
@@ -195,6 +203,12 @@ final class Vocabulary
         // Mago's `Binary` holds its operands as `Expression` children either side of the operator, which the
         // helpers read by position — probed on `__DIR__ . '/x.php'`, which is `Expression(MagicConstant),
         // BinaryOperator ., Expression(Literal)`.
+        // The `Expr` family: fields every kind it registers answers the same way. `class` is the part before
+        // `::`, which only the two static accesses have and which reads as the first expression child for both.
+        'Expr' => [
+            'class' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
+            'name' => [self::PHP_ONLY, 'name-part', 'Support::namePart($context, {base})'],
+        ],
         'Binary' => [
             'left' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
             'right' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 1)'],
@@ -389,6 +403,41 @@ final class Vocabulary
     /**
      * @var array<class-string, string>
      */
+    /**
+     * The Mago node kind each php-parser expression class is, for a rule that branches on the concrete one.
+     *
+     * Only needed by the `Expr` family: a rule registering every expression tests `instanceof MethodCall` and
+     * the like, and each test becomes a node-kind test. Kept apart from `HOOKS` because two of these have no
+     * hook of their own — nothing registers for a property access alone — and a table of hooks is the wrong
+     * place to say what one *is*.
+     *
+     * @var array<class-string, string>
+     */
+    /**
+     * The node kinds a rule's declared node type covers, where it covers more than one.
+     *
+     * Only for an *abstract* php-parser class: a rule returning one asks PHPStan for every node beneath it and
+     * branches on the concrete kind, so the plugin registers each. Kept apart from `HOOKS` because a hook row
+     * is strings and putting a list in one loosens the type for every reader of it.
+     *
+     * Every expression kind is registered, not only the ones a rule's branches name — PHPStan really does visit
+     * them all, and a branch declining a kind is the rule's own business.
+     *
+     * @var array<class-string, list<string>>
+     */
+    public const array HOOK_KINDS = [
+        Expr::class => ['ClassConstantAccess', 'StaticPropertyAccess', 'MethodCall', 'StaticMethodCall', 'FunctionCall', 'PropertyAccess'],
+    ];
+
+    public const array EXPRESSION_KINDS = [
+        ClassConstFetch::class => 'ClassConstantAccess',
+        StaticPropertyFetch::class => 'StaticPropertyAccess',
+        MethodCall::class => 'MethodCall',
+        StaticCall::class => 'StaticMethodCall',
+        FuncCall::class => 'FunctionCall',
+        PropertyFetch::class => 'PropertyAccess',
+    ];
+
     public const array NODE_PREDICATES = [
         Name::class => 'is_name',
         Variable::class => 'is_variable',
