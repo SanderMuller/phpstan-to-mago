@@ -1059,12 +1059,21 @@ final class Support
     }
 
     /**
-     * Every class a type names, which is what `getObjectClassReflections()` hands a rule.
+     * Every class a type names, when the type is *certainly* an object — PHPStan's `getObjectClassNames()`.
      *
      * The list rather than the single-class reduction `soleObjectClass()` makes: a rule that loops these is
      * asking about each member of a union, and answering with one would go quiet on exactly the receivers the
      * loop exists for. Names as written — metadata lowercases them, and a rule comparing against a namespace
      * prefix needs the case.
+     *
+     * **A union with a non-object member names nothing**, and that is the whole difference between this and
+     * {@see soleObjectClassIgnoringNull()}. `?Request` is not certainly a request, so a rule asking "is the
+     * receiver a Request" gets no for it — which is what the original does, measured on two Nova actions
+     * holding `protected ?ActionRequest $request = null` where the port reported and PHPStan did not.
+     *
+     * Both answers are needed and neither is a bug: the positional-flag check strips null deliberately,
+     * because it asks what methods the receiver has rather than what it certainly is. The helper a rule gets
+     * follows the accessor the rule used.
      *
      * @return list<string>
      */
@@ -1072,9 +1081,11 @@ final class Support
     {
         $names = [];
         foreach ($type instanceof Type ? $type->atomicTypes : [] as $atomic) {
-            if ($atomic instanceof NamedObjectType) {
-                $names[] = $atomic->name;
+            if (! $atomic instanceof NamedObjectType) {
+                return [];
             }
+
+            $names[] = $atomic->name;
         }
 
         return $names;
