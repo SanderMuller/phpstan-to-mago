@@ -72,6 +72,9 @@ final class CorpusDifferential
     /** @var list<array{name: string, class: string, identifiers: list<string>, register: bool}> */
     private array $emitted = [];
 
+    /** @var list<string> configured packages the consumer does not have */
+    private array $skipped = [];
+
     /** @var list<array{name: string, reason: string}> */
     private array $refused = [];
 
@@ -88,6 +91,30 @@ final class CorpusDifferential
         private readonly array $paths,
         private readonly array $excludes = [],
     ) {}
+
+    /**
+     * The consumer's own PHPStan configuration.
+     *
+     * `phpstan.neon` when it exists, `phpstan.neon.dist` otherwise. Both spellings are ordinary — a project
+     * that gitignores the first and commits the second is the common Laravel skeleton — and hardcoding the
+     * first made every such project unmeasurable, which is most of the ones on hand.
+     */
+    public static function configurationOf(string $consumerRoot): string
+    {
+        $candidate = $consumerRoot . '/phpstan.neon';
+
+        return is_file($candidate) ? $candidate : $consumerRoot . '/phpstan.neon.dist';
+    }
+
+    /**
+     * Configured rule packages this consumer does not install.
+     *
+     * @return list<string>
+     */
+    public function packagesNotInstalled(): array
+    {
+        return array_values(array_unique($this->skipped));
+    }
 
     /**
      * The rules this harness did **not** register itself, because their constructor takes a configured value.
@@ -133,12 +160,26 @@ final class CorpusDifferential
             foreach ($this->packages as $package) {
                 $source = $this->consumerRoot . '/vendor/' . $package . '/src';
                 if (! is_dir($source)) {
-                    throw new RuntimeException("The consumer does not have {$package} installed, so there is nothing to transpile from it");
+                    // Skipped, not fatal. Aborting on the first absent package made every consumer that
+                    // installs only some of them unusable, which is most of them — and the corpus a rule most
+                    // needs is usually the one that installs the package that rule came from. Recorded so the
+                    // report can say which packages a run did *not* cover; a count belongs to its
+                    // configuration, and "0 findings" from a package that was never read is not a measurement.
+                    $this->skipped[] = $package;
+
+                    continue;
                 }
 
                 foreach (RulePaths::expand([$source]) as $file) {
                     $this->transpileInto($file);
                 }
+            }
+
+            if ($this->emitted === []) {
+                throw new RuntimeException(
+                    'The consumer has none of the configured rule packages installed, so there is nothing to '
+                    . 'transpile: ' . implode(', ', $this->packages),
+                );
             }
         } finally {
             Transpiler::$target = $target;
@@ -317,11 +358,16 @@ final class CorpusDifferential
 
         $config = implode("\n", [
             'includes:',
-            '    - ' . $this->consumerRoot . '/phpstan.neon',
+            '    - ' . self::configurationOf($this->consumerRoot),
             '',
             'parameters:',
             '    ignoreErrors!: []',
             '    reportUnmatchedIgnoredErrors: false',
+            // Forced past whatever the consumer configures. `--error-format=json` on the command line did not
+            // win on one project, whose run came back in a wrapping envelope that caps how many errors it
+            // lists — 30 of 1160 — and the cap reads as a clean original. `!` overwrites the included value
+            // rather than merging with it, the same way the two keys above do.
+            '    errorFormat: json',
             '    paths!:',
             ...$paths,
             '',
@@ -424,6 +470,7 @@ final class CorpusDifferential
     {
         $this->emitted = [];
         $this->refused = [];
+        $this->skipped = [];
         $plugins = $this->sandbox . '/plugins';
         if (is_dir($plugins)) {
             foreach ($this->phpFilesIn($plugins) as $stale) {

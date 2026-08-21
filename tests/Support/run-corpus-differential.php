@@ -47,13 +47,20 @@ $consumer = $resolved === false ? $consumer : $resolved;
 // The consumer's own analysed paths, so neither tool is measured on a corpus the other never saw. Read from
 // its configuration rather than assumed: a corpus one tool did not see is the published-mistake generator
 // the procedure warns about.
+$configurationFile = CorpusDifferential::configurationOf($consumer);
+if (! is_file($configurationFile)) {
+    fwrite(STDERR, "The consumer has neither phpstan.neon nor phpstan.neon.dist, so there is nothing to include.\n");
+
+    exit(1);
+}
+
 /** @var array{parameters?: array{paths?: list<string>, excludePaths?: list<string>|array<string, list<string>>}} $configuration */
-$configuration = (array) Neon::decode((string) file_get_contents($consumer . '/phpstan.neon'));
+$configuration = (array) Neon::decode((string) file_get_contents($configurationFile));
 
 if ($paths === null) {
     $paths = $configuration['parameters']['paths'] ?? null;
     if ($paths === null) {
-        fwrite(STDERR, "The consumer's phpstan.neon declares no paths; pass --paths=a,b,c.\n");
+        fwrite(STDERR, "{$configurationFile} declares no paths; pass --paths=a,b,c.\n");
 
         exit(1);
     }
@@ -101,6 +108,12 @@ $differential->writePhpstanConfig();
 echo "emitted: {$counts['emitted']}, refused: {$counts['refused']} (target: php)\n";
 echo 'corpus: ', count($files), " files\n";
 echo 'identifiers under test: ', count($differential->identifiers()), "\n";
+
+$absent = $differential->packagesNotInstalled();
+if ($absent !== []) {
+    echo 'rule packages this consumer does not install, so nothing from them was measured: ',
+    implode(', ', $absent), "\n";
+}
 
 $unregistered = $differential->notRegisteredHere();
 if ($unregistered !== []) {

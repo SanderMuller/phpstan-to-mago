@@ -228,35 +228,10 @@ final class FormRequestRules
         return false;
     }
 
-    /**
-     * The value of a plain quoted string, or null for anything else.
-     *
-     * Only the unambiguous shape is accepted — no backslash, no nested quote, no interpolation — because a
-     * mis-decoded key is a finding about a field that is validated under a different name. Ambiguity is
-     * unresolvable, which makes the key set opaque rather than wrong.
-     *
-     * Decoded here rather than with `SourceFile::getLiteralString()`, which returns null in an
-     * after-analysis pass: decoded literals are a snapshot requirement and `FileAnalysisRequirement` has no
-     * case for them.
-     */
+    /** The value of a plain quoted string, or null for anything else. See {@see CstLiteral}. */
     public static function literal(string $text): ?string
     {
-        $text = trim($text);
-        if (strlen($text) < 2 || str_contains($text, '\\')) {
-            return null;
-        }
-
-        $quote = $text[0];
-        if (($quote !== "'" && $quote !== '"') || substr($text, -1) !== $quote) {
-            return null;
-        }
-
-        $inner = substr($text, 1, -1);
-        if (str_contains($inner, $quote)) {
-            return null;
-        }
-
-        return $quote === '"' && (str_contains($inner, '$') || str_contains($inner, '{')) ? null : $inner;
+        return CstLiteral::plainString($text);
     }
 
     /** The part of a dotted key before the first dot, which is what the original compares. */

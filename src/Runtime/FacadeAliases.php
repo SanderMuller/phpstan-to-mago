@@ -40,9 +40,11 @@ use Mago\Sdk\Syntax\SourceFile;
  *
  * Two limitations, both measured in `internal/measurement-static-facade-map.md` rather than guessed:
  *
- * - **Aliases a consumer merges in its own config are missed.** That project's `config/app.php` adds 9 to
- *   Laravel's 46. Evaluating a config file needs the application, so those names go unresolved and the check
- *   reports nothing for them — narrower than the original, and named here rather than discovered.
+ * - **A consumer's own aliases are read from source, and only where mago analyses that source.** The 9 that
+ *   `config/app.php` merges into Laravel's 46 on the measured project cannot come from the runtime call —
+ *   evaluating a config file needs the application — so they are read from the CST instead. A project whose
+ *   `config/` sits outside mago's analysis paths contributes none of them, which is why both halves are read
+ *   and neither replaces the other.
  * - **Aliases registered at runtime through `AliasLoader::getInstance()` are missed.** The one on that
  *   project is guarded by an argv check, so PHPStan cannot see it either and a map omitting it *agrees* with
  *   the reference implementation.
@@ -63,7 +65,11 @@ final class FacadeAliases
      */
     public static function report(AfterAnalysisContext $context, string $identifier): void
     {
-        $aliases = self::defaultAliases();
+        // Config wins over the framework defaults, because `merge()` is what the consumer's config does to
+        // them. Both halves, because neither is complete alone: the framework's 46 are invisible to the CST
+        // (its file is normally outside mago's analysis paths) and the consumer's are invisible to the
+        // runtime call (evaluating a config file needs the application).
+        $aliases = [...self::defaultAliases(), ...self::configuredAliases($context)];
         if ($aliases === []) {
             // No Laravel in the worker's autoload path means no aliases exist to misuse.
             return;
@@ -104,6 +110,84 @@ final class FacadeAliases
     }
 
     /**
+     * The aliases a consumer's own config merges into Laravel's defaults.
+     *
+     * Measured, not guessed: the shape is `Facade::defaultAliases()->merge([...])->all()` in `config/app.php`,
+     * and `internal/probe-facade-alias-map-in-worker.php` records why the merged half cannot come from the
+     * runtime call — evaluating a config file needs the application. Read from the CST instead, which is
+     * exactly where these nine entries are on the project this was measured against, and where nothing about
+     * them depends on an autoloader.
+     *
+     * Found by the call rather than by the file name, so a project that keeps its aliases somewhere else is
+     * covered and one whose `config/` is outside mago's paths simply contributes nothing — the same silent
+     * narrowing the framework half has, and the reason both halves are read rather than either alone.
+     *
+     * The value of an entry is `Something::class`, whose resolved name is the class it aliases. Probed: the
+     * tree is `Array` -> `ArrayElement` -> `KeyValueArrayElement` -> [key, value].
+     *
+     * @return array<string, string>
+     */
+    private static function configuredAliases(AfterAnalysisContext $context): array
+    {
+        $aliases = [];
+        foreach ($context->analysis->files as $analysis) {
+            $source = $analysis->getSourceFile();
+            foreach ($source->getNodes(NodeKind::StaticMethodCall) as $node) {
+                if (CallExpression::fromNode($source, $node)->getName($source) !== 'defaultAliases') {
+                    continue;
+                }
+
+                foreach (self::mergedInto($source, $node) as $alias => $target) {
+                    $aliases[$alias] = $target;
+                }
+            }
+        }
+
+        return $aliases;
+    }
+
+    /**
+     * The literal entries of a `->merge([...])` applied to this call, if there is one.
+     *
+     * @return array<string, string>
+     */
+    private static function mergedInto(SourceFile $source, Node $node): array
+    {
+        $entries = [];
+        foreach ($source->getAncestors($node) as $ancestor) {
+            if ($ancestor->kind !== NodeKind::MethodCall) {
+                continue;
+            }
+
+            $call = CallExpression::fromNode($source, $ancestor);
+            if ($call->getName($source) !== 'merge') {
+                continue;
+            }
+
+            $argument = $call->arguments[0] ?? null;
+            if ($argument === null || $argument->value->kind !== NodeKind::Array) {
+                continue;
+            }
+
+            foreach ($source->getChildren($argument->value) as $wrapper) {
+                $element = $source->getChildren($wrapper)[0] ?? null;
+                if ($element === null || $element->kind !== NodeKind::KeyValueArrayElement) {
+                    continue;
+                }
+
+                $parts = $source->getChildren($element);
+                $alias = isset($parts[0]) ? CstLiteral::plainString($source->getText($parts[0])) : null;
+                $target = isset($parts[1]) ? $source->getResolvedName($parts[1])->name ?? null : null;
+                if ($alias !== null && $target !== null) {
+                    $entries[$alias] = ltrim($target, '\\');
+                }
+            }
+        }
+
+        return $entries;
+    }
+
+    /**
      * The facade class a bare name stands for, or null when the name is not one.
      *
      * A real class is judged as itself and an unresolvable name as nothing, so the only names that report are
@@ -113,16 +197,38 @@ final class FacadeAliases
      */
     private static function facadeBehind(AfterAnalysisContext $context, string $written, array $aliases): ?string
     {
-        // A real class first, from metadata, because a class shadowing an alias name is that class.
+        // A real class first, because a class shadowing an alias name is that class — which is what the
+        // original's reflection does, and the order the measurement in
+        // `internal/measurement-static-facade-map.md` settled.
         if ($context->codebase->classLikeExists($written)) {
-            $ancestors = array_map(strtolower(...), $context->codebase->getClassAncestors($written));
-
-            return in_array(strtolower(self::FACADE), $ancestors, true) ? $written : null;
+            return self::descendsFromFacade($context, $written) ? $written : null;
         }
 
         $target = $aliases[$written] ?? null;
 
-        return $target !== null && is_subclass_of($target, self::FACADE) ? $target : null;
+        return $target !== null && self::descendsFromFacade($context, $target) ? $target : null;
+    }
+
+    /**
+     * Whether a class descends from `Facade`, asked of the codebase first and of the runtime second.
+     *
+     * Metadata is the right answer for analysed code, and a consumer's own alias target *is* analysed code —
+     * `config/app.php` aliases first-party facades. Reflection is the right answer for a framework class,
+     * which is normally outside mago's analysis paths and so unknown to metadata; reflecting on it is sound
+     * because it is a dependency rather than the code under analysis.
+     *
+     * Asked in that order so analysed code is never decided by reflection, which is the line the transpiler
+     * refuses to cross.
+     */
+    private static function descendsFromFacade(AfterAnalysisContext $context, string $class): bool
+    {
+        if ($context->codebase->classLikeExists($class)) {
+            $ancestors = array_map(strtolower(...), $context->codebase->getClassAncestors($class));
+
+            return in_array(strtolower(self::FACADE), $ancestors, true);
+        }
+
+        return is_subclass_of($class, self::FACADE);
     }
 
     /**

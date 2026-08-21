@@ -56,6 +56,28 @@ final readonly class PhpstanReport
             return self::sorted(self::collect($byFile, $identifier, $relativeTo));
         }
 
+        // A wrapping envelope may *cap* how many errors it lists, and one measured here declared 1160 while
+        // shipping 30 and setting `truncated: true`. Read as complete, that turns every port finding past the
+        // cap into a phantom disagreement and hides every original-only finding past it — silently, and in
+        // both directions at once. Refused, because a differential built on a truncated original measures
+        // nothing.
+        //
+        // The flag *and* the arithmetic, because the flag is the envelope's own courtesy and the count is a
+        // fact about what arrived. An envelope that caps without saying so is the same defect and has to fail
+        // the same way.
+        $declared = $decoded['errors'] ?? null;
+        $carried = self::countMessages($decoded['error_details'] ?? []);
+        if (($decoded['truncated'] ?? false) === true || (is_int($declared) && $declared > $carried)) {
+            throw new RuntimeException(sprintf(
+                "PHPStan's output was truncated for %s — it declares %s errors and lists %d, so the original "
+                . "side is incomplete and nothing can be compared against it. Make the run emit PHPStan's own "
+                . '`--error-format=json`, which does not cap.',
+                $context,
+                var_export($declared ?? 'an unknown number of', true),
+                $carried,
+            ));
+        }
+
         // Some environments wrap PHPStan's output in a reporting envelope. Accepted rather than fought,
         // because the alternative is a differential that only runs on one machine.
         if (isset($decoded['error_details']) && is_array($decoded['error_details'])) {
@@ -71,6 +93,23 @@ final readonly class PhpstanReport
         }
 
         throw new RuntimeException("PHPStan did not run for {$context}, so there is nothing to compare:\n" . $output);
+    }
+
+    /**
+     * How many messages an envelope actually carries, for comparing against the total it declares.
+     */
+    private static function countMessages(mixed $details): int
+    {
+        if (! is_array($details)) {
+            return 0;
+        }
+
+        $count = 0;
+        foreach ($details as $messages) {
+            $count += is_array($messages) ? count($messages) : 0;
+        }
+
+        return $count;
     }
 
     /**

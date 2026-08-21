@@ -92,7 +92,20 @@ final readonly class FiresGate
         $loader = Illuminate\Foundation\AliasLoader::class;
         if (class_exists($facade) && class_exists($loader)) {
             $aliases = $facade::defaultAliases();
-            $loader::getInstance(is_array($aliases) ? $aliases : $aliases->all())->register();
+            $aliases = is_array($aliases) ? $aliases : $aliases->all();
+
+            // An example project may declare its own aliases, the way every Laravel project does, and a
+            // booted application would register those too. Evaluated rather than parsed: this stands in for
+            // the boot, not for the port — the port reads the same entries out of the CST, and a bootstrap
+            // that re-implemented that would prove only that two copies of it agree.
+            foreach (glob(__DIR__ . '/src/config-app.php') ?: [] as $config) {
+                $declared = require $config;
+                if (is_array($declared) && is_array($declared['aliases'] ?? null)) {
+                    $aliases = $declared['aliases'];
+                }
+            }
+
+            $loader::getInstance($aliases)->register();
         }
         PHP;
 
