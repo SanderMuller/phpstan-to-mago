@@ -599,6 +599,22 @@ final class Transpiler
         $nodeType = $this->findNodeType($class);
         if (! isset(Vocabulary::HOOKS[$nodeType])) {
             if (! self::$survey) {
+                // A rule that names an *abstract* php-parser class asks PHPStan for every node under it and
+                // then branches on the concrete ones — `NoDynamicNameRule` says so in a comment, calling
+                // `return Expr::class` "a trick to allow multiple node types". That is not a missing table row.
+                // Mago's hooks are per node kind and a plugin may register several, so the shape is reachable,
+                // but the rule's `instanceof` branches would each have to *rebind* which kind the body is
+                // reading: `$node->name` means a different child under `MethodCall` than under
+                // `ClassConstantAccess`, and the field table is keyed by kind. Naming it here so the refusal
+                // says which change it wants rather than reading as an omission.
+                if (in_array($nodeType, self::MULTI_KIND_NODE_TYPES, true)) {
+                    throw new Refusal(
+                        "{$nodeType} covers several node kinds, so the rule branches on the concrete one. A "
+                        . 'plugin can register several targets, but each branch would have to rebind which kind '
+                        . 'the body reads, and the field table is keyed by one kind per rule',
+                    );
+                }
+
                 throw new Refusal("no hook mapping for node type $nodeType");
             }
 
@@ -4028,6 +4044,12 @@ PHP;
             return $segment;
         }
 
+        // The values a list holds more than once, which rule packages count out by hand.
+        $repeated = $this->repeatedValuesHelper($helper, $args, $line);
+        if ($repeated !== null) {
+            return $repeated;
+        }
+
         // A helper that only picks between written words folds to an expression, with no statements emitted.
         // Tried before the statement-walking path because that path translates a `return 'public';` as a
         // rule-body guard and refuses; this shape is recognisable up front, so there is nothing to undo.
@@ -4275,6 +4297,147 @@ PHP;
             'kind' => 'bytes',
             'php' => $this->backend->call('last_name_segment', [$this->nameText($of, $line)]),
         ];
+    }
+
+    /**
+     * `array_count_values` then a loop keeping the keys counted more than once — the duplicates of a list.
+     *
+     * ```php
+     * $counts = array_count_values($values);
+     * $duplicates = [];
+     * foreach ($counts as $value => $count) {
+     *     if ($count <= 1) { continue; }
+     *     $duplicates[] = $value;
+     * }
+     *
+     * return $duplicates;
+     * ```
+     *
+     * Matched whole, for the same reason the last-segment helper is: `array_count_values` and a keyed loop are
+     * not in the vocabulary, and admitting them to serve this one shape would let arbitrary list arithmetic
+     * through. `Support::repeatedValues()` is the question this asks, and it is built on the same function so
+     * the key coercion cannot differ.
+     *
+     * @param array<Arg> $args
+     *
+     * @return array{rust: string, kind: string, php?: string, reason?: string, as?: string}|null
+     */
+    private function repeatedValuesHelper(ClassMethod $helper, array $args, int $line): ?array
+    {
+        $statements = $helper->stmts ?? [];
+        if (count($statements) !== 4 || count($args) !== 1) {
+            return null;
+        }
+
+        $parameter = $this->parameterName($helper);
+        $counts = $this->countsValuesOf($statements[0], $parameter);
+        $built = $this->emptyListName($statements[1]);
+        if ($parameter === null || $counts === null || $built === null) {
+            return null;
+        }
+
+        if (! $statements[2] instanceof Foreach_
+            || ! $statements[3] instanceof Return_
+            || ! $statements[3]->expr instanceof Variable
+            || $statements[3]->expr->name !== $built
+            || ! $this->keepsRepeatedKeys($statements[2], $counts, $built)
+        ) {
+            return null;
+        }
+
+        if (self::$target !== 'php') {
+            throw new Refusal("{$helper->name->toString()}() reads a list's duplicates, which only the PHP target carries", $line);
+        }
+
+        $of = $this->resolve($args[0]->value, $line);
+        if (! in_array($of['kind'], ['list', 'class-names'], true)) {
+            throw new Refusal("the duplicates of a {$of['kind']}", $line);
+        }
+
+        return [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'list',
+            'php' => $this->backend->call('repeated_values', [$this->operand($of)]),
+        ];
+    }
+
+    /** `$counts = array_count_values($param);` — the name it binds, or null when that is not the statement. */
+    private function countsValuesOf(Stmt $statement, ?string $parameter): ?string
+    {
+        if ($parameter === null
+            || ! $statement instanceof Expression
+            || ! $statement->expr instanceof Assign
+            || ! $statement->expr->var instanceof Variable
+            || ! is_string($statement->expr->var->name)
+            || ! $statement->expr->expr instanceof FuncCall
+            || ! $statement->expr->expr->name instanceof Name
+            || $statement->expr->expr->name->toString() !== 'array_count_values'
+            || count($statement->expr->expr->getArgs()) !== 1
+        ) {
+            return null;
+        }
+
+        $over = $statement->expr->expr->getArgs()[0]->value;
+
+        return $over instanceof Variable && $over->name === $parameter ? $statement->expr->var->name : null;
+    }
+
+    /** `$out = [];` — the name it binds, or null when that is not the statement. */
+    private function emptyListName(Stmt $statement): ?string
+    {
+        if (! $statement instanceof Expression
+            || ! $statement->expr instanceof Assign
+            || ! $statement->expr->var instanceof Variable
+            || ! is_string($statement->expr->var->name)
+            || ! $statement->expr->expr instanceof Array_
+            || $statement->expr->expr->items !== []
+        ) {
+            return null;
+        }
+
+        return $statement->expr->var->name;
+    }
+
+    /**
+     * `foreach ($counts as $value => $count) { if ($count <= 1) { continue; } $out[] = $value; }`
+     *
+     * The `<= 1` is matched exactly. A different bound asks a different question, and reading it as "more than
+     * once" would answer that one instead.
+     */
+    private function keepsRepeatedKeys(Foreach_ $loop, string $counts, string $built): bool
+    {
+        if (! $loop->expr instanceof Variable
+            || $loop->expr->name !== $counts
+            || ! $loop->keyVar instanceof Variable
+            || ! is_string($loop->keyVar->name)
+            || ! $loop->valueVar instanceof Variable
+            || ! is_string($loop->valueVar->name)
+            || count($loop->stmts) !== 2
+        ) {
+            return false;
+        }
+
+        [$guard, $append] = $loop->stmts;
+        if (! $guard instanceof If_
+            || ! $guard->cond instanceof SmallerOrEqual
+            || ! $guard->cond->left instanceof Variable
+            || $guard->cond->left->name !== $loop->valueVar->name
+            || ! $guard->cond->right instanceof Int_
+            || $guard->cond->right->value !== 1
+            || count($guard->stmts) !== 1
+            || ! $guard->stmts[0] instanceof Continue_
+        ) {
+            return false;
+        }
+
+        return $append instanceof Expression
+            && $append->expr instanceof Assign
+            && $append->expr->var instanceof ArrayDimFetch
+            && $append->expr->var->var instanceof Variable
+            && $append->expr->var->var->name === $built
+            && ! $append->expr->var->dim instanceof Expr
+            && $append->expr->expr instanceof Variable
+            && $append->expr->expr->name === $loop->keyVar->name;
     }
 
     /** The sole parameter's name, or null when the helper does not take exactly one simple parameter. */
@@ -7197,7 +7360,9 @@ PHP;
                 return $emptyClasses;
             }
 
-            if (isset(Vocabulary::ITERABLES[$subject['kind']])) {
+            // A list the rule built is as emptiable as one the vocabulary produced; it is absent from `ITERABLES`
+            // only because nothing iterates it back.
+            if (isset(Vocabulary::ITERABLES[$subject['kind']]) || $subject['kind'] === 'list') {
                 if (self::$target === 'php') {
                     return $this->operand($subject) . ' === []';
                 }
@@ -7834,6 +7999,27 @@ PHP;
             return $parents;
         }
 
+        // `$classLike->getConstants()` — the constant declarations written in a class-like body. php-parser's own
+        // lookup on the declaration, not a reflection call: it answers with what this class writes, which is
+        // what a rule reading their values wants.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getConstants'
+            && $expr->args === []
+        ) {
+            $of = $this->resolve($expr->var, $line);
+            if (in_array($of['kind'], ['hook-node', 'subtree', 'expr'], true)) {
+                if (self::$target !== 'php') {
+                    throw new Refusal('the constants a declaration writes, which only the PHP target carries', $line);
+                }
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'const-decls',
+                    'php' => 'Support::constantDeclarations($context, ' . $this->operand($of) . ')',
+                ];
+            }
+        }
+
         $traits = $this->resolveUsedTraitNames($expr, $line);
         if ($traits !== null) {
             return $traits;
@@ -8155,6 +8341,28 @@ PHP;
             && $this->rawStringLiteral($expr->getArgs()[0]->value, $line) === 'virtualNullsafeMethodCall'
         ) {
             return ['rust' => 'false', 'kind' => 'never', 'php' => 'false'];
+        }
+
+        // `implode('", "', $values)` — a computed list joined into a message. The glue has to be written out:
+        // a computed separator would put a value the plugin cannot see into the text a reader compares.
+        if ($expr instanceof FuncCall
+            && $expr->name instanceof Name
+            && $expr->name->toString() === 'implode'
+            && count($expr->getArgs()) === 2
+        ) {
+            $glue = $expr->getArgs()[0]->value;
+            $of = $this->resolve($expr->getArgs()[1]->value, $line);
+            if ($glue instanceof String_ && (isset(Vocabulary::ITERABLES[$of['kind']]) || $of['kind'] === 'list')) {
+                if (self::$target !== 'php') {
+                    throw new Refusal('a joined list, which only the PHP target carries', $line);
+                }
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'bytes',
+                    'php' => 'implode(' . $this->backend->bytes($glue->value) . ', ' . $this->operand($of) . ')',
+                ];
+            }
         }
 
         // `array_values(array_unique($names))` closing a helper that collected names. Both are re-shapings of the
@@ -8816,6 +9024,20 @@ PHP;
      * This list used to hold twenty-six words. Nothing was wrong while `Class` was the only reserved kind any hook
      * targeted; the first other one, `Foreach`, emitted `NodeKind::Foreach_` and the enum has no such case.
      */
+    /**
+     * php-parser classes that stand for a family rather than a node.
+     *
+     * A rule returning one of these from `getNodeType()` is asking PHPStan for every node beneath it. Listed so
+     * the refusal can say that, instead of reporting a missing hook mapping for something no single hook covers.
+     *
+     * @var list<class-string>
+     */
+    private const array MULTI_KIND_NODE_TYPES = [
+        'PhpParser\Node\Expr',
+        'PhpParser\Node',
+        'PhpParser\Node\Stmt',
+    ];
+
     private const array PHP_RESERVED_KINDS = ['class'];
 
     /** Node kinds that carry an argument list. */

@@ -463,6 +463,31 @@ final class Support
     }
 
     /**
+     * The values a list holds more than once, each named once.
+     *
+     * Built on `array_count_values()` rather than around it, so the key coercion is the same: that function
+     * turns a numeric-string value into an integer key, and a rule that goes on to print the duplicates prints
+     * whatever it produced. Reimplementing the count would have quietly changed that.
+     *
+     * @param list<string> $values
+     *
+     * @return list<int|string>
+     */
+    public static function repeatedValues(array $values): array
+    {
+        $repeated = [];
+        foreach (array_count_values($values) as $value => $count) {
+            if ($count <= 1) {
+                continue;
+            }
+
+            $repeated[] = $value;
+        }
+
+        return $repeated;
+    }
+
+    /**
      * A configured map with keys that differ only in case collapsed to one entry, the last winning.
      *
      * This stands in for a rewriting the rule did and the plugin does not. The original built its map keyed by
@@ -1285,6 +1310,58 @@ final class Support
         }
 
         return $out;
+    }
+
+    /**
+     * The constant *declarations* a class-like holds — `const A = 1, B = 2;` is one of them.
+     *
+     * Probed: a declaration sits under a `ClassLikeMember` wrapper rather than directly under the class, the
+     * same way methods and properties do. `getConstants()` in php-parser answers with the statements, which is
+     * what a rule then reads the items out of.
+     *
+     * @return list<Part>
+     */
+    public static function constantDeclarations(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        $node = self::node($subject);
+        if (! $node instanceof Node) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($context->source->getChildren($node) as $child) {
+            foreach ($context->source->getChildren($child) as $member) {
+                if ($member->kind === NodeKind::ClassLikeConstant) {
+                    $out[] = self::part($context, $member);
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * A constant item's value, as the node it is written as.
+     *
+     * Probed: an item holds its name as a `LocalIdentifier` and its value wrapped in an `Expression`, which is
+     * unwrapped here the way {@see nthExpression} unwraps it — so what comes back is the value a rule asks the
+     * type of, not the wrapper.
+     */
+    public static function constantItemValue(NodeAnalysisContext $context, ?Part $item): ?Part
+    {
+        if (! $item instanceof Part) {
+            return null;
+        }
+
+        foreach ($item->children() as $child) {
+            if ($child->kind !== NodeKind::Expression) {
+                continue;
+            }
+
+            return $child->children()[0] ?? $child;
+        }
+
+        return null;
     }
 
     /** A constant item's name, without its value. */

@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
+use FilesystemIterator;
 use PHPUnit\Framework\TestCase;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use Sandermuller\PhpstanToMago\RulePaths;
 use Sandermuller\PhpstanToMago\Transpiler;
+use SplFileInfo;
 use Throwable;
 
 /**
@@ -112,21 +116,72 @@ final class TracksUpstreamDriftTest extends TestCase
             // machine — an unsorted census would diff against itself between a laptop and a runner.
             ksort($outcomes);
 
-            $emitted = count(array_filter($outcomes, static fn (string $outcome): bool => $outcome === 'EMIT'));
+            $registered = $this->registeredClasses($package);
+            $named = array_filter(
+                $outcomes,
+                static fn (string $outcome, string $name): bool => isset($registered[$name]),
+                ARRAY_FILTER_USE_BOTH,
+            );
+            $emitted = count(array_filter($named, static fn (string $outcome): bool => $outcome === 'EMIT'));
+
             $lines[] = '';
             $lines[] = sprintf(
-                '## %s — %d emitted, %d refused',
+                '## %s — %d of %d the package registers emit, %d refuse, %d it registers nowhere',
                 $package,
                 $emitted,
-                count($outcomes) - $emitted,
+                count($named),
+                count($named) - $emitted,
+                count($outcomes) - count($named),
             );
             $lines[] = '';
             foreach ($outcomes as $name => $outcome) {
-                $lines[] = ($outcome === 'EMIT' ? 'EMIT    ' : 'REFUSE  ') . $name;
+                // A class the package names in no neon of its own — not a dead one. A consumer registers rules
+                // by hand all the time: `StringFileAbsolutePathExistsRule` is marked here and is the first
+                // entry in `../hihaho`'s own `rules:` list. What the mark rules out is counting it against the
+                // package's own coverage, which overstated the gap by thirteen rules for `hihaho`.
+                $where = isset($registered[$name]) ? '' : '  (the package registers it nowhere)';
+                $lines[] = ($outcome === 'EMIT' ? 'EMIT    ' : 'REFUSE  ') . $name . $where;
             }
         }
 
         return implode("\n", $lines) . "\n";
+    }
+
+    /**
+     * The rule classes a package names in a neon of its own, by short name.
+     *
+     * The denominator that matters is what a package actually wires. `hihaho/phpstan-rules` ships twenty rule
+     * classes and registers seven; the other thirteen are the un-merged originals its `Combined*` rules absorb,
+     * and counting them as unfinished work overstated the gap by thirteen. Their "constructor parameter the
+     * neon does not wire" refusals are final for a reason no feature reaches: nothing constructs them, so
+     * PHPStan never runs them and a differential would have nothing to compare against.
+     *
+     * Every neon the package ships counts, not only the auto-included ones. Registration is a *consumer* fact:
+     * `symplify/phpstan-rules` auto-includes four of its thirteen config files and puts most rules behind
+     * `conditionalTags` that default off, so a consumer lists them by hand — as `../hihaho` does with eleven.
+     * Keyed on auto-inclusion, symplify would read as zero of ninety-five, which is a worse denominator than
+     * the one this replaces rather than a better one.
+     *
+     * @return array<string, true>
+     */
+    private function registeredClasses(string $package): array
+    {
+        $root = dirname(__DIR__, 2) . '/vendor/' . $package;
+        $found = [];
+
+        $directory = new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS);
+        foreach (new RecursiveIteratorIterator($directory) as $file) {
+            if (! $file instanceof SplFileInfo || $file->getExtension() !== 'neon') {
+                continue;
+            }
+
+            preg_match_all('/[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)+/', (string) file_get_contents($file->getPathname()), $matches);
+            foreach ($matches[0] as $reference) {
+                $found[substr($reference, (int) strrpos($reference, '\\') + 1)] = true;
+            }
+        }
+
+        return $found;
     }
 
     /** Whether the rule translates, which is the whole of what this file records. */

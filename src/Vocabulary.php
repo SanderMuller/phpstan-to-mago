@@ -265,6 +265,14 @@ final class Vocabulary
         'property-default' => [
             'items' => [self::PHP_ONLY, 'array-items', 'Support::arrayElements($context, {base})'],
         ],
+        // A constant declaration as written, which is what `getConstants()` hands a rule. Its items are read
+        // the same way the `ClassLikeConstant` hook reads them.
+        'const-decl' => [
+            'consts' => [self::PHP_ONLY, 'const-items', 'Support::constantItems($context, {base})'],
+        ],
+        'const-item' => [
+            'value' => [self::PHP_ONLY, 'expr', 'Support::constantItemValue($context, {base})'],
+        ],
         'attr-group' => [
             'attrs' => [self::PHP_ONLY, 'attributes', 'Support::attributesOf({base})'],
         ],
@@ -307,6 +315,8 @@ final class Vocabulary
         'collected' => ['iter' => '{rust}', 'item' => 'collected-item'],
         'collected-item' => ['iter' => '{rust}', 'item' => 'collected-item'],
         'const-items' => ['iter' => '{rust}.iter()', 'item' => 'const-item', 'phpIter' => '{rust}'],
+        // The constant *declarations* a class-like holds, each of which holds its own items.
+        'const-decls' => ['iter' => self::PHP_ONLY, 'item' => 'const-decl', 'phpIter' => '{rust}'],
         'hint-parts' => ['iter' => '{rust}', 'item' => 'hint'],
         'property-members' => ['iter' => '{rust}', 'item' => 'property'],
         // What a subtree search found, one node each. `expr` because what a rule does with a found node is ask

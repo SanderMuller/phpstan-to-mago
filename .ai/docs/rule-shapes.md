@@ -674,6 +674,27 @@ would be silent, and agreement on nothing is the one result the gate must never 
 supplied by the gate itself, to *both* sides, and the pair proves the rule fires when configured. See
 `FiresGate::CONFIGURED`.
 
+## One rule, several node kinds
+
+A rule can return an *abstract* php-parser class from `getNodeType()` and branch on the concrete ones.
+`NoDynamicNameRule` says so itself — `return Expr::class` carries the comment "trick to allow multiple node
+types" — and its body then handles `ClassConstFetch`/`StaticPropertyFetch` in one branch and
+`MethodCall`/`StaticCall`/`FuncCall`/`PropertyFetch` in another.
+
+That is not a missing hook mapping, and the refusal now says so. Mago's hooks are per node kind and
+`getTargets()` returns a list, so the shape is reachable. What is missing is narrower and deeper: each
+`instanceof` branch would have to **rebind which kind the body is reading**, because `$node->name` means a
+different child under `MethodCall` than under `ClassConstantAccess` and the field table is keyed by one kind
+per rule. `$this->nodeKind` is that key, and it is set once per rule today.
+
+Two rules already wanted a version of this — the class-declaration hook, solved by registering every
+class-like kind and asking the rule's own class test at runtime, and this one. The difference is that the
+class-like kinds answer `->name` the same way (which is what `FIELD_GROUPS` records) and these do not.
+
+Also worth knowing: `--survey` assumes a hook exists in order to see what a body would need, so a survey
+refusal for such a rule names something from the body while a real run refuses on the hook. Read the real run
+before quoting a reason.
+
 ## Do not raise the emit count by lowering the bar
 
 Partial coverage plus named refusals is the honest, finished result. See `../guidelines/verification.md`.
