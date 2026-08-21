@@ -510,6 +510,30 @@ final class Transpiler
     private array $collaborators = [];
 
     /**
+     * Constructor properties holding a package's configuration value object, by property name.
+     *
+     * Kept apart from {@see $collaborators} because the answer is different in kind: a collaborator's methods
+     * are *inlined*, and inlining a getter of one of these reaches `$this->parameters[...]` on an object the
+     * plugin does not have, which refused as `unknown local $this` — a message pointing at the receiver rather
+     * than at the shape. A getter here resolves to the neon parameter it reads instead, which is what
+     * {@see AggregateRule} already does for the collector-and-consumer path.
+     *
+     * @var array<string, ConfigurationObject>
+     */
+    private array $valueObjects = [];
+
+    /**
+     * Runtime helper classes the emitted plugin has to import, by class name.
+     *
+     * A plugin importing `Support` alone was enough while every helper lived there. A named stand-in for a
+     * collaborator does not, and an import it never makes is a plugin that loads and then fails on the first
+     * call — the failure mode `.ai/guidelines/verification.md` opens with.
+     *
+     * @var array<string, true>
+     */
+    private array $runtimeHelpers = [];
+
+    /**
      * The node kinds this rule's hook registers, when it registers more than one.
      *
      * Empty for every hook that is one kind, which is all but the expression family. A branch testing
@@ -1072,12 +1096,8 @@ PHP;
                     continue;
                 }
 
-                // A collaborator: an object the rule delegates a question to, whose source is in the package.
-                // Its methods are inlined like a trait's or a parent's, so a package that puts a small analyzer
-                // on its own class does not become a vocabulary gap. Recorded by its declared type, which is
-                // the only thing that says which class to read.
-                if ($param->type instanceof Name) {
-                    $this->collaborators[$name] = $param->type->getLast();
+                if ($this->takeOwnObject($name, $param, $configuration)) {
+                    continue;
                 }
 
                 // A constructor parameter the neon does not wire and whose type names no service. Recorded so
@@ -1102,12 +1122,7 @@ PHP;
             $this->configured[$name] = [
                 'parameter' => $argument['reference'],
                 'default' => $default,
-                'kind' => match (true) {
-                    is_array($default) => 'config-list',
-                    is_bool($default) => 'config-bool',
-                    is_int($default), is_float($default) => 'config-number',
-                    default => 'config-bytes',
-                },
+                'kind' => $this->configKind($default),
             ];
         }
 
@@ -2950,6 +2965,191 @@ PHP;
         }
 
         return ['rust' => self::PHP_ONLY, 'kind' => 'method-decl', 'php' => 'Support::asPart($context, $node)'];
+    }
+
+    /**
+     * A collaborator call a runtime helper answers, or null when this is not one.
+     *
+     * {@see Vocabulary::COLLABORATOR_CALLS} says which, and the helper takes the file's CST plus whatever the
+     * call was handed — the analyzer it stands in for reads only syntax, so that is everything it needs.
+     *
+     * @return Descriptor|null
+     */
+    private function resolveCollaboratorCall(MethodCall $expr, int $line): ?array
+    {
+        if (self::$target !== 'php') {
+            return null;
+        }
+
+        $collaborator = $this->collaboratorClass($expr->var, $line);
+        if ($collaborator === null) {
+            return null;
+        }
+
+        $method = $this->memberName($expr->name, $line);
+        $entry = Vocabulary::COLLABORATOR_CALLS[$this->fullyQualified($collaborator) . '::' . $method] ?? null;
+        if ($entry === null) {
+            return null;
+        }
+
+        $arguments = ['$context->source'];
+        foreach ($expr->getArgs() as $argument) {
+            $arguments[] = $this->operand($this->resolve($argument->value, $line));
+        }
+
+        $call = $entry['helper'] . '(' . implode(', ', $arguments) . ')';
+        $this->runtimeHelpers[explode('::', $entry['helper'])[0]] = true;
+
+        return ['rust' => self::PHP_ONLY, 'kind' => $entry['kind'], 'php' => $call];
+    }
+
+    /** The descriptor kind a configured default belongs to, in one place so the two callers cannot drift. */
+    private function configKind(mixed $default): string
+    {
+        return match (true) {
+            is_array($default) => 'config-list',
+            is_bool($default) => 'config-bool',
+            is_int($default), is_float($default) => 'config-number',
+            default => 'config-bytes',
+        };
+    }
+
+    /**
+     * The first of a getter's parameter paths the package actually declares, as a configured value.
+     *
+     * A getter may name more than one, in fallback order — `$this->parameters['param'] ??
+     * $this->parameters['param_type']` is an alias, and the package declares one of the two. Taking the first
+     * declared is what {@see ConfigurationObject} documents; naming none is a refusal, because a plugin
+     * carrying a value nobody declared would be a guess.
+     *
+     * @param list<string> $paths
+     *
+     * @return Descriptor
+     */
+    private function configuredFromPath(array $paths, string $getter, int $line): array
+    {
+        $configuration = PackageConfiguration::forRuleFile($this->file);
+        foreach ($paths as $path) {
+            if (! $configuration instanceof PackageConfiguration || ! $configuration->hasParameter($path)) {
+                continue;
+            }
+
+            $segments = explode('.', $path);
+            $property = lcfirst(str_replace(' ', '', ucwords(str_replace('_', ' ', end($segments)))));
+            $default = $configuration->defaultFor($path);
+            $this->configured[$property] ??= [
+                'parameter' => $path,
+                'default' => $default,
+                'kind' => $this->configKind($default),
+            ];
+
+            $this->usesConfiguration = true;
+
+            return [
+                'rust' => 'self.' . $this->snake($property),
+                'kind' => $this->configured[$property]['kind'],
+                'php' => '$this->' . $property,
+            ];
+        }
+
+        throw new Refusal(
+            "{$getter}() reads " . implode(' or ', $paths) . ", which this package's neon does not declare",
+            $line,
+        );
+    }
+
+    /**
+     * Records a parameter holding an object of this package's own, and says whether it did.
+     *
+     * Two kinds, and only one of them has its methods inlined. A **configuration value object** resolves its
+     * getters to the neon parameters they read — inlining one instead reached `$this->parameters[...]` on an
+     * object the plugin does not have, and refused as `unknown local $this`, a message about the receiver
+     * rather than about the shape. A **collaborator** is anything else the rule delegates to, whose methods
+     * are inlined like a trait's or a parent's, so a package that keeps a small analyzer on its own class does
+     * not become a vocabulary gap.
+     *
+     * The value object is checked first: both are "an object from this package", and the wrong order would
+     * inline the one that must not be.
+     */
+    private function takeOwnObject(string $name, Param $param, ?PackageConfiguration $configuration): bool
+    {
+        $valueObject = $this->valueObjectFor($param, $configuration);
+        if ($valueObject instanceof ConfigurationObject) {
+            $this->valueObjects[$name] = $valueObject;
+
+            return true;
+        }
+
+        if ($param->type instanceof Name) {
+            $this->collaborators[$name] = $param->type->getLast();
+        }
+
+        return false;
+    }
+
+    /**
+     * The configuration value object a constructor parameter declares, or null when it declares something else.
+     *
+     * Recognised the same way the aggregate path recognises it: the neon builds the class from exactly one
+     * parameter root, which is what {@see PackageConfiguration::valueObjectRoot()} answers, and the class sits
+     * beside the rules one directory up from `Rules/` — where every package checked puts it.
+     */
+    private function valueObjectFor(Param $param, ?PackageConfiguration $configuration): ?ConfigurationObject
+    {
+        if (! $param->type instanceof Name || ! $configuration instanceof PackageConfiguration) {
+            return null;
+        }
+
+        $candidate = dirname($this->file, 2) . '/' . $param->type->getLast() . '.php';
+        if (! is_file($candidate)) {
+            return null;
+        }
+
+        $namespace = SourceIndex::namespaceOf(
+            (new ParserFactory())->createForNewestSupportedVersion()->parse((string) file_get_contents($candidate)) ?? [],
+            $param->type->getLast(),
+        );
+        if ($namespace === null) {
+            return null;
+        }
+
+        $root = $configuration->valueObjectRoot($namespace . '\\' . $param->type->getLast());
+
+        return $root === null ? null : ConfigurationObject::fromFile($candidate, $root);
+    }
+
+    /**
+     * A getter on a configuration value object, resolved to the neon parameter it reads.
+     *
+     * The plugin then carries that parameter as a constructor default, exactly as a directly configured value
+     * would be — so the value object never exists at analysis time and its getters never need translating.
+     *
+     * @return Descriptor|null
+     */
+    private function resolveValueObjectGetter(MethodCall $expr, string $method, int $line): ?array
+    {
+        if (! $expr->var instanceof PropertyFetch
+            || ! $expr->var->var instanceof Variable
+            || $expr->var->var->name !== 'this'
+        ) {
+            return null;
+        }
+
+        $valueObject = $this->valueObjects[$this->memberName($expr->var->name, $line)] ?? null;
+        if (! $valueObject instanceof ConfigurationObject) {
+            return null;
+        }
+
+        $paths = $valueObject->pathsFor($method);
+        if ($paths === []) {
+            throw new Refusal(
+                "{$method}() on this package's configuration reads no parameter, so there is nothing for the "
+                . 'plugin to carry',
+                $line,
+            );
+        }
+
+        return $this->configuredFromPath($paths, $method, $line);
     }
 
     /**
@@ -5375,8 +5575,9 @@ PHP;
                 'local-name', 'name-selector', 'name-expr' => $this->backend->call('text_of', [$this->operand($subject)]),
                 'extends' => $this->backend->call('extends_text', ['$context', '$node']),
                 // A number a rule counted, put in the message with `%d`. Already a PHP int, so `sprintf` formats
-                // it without help.
-                'int' => $this->operand($subject),
+                // it without help — and a configured threshold is the same thing, which a rule quotes back
+                // beside the number that crossed it.
+                'int', 'config-number' => $this->operand($subject),
                 default => throw new Refusal("cannot render a {$subject['kind']} as a message argument", $line),
             };
         }
@@ -7536,6 +7737,11 @@ PHP;
 
         $this->refuseCallOnService($expr, $method);
 
+        $configured = $this->resolveValueObjectGetter($expr, $method, $expr->getStartLine());
+        if ($configured !== null) {
+            return $this->operand($configured);
+        }
+
         // A collaborator that does not declare this method is not a collaborator for this call, and saying so
         // by name beats "no method X() to inline", which points at a class the reader had no reason to expect.
         $collaborator = $this->collaboratorClass($expr->var, $expr->getStartLine());
@@ -7978,6 +8184,37 @@ PHP;
         );
     }
 
+    /**
+     * Both sides of a comparison as rendered numbers, when both sides are numbers.
+     *
+     * Only on the PHP target, and only for kinds that are already a number: a threshold rule compares what it
+     * measured against what the neon configured, and neither operand is a node. Returning null leaves the
+     * node-shaped comparisons below to the paths written for them.
+     *
+     * @return array{string, string}|null
+     */
+    private function numericOperands(BinaryOp $expr): ?array
+    {
+        if (self::$target !== 'php') {
+            return null;
+        }
+
+        $numeric = ['int', 'config-number'];
+        $line = $expr->getStartLine();
+        try {
+            $left = $this->resolve($expr->left, $line);
+            $right = $this->resolve($expr->right, $line);
+        } catch (Refusal) {
+            return null;
+        }
+
+        if (! in_array($left['kind'], $numeric, true) || ! in_array($right['kind'], $numeric, true)) {
+            return null;
+        }
+
+        return [$this->operand($left), $this->operand($right)];
+    }
+
     /** `$intNode->value >= 1`, `count($found) <= 1` and friends. */
     private function intComparison(BinaryOp $expr): string
     {
@@ -7989,6 +8226,14 @@ PHP;
             $counted = $this->countable($left, $expr->getStartLine());
 
             return $counted . ' ' . $operator . ' ' . $this->intLiteral($expr->right, $expr->getStartLine());
+        }
+
+        // Two numbers the rule already has: a measured value against a configured threshold. Both sides
+        // resolve to numbers rather than to nodes, so the comparison is the plain PHP one — no helper, and
+        // nothing about the node tree involved.
+        $numeric = $this->numericOperands($expr);
+        if ($numeric !== null) {
+            return $numeric[0] . ' ' . $operator . ' ' . $numeric[1];
         }
 
         if (! $left instanceof PropertyFetch || (string) $left->name !== 'value') {
@@ -9453,7 +9698,66 @@ PHP;
             }
         }
 
+        // A configuration getter with a literal default: `return $this->parameters['k'] ?? [];`. Answering
+        // with the left alone is exact rather than lenient, and only because of where the default comes from:
+        // the emitted plugin carries the package's own declared value for that parameter as a constructor
+        // default, so the fallback has nothing left to fire on. {@see ConfigurationObject} states the same
+        // reasoning for the aggregate path, which reached this shape first.
+        //
+        // Restricted to a configured read, because for anything else the fallback is load-bearing and
+        // dropping it would answer a different question. The refusal names what the left turned out to be, so
+        // the next shape to reach here says so instead of reading as a missing table row.
+        if ($expr instanceof MethodCall) {
+            $computed = $this->resolveCollaboratorCall($expr, $line);
+            if ($computed !== null) {
+                return $computed;
+            }
+
+            // Reached from here as well as from the predicate path: a threshold rule reads its limit inside a
+            // comparison, which resolves operands rather than building a condition.
+            $configured = $this->resolveValueObjectGetter($expr, $this->memberName($expr->name, $line), $line);
+            if ($configured !== null) {
+                return $configured;
+            }
+        }
+
+        if ($expr instanceof Coalesce && $this->isLiteralDefault($expr->right)) {
+            return $this->resolveConfiguredDefault($expr, $line);
+        }
+
         throw new Refusal('access path outside the vocabulary: ' . $this->describe($expr), $line);
+    }
+
+    /**
+     * A configured read behind a `??` default, or a refusal naming what the left turned out to be.
+     *
+     * @return Descriptor
+     */
+    private function resolveConfiguredDefault(Coalesce $expr, int $line): array
+    {
+        $left = $this->resolve($expr->left, $line);
+        if (str_starts_with($left['kind'], 'config-')) {
+            return $left;
+        }
+
+        throw new Refusal(
+            "a `??` default over a {$left['kind']}, where only a configured value carries its own default",
+            $line,
+        );
+    }
+
+    /**
+     * Whether an expression is the empty literal standing in for "nothing configured".
+     *
+     * Only `[]`, because that is the only literal default the two packages carrying this shape actually
+     * write — the other four getters in them fall back to a *second parameter*, which
+     * {@see ConfigurationObject} handles as an alias. A wider set would be generality nothing asked for, and
+     * a fallback that computes something is a second answer the getter can give: dropping it would make the
+     * port always give the first.
+     */
+    private function isLiteralDefault(Expr $expr): bool
+    {
+        return $expr instanceof Array_ && $expr->items === [];
     }
 
     // -----------------------------------------------------------------------
@@ -10046,6 +10350,10 @@ REPORT, ['{ANCHOR}' => $this->anchor ?? $this->defaultAnchor()]);
         $implements = 'Plugin, NodeAnalysisHook';
         $afterImports = '';
         $runtimeImports = '';
+        foreach (array_keys($this->runtimeHelpers) as $helper) {
+            $runtimeImports .= "use Sandermuller\\PhpstanToMago\\Runtime\\{$helper};\n";
+        }
+
         $afterRegister = '';
         $afterMethod = '';
         if ($this->afterChecks !== []) {

@@ -38,6 +38,9 @@ final class EmittedRuleFiresTest extends TestCase
     private const array CORPORA = [
         __DIR__ . '/../../vendor/symplify/phpstan-rules/src',
         __DIR__ . '/../../vendor/hihaho/phpstan-rules/src',
+        // Added when its first rule emitted. An emitted rule outside these corpora is the silence this gate
+        // exists to remove: the census counts it and nothing ever runs it.
+        __DIR__ . '/../../vendor/tomasvotruba/cognitive-complexity/src',
     ];
 
     private const string FIXTURES = __DIR__ . '/../Fixtures/Rules';

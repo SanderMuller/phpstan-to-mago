@@ -61,7 +61,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 1839, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 1869, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php
@@ -97,13 +97,13 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::methodPredicate()" is 74, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::methodPredicate()" is 75, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::resolve()" is 70, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::resolve()" is 76, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Transpiler.php

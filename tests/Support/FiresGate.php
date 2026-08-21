@@ -124,7 +124,7 @@ final readonly class FiresGate
                 - src
             scanDirectories:
                 - stubs
-        services:
+        {parameters}services:
             -
                 class: {class}
         {arguments}        tags: [phpstan.rules.rule]
@@ -162,6 +162,22 @@ final readonly class FiresGate
      *
      * @var array<string, array<string, string>>
      */
+    /**
+     * Neon *parameters* a rule needs, per rule, for the PHPStan side.
+     *
+     * Distinct from {@see CONFIGURED}, which passes constructor arguments. A rule taking a package value object
+     * has no arguments to pass: it reads a `Configuration` service built from the package's own parameter
+     * tree, so the only way to change what it sees is to change the parameter. The threshold rules need that —
+     * `cognitive_complexity.class` defaults to 40, and no fixture worth reading trips 40.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    private const array PARAMETERS = [
+        'ClassLikeCognitiveComplexityRule' => [
+            'cognitive_complexity' => ['class' => 3],
+        ],
+    ];
+
     private const array SERVICES = [
         'CombinedMethodCallRule' => [
             'parser' => '@defaultAnalysisParser',
@@ -303,6 +319,7 @@ final readonly class FiresGate
         file_put_contents($sandbox . '/phpstan.neon', strtr(self::PHPSTAN_CONFIG, [
             '{class}' => $ruleClass,
             '{arguments}' => $this->arguments($ruleFile),
+            '{parameters}' => $this->parameters($ruleFile),
         ]) . "\n");
 
         // Copied keeping any directories the example sits in, because a rule may ask about its own path:
@@ -342,6 +359,29 @@ final readonly class FiresGate
     }
 
     /**
+     * The neon parameters this rule needs, rendered under the existing `parameters:` key.
+     *
+     * @return string neon lines, or an empty string when the rule needs none
+     */
+    private function parameters(string $ruleFile): string
+    {
+        $parameters = self::PARAMETERS[basename($ruleFile, '.php')] ?? [];
+        if ($parameters === []) {
+            return '';
+        }
+
+        $lines = [];
+        foreach ($parameters as $root => $values) {
+            $lines[] = '    ' . $root . ':';
+            foreach ($values as $key => $value) {
+                $lines[] = '        ' . $key . ': ' . json_encode($value, JSON_THROW_ON_ERROR);
+            }
+        }
+
+        return implode("\n", $lines) . "\n";
+    }
+
+    /**
      * The configured values to register the original rule with, as neon.
      *
      * Taken from the transpiler, which read them from the rule package's own neon and put them in the
@@ -351,7 +391,14 @@ final readonly class FiresGate
      */
     private function arguments(string $ruleFile): string
     {
-        $arguments = $this->configuredValues($ruleFile);
+        // A rule configured through a *parameter* takes no configured arguments: its constructor asks for the
+        // package's value object, and handing it the plugin's constructor arguments instead is
+        // "Unable to pass specified arguments to __construct()". The two mechanisms are alternatives, so
+        // naming a parameter override suppresses the argument list here — the plugin still gets it, because
+        // that is the shape the transpiler gave it.
+        $arguments = isset(self::PARAMETERS[basename($ruleFile, '.php')])
+            ? []
+            : $this->configuredValues($ruleFile);
         $services = self::SERVICES[basename($ruleFile, '.php')] ?? [];
         if ($arguments === [] && $services === []) {
             return '';
@@ -406,7 +453,17 @@ final readonly class FiresGate
      */
     private function pluginArguments(string $ruleFile): string
     {
+        // A neon parameter override reaches the plugin as a *constructor argument*, because that is the shape
+        // the transpiler gives it: the parameter's last segment is the property name. One override, both sides
+        // — the alternative was a second map to keep in step, and a threshold configured on one side only is
+        // exactly how this pair first failed, with the plugin still carrying the package default of 40.
         $supplied = self::CONFIGURED[basename($ruleFile, '.php')] ?? [];
+        foreach (self::PARAMETERS[basename($ruleFile, '.php')] ?? [] as $values) {
+            foreach ($values as $key => $value) {
+                $supplied[lcfirst(str_replace(' ', '', ucwords(str_replace('_', ' ', $key))))] = $value;
+            }
+        }
+
         if ($supplied === []) {
             return '';
         }

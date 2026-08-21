@@ -377,6 +377,32 @@ final class Vocabulary
     ];
 
     /**
+     * A collaborator method whose answer a runtime helper computes, rather than one whose body is inlined.
+     *
+     * Most collaborators in these packages are small and their methods inline fine. One is not: the
+     * cognitive-complexity analyzer is a php-parser `NodeTraverser` driving two stateful visitors, and there is
+     * no statement-by-statement translation of that. The *answer* is reproducible exactly, which
+     * `internal/oracle-cognitive-complexity.php` measures against the real analyzer — 0 disagreements over
+     * 5414 methods of real code — so the helper stands in for the method and everything around it still comes
+     * from the rule's own source.
+     *
+     * Keyed by the collaborator's fully qualified name and method, for the reason
+     * {@see CROSS_FILE_CHECKS} is: a short name cannot be checked and a package is data here, never an import.
+     *
+     * @var array<string, array{helper: string, kind: string}>
+     */
+    public const array COLLABORATOR_CALLS = [
+        'TomasVotruba\CognitiveComplexity\AstCognitiveComplexityAnalyzer::analyzeFunctionLike' => [
+            'helper' => 'CognitiveComplexity::forFunctionLike',
+            'kind' => 'int',
+        ],
+        'TomasVotruba\CognitiveComplexity\AstCognitiveComplexityAnalyzer::analyzeClassLike' => [
+            'helper' => 'CognitiveComplexity::forClassLike',
+            'kind' => 'int',
+        ],
+    ];
+
+    /**
      * A check whose question no node hook can answer, and the whole-project pass that answers it instead.
      *
      * The same shape as {@see AGGREGATES} one level down. There the rule's *source* cannot be translated
