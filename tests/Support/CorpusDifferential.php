@@ -313,6 +313,13 @@ final class CorpusDifferential
             'analyse',
             '--no-progress',
             '--error-format=json',
+            // `laravel/pao` wraps PHPStan's output and caps it at 30 file-errors, setting `truncated: true`.
+            // It is a dev dependency of many projects here, so the cap is the normal case rather than the
+            // odd one, and a capped original is unusable: `PhpstanReport` refuses it. The wrapper skips the
+            // cap when the run is verbose, which is the whole of the fix — measured in
+            // `vendor/laravel/pao/src/Drivers/Phpstan/Starter.php`, where `isVerbose()` looks for exactly
+            // this flag and `$limit = 30` is applied only when it is absent.
+            '-v',
             '--configuration=' . $this->sandbox . '/phpstan-differential.neon',
         ], $this->consumerRoot);
 
