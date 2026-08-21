@@ -17,9 +17,11 @@ use Mago\Sdk\Syntax\SourceFile;
  * Reads a `FormRequest` field through an accessor the class's `rules()` never validates.
  *
  * One of the checks in `CombinedMethodCallRule` asks a question no node hook can answer: `rules()` may be
- * inherited, so deciding it means reading a *different file's* method body. `getFileName()` plus
- * `Parser::parseFile()` is how PHPStan does that; the SDK route is `getDeclaringMethod()` plus that file's
- * CST, and it is only open to an after-analysis pass — a node hook is handed one file.
+ * inherited, so deciding it means reading a *different file's* method body, and a node hook is handed one
+ * file. This class finds the call sites; {@see FormRequestRules} resolves the key set, and the
+ * `getDeclaringMethod()` walk that crosses files lives there. A reader looking for that mechanism *here*
+ * found a docblock describing it and no call, and reasonably concluded it was missing — so the rationale now
+ * sits with the code it describes.
  *
  * So this check is not translated statement by statement, the same way a collector-and-consumer pair is not
  * ({@see TypeCoverage}). The original resolves its key set through a `NodeTraverser` and an anonymous

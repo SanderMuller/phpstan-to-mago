@@ -2903,7 +2903,14 @@ PHP;
                 continue;
             }
 
-            throw new Refusal('statement in an inlined helper outside the vocabulary: ' . $this->describe($statement), $statement->getStartLine());
+            // Named, because a line number alone does not say *which* helper: two rules refused at "line 50"
+            // and the file was a different one each time, which cost a reader a wrong conclusion about what
+            // the refusal was asking for.
+            throw new Refusal(sprintf(
+                'statement in %s() outside the vocabulary: %s',
+                $method->name->toString(),
+                $this->describe($statement),
+            ), $statement->getStartLine());
         }
 
         if ($final === null) {

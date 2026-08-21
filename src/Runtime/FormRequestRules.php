@@ -19,6 +19,10 @@ use Mago\Sdk\Syntax\SourceFile;
  * different questions — "what does this class validate" against "which call sites break the rule" — and
  * because together they are past the complexity limit this project holds itself to.
  *
+ * The cross-file step is the one here: `rules()` may be declared in a parent or a trait, so `getFileName()`
+ * plus `Parser::parseFile()` is how PHPStan reaches it and `getDeclaringMethod()` plus that file's CST is the
+ * SDK route — open only to an after-analysis pass, because a node hook is handed one file.
+ *
  * Every "cannot be proven" case below is one the original also refuses to guess at, and each one matters: a
  * key set treated as complete when it is not turns every field missing from it into a finding against a field
  * that *is* validated.
