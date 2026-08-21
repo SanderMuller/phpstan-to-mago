@@ -280,9 +280,13 @@ final readonly class FiresGate
     private function sandbox(string $rule, string $ruleFile, string $ruleClass = 'Stub'): string
     {
         $sandbox = $this->sandboxRoot . '/' . $rule;
-        if (! is_dir($sandbox . '/src')) {
-            mkdir($sandbox . '/src', 0o777, true);
-        }
+
+        // Emptied, not topped up. Copying examples into whatever was there before leaves a renamed or deleted
+        // one behind, and a stale example is worse than a missing one: it produces a disagreement about a file
+        // that no longer exists. Renaming `GoodFlagShapes` to `Bad…` left both copies in the sandbox and the
+        // pair failed naming the old one, which reads exactly like a port defect.
+        $this->removeDirectory($sandbox . '/src');
+        mkdir($sandbox . '/src', 0o777, true);
 
         // The rule may have changed since the last run, and PHPStan's result cache cannot see that.
         $this->removeDirectory($sandbox . '/phpstan-tmp');
