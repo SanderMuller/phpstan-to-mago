@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Support;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use RuntimeException;
 use Sandermuller\PhpstanToMago\Transpiler;
+use SplFileInfo;
 
 /**
  * Runs one emitted plugin under the real mago binary, and the rule it came from under PHPStan.
@@ -68,6 +72,11 @@ final readonly class FiresGate
 
     private const string PHPSTAN_CONFIG = <<<'NEON'
         parameters:
+            # Inside the sandbox, and deleted whenever the sandbox is written. PHPStan's result cache keys on the
+            # analysed files and the configuration, and the *rule* is neither — so editing a rule while leaving
+            # its examples alone served findings from the previous version of it. That cost a real debugging
+            # detour: a fixture I had just corrected still failed with the old fixture's disagreement.
+            tmpDir: phpstan-tmp
             level: 0
             reportUnmatchedIgnoredErrors: false
             paths:
@@ -216,6 +225,9 @@ final readonly class FiresGate
         if (! is_dir($sandbox . '/src')) {
             mkdir($sandbox . '/src', 0o777, true);
         }
+
+        // The rule may have changed since the last run, and PHPStan's result cache cannot see that.
+        $this->removeDirectory($sandbox . '/phpstan-tmp');
 
         $plugin = $this->transpile($ruleFile);
         file_put_contents($sandbox . '/plugin.php', $plugin . "\n");
@@ -445,5 +457,26 @@ final readonly class FiresGate
         ksort($findings);
 
         return $findings;
+    }
+
+    /** Removes a directory and everything under it, for a cache that must not outlive a rule edit. */
+    private function removeDirectory(string $directory): void
+    {
+        if (! is_dir($directory)) {
+            return;
+        }
+
+        $entries = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST,
+        );
+
+        foreach ($entries as $entry) {
+            if ($entry instanceof SplFileInfo) {
+                $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
+            }
+        }
+
+        rmdir($directory);
     }
 }

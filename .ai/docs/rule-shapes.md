@@ -606,10 +606,23 @@ The second spelling binds the key between the declaration and the cache logic. T
 the cache, so it is accepted only when the memoised expression does not read it — otherwise the expression
 would lose a value the recogniser silently dropped.
 
-A cache declared **part-way** through a longer body is refused, and the refusal says so rather than naming the
-token. `DetectsFacadeAlias` fills its cache with runtime reflection, so whether dropping it changes the answer
-depends on what fills it — which is exactly what the whole-body form settles and the statement-position form
-does not.
+A cache declared **part-way** through a longer body is carried too, and nothing is emitted for it: the
+declaration and its keyed fill produce no statements, and each read of `$cache[$k]` resolves to the expression
+the fill recorded. `DetectsFacadeAlias` writes one of these, including the `try`/`catch` variant where the
+computation can throw and the catch stores null — both spellings record the same expression, so a computation
+that cannot be translated refuses at the computation, which is where the obstacle actually is.
+
+**The soundness condition, which the transpiler cannot check.** Dropping a cache is invisible to the answer only
+where the key *determines* the value. A per-process cache outlives the file, so a key that does not determine
+its value changes the result — and PHPStan keeps that result while the port recomputes. The first version of
+`MidBodyCacheRule` cached the enclosing namespace under the *function* name, and PHPStan duly reported a file
+with no namespace at all, having cached one from the file analysed before it. The port disagreed, and the port
+was right.
+
+Every cache in the corpus keys on a class or function name and stores something that name determines, so all of
+them are sound. But an unsound one is accepted silently, because deciding it in general is deciding whether a
+key determines a value. That is a known limitation rather than a checked property, and it is written down here
+because a reader would otherwise assume it was checked.
 
 ## An inverted loop is the same question with a different answer
 

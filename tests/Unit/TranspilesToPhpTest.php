@@ -80,6 +80,9 @@ final class TranspilesToPhpTest extends TestCase
         // target per kind its branches name and emitting a method per branch. Pinned because the emission is
         // where the target set and the per-branch split are visible, and the gate can only prove it fires.
         yield 'one rule over several node kinds' => ['EveryExpressionRule'];
+        // PHP only. What is interesting is what is *absent*: a cache declared part-way through a helper, its
+        // keyed fill, and the read that follows all collapse to the question the cache stood for.
+        yield 'a cache declared part-way through a helper' => ['MidBodyCacheRule'];
     }
 
     #[DataProvider('supportedRules')]

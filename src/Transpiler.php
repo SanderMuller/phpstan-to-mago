@@ -63,6 +63,7 @@ use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Static_;
+use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\UnionType;
 use PhpParser\NodeFinder;
 use PhpParser\ParserFactory;
@@ -173,6 +174,21 @@ final class Transpiler
      * @var array<string, string>
      */
     private array $literals = [];
+
+    /**
+     * Per-process caches a helper declares mid-body, by variable name, holding what each memoises.
+     *
+     * `static $cache = []` followed by a keyed fill is a cache around a question, and a cache is invisible to
+     * the answer — so nothing is emitted for either statement and a read of `$cache[$k]` resolves to the
+     * question instead. Distinct from {@see memoisedExpression}, which recognises a cache wrapping a *whole*
+     * helper; this one sits between other statements and only the reads can say what it stood for.
+     *
+     * Scoped exactly like `$locals` and `$literals`, for the reason those are: a name is a helper's own, and one
+     * outliving its inline is how a stale value reaches the next rule.
+     *
+     * @var array<string, Descriptor>
+     */
+    private array $caches = [];
 
     /**
      * Whether the identifier is an expression rather than a literal, so it is emitted unquoted.
@@ -2343,6 +2359,7 @@ PHP;
         // Bind the parameters, then translate the body in the helper's own constant scope.
         $savedLocals = $this->locals;
         $savedLiterals = $this->literals;
+        $savedCaches = $this->caches;
         $savedConstants = $this->constants;
         $savedInts = $this->intConstants;
         $savedArrayConstants = $this->arrayConstants;
@@ -2367,6 +2384,7 @@ PHP;
             --$this->inlineDepth;
             $this->locals = $savedLocals;
             $this->literals = $savedLiterals;
+            $this->caches = $savedCaches;
             $this->constants = $savedConstants;
             $this->intConstants = $savedInts;
             $this->arrayConstants = $savedArrayConstants;
@@ -2515,6 +2533,7 @@ PHP;
         // singular check and iterates a configured list under the same name for the plural one, so without
         // this the second check compares every item against the first check's literal.
         $savedLiterals = $this->literals;
+        $savedCaches = $this->caches;
         unset($this->literals[$item->name]);
         $bound = 'item' . ($depth === 0 ? '' : (string) $depth);
         $this->locals[$item->name] = [
@@ -2528,6 +2547,7 @@ PHP;
         } finally {
             $this->locals = $saved;
             $this->literals = $savedLiterals;
+            $this->caches = $savedCaches;
         }
 
         if (self::$target === 'php') {
@@ -2812,6 +2832,12 @@ PHP;
             if ($statement instanceof Expression && $statement->expr instanceof Assign) {
                 $this->bindLocal($statement->expr, $statement->getStartLine());
 
+                continue;
+            }
+
+            // A cache declared and filled part-way through a predicate helper. Neither statement contributes to
+            // the expression this folds to: the reads carry what the cache stood for.
+            if ($this->takesACacheStatement($statement)) {
                 continue;
             }
 
@@ -3163,6 +3189,7 @@ PHP;
         // and there is no undoing that if the body turns out not to be a choice after all.
         $savedLocals = $this->locals;
         $savedLiterals = $this->literals;
+        $savedCaches = $this->caches;
         $this->locals = $this->bindParameters($helper, $args, $name, $line) + $this->locals;
 
         try {
@@ -3184,6 +3211,7 @@ PHP;
         } finally {
             $this->locals = $savedLocals;
             $this->literals = $savedLiterals;
+            $this->caches = $savedCaches;
         }
 
         return ['rust' => '(' . $expression . ')', 'kind' => 'bytes', 'php' => '(' . $expression . ')'];
@@ -3204,11 +3232,143 @@ PHP;
     }
 
     /**
+     * Whether this statement is a cache's own bookkeeping, recording it if so.
+     *
+     * The declaration and the keyed fill both are: neither says anything the emitted plugin has to do, and what
+     * the cache stood for is settled by the fill and read back at each use.
+     */
+    private function takesACacheStatement(Stmt $statement): bool
+    {
+        if ($statement instanceof If_) {
+            return $this->fillsACache($statement);
+        }
+
+        if (! $statement instanceof Static_) {
+            return false;
+        }
+
+        $name = $this->emptyStaticCacheName($statement);
+        if ($name === null) {
+            throw new Refusal(
+                'a static variable that is not an empty cache: a cache is dropped because it cannot change the '
+                . 'answer, and a seeded one carries data that can',
+                $statement->getStartLine(),
+            );
+        }
+
+        $this->caches[$name] = ['rust' => self::PHP_ONLY, 'kind' => 'unfilled-cache', 'php' => self::PHP_ONLY];
+
+        return true;
+    }
+
+    /**
+     * The name a `static $x = [];` declares, or null when the statement is not that.
+     *
+     * One variable, initialised to an empty array. Two variables, or a seeded one, is not a cache this can drop.
+     */
+    private function emptyStaticCacheName(Static_ $statement): ?string
+    {
+        if (count($statement->vars) !== 1) {
+            return null;
+        }
+
+        $variable = $statement->vars[0];
+        if (! $variable->var instanceof Variable || ! is_string($variable->var->name)) {
+            return null;
+        }
+
+        return $variable->default instanceof Array_ && $variable->default->items === []
+            ? $variable->var->name
+            : null;
+    }
+
+    /**
+     * Whether this `if` fills a cache declared above it, recording what the cache stands for.
+     *
+     * `if (! array_key_exists($k, $cache)) { $cache[$k] = <expr>; }`, and the `try`/`catch` variant where the
+     * computation can throw and the catch stores null — `DetectsFacadeAlias` writes the second. Both mean the
+     * same thing to a reader of the cache, so both record the same expression; a computation that cannot be
+     * translated then refuses at the expression, which is where the real obstacle is.
+     */
+    private function fillsACache(If_ $statement): bool
+    {
+        if ($statement->elseifs !== [] || $statement->else instanceof Else_ || count($statement->stmts) !== 1) {
+            return false;
+        }
+
+        $cache = $this->cacheMissCondition($statement->cond);
+        if ($cache === null) {
+            return false;
+        }
+
+        $stored = $this->storedIntoCache($statement->stmts[0], $cache);
+        if (! $stored instanceof Expr) {
+            return false;
+        }
+
+        $this->caches[$cache] = $this->resolve($stored, $statement->getStartLine());
+
+        return true;
+    }
+
+    /** `! array_key_exists($k, $cache)` where `$cache` was declared a cache above: the name, or null. */
+    private function cacheMissCondition(Expr $condition): ?string
+    {
+        if (! $condition instanceof BooleanNot
+            || ! $condition->expr instanceof FuncCall
+            || ! $condition->expr->name instanceof Name
+            || $condition->expr->name->toString() !== 'array_key_exists'
+            || count($condition->expr->getArgs()) !== 2
+        ) {
+            return null;
+        }
+
+        $table = $condition->expr->getArgs()[1]->value;
+        if (! $table instanceof Variable || ! is_string($table->name)) {
+            return null;
+        }
+
+        return ($this->caches[$table->name]['kind'] ?? null) === 'unfilled-cache' ? $table->name : null;
+    }
+
+    /**
+     * What a fill body stores into the cache, or null when it stores something else.
+     *
+     * Either one assignment, or a `try` storing the computation with a `catch` storing null. The catch is not
+     * translated: a plugin has no throwing computation to catch, and where the computation itself cannot be
+     * carried the refusal lands on it.
+     */
+    private function storedIntoCache(Stmt $body, string $cache): ?Expr
+    {
+        if ($body instanceof TryCatch) {
+            return count($body->stmts) === 1 ? $this->storedIntoCache($body->stmts[0], $cache) : null;
+        }
+
+        if (! $body instanceof Expression
+            || ! $body->expr instanceof Assign
+            || ! $body->expr->var instanceof ArrayDimFetch
+            || ! $body->expr->var->var instanceof Variable
+            || $body->expr->var->var->name !== $cache
+        ) {
+            return null;
+        }
+
+        return $body->expr->expr;
+    }
+
+    /**
      * `if (COND) { return []; }`, or inside a loop `if (COND) { continue; }`, or in an error helper
      * `if (COND) { return <error>; }`.
      */
     private function translateIf(If_ $stmt): void
     {
+        // `if (! array_key_exists($k, $cache)) { $cache[$k] = <expr>; }` — filling a cache declared above.
+        // Nothing is emitted; the expression is resolved here, in the scope it was written in, and every later
+        // read of `$cache[$k]` resolves to it.
+        if ($this->fillsACache($stmt)) {
+            return;
+        }
+
         // A branch handling one of several node kinds the plugin registers for, with its own guards and its own
         // report. Its own method, so `return []` inside it declines that branch rather than the whole rule.
         if ($this->checkMode && $this->inlineDepth === 0 && $this->isBranchCheck($stmt)) {
@@ -3919,6 +4079,7 @@ PHP;
         // whatever the rule does next.
         $savedLocals = $this->locals;
         $savedLiterals = $this->literals;
+        $savedCaches = $this->caches;
 
         // A shim forwards and nothing else: `return $this->other(..);`. Following it is what lets the check
         // below see the builder two levels down instead of refusing the shim for not being one. Followed one
@@ -3953,6 +4114,7 @@ PHP;
                     // bound on the way in has served its purpose and must not outlive the inline.
                     $this->locals = $savedLocals;
                     $this->literals = $savedLiterals;
+                    $this->caches = $savedCaches;
                     $this->locals[$target->name] = $produced;
 
                     return;
@@ -3966,6 +4128,7 @@ PHP;
                 $this->lines[] = new Stm('declare', ['target' => $local, 'value' => $classified], $this->indent);
                 $this->locals = $savedLocals;
                 $this->literals = $savedLiterals;
+                $this->caches = $savedCaches;
                 $this->locals[$target->name] = [
                     'rust' => $local,
                     'kind' => 'bytes',
@@ -4019,6 +4182,7 @@ PHP;
             $this->inErrorHelper = $savedInHelper;
             $this->locals = $savedLocals;
             $this->literals = $savedLiterals;
+            $this->caches = $savedCaches;
             $this->constants = $savedConstants;
             $this->intConstants = $savedInts;
             $this->arrayConstants = $savedArrayConstants;
@@ -4225,6 +4389,8 @@ PHP;
         $savedLocals = $this->locals;
 
         $savedLiterals = $this->literals;
+
+        $savedCaches = $this->caches;
         $savedConstants = $this->constants;
         $savedInts = $this->intConstants;
         $savedArrayConstants = $this->arrayConstants;
@@ -4270,6 +4436,7 @@ PHP;
             $this->inErrorHelper = $savedInHelper;
             $this->locals = $savedLocals;
             $this->literals = $savedLiterals;
+            $this->caches = $savedCaches;
             $this->constants = $savedConstants;
             $this->intConstants = $savedInts;
             $this->arrayConstants = $savedArrayConstants;
@@ -4707,6 +4874,7 @@ PHP;
     {
         $savedLocals = $this->locals;
         $savedLiterals = $this->literals;
+        $savedCaches = $this->caches;
         $savedConstants = $this->constants;
         $savedInts = $this->intConstants;
         $savedArrayConstants = $this->arrayConstants;
@@ -4739,6 +4907,7 @@ PHP;
             --$this->inlineDepth;
             $this->locals = $savedLocals;
             $this->literals = $savedLiterals;
+            $this->caches = $savedCaches;
             $this->constants = $savedConstants;
             $this->intConstants = $savedInts;
             $this->arrayConstants = $savedArrayConstants;
@@ -5258,16 +5427,10 @@ PHP;
             return;
         }
 
-        // A cache the transpiler *can* drop is one wrapping a whole helper, where the body is the question and
-        // nothing else — see {@see memoisedExpression}. Declared part-way through a longer body it is a local
-        // whose lifetime outlives the call, and whether dropping it changes the answer depends on what fills it.
-        // `DetectsFacadeAlias` fills its cache with runtime reflection, so this is not a formality.
-        if ($stmt instanceof Static_) {
-            throw new Refusal(
-                'a cache declared part-way through a helper: only one wrapping the whole helper can be dropped, '
-                . 'because only then is the body the question it caches',
-                $stmt->getStartLine(),
-            );
+        // `static $cache = [];` part-way through a helper. Nothing is emitted: a cache is invisible to the
+        // answer, and what it stands for is settled by its fill and read back at each use.
+        if ($stmt instanceof Static_ && $this->takesACacheStatement($stmt)) {
+            return;
         }
 
         throw new Refusal('statement outside the vocabulary: ' . $this->describe($stmt), $stmt->getStartLine());
@@ -5524,6 +5687,7 @@ PHP;
         if ($subject['kind'] === 'collected' && $stmt->keyVar instanceof Expr) {
             $savedLocals = $this->locals;
             $savedLiterals = $this->literals;
+            $savedCaches = $this->caches;
             $this->locals[$stmt->valueVar->name] = ['rust' => $subject['rust'], 'kind' => 'collected'];
             try {
                 foreach ($stmt->stmts as $inner) {
@@ -5532,6 +5696,7 @@ PHP;
             } finally {
                 $this->locals = $savedLocals;
                 $this->literals = $savedLiterals;
+                $this->caches = $savedCaches;
             }
 
             return;
@@ -5556,6 +5721,8 @@ PHP;
         $savedLocals = $this->locals;
 
         $savedLiterals = $this->literals;
+
+        $savedCaches = $this->caches;
         $savedLoop = $this->inLoop;
         $this->locals[$stmt->valueVar->name] = ['rust' => $variable, 'kind' => $iterable['item']];
         if (isset($subject['as'])) {
@@ -5590,6 +5757,7 @@ PHP;
             --$this->loopDepth;
             $this->locals = $savedLocals;
             $this->literals = $savedLiterals;
+            $this->caches = $savedCaches;
         }
 
         $this->lines[] = new Stm('block-close', [], $this->indent);
@@ -5615,6 +5783,8 @@ PHP;
         $savedLocals = $this->locals;
 
         $savedLiterals = $this->literals;
+
+        $savedCaches = $this->caches;
         $savedLoop = $this->inLoop;
         $this->inLoop = true;
         ++$this->loopDepth;
@@ -5655,6 +5825,7 @@ PHP;
             --$this->loopDepth;
             $this->locals = $savedLocals;
             $this->literals = $savedLiterals;
+            $this->caches = $savedCaches;
             $this->reportSpan = $savedSpan;
         }
 
@@ -6017,6 +6188,7 @@ PHP;
 
         $savedLocals = $this->locals;
         $savedLiterals = $this->literals;
+        $savedCaches = $this->caches;
         $savedLoop = $this->inLoop;
         $this->inLoop = true;
         unset($this->literals[$stmt->keyVar->name], $this->literals[$stmt->valueVar->name]);
@@ -6041,6 +6213,7 @@ PHP;
             $this->inLoop = $savedLoop;
             $this->locals = $savedLocals;
             $this->literals = $savedLiterals;
+            $this->caches = $savedCaches;
         }
 
         $this->lines[] = new Stm('block-close', [], $this->indent);
@@ -7294,6 +7467,7 @@ PHP;
 
             $saved = $this->locals;
             $savedLiterals = $this->literals;
+            $savedCaches = $this->caches;
             unset($this->literals[$parameter->name]);
             try {
                 $this->locals[$parameter->name] = ['rust' => 'item', 'kind' => 'bytes', 'php' => '$item'];
@@ -7301,6 +7475,7 @@ PHP;
             } finally {
                 $this->locals = $saved;
                 $this->literals = $savedLiterals;
+                $this->caches = $savedCaches;
             }
 
             $list = $this->byteSliceList($options);
@@ -8073,6 +8248,22 @@ PHP;
         // translation of its own.
         if ($expr instanceof Coalesce && $this->isNullConstant($expr->right)) {
             return $this->resolve($expr->left, $line);
+        }
+
+        // `$cache[$k]` where `$cache` is a cache this dropped: the read *is* the question the cache stood for.
+        // Before the generic read below, because the cache is not an array in the emitted plugin — there is
+        // nothing to index.
+        if ($expr instanceof ArrayDimFetch
+            && $expr->var instanceof Variable
+            && is_string($expr->var->name)
+            && isset($this->caches[$expr->var->name])
+        ) {
+            $cached = $this->caches[$expr->var->name];
+            if ($cached['kind'] === 'unfilled-cache') {
+                throw new Refusal('a cache read before anything filled it', $line);
+            }
+
+            return $cached;
         }
 
         if ($expr instanceof ArrayDimFetch && $expr->dim instanceof Expr) {
