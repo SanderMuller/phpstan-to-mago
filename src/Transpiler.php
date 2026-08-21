@@ -8305,8 +8305,9 @@ PHP;
         ) {
             throw new Refusal(
                 'runtime reflection on the analysed code: a plugin worker autoloads the project but does not '
-                . 'boot it, so a name the application registers at runtime resolves to nothing. The worker is '
-                . 'an ordinary PHP file and could be given a boot; what that costs is the reason not to',
+                . 'boot it, so a name the application registers at runtime resolves to nothing. Where the '
+                . 'question behind it is answerable from the codebase, translate that instead — this refusal is '
+                . 'about the route the rule took, not about the question it asks',
                 $line,
             );
         }

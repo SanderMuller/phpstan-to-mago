@@ -56,6 +56,23 @@ final class TracksUpstreamDriftTest extends TestCase
         'tomasvotruba/cognitive-complexity',
     ];
 
+    /**
+     * Rules whose finding the engine already reports itself, and the diagnostic that does it.
+     *
+     * A third outcome, because "refused" reads as a gap and this is not one: a consumer switching loses
+     * nothing. `NoMissingVariableDimFetchRule` has no route — Mago's `possiblyUndefined` tracks only the `try`
+     * case, so there is nothing to build against without approximating — and needs none, because
+     * `undefined-variable` fires on the same code, once per site since mago#2219.
+     *
+     * Curated rather than derived: whether two tools report the same thing is a judgement, and one made per
+     * rule with the diagnostic named is a judgement a reader can check.
+     *
+     * @var array<string, string>
+     */
+    private const array ENGINE_COVERED = [
+        'NoMissingVariableDimFetchRule' => 'undefined-variable',
+    ];
+
     protected function setUp(): void
     {
         Transpiler::$target = 'php';
@@ -123,14 +140,20 @@ final class TracksUpstreamDriftTest extends TestCase
                 ARRAY_FILTER_USE_BOTH,
             );
             $emitted = count(array_filter($named, static fn (string $outcome): bool => $outcome === 'EMIT'));
+            $engine = count(array_filter(
+                $named,
+                static fn (string $outcome, string $name): bool => $outcome !== 'EMIT' && isset(self::ENGINE_COVERED[$name]),
+                ARRAY_FILTER_USE_BOTH,
+            ));
 
             $lines[] = '';
             $lines[] = sprintf(
-                '## %s — %d of %d the package registers emit, %d refuse, %d it registers nowhere',
+                '## %s — %d of %d the package registers emit, %d covered by the engine, %d refuse, %d it registers nowhere',
                 $package,
                 $emitted,
                 count($named),
-                count($named) - $emitted,
+                $engine,
+                count($named) - $emitted - $engine,
                 count($outcomes) - count($named),
             );
             $lines[] = '';
@@ -140,6 +163,15 @@ final class TracksUpstreamDriftTest extends TestCase
                 // entry in `../hihaho`'s own `rules:` list. What the mark rules out is counting it against the
                 // package's own coverage, which overstated the gap by thirteen rules for `hihaho`.
                 $where = isset($registered[$name]) ? '' : '  (the package registers it nowhere)';
+
+                // A rule the engine already covers is not a gap, so it does not read as one. The diagnostic is
+                // named on the line, because "covered" without saying by what is a claim nobody can check.
+                if ($outcome !== 'EMIT' && isset(self::ENGINE_COVERED[$name])) {
+                    $lines[] = 'ENGINE  ' . $name . '  (mago reports ' . self::ENGINE_COVERED[$name] . ')' . $where;
+
+                    continue;
+                }
+
                 $lines[] = ($outcome === 'EMIT' ? 'EMIT    ' : 'REFUSE  ') . $name . $where;
             }
         }

@@ -269,11 +269,25 @@ most once per node. This one reports zero, one or two findings from a single nod
 needs a second emission shape — one guarded report site per check, sharing the node — rather than another
 vocabulary entry. Four rules, so behind the closure detector rather than ahead of it.
 
-`CombinedStaticCallRule` is blocked by something else entirely, and traced rather than
-guessed from its refusal: `DetectsFacadeAlias` memoises in a `static $cache = []` because it needs *runtime*
-reflection — Laravel registers facade aliases lazily through an autoloader that PHPStan's `ReflectionProvider`
-never invokes. A plugin cannot do that at all, so the honest outcome there is a refusal naming the runtime
-reflection, not a vocabulary entry for `static`. `CombinedFuncCallRule` is blocked by a constructor derivation
+`CombinedStaticCallRule` is blocked by something else entirely: `DetectsFacadeAlias` memoises in a
+`static $cache = []` because it fills that cache with *runtime* reflection — Laravel registers facade aliases
+lazily through an autoloader that PHPStan's `ReflectionProvider` never invokes, and only larastan booting the
+application makes `new ReflectionClass('Cache')` resolve. A plugin worker does not boot the project, which is
+measured in `internal/probe-facade-alias.php`.
+
+**But that is a fact about the route, not about the question.** The check itself is answerable statically, and
+`internal/probe-facade-alias-static.php` measures both halves on real Laravel: "is this a facade" is
+`Codebase::getClassAncestors()`, which answers true for `Illuminate\Support\Facades\Cache` and false for
+`Illuminate\Support\Arr`; "which short name maps to what" is the array literal in `Facade::defaultAliases()`,
+read through `getDeclaringMethod()` and that file's tree — 46 entries. So calling this a boundary was wrong; a
+static map is buildable.
+
+What a static map from `defaultAliases()` alone would *miss* is aliases a project adds itself, and that gap is
+not hypothetical. In `../hihaho`, `config/app.php` merges four more onto `Facade::defaultAliases()` and
+`app/Providers/Saml2ServiceProvider.php` calls `AliasLoader::getInstance()`. Both are array literals and both
+are readable in principle, but one of them lives in a config file rather than a class. So the honest position is
+that this is a *measured* decision rather than a boundary: the corpus differential shows what a given map misses
+on a given project, and the choice is made with that number rather than on principle. `CombinedFuncCallRule` is blocked by a constructor derivation
 that reaches outside the pure set.
 
 ## The shape that blocks `hihaho/phpstan-rules`
