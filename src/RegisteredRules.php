@@ -176,7 +176,7 @@ final readonly class RegisteredRules
             throw new Refusal('could not start PHPStan in ' . $projectRoot);
         }
 
-        $output = (string) stream_get_contents($pipes[1]) . (string) stream_get_contents($pipes[2]);
+        $output = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
         fclose($pipes[1]);
         fclose($pipes[2]);
         proc_close($process);
@@ -201,7 +201,7 @@ final readonly class RegisteredRules
             throw new Refusal("PHPStan reported its registered rules in a shape this does not understand:\n" . $written);
         }
 
-        if ($payload['ok'] !== true) {
+        if (! $payload['ok']) {
             throw new Refusal('PHPStan could not report its registered rules: ' . ($payload['error'] ?? 'no reason given'));
         }
 

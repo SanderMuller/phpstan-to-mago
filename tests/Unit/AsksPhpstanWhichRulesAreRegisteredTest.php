@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 use Sandermuller\PhpstanToMago\Refusal;
 use Sandermuller\PhpstanToMago\RegisteredRules;
 use Sandermuller\PhpstanToMago\RulePaths;
@@ -36,7 +37,7 @@ final class AsksPhpstanWhichRulesAreRegisteredTest extends TestCase
         $registered = RegisteredRules::discover(self::PROJECT, self::PHPSTAN);
 
         $this->assertContains(
-            (string) (new \ReflectionClass(DiscoveredRule::class))->getFileName(),
+            (string) (new ReflectionClass(DiscoveredRule::class))->getFileName(),
             $registered->portableFiles(),
         );
     }
@@ -81,7 +82,7 @@ final class AsksPhpstanWhichRulesAreRegisteredTest extends TestCase
         // configurations, and a generated plugin carries one, so the count has to survive to the caller.
         $this->assertSame(2, $registered->duplicated()[DiscoveredRule::class] ?? null);
 
-        $file = (string) (new \ReflectionClass(DiscoveredRule::class))->getFileName();
+        $file = (string) (new ReflectionClass(DiscoveredRule::class))->getFileName();
 
         $this->assertSame([$file], array_values(array_filter(
             $registered->portableFiles(),

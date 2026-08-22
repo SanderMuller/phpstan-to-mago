@@ -141,7 +141,7 @@ final class Cli
 
         echo '  CONFIG  ', $registered->configFile, "\n";
         echo '          ', count($registered->rules), ' rules registered, ',
-        $registered->coreCount(), ' of them PHPStan\'s own, ',
+        $registered->coreCount(), " of them PHPStan's own, ",
         $registered->portableCount(), ' to carry across ', count($discovered), " files\n";
 
         foreach ($registered->duplicated() as $class => $services) {
