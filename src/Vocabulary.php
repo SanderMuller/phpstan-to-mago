@@ -499,12 +499,16 @@ final class Vocabulary
                 . 'counted when it does not. Reproducing that means reproducing every installed reflection '
                 . 'extension, so the residue is a divergence rather than a gap to close. Another 12 of '
                 . "hihaho's is three classes implementing PHPStan reflection-extension interfaces that ship "
-                . 'inside phpstan.phar, which mago cannot resolve either. What is left, +11 over app/, is '
-                . 'not traced. It is +12 in one model and -2 in an enum directory; '
-                . '`php tests/Support/run-coverage-setdiff.php <consumer-root> <file>` names the exact '
-                . 'declarations, and for that model it is ten of them, nine with no docblock and ordinary '
-                . 'names. Three explanations are refuted rather than untested: the implements list, the '
-                . 'parent class, and being an Eloquent model each leave the count unchanged in a control',
+                . 'inside phpstan.phar, which mago cannot resolve either. What is left over app/, +11, is the '
+                . 'same root cause a third time: +12 of it is the auth model, whose every declared method is '
+                . "skipped while its closures are counted. larastan's AuthsMethodsExtension answers hasMethod() "
+                . 'on Illuminate\\Contracts\\Auth\\Authenticatable by looking the name up on the configured '
+                . "auth model, so implementing that contract puts every one of that model's own method names on "
+                . 'an ancestor. Controlled to the name: in a class implementing only that contract, a method '
+                . 'named after one the auth model has is skipped and an invented name is counted. That leaves -2 '
+                . 'in one enum directory, the only under-count measured anywhere, and it is not traced. '
+                . '`php tests/Support/run-coverage-setdiff.php <consumer-root> <file>` names the declarations '
+                . 'behind any of these',
             default => null,
         };
     }

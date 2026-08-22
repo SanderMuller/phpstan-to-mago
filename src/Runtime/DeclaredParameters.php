@@ -363,8 +363,16 @@ final class DeclaredParameters
      * to. `ClassReflection::hasMethod()` consults PHPStan's method-reflection extensions, so on a Laravel
      * project a factory annotated `@extends Factory<Model>` has every `for<Relation>` and `has<Relation>` its
      * model declares — larastan's `ModelFactoryMethodsClassReflectionExtension` says so — and the collector
-     * skips those methods. Metadata knows only what is written. Measured: 56 of one consumer's 79-parameter
-     * over-count and 16 of another's 33, the latter matching its factory `for*`/`has*` count exactly.
+     * skips those methods. Metadata knows only what is written.
+     *
+     * The same mechanism, worse, for whatever class a project configures as its auth model:
+     * `AuthsMethodsExtension` answers `hasMethod()` on `Illuminate\Contracts\Auth\Authenticatable` by looking
+     * the name up on that model, so implementing the contract puts every one of the model's own method names
+     * on an ancestor and the collector skips all of them, counting only its closures.
+     *
+     * Measured on two consumers: of one project's 79-parameter over-count, 56 is the factory extension, 12 is
+     * PHPStan's own reflection-extension interfaces being unreachable inside `phpstan.phar`, and 12 is the auth
+     * model. `tests/Support/run-coverage-setdiff.php` names the declarations behind any of them.
      *
      * An anonymous class has no name for the codebase to look up, so its `extends` and `implements` clauses
      * are read from the tree and each named ancestor's own ancestry folded in from metadata. Skipping the
