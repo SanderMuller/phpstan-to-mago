@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Runtime;
 
 use Mago\Sdk\Analyzer\AfterAnalysisContext;
-use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata;
+use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata as ClassMetadata;
 use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\Metadata\MetadataFlags;
 use Mago\Sdk\Analyzer\Metadata\PropertyMetadata;
@@ -68,32 +68,17 @@ final readonly class TypeCoverage
         return floor($this->typed / $this->total * 100 * 10) / 10;
     }
 
-    /** Parameter type coverage across every function-like the analysis knows. */
+    /**
+     * Parameter type coverage, read from the syntax rather than from metadata.
+     *
+     * The counting lives in {@see DeclaredParameters}, because reproducing `ParamTypeDeclarationCollector`
+     * takes a trait-user index, an LSP guard and four skips — more than this class can hold and still be read.
+     */
     public static function parameters(AfterAnalysisContext $context): self
     {
-        $total = 0;
-        $typed = 0;
-        $missing = [];
+        $counted = DeclaredParameters::of($context);
 
-        foreach (self::methods($context) as $method) {
-            foreach ($method->parameters as $parameter) {
-                // A variadic parameter has no single declaration site to name, and the collectors skip one.
-                if ($parameter->flags->contains(MetadataFlags::VARIADIC)) {
-                    continue;
-                }
-
-                ++$total;
-                if ($parameter->declaredType !== null) {
-                    ++$typed;
-
-                    continue;
-                }
-
-                $missing[] = $parameter->location;
-            }
-        }
-
-        return new self($total, $typed, $missing);
+        return new self($counted['total'], $counted['typed'], $counted['missing']);
     }
 
     /** Return type coverage across every function-like the analysis knows. */
@@ -141,7 +126,7 @@ final readonly class TypeCoverage
 
         foreach (self::classNames($context) as $class) {
             $metadata = $context->codebase->getClassLike($class);
-            if (! $metadata instanceof ClassLikeMetadata) {
+            if (! $metadata instanceof ClassMetadata) {
                 continue;
             }
 
@@ -223,7 +208,7 @@ final readonly class TypeCoverage
         $seen = [];
         foreach (self::classNames($context) as $class) {
             $metadata = $context->codebase->getClassLike($class);
-            if (! $metadata instanceof ClassLikeMetadata) {
+            if (! $metadata instanceof ClassMetadata) {
                 continue;
             }
 

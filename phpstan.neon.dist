@@ -87,6 +87,7 @@ parameters:
             message: '#Calling proc_open\(\) is forbidden#'
             paths:
                 - tests/Support/CorpusDifferential.php
+                - tests/Support/CoverageControl.php
                 - tests/Support/FiresGate.php
                 - tests/Unit/AggregatesTypeCoverageTest.php
             reportUnmatched: false

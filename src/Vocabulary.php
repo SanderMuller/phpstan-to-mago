@@ -486,10 +486,12 @@ final class Vocabulary
     public static function unverifiedAggregate(string $metric): ?string
     {
         return match ($metric) {
-            'parameters' => 'the parameter aggregate disagrees with the original at corpus scale: on 585 files '
-                . 'PHPStan counted 4057 parameters with 1994 typed (49.1%) where this counts 3079 with 2927 '
-                . '(95.0%). Two known causes: only class methods are counted, where the collector targets every '
-                . 'FunctionLike; and ParameterMetadata->declaredType is not php-parser\'s native $param->type',
+            'parameters' => 'the parameter aggregate is close to the original at corpus scale and not equal to '
+                . 'it: on hihaho/app (1945 files) PHPStan counts 11108 parameters where this counts 11119, and '
+                . 'on mijntp/app (4186 files) PHPStan counts 11375 where this counts 11312. Both were far '
+                . 'worse (3079 against 4057 on 585 files) before the counting moved to the syntax tree; the '
+                . 'ten controls under tests/Fixtures/aggregate/controls now agree exactly, and one shape is a '
+                . 'known gap: a trait method reached under an alias, `use T { T::m as other; }`',
             default => null,
         };
     }

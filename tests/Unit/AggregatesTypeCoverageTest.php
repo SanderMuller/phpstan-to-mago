@@ -20,9 +20,10 @@ use Sandermuller\PhpstanToMago\Transpiler;
  *
  * **Scope, stated up front: this establishes fixture-level agreement, not corpus-level.** The same counting
  * agreed exactly here and then disagreed on a 585-file dependency tree — PHPStan counted 4057 parameters with
- * 1994 typed where the port counted 3079 with 2927. So the transpiler maps no aggregate and refuses the rule;
- * these tests hold the design still while the two causes are worked out (the port counts only class methods,
- * and `declaredType` is not php-parser's native `$param->type`).
+ * 1994 typed where the port counted 3079 with 2927. Both causes are fixed since, and the counting now agrees
+ * on ten controls (see {@see CountsParametersLikeTheCollectorTest}) and comes within 11 of 11108 on one real
+ * consumer and 63 of 11375 on another — close, and not equal, so the transpiler still refuses the rule. These
+ * tests hold the design still while that last gap is worked out.
  *
  * The plugin under test is a hand-written reference of the shape the transpiler would emit.
  *
@@ -128,7 +129,7 @@ final class AggregatesTypeCoverageTest extends TestCase
         // agreement turned out not to generalise. Refusing is the honest state, and this pins it so the
         // mapping cannot be restored without the corpus differential that justifies it.
         $this->expectException(Refusal::class);
-        $this->expectExceptionMessageMatches('/disagrees with the original at corpus scale/');
+        $this->expectExceptionMessageMatches('/not equal to it: on hihaho\/app/');
 
         (new Transpiler(
             dirname(__DIR__, 2) . '/vendor/tomasvotruba/type-coverage/src/Rules/ParamTypeCoverageRule.php',
