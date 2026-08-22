@@ -486,13 +486,19 @@ final class Vocabulary
     public static function unverifiedAggregate(string $metric): ?string
     {
         return match ($metric) {
-            'parameters' => 'the parameter aggregate over-counts against the original at corpus scale: on '
-                . "hihaho's configured paths (2933 files) PHPStan counts 13694 parameters where this counts "
-                . '13773, and on mijntp (4372 files) 11428 against 11461. Reproduce with '
-                . '`php tests/Support/run-coverage-corpus.php <consumer-root>`. The counting was far worse '
-                . '(3079 against 4057) before it moved to the syntax tree, and the ten controls under '
-                . 'tests/Fixtures/aggregate/controls agree exactly. The one known gap under-counts — a trait '
-                . 'method reached under an alias, `use T { T::m as other; }` — so it is not what is left',
+            'parameters' => 'the parameter aggregate over-counts against the original at corpus scale, and '
+                . 'most of the gap is not portable. On hihaho (2933 files) PHPStan counts 13694 parameters '
+                . 'where this counts 13773, and on mijntp (4372 files) 11428 against 11461; reproduce with '
+                . '`php tests/Support/run-coverage-corpus.php <consumer-root>`. Bisected by configured path, '
+                . "56 of hihaho's 79 and 16 of mijntp's 33 sit in database/factories, and mijntp has "
+                . 'exactly 16 factory methods named for* or has*. That is '
+                . "larastan's ModelFactoryMethodsClassReflectionExtension answering hasMethod() for a "
+                . 'relation the model declares: the collector skips a method whose name a parent has, and '
+                . "PHPStan's parent has whatever the installed extensions say it has. Controlled both ways "
+                . '— the same method is skipped when the factory annotates @extends Factory<Model> and '
+                . 'counted when it does not. Reproducing that means reproducing every installed reflection '
+                . 'extension, so the residue is a divergence rather than a gap to close. What is left after '
+                . "it, +11 and +17 over each project's app/, is not traced",
             default => null,
         };
     }

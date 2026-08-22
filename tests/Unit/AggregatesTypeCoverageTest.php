@@ -23,8 +23,10 @@ use Sandermuller\PhpstanToMago\Transpiler;
  * 1994 typed where the port counted 3079 with 2927. Both causes are fixed since, the counting agrees on ten
  * controls (see {@see CountsParametersLikeTheCollectorTest}), and it now over-counts by 79 of 13694 on one
  * real consumer and 33 of 11428 on another — close, and not equal, so the transpiler still refuses the rule.
- * `tests/Support/run-coverage-corpus.php` is what produces those numbers. These tests hold the design still
- * while the last gap is worked out.
+ * `tests/Support/run-coverage-corpus.php` is what produces those numbers, and most of the gap turns out to be
+ * a divergence rather than a bug: the collector's LSP guard reads `ClassReflection::hasMethod()`, which
+ * PHPStan's reflection extensions answer for methods nobody wrote. These tests hold the design still while
+ * what remains after that is traced.
  *
  * The plugin under test is a hand-written reference of the shape the transpiler would emit.
  *
@@ -130,7 +132,7 @@ final class AggregatesTypeCoverageTest extends TestCase
         // agreement turned out not to generalise. Refusing is the honest state, and this pins it so the
         // mapping cannot be restored without the corpus differential that justifies it.
         $this->expectException(Refusal::class);
-        $this->expectExceptionMessageMatches('/over-counts against the original at corpus scale/');
+        $this->expectExceptionMessageMatches('/over-counts against the original at corpus scale, and most of the gap is not portable/');
 
         (new Transpiler(
             dirname(__DIR__, 2) . '/vendor/tomasvotruba/type-coverage/src/Rules/ParamTypeCoverageRule.php',
