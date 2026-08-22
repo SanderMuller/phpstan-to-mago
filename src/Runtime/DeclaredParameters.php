@@ -43,7 +43,7 @@ final class DeclaredParameters
         $total = 0;
         $typed = 0;
         $missing = [];
-        $traitUsers = self::traitUsers($context);
+        $traitUsers = TraitUsers::of($context);
 
         foreach ($context->analysis->files as $file) {
             $source = $file->getSourceFile();
@@ -80,7 +80,7 @@ final class DeclaredParameters
      * Null where the collector produces no record at all: no parameters to analyse, a docblock declaring a
      * `callable` parameter, a method whose types LSP locks, or a trait declaration no analysed class reaches.
      *
-     * @param array<string, list<string|null>> $traitUsers
+     * @param array<string, list<array{class: string|null, aliases: list<string>}>> $traitUsers
      *
      * @return array{list<Node>, int}|null
      */
@@ -153,12 +153,16 @@ final class DeclaredParameters
      * interface declares the name has it skipped by the collector's own LSP guard — evaluated against the
      * *using* class, because that is the class reflection the collector's scope carries inside a trait method.
      *
-     * One shape is a known gap rather than a silent one: `use B { B::m as alias; }` has the declaration
-     * analysed under another name, and metadata cannot say so — `ClassLikeMetadata->methods` lists a class's
-     * own methods and not the ones a trait brings, so there is no name to look the declaration up under. A
-     * control of that shape counts 2 here where PHPStan counts 4.
+     * A renamed method still arrives, so `use T { m as other; }` counts too: the class's own `m` wins that
+     * name while the trait's `m` is analysed in the class's context as `other`. `ClassLikeMetadata->methods`
+     * does not list what a trait brings, so the alias comes from the `use` statement's own syntax and the
+     * declaration is then looked up under it. Asking only about the original name counted it zero times.
      *
-     * @param array<string, list<string|null>> $traitUsers
+     * One shape is still a known gap: `use A, B { A::m insteadof B; B::m as other; }`, where the rename names
+     * its trait — a different adaptation node, and one no measured corpus contains. A control of that shape
+     * counts 2 here where PHPStan counts 4.
+     *
+     * @param array<string, list<array{class: string|null, aliases: list<string>}>> $traitUsers
      */
     private static function timesCounted(
         AfterAnalysisContext $context,
@@ -196,9 +200,10 @@ final class DeclaredParameters
 
         $here = $file . ':' . $named->span->start;
         $times = 0;
-        foreach ($users as $class) {
+        foreach ($users as $user) {
             // An anonymous class has no name to ask the codebase about, so neither question can be put to it
             // and the declaration counts once for it.
+            $class = $user['class'];
             if ($class === null) {
                 ++$times;
 
@@ -215,10 +220,12 @@ final class DeclaredParameters
 
             // Does this class end up with *this* declaration? An override or an `insteadof` means another
             // declaration wins for that name, and the collector never sees this one in that class's context.
-            $declaring = $context->codebase->getDeclaringMethod($class, $method);
-            if (! $declaring instanceof FunctionLikeMetadata
-                || $declaring->location->file . ':' . $declaring->location->span->start !== $here
-            ) {
+            //
+            // Under its own name or under an alias. `use T { m as other; }` leaves the class's own `m` winning
+            // that name while the trait's `m` is still analysed in the class's context as `other`, so asking
+            // only about `m` counted it zero times: -2 on one project's enum directory, which is one enum
+            // aliasing a two-parameter trait method.
+            if (! self::reaches($context, $class, $here, [$method, ...$user['aliases']])) {
                 continue;
             }
 
@@ -229,90 +236,22 @@ final class DeclaredParameters
     }
 
     /**
-     * How many classes use each trait, keyed by the trait's lowercased name as it is written.
+     * Whether any of these names resolves, on this class, to the declaration at this location.
      *
-     * Read from `TraitUse` nodes rather than from `ClassLikeMetadata->usedTraits`, because the metadata field
-     * is transitive *through a parent class* as well as through another trait — and the abstract-base control
-     * above shows PHPStan does not count a parent's trait again for each subclass. The syntax says which
-     * declaration wrote the `use`, which is the question.
-     *
-     * Names are the ones written, resolved against the file's imports but not lowercased by the resolver, so
-     * every key and lookup folds case here.
-     *
-     * @return array<string, list<string|null>>
+     * @param list<string> $names
      */
-    private static function traitUsers(AfterAnalysisContext $context): array
+    private static function reaches(AfterAnalysisContext $context, string $class, string $here, array $names): bool
     {
-        /** @var array<string, list<string>> $uses */
-        $uses = [];
-        /** @var array<string, string|null> $classes */
-        $classes = [];
-
-        foreach ($context->analysis->files as $file) {
-            $source = $file->getSourceFile();
-            foreach ($source->getNodes(NodeKind::TraitUse) as $use) {
-                $owner = Declarations::enclosingClassLike($source, $use);
-                if (! $owner instanceof Node) {
-                    continue;
-                }
-
-                // An anonymous class has no name to key on, so its file and position stand in — it is still a
-                // class that gets the trait's methods analysed in its context.
-                $key = $owner->kind === NodeKind::Trait || $owner->kind === NodeKind::Interface
-                    ? 'trait:' . strtolower((string) Declarations::classLikeName($source, $owner))
-                    : 'class:' . $file->file . ':' . $owner->span->start;
-
-                if (! str_starts_with($key, 'trait:')) {
-                    $classes[$key] = Declarations::classLikeName($source, $owner);
-                }
-
-                foreach ($source->getChildren($use) as $part) {
-                    if ($part->kind !== NodeKind::Identifier) {
-                        continue;
-                    }
-
-                    $resolved = $source->getResolvedName($part)?->name;
-                    if ($resolved !== null) {
-                        $uses[$key][] = strtolower($resolved);
-                    }
-                }
+        foreach ($names as $name) {
+            $declaring = $context->codebase->getDeclaringMethod($class, $name);
+            if ($declaring instanceof FunctionLikeMetadata
+                && $declaring->location->file . ':' . $declaring->location->span->start === $here
+            ) {
+                return true;
             }
         }
 
-        $users = [];
-        foreach ($classes as $key => $name) {
-            foreach (array_keys(self::reachableTraits($uses, $key)) as $trait) {
-                $users[$trait][] = $name;
-            }
-        }
-
-        return $users;
-    }
-
-    /**
-     * Every trait one declaration reaches through its own `use` statements, following trait-to-trait `use`.
-     *
-     * @param array<string, list<string>> $uses
-     *
-     * @return array<string, true>
-     */
-    private static function reachableTraits(array $uses, string $from): array
-    {
-        $reached = [];
-        $queue = $uses[$from] ?? [];
-        while ($queue !== []) {
-            $trait = array_pop($queue);
-            if (isset($reached[$trait])) {
-                continue;
-            }
-
-            $reached[$trait] = true;
-            foreach ($uses['trait:' . $trait] ?? [] as $further) {
-                $queue[] = $further;
-            }
-        }
-
-        return $reached;
+        return false;
     }
 
     /**

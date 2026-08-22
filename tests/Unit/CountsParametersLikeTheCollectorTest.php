@@ -56,6 +56,11 @@ final class CountsParametersLikeTheCollectorTest extends TestCase
         // A declaration with no parameters contributes no record, and a variadic is taken back out of the
         // count rather than counted as untyped.
         yield 'no parameters, and a variadic one' => ['variadic-and-empty', 1];
+        // `use T { m as other; }` leaves the class's own `m` winning that name while the trait's `m` is still
+        // analysed in the class's context under the alias. Two for the plain user, two for the renaming user's
+        // own method, two for the trait's inside it. Asking only about the original name counted the last of
+        // those zero times, which was -2 on a real project's enum directory.
+        yield 'a trait method reached under an alias' => ['aliased-trait-method', 6];
     }
 
     #[DataProvider('controls')]

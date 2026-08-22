@@ -488,7 +488,7 @@ final class Vocabulary
         return match ($metric) {
             'parameters' => 'the parameter aggregate over-counts against the original at corpus scale, and '
                 . 'most of the gap is not portable. On hihaho (2933 files) PHPStan counts 13694 parameters '
-                . 'where this counts 13773, and on mijntp (4372 files) 11428 against 11461; reproduce with '
+                . 'where this counts 13773, and on mijntp (4372 files) 11428 against 11464; reproduce with '
                 . '`php tests/Support/run-coverage-corpus.php <consumer-root>`. Bisected by configured path, '
                 . "56 of hihaho's 79 and 16 of mijntp's 33 sit in database/factories, and mijntp has "
                 . 'exactly 16 factory methods named for* or has*. That is '
@@ -506,7 +506,9 @@ final class Vocabulary
                 . "auth model, so implementing that contract puts every one of that model's own method names on "
                 . 'an ancestor. Controlled to the name: in a class implementing only that contract, a method '
                 . 'named after one the auth model has is skipped and an invented name is counted. That leaves -2 '
-                . 'in one enum directory, the only under-count measured anywhere, and it is not traced. '
+                . 'in one enum directory, the only under-count measured anywhere, and it is not traced: the '
+                . 'one trait adaptation there was the obvious suspect, and reading aliased trait methods '
+                . 'changed that number by nothing while mijntp gained 3. '
                 . '`php tests/Support/run-coverage-setdiff.php <consumer-root> <file>` names the declarations '
                 . 'behind any of these',
             default => null,
