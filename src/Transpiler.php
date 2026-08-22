@@ -3674,7 +3674,13 @@ PHP;
 
             $exit = 'continue;';
         } else {
-            throw new Refusal('guard body is neither `return []` nor `continue`', $stmt->getStartLine());
+            // Says what the body *is*. "neither X nor Y" told a reader only what it is not, and the shape that
+            // reaches here is usually a helper returning a value rather than a rule declining — a difference
+            // the old message left them to find by opening the file.
+            throw new Refusal(
+                'guard body is neither `return []` nor `continue`, but ' . $this->describe($only),
+                $stmt->getStartLine(),
+            );
         }
 
         $this->translateGuard($stmt->cond, $exit);

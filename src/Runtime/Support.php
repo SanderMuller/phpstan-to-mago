@@ -414,6 +414,24 @@ final class Support
      * A plugin registered for classes, enums and interfaces asks this to skip the ones its rule excludes.
      * Mago gives each class-like its own node kind, so the question is the node's kind and nothing else.
      */
+    /**
+     * Whether the node is a method declaration, for a rule narrowing a function-like hook.
+     *
+     * A rule naming `FunctionLike` is handed every function-like there is and branches on the concrete one:
+     * `instanceof ClassMethod` is this, `instanceof Function_` is the next one, and a closure or arrow
+     * function matches neither — which is the rule declining, not the port going quiet.
+     */
+    public static function isMethodDeclaration(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return self::declarationKindIs($context, $subject, 'Method');
+    }
+
+    /** Whether the node is a plain function declaration. See {@see isMethodDeclaration()}. */
+    public static function isFunctionDeclaration(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return self::declarationKindIs($context, $subject, 'Function');
+    }
+
     public static function declarationKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool
     {
         $node = self::node($subject);

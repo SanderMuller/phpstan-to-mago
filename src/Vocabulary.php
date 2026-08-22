@@ -19,6 +19,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\StaticPropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst\Dir;
@@ -29,6 +30,7 @@ use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Const_;
 use PhpParser\Node\Stmt\Foreach_;
+use PhpParser\Node\Stmt\Function_;
 use PhpParser\Node\Stmt\Property;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Trait_;
@@ -69,6 +71,10 @@ final class Vocabulary
         // that does not narrow to `Class_` is refused rather than silently missing interfaces and traits.
         InClassNode::class => ['trait' => 'ClassDeclarationHook', 'method' => 'on_enter_class', 'node' => 'Class', 'kind' => 'Class', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classOnly' => true, 'classFrom' => 'metadata'],
         ClassMethod::class => ['trait' => 'ClassLikeMemberHook', 'method' => 'on_method', 'node' => 'Method', 'kind' => 'Method', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata'],
+        // `FunctionLike` is an interface, so a rule naming it asks for every function-like there is and
+        // branches on the concrete one. The primary kind is `Method` because that is the shape the fields are
+        // keyed by; `HOOK_KINDS` says which targets the plugin registers.
+        FunctionLike::class => ['trait' => 'ClassLikeMemberHook', 'method' => 'on_method', 'node' => 'Method', 'kind' => 'Method', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata', 'phpOnly' => true],
         New_::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'adapter' => 'as_instantiation', 'kind' => 'Instantiation'],
         Property::class => ['trait' => 'ClassLikeMemberHook', 'method' => 'on_property', 'node' => 'Property', 'kind' => 'Property', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata'],
         ClassConst::class => ['trait' => 'ClassLikeMemberHook', 'method' => 'on_class_like_constant', 'node' => 'ClassLikeConstant', 'kind' => 'ClassLikeConstant', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata'],
@@ -498,6 +504,10 @@ final class Vocabulary
      */
     public const array HOOK_KINDS = [
         Expr::class => ['ClassConstantAccess', 'StaticPropertyAccess', 'MethodCall', 'StaticMethodCall', 'FunctionCall', 'PropertyAccess'],
+        // All four, not the two a given rule narrows to: the kinds a node type *covers* are a fact about the
+        // type, and letting a rule's own `instanceof` decide the registration would make the targets depend on
+        // the body rather than on what PHPStan would have visited.
+        FunctionLike::class => ['Method', 'Function', 'Closure', 'ArrowFunction'],
     ];
 
     public const array EXPRESSION_KINDS = [
@@ -516,6 +526,10 @@ final class Vocabulary
         MethodCall::class => 'is_method_call',
         Array_::class => 'is_array',
         Int_::class => 'is_int',
+        // Declaration kinds a rule narrows a function-like hook to. Answered from the node's own kind, which
+        // is what makes the same predicate serve every kind the hook registers.
+        ClassMethod::class => 'is_method_declaration',
+        Function_::class => 'is_function_declaration',
         ArrayDimFetch::class => 'is_array_dim_fetch',
         // Both PHP-target only, and both take the context because the answer is a node kind rather than
         // anything readable from the part alone.
