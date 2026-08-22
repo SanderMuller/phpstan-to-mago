@@ -161,15 +161,31 @@ final class TranspilesToPhpTest extends TestCase
     /**
      * A missing helper is otherwise only found at analysis time, as a worker crash that names the rule
      * but not the helper.
+     *
+     * Every runtime class the plugin imports, not `Support` alone. A plugin whose only call was
+     * `FacadeAliases::report()` asserted nothing at all and PHPUnit reported it risky, which is the same
+     * finding from the other side: the check was narrower than the claim its name makes.
      */
     #[DataProvider('supportedRules')]
     public function test_every_helper_it_calls_exists(string $rule, string $file): void
     {
-        preg_match_all('/Support::([a-zA-Z]+)\(/', $this->transpile($file), $matches);
+        $emitted = $this->transpile($file);
 
-        foreach (array_unique($matches[1]) as $helper) {
-            $this->assertTrue(method_exists(Support::class, $helper), "Emitted plugin for {$rule} calls Support::{$helper}(), which does not exist.");
-            $this->assertTrue((new ReflectionMethod(Support::class, $helper))->isPublic(), "Support::{$helper}() is not public.");
+        preg_match_all('/^use (Sandermuller\\\\PhpstanToMago\\\\Runtime\\\\([A-Za-z]+));$/m', $emitted, $imported);
+        $this->assertNotSame([], $imported[1], "Emitted plugin for {$rule} imports no runtime helper class.");
+
+        foreach ($imported[1] as $index => $class) {
+            preg_match_all('/\b' . preg_quote($imported[2][$index], '/') . '::([a-zA-Z]+)\(/', $emitted, $calls);
+            foreach (array_unique($calls[1]) as $helper) {
+                $this->assertTrue(
+                    method_exists($class, $helper),
+                    "Emitted plugin for {$rule} calls {$imported[2][$index]}::{$helper}(), which does not exist.",
+                );
+                $this->assertTrue(
+                    (new ReflectionMethod($class, $helper))->isPublic(),
+                    "{$imported[2][$index]}::{$helper}() is not public.",
+                );
+            }
         }
     }
 

@@ -43,7 +43,7 @@ final class Cli
         }
 
         $outDir = $options->outDir($outRoot);
-        @mkdir($outDir, 0777, true);
+        self::ensureDirectory($outDir);
 
         // The count means nothing without the target: a rule can render as Rust and be refused as PHP, so
         // surveying one target and emitting the other silently disagrees. Naming it here is what stops that
@@ -87,7 +87,8 @@ final class Cli
         }
 
         if (! Transpiler::$survey) {
-            @mkdir($outRoot . '/generated', 0777, true);
+            self::ensureDirectory($outRoot . '/generated');
+
             if (Transpiler::$target !== 'php') {
                 file_put_contents($outRoot . '/generated/mod.rs', ModuleEmitter::module($rules));
             }
@@ -114,6 +115,20 @@ final class Cli
         echo "\nemitted: " . count($rules) . ', refused: ' . count($refused) . ' (target: ' . Transpiler::$target . ")\n";
 
         return $refused === [] ? 0 : 1;
+    }
+
+    /**
+     * Creates an output directory, testing for it rather than suppressing the warning.
+     *
+     * `@mkdir()` on an existing directory still raises one, and `phpunit.xml` sets `failOnWarning`, so a
+     * suppressed diagnostic is invisible on a clean checkout and fatal on a second run into the same
+     * directory. Reading the state first says the same thing without one.
+     */
+    private static function ensureDirectory(string $path): void
+    {
+        if (! is_dir($path)) {
+            mkdir($path, 0777, true);
+        }
     }
 
     /**

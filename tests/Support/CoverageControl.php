@@ -177,9 +177,12 @@ final readonly class CoverageControl
 
     private function portTotal(string $sandbox): int
     {
-        @unlink($sandbox . '/measure.txt');
+        if (is_file($sandbox . '/measure.txt')) {
+            unlink($sandbox . '/measure.txt');
+        }
+
         $output = $this->execute($sandbox, ['./mago', 'analyze', '--reporting-format', 'json']);
-        $measured = @file_get_contents($sandbox . '/measure.txt');
+        $measured = is_file($sandbox . '/measure.txt') ? file_get_contents($sandbox . '/measure.txt') : false;
 
         return is_string($measured) && $measured !== ''
             ? (int) $measured

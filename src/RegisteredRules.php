@@ -67,9 +67,18 @@ final readonly class RegisteredRules
             $output = self::run($binary, $overlay, $projectRoot, $destination);
             $payload = self::decode(is_file($destination) ? (string) file_get_contents($destination) : '', $output);
         } finally {
-            @unlink($overlay);
-            @unlink($destination);
-            @rmdir($workspace);
+            // Tested for rather than suppressed. `@unlink()` on a file PHPStan never wrote still raises the
+            // warning, and PHPUnit's error handler turns that into a failed run under `failOnWarning` — a
+            // suppressed diagnostic is invisible locally and fatal in CI, which is the worst of both.
+            foreach ([$overlay, $destination] as $file) {
+                if (is_file($file)) {
+                    unlink($file);
+                }
+            }
+
+            if (is_dir($workspace)) {
+                rmdir($workspace);
+            }
         }
 
         return new self($payload, $configFile);
