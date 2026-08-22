@@ -34,6 +34,11 @@ parameters:
         - tests/Fixtures/aggregate
         # A fixture package whose rule writes a file instead of reporting, which is what makes it a fixture.
         - tests/Fixtures/WriterPackage
+        # A configuration value object whose getters sit deliberately just outside the shape the transpiler
+        # recognises — a loose `==`, a populated literal, an argument that decides the key. Being wrong in
+        # those specific ways is the fixture: it is input the transpiler reads, and each near miss proves a
+        # recognition condition is load-bearing.
+        - tests/Fixtures/Configurations/DerivingConfiguration.php
         # Calls a helper nothing in its hierarchy declares. Being invalid is the whole fixture: it proves
         # the transpiler refuses such a call by name instead of translating it into something plausible.
         - tests/Fixtures/Rules/MissingHelperRule.php

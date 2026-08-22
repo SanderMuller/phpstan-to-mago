@@ -5,10 +5,15 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago;
 
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\BinaryOp\Coalesce;
+use PhpParser\Node\Expr\BinaryOp\Identical;
+use PhpParser\Node\Expr\BinaryOp\NotIdentical;
+use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Return_;
@@ -39,10 +44,13 @@ final readonly class ConfigurationObject
 {
     /**
      * @param array<string, list<string>> $getters the parameter keys each getter reads, in fallback order
+     * @param array<string, array{getter: string, expects: 'empty'|'non-empty'}> $derived
+     *        the getters that answer a question *about* another getter rather than reading a parameter
      */
     private function __construct(
         public string $root,
         private array $getters,
+        private array $derived,
     ) {}
 
     /**
@@ -60,6 +68,7 @@ final readonly class ConfigurationObject
         }
 
         $getters = [];
+        $derived = [];
         foreach ((new NodeFinder())->findInstanceOf($ast, ClassMethod::class) as $method) {
             if ($method->stmts === null || count($method->stmts) !== 1) {
                 continue;
@@ -73,10 +82,17 @@ final readonly class ConfigurationObject
             $keys = self::keysRead($statement->expr);
             if ($keys !== []) {
                 $getters[(string) $method->name] = $keys;
+
+                continue;
+            }
+
+            $emptiness = self::emptinessTest($statement->expr);
+            if ($emptiness !== null) {
+                $derived[(string) $method->name] = $emptiness;
             }
         }
 
-        return $getters === [] ? null : new self($root, $getters);
+        return $getters === [] ? null : new self($root, $getters, $derived);
     }
 
     /**
@@ -94,6 +110,56 @@ final readonly class ConfigurationObject
             fn (string $key): string => $this->root . '.' . $key,
             $this->getters[$getter] ?? [],
         );
+    }
+
+    /**
+     * The emptiness question a getter asks of another getter, or null when it asks something else.
+     *
+     * `isDependencyTreeEnabled()` is `return $this->getDependencyTreeTypes() !== [];` — no parameter of its
+     * own, so {@see pathsFor()} has nothing for it, and the plugin has nothing to carry. What it *does* have
+     * is an answer the package's own neon already decides, which is why this is read rather than refused on.
+     *
+     * Only a comparison against an empty array literal is recognised. Anything else — a count, a key test, a
+     * comparison against a value — stays unrecognised, and the caller refuses by name instead of carrying a
+     * guess.
+     *
+     * @return array{getter: string, expects: 'empty'|'non-empty'}|null
+     */
+    public function emptinessFor(string $getter): ?array
+    {
+        return $this->derived[$getter] ?? null;
+    }
+
+    /**
+     * @return array{getter: string, expects: 'empty'|'non-empty'}|null
+     */
+    private static function emptinessTest(Expr $expr): ?array
+    {
+        if (! $expr instanceof Identical && ! $expr instanceof NotIdentical) {
+            return null;
+        }
+
+        foreach ([[$expr->left, $expr->right], [$expr->right, $expr->left]] as [$call, $literal]) {
+            if (! $literal instanceof Array_ || $literal->items !== []) {
+                continue;
+            }
+
+            if (! $call instanceof MethodCall
+                || ! $call->var instanceof Variable
+                || $call->var->name !== 'this'
+                || ! $call->name instanceof Identifier
+                || $call->getArgs() !== []
+            ) {
+                continue;
+            }
+
+            return [
+                'getter' => $call->name->name,
+                'expects' => $expr instanceof Identical ? 'empty' : 'non-empty',
+            ];
+        }
+
+        return null;
     }
 
     /**

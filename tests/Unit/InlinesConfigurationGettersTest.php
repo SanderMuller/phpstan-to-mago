@@ -24,6 +24,8 @@ final class InlinesConfigurationGettersTest extends TestCase
 
     private const string COGNITIVE = __DIR__ . '/../../vendor/tomasvotruba/cognitive-complexity/src/Configuration.php';
 
+    private const string DERIVING = __DIR__ . '/../Fixtures/Configurations/DerivingConfiguration.php';
+
     public function test_a_plain_read_inlines_to_its_parameter(): void
     {
         $configuration = ConfigurationObject::fromFile(self::COGNITIVE, 'cognitive_complexity');
@@ -74,6 +76,59 @@ final class InlinesConfigurationGettersTest extends TestCase
         // read, so neither is claimed as one.
         $this->assertSame([], $coverage->pathsFor('isConstantTypeCoverageEnabled'));
         $this->assertSame([], $cognitive->pathsFor('isDependencyTreeEnabled'));
+    }
+
+    public function test_an_emptiness_test_names_the_getter_it_asks_about(): void
+    {
+        $configuration = ConfigurationObject::fromFile(self::COGNITIVE, 'cognitive_complexity');
+        $this->assertInstanceOf(ConfigurationObject::class, $configuration);
+
+        // `return $this->getDependencyTreeTypes() !== [];` — no parameter of its own, but the parameter
+        // behind it is carried, so the comparison is emitted rather than the getter refused.
+        $this->assertSame(
+            ['getter' => 'getDependencyTreeTypes', 'expects' => 'non-empty'],
+            $configuration->emptinessFor('isDependencyTreeEnabled'),
+        );
+    }
+
+    public function test_a_getter_that_does_more_than_test_emptiness_is_not_claimed(): void
+    {
+        $coverage = ConfigurationObject::fromFile(self::TYPE_COVERAGE, 'type_coverage');
+        $cognitive = ConfigurationObject::fromFile(self::COGNITIVE, 'cognitive_complexity');
+        $this->assertInstanceOf(ConfigurationObject::class, $coverage);
+        $this->assertInstanceOf(ConfigurationObject::class, $cognitive);
+
+        // `isConstantTypeCoverageEnabled()` guards on `PHP_VERSION_ID` before comparing a level to zero, so
+        // it is neither a parameter read nor an emptiness test, and a plain read is what a plain read is.
+        $this->assertNull($coverage->emptinessFor('isConstantTypeCoverageEnabled'));
+        $this->assertNull($cognitive->emptinessFor('getMaxClassCognitiveComplexity'));
+        $this->assertNull($cognitive->emptinessFor('getSomethingNobodyWrote'));
+    }
+
+    public function test_only_an_identical_test_against_an_empty_literal_counts(): void
+    {
+        $configuration = ConfigurationObject::fromFile(self::DERIVING, 'fixture');
+        $this->assertInstanceOf(ConfigurationObject::class, $configuration);
+
+        // Each of these is one condition away from the recognised shape, and each asks a different question.
+        // Carrying any of them as "is that parameter empty" would answer the wrong one.
+        $this->assertNull($configuration->emptinessFor('isDefaultSet'), 'a populated literal is not emptiness');
+        $this->assertNull($configuration->emptinessFor('isLooselyEmpty'), '`==` is not `===`');
+        $this->assertNull($configuration->emptinessFor('isEmptyList'), 'the subject is a parameter, not a getter');
+        $this->assertNull($configuration->emptinessFor('isKindSet'), 'an argument decides which key is read');
+        $this->assertNull($configuration->emptinessFor('isOtherSet'), 'another object holds other parameters');
+
+        // The polarity is what the emitted comparison reads off, so both directions are pinned.
+        $this->assertSame(
+            ['getter' => 'getTypes', 'expects' => 'empty'],
+            $configuration->emptinessFor('isEmpty'),
+        );
+
+        // Recognised, and the parameter behind it is what the caller then has to find declared.
+        $this->assertSame(
+            ['getter' => 'getUndeclared', 'expects' => 'non-empty'],
+            $configuration->emptinessFor('isUndeclaredSet'),
+        );
     }
 
     public function test_a_getter_nobody_declared_reads_nothing(): void

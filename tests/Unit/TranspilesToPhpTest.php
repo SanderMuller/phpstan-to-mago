@@ -112,6 +112,10 @@ final class TranspilesToPhpTest extends TestCase
         // PHP only. What is interesting is what is *absent*: a cache declared part-way through a helper, its
         // keyed fill, and the read that follows all collapse to the question the cache stood for.
         yield 'a cache declared part-way through a helper' => ['MidBodyCacheRule'];
+        // Six helpers deep, which the flat cap of 4 refused. Snapshotted rather than merely asserted to emit,
+        // because what matters is that the innermost predicate is what the plugin ends up testing — a chain
+        // that inlines to the wrong depth would still emit.
+        yield 'a predicate reached through six helpers' => ['DeepHelperChainRule'];
     }
 
     #[DataProvider('supportedRules')]

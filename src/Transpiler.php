@@ -607,10 +607,33 @@ final class Transpiler
      */
     private ?string $ruleNamespace = null;
 
-    /** Guards against a helper that calls itself. */
+    /**
+     * How deep inlining currently is. Zero means the rule's own body, which several emission decisions read.
+     */
     private int $inlineDepth = 0;
 
-    private const int INLINE_DEPTH_LIMIT = 4;
+    /**
+     * The helpers currently being inlined, innermost last, so one that reaches itself is refused by name.
+     *
+     * This replaced a flat depth cap of 4. The cap was written as a recursion guard and worked as one by
+     * accident: it also refused a helper chain that merely happened to be five deep and terminated perfectly
+     * well. `hihaho/phpstan-rules` v3.15.2 added one level to an existing chain — report → instanceCallFlagSite
+     * → agreedFlagSite → flagRecord → isFirstPartyClass — and two rules that emitted at 3.15.1 refused with
+     * "nests deeper than 4", a message about this tool's own arithmetic rather than about the rule.
+     *
+     * Keyed on the method name alone, not the declaring class: a chain that re-enters a same-named method of
+     * another class is refused too. That is the safe direction — refusing a shape nothing has needed yet,
+     * rather than following a cycle this tool cannot prove terminates.
+     *
+     * @var list<string>
+     */
+    private array $inlining = [];
+
+    /**
+     * A runaway backstop, not a shape limit: real recursion is caught by name above, so reaching this means
+     * a chain long enough that the emitted expression would be unreadable anyway.
+     */
+    private const int INLINE_DEPTH_LIMIT = 24;
 
     /**
      * The functions a constructor derivation may call and still be copied verbatim.
@@ -2368,6 +2391,33 @@ PHP;
     }
 
     /**
+     * Enters a helper being inlined, refusing one that reaches itself.
+     *
+     * {@see $inlining} says why this is a cycle check rather than a depth cap. `$what` names the relation in
+     * the refusal, because "following" and "inlining" are different failures to read.
+     */
+    private function enterInline(string $name, string $what, int $line): void
+    {
+        if (in_array($name, $this->inlining, true)) {
+            throw new Refusal("{$what} {$name}() reaches {$name}() again, so it cannot be inlined", $line);
+        }
+
+        if (count($this->inlining) >= self::INLINE_DEPTH_LIMIT) {
+            throw new Refusal("{$what} {$name}() nests deeper than " . self::INLINE_DEPTH_LIMIT, $line);
+        }
+
+        $this->inlining[] = $name;
+        ++$this->inlineDepth;
+    }
+
+    /** Leaves the helper {@see enterInline()} entered. */
+    private function leaveInline(): void
+    {
+        array_pop($this->inlining);
+        --$this->inlineDepth;
+    }
+
+    /**
      * Inlines a PHP method whose source we can find, as a Rust boolean expression.
      *
      * This replaces hand-written translations of helper predicates. A helper is just a function in a
@@ -2380,10 +2430,6 @@ PHP;
      */
     private function inlineMethod(ClassLike $class, string $methodName, array $args, int $line, ?array $uses = null): string
     {
-        if ($this->inlineDepth >= self::INLINE_DEPTH_LIMIT) {
-            throw new Refusal("inlining {$methodName}() nests deeper than " . self::INLINE_DEPTH_LIMIT, $line);
-        }
-
         $method = null;
         foreach ($class->getMethods() as $candidate) {
             if ((string) $candidate->name === $methodName) {
@@ -2416,12 +2462,12 @@ PHP;
         }
 
         $this->collectConstants($class);
-        ++$this->inlineDepth;
+        $this->enterInline($methodName, 'inlining', $line);
 
         try {
             return $this->translateMethodAsPredicate($method, $line);
         } finally {
-            --$this->inlineDepth;
+            $this->leaveInline();
             $this->locals = $savedLocals;
             $this->literals = $savedLiterals;
             $this->caches = $savedCaches;
@@ -3158,6 +3204,30 @@ PHP;
 
         $paths = $valueObject->pathsFor($method);
         if ($paths === []) {
+            return $this->resolveDerivedGetter($valueObject, $method, $line);
+        }
+
+        return $this->configuredFromPath($paths, $method, $line);
+    }
+
+    /**
+     * A configuration getter that reads no parameter of its own, but asks a question about one that does.
+     *
+     * `isDependencyTreeEnabled()` is `getDependencyTreeTypes() !== []`. The old refusal said the plugin has
+     * nothing to carry for it, which read like a vocabulary gap. It is not one: the parameter behind it is
+     * carried already, so the question is answerable at analysis time from the value the plugin holds.
+     *
+     * Answering it *at transpile time* instead — reading the package default and folding the getter to `true`
+     * or `false` — would be wrong, not merely lazy: the plugin takes that parameter as a constructor argument
+     * and a consumer's worker overrides it, so a constant baked in here answers for a configuration the plugin
+     * may never run under. So the comparison is emitted, and stays a comparison.
+     *
+     * @return Descriptor
+     */
+    private function resolveDerivedGetter(ConfigurationObject $valueObject, string $method, int $line): array
+    {
+        $emptiness = $valueObject->emptinessFor($method);
+        if ($emptiness === null) {
             throw new Refusal(
                 "{$method}() on this package's configuration reads no parameter, so there is nothing for the "
                 . 'plugin to carry',
@@ -3165,7 +3235,32 @@ PHP;
             );
         }
 
-        return $this->configuredFromPath($paths, $method, $line);
+        $paths = $valueObject->pathsFor($emptiness['getter']);
+        if ($paths === []) {
+            throw new Refusal(
+                "{$method}() asks whether {$emptiness['getter']}() is empty, and that getter reads no "
+                . 'parameter either, so nothing decides the answer',
+                $line,
+            );
+        }
+
+        $subject = $this->configuredFromPath($paths, $emptiness['getter'], $line);
+        if ($subject['kind'] !== 'config-list') {
+            throw new Refusal(
+                "{$method}() compares {$emptiness['getter']}() against an empty array, and that getter reads a "
+                . 'configured value this package does not declare as a list, so the comparison would not mean '
+                . 'what it says',
+                $line,
+            );
+        }
+
+        $negation = $emptiness['expects'] === 'empty' ? '' : '!';
+        $descriptor = ['rust' => $negation . $subject['rust'] . '.is_empty()', 'kind' => 'bool'];
+        if (isset($subject['php'])) {
+            $descriptor['php'] = $subject['php'] . ($emptiness['expects'] === 'empty' ? ' === []' : ' !== []');
+        }
+
+        return $descriptor;
     }
 
     /**
@@ -4498,10 +4593,6 @@ PHP;
             throw new Refusal("{$method}() is assigned but does not build a rule error", $line);
         }
 
-        if ($this->inlineDepth >= self::INLINE_DEPTH_LIMIT) {
-            throw new Refusal("inlining {$method}() nests deeper than " . self::INLINE_DEPTH_LIMIT, $line);
-        }
-
         $savedConstants = $this->constants;
         $savedInts = $this->intConstants;
         $savedArrayConstants = $this->arrayConstants;
@@ -4519,7 +4610,7 @@ PHP;
         $this->inErrorHelper = true;
         $this->reportConditions = [];
         $this->collectConstants($declaring['class']);
-        ++$this->inlineDepth;
+        $this->enterInline($method, 'inlining', $line);
 
         try {
             foreach ($helper->stmts ?? [] as $statement) {
@@ -4534,7 +4625,7 @@ PHP;
             // that asks several helpers in one pass is free to take a different message from the next one.
             $this->reportTaken = true;
         } finally {
-            --$this->inlineDepth;
+            $this->leaveInline();
             $this->reportConditions = $savedConditions;
             $this->inErrorHelper = $savedInHelper;
             $this->locals = $savedLocals;
@@ -4739,10 +4830,6 @@ PHP;
      */
     private function inlineProducer(ClassMethod $helper, array $declaring, string $name, array $args, int $line): array
     {
-        if ($this->inlineDepth >= self::INLINE_DEPTH_LIMIT) {
-            throw new Refusal("inlining the producer {$name}() nests deeper than " . self::INLINE_DEPTH_LIMIT, $line);
-        }
-
         $savedLocals = $this->locals;
 
         $savedLiterals = $this->literals;
@@ -4770,7 +4857,7 @@ PHP;
         $this->inErrorHelper = true;
         $this->recordFields = [];
         $this->collectConstants($declaring['class']);
-        ++$this->inlineDepth;
+        $this->enterInline($name, 'inlining the producer', $line);
 
         try {
             // A cache around a pure question is invisible to the answer, and the declaration that opens one is
@@ -4787,7 +4874,7 @@ PHP;
                 $fields = $this->recordFields ?? [];
             }
         } finally {
-            --$this->inlineDepth;
+            $this->leaveInline();
             $this->helperLoopFloor = $savedFloor;
             $this->recordFields = $savedFields;
             $this->inErrorHelper = $savedInHelper;
@@ -4889,10 +4976,6 @@ PHP;
         $forwarded = $call->name instanceof Identifier ? $call->name->toString() : null;
         if ($forwarded === $method) {
             return null;
-        }
-
-        if ($this->inlineDepth >= self::INLINE_DEPTH_LIMIT) {
-            throw new Refusal("following {$method}() to {$forwarded}() nests deeper than " . self::INLINE_DEPTH_LIMIT, $line);
         }
 
         $declaresForwarded = $this->currentClass instanceof ClassLike
@@ -5247,7 +5330,7 @@ PHP;
         $this->currentClass = $declaring['class'];
         $this->useMap = $declaring['uses'];
         $this->collectConstants($declaring['class']);
-        ++$this->inlineDepth;
+        $this->enterInline($method, 'inlining the classifier', $line);
 
         try {
             $expression = self::$target === 'php' ? 'null' : 'None';
@@ -5261,7 +5344,7 @@ PHP;
 
             return $expression;
         } finally {
-            --$this->inlineDepth;
+            $this->leaveInline();
             $this->locals = $savedLocals;
             $this->literals = $savedLiterals;
             $this->caches = $savedCaches;
@@ -6777,6 +6860,21 @@ PHP;
                 // An alias is the same expression under another name, so it renders the same way.
                 $this->locals[$name]['php'] = $subject['php'];
             }
+
+            return;
+        }
+
+        // `$x = null;` — an accumulator opened before the loop that fills it.
+        //
+        // Bound rather than refused so that the refusal names the fold instead of the initialiser. `null` is
+        // an `Expr_ConstFetch` to php-parser, so the old message was "access path outside the vocabulary:
+        // Expr_ConstFetch", which reads as a missing table row for constants in general; the real gap is the
+        // loop that assigns into this name and the `return` that hands it back.
+        //
+        // The kind carries no value, so every read of it refuses. That is the point: binding the name is not
+        // support for the shape, only an honest place to stand while the shape is refused.
+        if ($value instanceof ConstFetch && strtolower((string) $value->name) === 'null') {
+            $this->locals[$name] = ['rust' => self::PHP_ONLY, 'kind' => 'unassigned', 'php' => 'null'];
 
             return;
         }

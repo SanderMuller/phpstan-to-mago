@@ -108,6 +108,29 @@ final class InlinesAcrossTheHierarchyTest extends TestCase
         $this->assertStringContainsString('$context->report(', $body);
     }
 
+    /**
+     * Depth is not the thing to guard against; a cycle is.
+     *
+     * A flat cap of 4 stood here and read as a recursion guard. It refused a terminating chain the moment one
+     * more helper joined it — which is what `hihaho/phpstan-rules` v3.15.2 did, costing two rules that emitted
+     * against 3.15.1 and reporting it as "nests deeper than 4".
+     */
+    public function test_a_chain_deeper_than_the_old_cap_still_reaches_its_predicate(): void
+    {
+        $emitted = $this->emit('DeepHelperChainRule');
+
+        $this->assertStringContainsString('Support::nameEquals', $emitted);
+        $this->assertStringContainsString("'forbidden'", $emitted);
+    }
+
+    public function test_two_helpers_that_call_each_other_are_refused_as_a_cycle(): void
+    {
+        $this->expectException(Refusal::class);
+        $this->expectExceptionMessageMatches('/inlining ping\(\) reaches ping\(\) again/');
+
+        $this->emit('CyclicHelperRule');
+    }
+
     private function emit(string $rule): string
     {
         return (new Transpiler(self::RULES . '/' . $rule . '.php'))->transpile()['rust'];
