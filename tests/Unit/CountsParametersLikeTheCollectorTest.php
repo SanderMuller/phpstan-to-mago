@@ -66,6 +66,10 @@ final class CountsParametersLikeTheCollectorTest extends TestCase
         // interface's own two, one each for the inner trait's two users, and the trait's two for the renaming
         // class only. Asking about the original instead skipped that last pair.
         yield 'an aliased trait method an interface declares' => ['aliased-trait-locked-by-interface', 6];
+        // The discriminating one, and the reason the row above is not arithmetic. Here the interface declares
+        // *only* the alias: asking the guard about the alias predicts 8, asking about the original predicts
+        // 10, and the original counts 8. Written before the run rather than read off it.
+        yield 'an interface declaring only the alias' => ['aliased-trait-locked-by-alias', 8];
     }
 
     #[DataProvider('controls')]
