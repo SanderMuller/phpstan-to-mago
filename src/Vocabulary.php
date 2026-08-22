@@ -497,8 +497,10 @@ final class Vocabulary
                 . "PHPStan's parent has whatever the installed extensions say it has. Controlled both ways "
                 . '— the same method is skipped when the factory annotates @extends Factory<Model> and '
                 . 'counted when it does not. Reproducing that means reproducing every installed reflection '
-                . 'extension, so the residue is a divergence rather than a gap to close. What is left after '
-                . "it, +11 and +17 over each project's app/, is not traced",
+                . 'extension, so the residue is a divergence rather than a gap to close. Another 12 of '
+                . "hihaho's is three classes implementing PHPStan reflection-extension interfaces that ship "
+                . 'inside phpstan.phar, which mago cannot resolve either. What is left, +11 over app/, is '
+                . 'not traced: +12 of it is one model and -2 an enum directory',
             default => null,
         };
     }

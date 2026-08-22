@@ -37,6 +37,7 @@ final readonly class CoverageCorpus
 {
     /**
      * @param list<string> $paths absolute directories both tools analyse
+     * @param list<string> $resolvable absolute directories both tools may resolve symbols in, analysed or not
      * @param list<string> $excludes absolute paths the consumer's own configuration excludes
      */
     public function __construct(
@@ -44,6 +45,7 @@ final readonly class CoverageCorpus
         private string $consumerRoot,
         private string $configurationFile,
         private array $paths,
+        private array $resolvable,
         private array $excludes,
         private string $sandbox,
     ) {}
@@ -163,10 +165,21 @@ final readonly class CoverageCorpus
             )))->run();
             PHP);
 
+        // The consumer's whole source, not only the analysed subset. PHPStan resolves a parent class through
+        // the consumer's autoloader whether or not it analyses the file that declares it, and mago resolves
+        // only what it is given — so a run over one subdirectory left every parent declared elsewhere
+        // unresolvable, the LSP guard silent, and the port over-counting. `app/Livewire/Portal` measured +1
+        // against the real rule for exactly that reason, and its parent is in `app/Filament`. Bisecting was
+        // therefore measuring the harness; with this it measures the port.
+        //
+        // Minus what is being analysed, because a path in both lists is treated as context only and the
+        // analysis set comes out empty — "No files found to analyze", on a corpus of 2933 files.
+        $context = array_values(array_diff($this->resolvable, $this->paths));
+
         file_put_contents($this->sandbox . '/mago.toml', sprintf(
-            "[source]\npaths = [%s]\nincludes = [\"%s/vendor\"]\nexcludes = [%s]\n\n[extension-hosts.measure]\ncommand = [\"php\", \"worker.php\"]\n",
+            "[source]\npaths = [%s]\nincludes = [%s]\nexcludes = [%s]\n\n[extension-hosts.measure]\ncommand = [\"php\", \"worker.php\"]\n",
             $this->quoted($this->paths),
-            $this->consumerRoot,
+            $this->quoted([$this->consumerRoot . '/vendor', ...$context]),
             $this->quoted($this->expanded($this->excludes)),
         ));
 

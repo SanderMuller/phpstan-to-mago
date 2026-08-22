@@ -55,7 +55,8 @@ if (! is_file($configurationFile)) {
 /** @var array{parameters?: array{paths?: list<string>, excludePaths?: list<string>|array<string, list<string>>}} $configuration */
 $configuration = (array) Neon::decode((string) file_get_contents($configurationFile));
 
-$paths = $requested ?? $configuration['parameters']['paths'] ?? null;
+$configured = $configuration['parameters']['paths'] ?? null;
+$paths = $requested ?? $configured;
 if ($paths === null) {
     fwrite(STDERR, "{$configurationFile} declares no paths; pass --paths=a,b,c.\n");
 
@@ -80,11 +81,17 @@ foreach ($configuration['parameters']['excludePaths'] ?? [] as $entry) {
     }
 }
 
+// Everything the consumer configures for analysis is resolvable, whether or not this run analyses it. A
+// narrower `--paths=` then still asks both tools about the same universe of symbols, which is what makes
+// bisecting a delta by directory mean anything.
+$resolvable = array_values(array_filter(array_map($absolute, $configured ?? $paths), file_exists(...)));
+
 $corpus = new CoverageCorpus(
     repositoryRoot: dirname(__DIR__, 2),
     consumerRoot: $consumer,
     configurationFile: $configurationFile,
     paths: $paths,
+    resolvable: $resolvable,
     excludes: array_values(array_unique($excludes)),
     sandbox: $sandbox,
 );
