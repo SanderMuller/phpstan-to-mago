@@ -415,21 +415,76 @@ final class Support
      * Mago gives each class-like its own node kind, so the question is the node's kind and nothing else.
      */
     /**
+     * A function-like's name as `tomasvotruba/cognitive-complexity` spells it in its message.
+     *
+     * Four answers, one per kind the `FunctionLike` hook registers, reproducing
+     * `FunctionLikeCognitiveComplexityRule::resolveFunctionName()`: a plain function is `name()`, a method is
+     * `Class::name()` and falls back to `name()` where there is no enclosing class, and the two anonymous
+     * kinds are the fixed strings the original uses. Those last two are unreachable through that rule, which
+     * declines anything but a method or a function — reproduced anyway, because the port should not depend on
+     * a caller's narrowing for its own correctness.
+     *
+     * Purely syntactic apart from the enclosing class name, which is why this is a helper rather than a
+     * translated expression: the original branches four ways and builds a string in one of them.
+     */
+    public static function functionLikeName(NodeAnalysisContext $context, Part|Node|null $subject): string
+    {
+        $node = self::node($subject);
+        if (! $node instanceof Node) {
+            return '';
+        }
+
+        if ($node->kind === NodeKind::Closure) {
+            return 'closure';
+        }
+
+        if ($node->kind === NodeKind::ArrowFunction) {
+            return 'arrow function';
+        }
+
+        $name = self::declaredName($context, $node) . '()';
+        if ($node->kind !== NodeKind::Method) {
+            return $name;
+        }
+
+        $class = self::enclosingClassName($context, $node);
+
+        return $class === null ? $name : $class . '::' . $name;
+    }
+
+    /** The identifier a declaration was written with, or an empty string when it has none. */
+    private static function declaredName(NodeAnalysisContext $context, Node $node): string
+    {
+        [$file, $located] = self::locate($context, $node);
+        foreach ($file->getChildren($located) as $child) {
+            if ($child->kind === NodeKind::LocalIdentifier || $child->kind === NodeKind::Identifier) {
+                return trim($file->getText($child));
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Whether the node is a method declaration, for a rule narrowing a function-like hook.
      *
      * A rule naming `FunctionLike` is handed every function-like there is and branches on the concrete one:
      * `instanceof ClassMethod` is this, `instanceof Function_` is the next one, and a closure or arrow
      * function matches neither — which is the rule declining, not the port going quiet.
      */
-    public static function isMethodDeclaration(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    public static function isMethodDeclaration(Part|Node|null $subject): bool
     {
-        return self::declarationKindIs($context, $subject, 'Method');
+        $node = self::node($subject);
+
+        return $node instanceof Node && $node->kind === NodeKind::Method;
     }
 
     /** Whether the node is a plain function declaration. See {@see isMethodDeclaration()}. */
-    public static function isFunctionDeclaration(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    public static function isFunctionDeclaration(Part|Node|null $subject): bool
     {
-        return self::declarationKindIs($context, $subject, 'Function');
+        $node = self::node($subject);
+
+        return $node instanceof Node && $node->kind === NodeKind::Function;
     }
 
     public static function declarationKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool

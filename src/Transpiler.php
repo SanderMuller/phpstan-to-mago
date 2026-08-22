@@ -2981,19 +2981,29 @@ PHP;
             return null;
         }
 
-        $collaborator = $this->collaboratorClass($expr->var, $line);
-        if ($collaborator === null) {
+        $method = $this->memberName($expr->name, $line);
+
+        // On a collaborator property, or on the rule itself. `$this->resolveFunctionName(…)` is the same
+        // question one owner along, and keying both on the declaring class means one table rather than two.
+        $declaring = $this->collaboratorClass($expr->var, $line)
+            ?? ($this->isThis($expr->var) ? $this->declaringOf($method) : null);
+        if ($declaring === null) {
             return null;
         }
 
-        $method = $this->memberName($expr->name, $line);
-        $entry = Vocabulary::COLLABORATOR_CALLS[$this->fullyQualified($collaborator) . '::' . $method] ?? null;
+        $entry = Vocabulary::COLLABORATOR_CALLS[$this->fullyQualified($declaring) . '::' . $method] ?? null;
         if ($entry === null) {
             return null;
         }
 
-        $arguments = ['$context->source'];
-        foreach ($expr->getArgs() as $argument) {
+        $arguments = [$entry['takes'] === 'context' ? '$context' : '$context->source'];
+        $args = $expr->getArgs();
+        foreach ($entry['arguments'] as $position) {
+            $argument = $args[$position] ?? null;
+            if (! $argument instanceof Arg) {
+                throw new Refusal("{$method}() has no argument {$position} for its runtime helper", $line);
+            }
+
             $arguments[] = $this->operand($this->resolve($argument->value, $line));
         }
 
@@ -3001,6 +3011,12 @@ PHP;
         $this->runtimeHelpers[explode('::', $entry['helper'])[0]] = true;
 
         return ['rust' => self::PHP_ONLY, 'kind' => $entry['kind'], 'php' => $call];
+    }
+
+    /** Whether an expression is the bare `$this`. */
+    private function isThis(Expr $expr): bool
+    {
+        return $expr instanceof Variable && $expr->name === 'this';
     }
 
     /** The descriptor kind a configured default belongs to, in one place so the two callers cannot drift. */
@@ -5700,6 +5716,21 @@ PHP;
 
         if ($stmt instanceof Expression && $stmt->expr instanceof Assign) {
             $value = $stmt->expr->expr;
+
+            // $name = $this->something(...);  where a runtime helper answers it. Before the inlining path
+            // below, which walks the method's own statements — and a helper stands in for exactly the methods
+            // whose statements do not translate, so inlining first refuses inside the method being replaced.
+            if ($value instanceof MethodCall
+                && $stmt->expr->var instanceof Variable
+                && is_string($stmt->expr->var->name)
+            ) {
+                $answered = $this->resolveCollaboratorCall($value, $stmt->getStartLine());
+                if ($answered !== null) {
+                    $this->locals[$stmt->expr->var->name] = $answered;
+
+                    return;
+                }
+            }
 
             // $error = $this->somethingError(...);  where the helper builds the finding itself.
             if ($this->isOwnMethodCall($value)) {
@@ -10357,7 +10388,11 @@ REPORT, ['{ANCHOR}' => $this->anchor ?? $this->defaultAnchor()]);
         $afterImports = '';
         $runtimeImports = '';
         foreach (array_keys($this->runtimeHelpers) as $helper) {
-            $runtimeImports .= "use Sandermuller\\PhpstanToMago\\Runtime\\{$helper};\n";
+            // `Support` is in the template already, and PHP rejects a duplicate `use` outright — the plugin
+            // would not compile, let alone report.
+            if ($helper !== 'Support') {
+                $runtimeImports .= "use Sandermuller\\PhpstanToMago\\Runtime\\{$helper};\n";
+            }
         }
 
         $afterRegister = '';

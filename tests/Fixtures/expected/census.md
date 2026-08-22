@@ -140,8 +140,8 @@ REFUSE  PropertyTypeDeclarationCollector
 REFUSE  ReturnTypeCoverageRule
 REFUSE  ReturnTypeDeclarationCollector
 
-## tomasvotruba/cognitive-complexity — 1 of 3 the package registers emit, 0 covered by the engine, 2 refuse, 0 it registers nowhere
+## tomasvotruba/cognitive-complexity — 2 of 3 the package registers emit, 0 covered by the engine, 1 refuse, 0 it registers nowhere
 
 REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
-REFUSE  FunctionLikeCognitiveComplexityRule
+EMIT    FunctionLikeCognitiveComplexityRule

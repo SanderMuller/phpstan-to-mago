@@ -176,6 +176,9 @@ final readonly class FiresGate
         'ClassLikeCognitiveComplexityRule' => [
             'cognitive_complexity' => ['class' => 3],
         ],
+        'FunctionLikeCognitiveComplexityRule' => [
+            'cognitive_complexity' => ['function' => 2],
+        ],
     ];
 
     private const array SERVICES = [

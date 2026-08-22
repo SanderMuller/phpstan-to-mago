@@ -395,16 +395,34 @@ final class Vocabulary
      * Keyed by the collaborator's fully qualified name and method, for the reason
      * {@see CROSS_FILE_CHECKS} is: a short name cannot be checked and a package is data here, never an import.
      *
-     * @var array<string, array{helper: string, kind: string}>
+     * The call may be on a collaborator property or on the rule itself — `$this->resolveFunctionName(…)` is
+     * the same question one owner along, so the key is the declaring class either way rather than a second
+     * table. `takes` says what the helper's first argument is: `source` for one that reads only the tree,
+     * `context` for one that also asks the analysis something. `arguments` are the call-site positions to
+     * forward, because a helper needs what the original's method needed *of the tree* and not its `Scope` —
+     * forwarding all of them refused on `unknown local $scope`, which is the analysis object the helper exists
+     * to avoid needing.
+     *
+     * @var array<string, array{helper: string, kind: string, takes: string, arguments: list<int>}>
      */
     public const array COLLABORATOR_CALLS = [
         'TomasVotruba\CognitiveComplexity\AstCognitiveComplexityAnalyzer::analyzeFunctionLike' => [
             'helper' => 'CognitiveComplexity::forFunctionLike',
             'kind' => 'int',
+            'takes' => 'source',
+            'arguments' => [0],
         ],
         'TomasVotruba\CognitiveComplexity\AstCognitiveComplexityAnalyzer::analyzeClassLike' => [
             'helper' => 'CognitiveComplexity::forClassLike',
             'kind' => 'int',
+            'takes' => 'source',
+            'arguments' => [0],
+        ],
+        'TomasVotruba\CognitiveComplexity\Rules\FunctionLikeCognitiveComplexityRule::resolveFunctionName' => [
+            'helper' => 'Support::functionLikeName',
+            'kind' => 'bytes',
+            'takes' => 'context',
+            'arguments' => [0],
         ],
     ];
 
