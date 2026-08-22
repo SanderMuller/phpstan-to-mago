@@ -82,10 +82,13 @@ parameters:
                 - tests/*
             reportUnmatched: false
         # The fires-gate has to start the real mago binary and a real PHPStan: the whole point is that a
-        # transpiled rule *ran*, which no in-process check can establish. Scoped to that one harness.
+        # transpiled rule *ran*, which no in-process check can establish. Discovery is the same argument for
+        # the same reason: which rules a project registers is a question only that project's own PHPStan can
+        # answer, and answering it means running it. Scoped to those callers.
         -
             message: '#Calling proc_open\(\) is forbidden#'
             paths:
+                - src/RegisteredRules.php
                 - tests/Support/CorpusDifferential.php
                 - tests/Support/CoverageControl.php
                 - tests/Support/FiresGate.php

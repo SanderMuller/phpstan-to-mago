@@ -16,28 +16,31 @@ use Throwable;
 final class Cli
 {
     /**
-     * @param list<string> $argv rule source paths or directories, plus any of --target, --survey, --examples
+     * @param list<string> $argv rule source paths or directories, plus any of --target, --survey, --examples,
+     *                           --from-config
      *
      * @return int 0 when every rule was emitted
      */
     public static function run(array $argv, string $outRoot): int
     {
+        // Both of these refuse for the same kind of reason -- an argument that names something this cannot
+        // work with -- and a refusal reads the same either way, so they share the one handler.
         try {
             $options = Options::parse($argv);
+
+            Transpiler::$target = $options->target;
+            Transpiler::$survey = $options->survey;
+            Transpiler::$allowUnverified = $options->unverified;
+            if ($options->examplesDir !== null) {
+                Transpiler::$examplesDir = $options->examplesDir;
+            }
+
+            $files = self::files($options);
         } catch (Refusal $refusal) {
             echo '  REFUSE  ', $refusal->getMessage(), "\n";
 
             return 1;
         }
-
-        Transpiler::$target = $options->target;
-        Transpiler::$survey = $options->survey;
-        Transpiler::$allowUnverified = $options->unverified;
-        if ($options->examplesDir !== null) {
-            Transpiler::$examplesDir = $options->examplesDir;
-        }
-
-        $files = RulePaths::expand($options->paths);
 
         $outDir = $options->outDir($outRoot);
         @mkdir($outDir, 0777, true);
@@ -111,5 +114,50 @@ final class Cli
         echo "\nemitted: " . count($rules) . ', refused: ' . count($refused) . ' (target: ' . Transpiler::$target . ")\n";
 
         return $refused === [] ? 0 : 1;
+    }
+
+    /**
+     * The rule files to work on, from the paths given and from the project named by --from-config.
+     *
+     * Discovery is reported before anything is transpiled, because the two numbers answer different
+     * questions and a reader needs both: how many rules the project registers, and how many of those this
+     * tool could carry. A registered rule that PHPStan itself ships is not a gap, so it is subtracted here
+     * rather than counted as a refusal later.
+     *
+     * @return list<string>
+     *
+     * @throws Refusal when a project was named that cannot be read, or PHPStan will not start in it
+     */
+    private static function files(Options $options): array
+    {
+        $files = RulePaths::expand($options->paths);
+
+        if ($options->fromConfig === null) {
+            return $files;
+        }
+
+        $registered = RegisteredRules::discover($options->fromConfig);
+        $discovered = $registered->portableFiles();
+
+        echo '  CONFIG  ', $registered->configFile, "\n";
+        echo '          ', count($registered->rules), ' rules registered, ',
+        $registered->coreCount(), ' of them PHPStan\'s own, ',
+        $registered->portableCount(), ' to carry across ', count($discovered), " files\n";
+
+        foreach ($registered->duplicated() as $class => $services) {
+            // Two services of one class are two configurations. One generated plugin carries one of them,
+            // so this is said out loud rather than silently collapsed into a single emitted rule.
+            echo '  CONFIG  ', $class, ' is registered ', $services, " times with its own arguments each; one plugin will be emitted\n";
+        }
+
+        echo "\n";
+
+        foreach ($discovered as $file) {
+            if (! in_array($file, $files, true)) {
+                $files[] = $file;
+            }
+        }
+
+        return $files;
     }
 }

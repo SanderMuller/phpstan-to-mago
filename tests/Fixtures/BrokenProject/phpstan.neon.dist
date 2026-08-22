@@ -1,0 +1,6 @@
+# A configuration PHPStan will not start on, for the test that a failed run is not read as an empty one.
+# The include names a file that does not exist, which is the commonest way a real config breaks.
+includes:
+    - a-file-that-is-not-there.neon
+
+# Named `.dist` for the same reason as the sibling fixture: `.gitignore` excludes `phpstan.neon`.

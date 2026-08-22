@@ -10,6 +10,10 @@ namespace Sandermuller\PhpstanToMago;
  * Parsing lives here rather than in `Cli` because the target is not a detail: a rule can render as Rust
  * and be refused as PHP, so a count belongs to a target and reading a count for the wrong one looks like
  * a bug in the tool. Keeping the flags in one place is what makes "which target is this" answerable.
+ *
+ * `--from-config` is the same argument applied to the denominator: a count over files found on disk and a
+ * count over rules a project registered are different numbers, and the second is the one that describes the
+ * project. See `RegisteredRules`.
  */
 final readonly class Options
 {
@@ -30,6 +34,7 @@ final readonly class Options
         public bool $survey,
         public ?string $examplesDir,
         public bool $unverified = false,
+        public ?string $fromConfig = null,
     ) {}
 
     /**
@@ -44,6 +49,7 @@ final readonly class Options
         $survey = false;
         $examplesDir = null;
         $unverified = false;
+        $fromConfig = null;
 
         foreach ($argv as $argument) {
             if ($argument === '--unverified' || $argument === '--unverified-aggregates') {
@@ -52,6 +58,8 @@ final readonly class Options
                 $survey = true;
             } elseif (str_starts_with($argument, '--target=')) {
                 $target = self::target(substr($argument, strlen('--target=')));
+            } elseif (str_starts_with($argument, '--from-config=')) {
+                $fromConfig = substr($argument, strlen('--from-config='));
             } elseif (str_starts_with($argument, '--examples=')) {
                 $examplesDir = substr($argument, strlen('--examples='));
             } else {
@@ -59,7 +67,7 @@ final readonly class Options
             }
         }
 
-        return new self($paths, $target, $survey, $examplesDir, $unverified);
+        return new self($paths, $target, $survey, $examplesDir, $unverified, $fromConfig);
     }
 
     public function outDir(string $outRoot): string

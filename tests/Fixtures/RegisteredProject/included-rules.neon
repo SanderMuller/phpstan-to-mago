@@ -1,0 +1,11 @@
+# Registered twice on purpose, once through `rules:` and once as a service of its own. That is what a
+# project gets when two included configs each register the same rule class, and the two are separate
+# services with separate arguments rather than one rule.
+rules:
+    - Sandermuller\PhpstanToMago\Tests\Fixtures\RegisteredRulePackage\DiscoveredRule
+
+services:
+    -
+        class: Sandermuller\PhpstanToMago\Tests\Fixtures\RegisteredRulePackage\DiscoveredRule
+        tags:
+            - phpstan.rules.rule

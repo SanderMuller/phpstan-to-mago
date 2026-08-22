@@ -1,0 +1,15 @@
+# A project that registers one rule, declared in a sibling directory rather than in this one.
+#
+# Nothing here names the rule's file, and nothing in this directory contains it, which is exactly the case
+# a directory scan misses and the container answers.
+includes:
+    - included-rules.neon
+
+parameters:
+    level: 0
+
+    paths:
+        - .
+
+# Named `.dist` because `.gitignore` excludes `phpstan.neon`, and a fixture config that is never committed
+# would leave this test passing here and failing everywhere else.
