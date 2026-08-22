@@ -92,6 +92,7 @@ parameters:
                 - tests/Support/CorpusDifferential.php
                 - tests/Support/CoverageControl.php
                 - tests/Support/CoverageCorpus.php
+                - tests/Support/CoverageSetDiff.php
                 - tests/Support/FiresGate.php
                 - tests/Unit/AggregatesTypeCoverageTest.php
             reportUnmatched: false

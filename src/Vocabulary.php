@@ -500,7 +500,11 @@ final class Vocabulary
                 . 'extension, so the residue is a divergence rather than a gap to close. Another 12 of '
                 . "hihaho's is three classes implementing PHPStan reflection-extension interfaces that ship "
                 . 'inside phpstan.phar, which mago cannot resolve either. What is left, +11 over app/, is '
-                . 'not traced: +12 of it is one model and -2 an enum directory',
+                . 'not traced. It is +12 in one model and -2 in an enum directory; '
+                . '`php tests/Support/run-coverage-setdiff.php <consumer-root> <file>` names the exact '
+                . 'declarations, and for that model it is ten of them, nine with no docblock and ordinary '
+                . 'names. Three explanations are refuted rather than untested: the implements list, the '
+                . 'parent class, and being an Eloquent model each leave the count unchanged in a control',
             default => null,
         };
     }
