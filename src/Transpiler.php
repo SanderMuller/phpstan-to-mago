@@ -608,6 +608,13 @@ final class Transpiler
     private ?string $ruleNamespace = null;
 
     /**
+     * What survey mode assumed on the way to its answer, so a refusal can say so.
+     *
+     * @var list<string>
+     */
+    private array $assumed = [];
+
+    /**
      * How deep inlining currently is. Zero means the rule's own body, which several emission decisions read.
      */
     private int $inlineDepth = 0;
@@ -660,7 +667,33 @@ final class Transpiler
     /**
      * @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, identifiers: list<string>, arguments: array<string, mixed>, messages: list<string>} the emitted rule, plus what the caller needs to register and attribute it
      */
+    /**
+     * What this rule would emit, or a refusal naming what stops it.
+     *
+     * In survey mode two checks are deliberately relaxed so the report can say what a rule needs *in total*
+     * rather than stopping at its first structural blocker: a node type with no hook is assumed to have one,
+     * and a property with no field mapping is assumed to resolve. Both are useful and both were silent, and a
+     * silent assumption is how a ranking goes wrong: on 143 vendored rules, 25 named a different first
+     * obstacle here than an emit run does, and every one of those was a body-level gap sitting *behind* a
+     * blocker the survey had walked past. Closing such a gap moves nothing.
+     *
+     * So the assumptions travel with the answer. A refusal raised under one says which one.
+     *
+     * @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, identifiers: list<string>, arguments: array<string, mixed>, messages: list<string>} the emitted rule, plus what the caller needs to register and attribute it
+     */
     public function transpile(): array
+    {
+        try {
+            return $this->translate();
+        } catch (Refusal $refusal) {
+            throw $this->assumed === []
+                ? $refusal
+                : new Refusal($refusal->getMessage() . ', assuming ' . implode(' and ', $this->assumed));
+        }
+    }
+
+    /** @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, identifiers: list<string>, arguments: array<string, mixed>, messages: list<string>} */
+    private function translate(): array
     {
         $code = (string) file_get_contents($this->file);
         $ast = (new ParserFactory())->createForNewestSupportedVersion()->parse($code);
@@ -721,11 +754,19 @@ final class Transpiler
             }
 
             // Survey: assume the hook exists, to see what the body would need.
+            //
+            // The assumption has to travel with the answer. On 143 vendored rules, 25 reported a different
+            // first obstacle here than an emit run does, and in every one of those the emit run named a
+            // missing hook while the survey named something in the body *behind* it. A ranking built from
+            // survey output then counts body-level gaps for rules that no body-level fix can move: closing
+            // `unknown local $this` for `FetchingDeprecatedConstRule` buys nothing while `Expr_ConstFetch`
+            // has no hook. So a refusal raised under the assumption says it was raised under it.
             $short = substr($nodeType, (int) strrpos('\\' . $nodeType, '\\'));
 
             $hook = ['trait' => 'SurveyHook', 'method' => 'survey', 'node' => $short, 'kind' => $short];
             $this->nodeKind = $short;
             $processNode = $this->findMethod($class, 'processNode');
+            $this->assume("a hook for {$nodeType}");
             foreach ($processNode->stmts ?? [] as $stmt) {
                 $this->translateStatement($stmt);
             }
@@ -2388,6 +2429,14 @@ PHP;
         }
 
         throw new Refusal('not a resolvable list of strings', $line);
+    }
+
+    /** Records something survey mode took for granted, once per distinct assumption. */
+    private function assume(string $note): void
+    {
+        if (! in_array($note, $this->assumed, true)) {
+            $this->assumed[] = $note;
+        }
     }
 
     /**
@@ -9533,6 +9582,8 @@ PHP;
             }
 
             if (self::$survey) {
+                $this->assume("a mapping for ->{$property} on a {$base['kind']}");
+
                 return ['rust' => "node.{$property}", 'kind' => 'expr', 'key' => $key];
             }
 
