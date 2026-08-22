@@ -47,6 +47,7 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\InterpolatedStringPart;
 use PhpParser\Node\IntersectionType;
 use PhpParser\Node\Name;
+use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\InterpolatedString;
@@ -6823,7 +6824,12 @@ PHP;
         // a helper as a side effect, and a value that turned out not to be a condition would leave those lines
         // behind. Refused rather than rebound if the name is already taken: an alias that was reassigned would
         // silently stand for the first expression everywhere.
-        if ($value instanceof BooleanAnd || $value instanceof BooleanOr || $value instanceof BooleanNot) {
+        // `===` and `!==` join them for the same reason: their result can only be a boolean, so translating
+        // one as a condition cannot turn out to have been a value. `composer/pcre` names both halves of its
+        // test — `$isRegex = $node->class->toString() === Regex::class;` — before combining them.
+        if ($value instanceof BooleanAnd || $value instanceof BooleanOr || $value instanceof BooleanNot
+            || $value instanceof Identical || $value instanceof NotIdentical
+        ) {
             if (isset($this->locals[$name])) {
                 throw new Refusal("\${$name} is assigned a condition twice, and the second would be ignored", $line);
             }
@@ -7538,6 +7544,21 @@ PHP;
             }
 
             throw new Refusal("instanceof {$wanted} on an extends clause", $expr->getStartLine());
+        }
+
+        // `$node->class instanceof FullyQualified` is *not* a question about the spelling, which is what it
+        // reads like. PHPStan resolves names before a rule sees the tree, so an imported `Guard::keep()`
+        // arrives as a `FullyQualified` node holding the resolved name — measured, not reasoned about: a
+        // fixture translating it as a written-name test went silent on the imported call while the original
+        // reported it. Answering it needs the resolved name on both sides of the comparison that follows, and
+        // `Support::nameEquals()` compares the text as written, so this is refused rather than approximated.
+        if ($wanted === FullyQualified::class) {
+            throw new Refusal(
+                'instanceof FullyQualified, which PHPStan answers after its own name resolution: an imported '
+                . 'name arrives as one too, so the test is about resolution rather than spelling and the '
+                . 'comparison after it would have to read resolved names',
+                $expr->getStartLine(),
+            );
         }
 
         if (! isset(Vocabulary::NODE_PREDICATES[$wanted])) {
