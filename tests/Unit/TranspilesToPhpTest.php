@@ -42,15 +42,17 @@ final class TranspilesToPhpTest extends TestCase
             yield $label => [$rule, self::RULES . '/' . $rule . '.php'];
         }
 
-        // The one snapshot taken from the corpus rather than from a fixture. The dual-hook shape — a node
-        // hook and an after-analysis hook in one plugin — is triggered by a `Vocabulary::CROSS_FILE_CHECKS`
-        // entry keyed to a corpus trait, so no fixture can reach it without inventing a second runtime pass
-        // to point the entry at. Snapshotted here instead, for the reason every snapshot exists: the
-        // fires-gate proves it runs, and this proves a refactor did not change what it emits.
-        yield 'a check handed to a whole-project pass' => [
-            'CombinedMethodCallRule',
-            __DIR__ . '/../../vendor/hihaho/phpstan-rules/src/Rules/CombinedMethodCallRule.php',
-        ];
+        // The dual-hook shape — a node hook and an after-analysis hook in one plugin — has no snapshot.
+        // `CombinedMethodCallRule` was it, and `hihaho/phpstan-rules` v3.15.2 rewrote the positional-flag
+        // half into a fold this transpiler refuses, which takes the whole rule with it. No other rule in any
+        // installed package emits both hooks, and no fixture can reach the shape: it is triggered by a
+        // `Vocabulary::CROSS_FILE_CHECKS` entry keyed to a corpus trait, and pointing a fixture at an
+        // existing pass would emit a plugin that reports something the fixture does not check.
+        //
+        // So the shape is exercised without being pinned: `OnlyAllowFacadeAliasInBlade` below snapshots the
+        // after-hook-alone emission, `FormRequestFields` and `FacadeAliases` have their own tests, and the
+        // fires-gate runs both passes. What is unpinned is specifically a plugin registering both hooks at
+        // once, and it regains a snapshot the moment a corpus rule of that shape emits again.
 
         // The other end of the same mechanism: a rule whose *every* check is a whole-project pass, so there is
         // no node to dispatch on and the plugin is the after hook alone. Pinned because what is interesting is
