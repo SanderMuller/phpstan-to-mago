@@ -187,6 +187,13 @@ final readonly class CoverageCorpus
         // partial replacement fails validation on "The mandatory item 'parameters › type_coverage › param' is
         // missing". Both spellings are set: the newer versions read the short alias first.
         $listed = implode("\n", array_map(static fn (string $path): string => '        - ' . $path, $this->paths));
+        // Both tools, or leave-one-out is asymmetric: the consumer's own exclusions arrive through the
+        // included config, and anything this run adds has to reach the original as well as the port.
+        //
+        // The keyed form, with both keys, because `!` replaces the whole structure and the schema then wants
+        // them: `analyse` is "not analysed, still scanned", which is what a left-out directory should be — it
+        // stays resolvable for both tools, exactly as `includes` keeps it resolvable for mago.
+        $excluded = implode("\n", array_map(static fn (string $path): string => '            - ' . $path, $this->excludes));
         file_put_contents($this->sandbox . '/phpstan-coverage.neon', <<<NEON
             includes:
                 - {$this->configurationFile}
@@ -197,6 +204,10 @@ final readonly class CoverageCorpus
                 errorFormat: json
                 paths!:
             {$listed}
+                excludePaths!:
+                    analyse:
+            {$excluded}
+                    analyseAndScan: []
                 type_coverage!:
                     declare: 0
                     return_type: 0

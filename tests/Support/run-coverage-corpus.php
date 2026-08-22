@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * The parameter aggregate, counted two ways over a consumer project.
  *
- *   php tests/Support/run-coverage-corpus.php <consumer-root> [--paths=a,b] [--sandbox=DIR]
+ *   php tests/Support/run-coverage-corpus.php <consumer-root> [--paths=a,b] [--exclude=a,b] [--sandbox=DIR]
  *
  * Prints the corpus size, the real rule's total, the port's, and the delta. This is the instrument behind the
  * numbers `Vocabulary::unverifiedAggregate('parameters')` quotes, and it is in the repository so that those
@@ -26,9 +26,15 @@ $arguments = array_slice((array) ($_SERVER['argv'] ?? []), 1);
 $consumer = null;
 $sandbox = sys_get_temp_dir() . '/phpstan-to-mago-coverage-corpus';
 $requested = null;
+$extraExcludes = [];
 foreach ($arguments as $argument) {
     if (str_starts_with($argument, '--paths=')) {
         $requested = explode(',', substr($argument, 8));
+    } elseif (str_starts_with($argument, '--exclude=')) {
+        // Leave-one-out is the only sound way to bisect a delta that needs several directories together: a
+        // trait and the classes using it are counted once per user, so measuring either alone measures
+        // something else. `--exclude` takes a directory out of an otherwise whole run.
+        $extraExcludes = explode(',', substr($argument, 10));
     } elseif (str_starts_with($argument, '--sandbox=')) {
         $sandbox = substr($argument, 10);
     } else {
@@ -79,6 +85,10 @@ foreach ($configuration['parameters']['excludePaths'] ?? [] as $entry) {
     foreach (is_array($entry) ? $entry : [$entry] as $path) {
         $excludes[] = $absolute($path);
     }
+}
+
+foreach ($extraExcludes as $path) {
+    $excludes[] = $absolute($path);
 }
 
 // Everything the consumer configures for analysis is resolvable, whether or not this run analyses it. A

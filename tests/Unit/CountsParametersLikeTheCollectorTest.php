@@ -61,6 +61,11 @@ final class CountsParametersLikeTheCollectorTest extends TestCase
         // own method, two for the trait's inside it. Asking only about the original name counted the last of
         // those zero times, which was -2 on a real project's enum directory.
         yield 'a trait method reached under an alias' => ['aliased-trait-method', 6];
+        // And the guard is asked about the *alias*. PHPStan reads the method node's name, which inside a
+        // renamed trait method is the new one, so an interface declaring the original does not lock it: the
+        // interface's own two, one each for the inner trait's two users, and the trait's two for the renaming
+        // class only. Asking about the original instead skipped that last pair.
+        yield 'an aliased trait method an interface declares' => ['aliased-trait-locked-by-interface', 6];
     }
 
     #[DataProvider('controls')]

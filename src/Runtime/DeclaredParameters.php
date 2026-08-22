@@ -158,6 +158,11 @@ final class DeclaredParameters
      * does not list what a trait brings, so the alias comes from the `use` statement's own syntax and the
      * declaration is then looked up under it. Asking only about the original name counted it zero times.
      *
+     * And the guard is then asked about the name it arrived under, not the original: PHPStan reads the method
+     * node's name, which inside a renamed trait method is the new one, so an interface declaring the original
+     * does not lock it. Controlled by adding the alias to the interface as well, which makes the original skip
+     * it too.
+     *
      * One shape is still a known gap: `use A, B { A::m insteadof B; B::m as other; }`, where the rename names
      * its trait — a different adaptation node, and one no measured corpus contains. A control of that shape
      * counts 2 here where PHPStan counts 4.
@@ -214,18 +219,20 @@ final class DeclaredParameters
             // `FunctionLike`, and its guard tests `$node instanceof ClassMethod`, so a closure written inside
             // a locked method is still visited and still counted. Skipping the closure as well cost 3 of 5 on
             // a control with one locked user, and about half the guard's effect on a real corpus.
-            if ($isMethod && self::lockedByAncestorsOf($context, $class, $method)) {
+            // Which name this class reaches the declaration under, because that is the name the guard has to
+            // be asked about. An `insteadof` or an override means it reaches it under none, and the collector
+            // never sees this declaration in that class's context.
+            $reached = self::reachedAs($context, $class, $here, [$method, ...$user['aliases']]);
+            if ($reached === null) {
                 continue;
             }
 
-            // Does this class end up with *this* declaration? An override or an `insteadof` means another
-            // declaration wins for that name, and the collector never sees this one in that class's context.
-            //
-            // Under its own name or under an alias. `use T { m as other; }` leaves the class's own `m` winning
-            // that name while the trait's `m` is still analysed in the class's context as `other`, so asking
-            // only about `m` counted it zero times: -2 on one project's enum directory, which is one enum
-            // aliasing a two-parameter trait method.
-            if (! self::reaches($context, $class, $here, [$method, ...$user['aliases']])) {
+            // The *alias*, where there is one. PHPStan reads `$classMethod->name` for the guard, and inside a
+            // renamed trait method that is the new name — so an interface declaring the original does not lock
+            // it. Controlled: adding the alias to the interface as well makes the original skip it too.
+            // Asking about the original instead was -2 on one project's enum directory, where an enum renames
+            // a two-parameter trait method its contract declares.
+            if ($isMethod && self::lockedByAncestorsOf($context, $class, $reached)) {
                 continue;
             }
 
@@ -236,22 +243,22 @@ final class DeclaredParameters
     }
 
     /**
-     * Whether any of these names resolves, on this class, to the declaration at this location.
+     * The name, if any, under which this class reaches the declaration at this location.
      *
      * @param list<string> $names
      */
-    private static function reaches(AfterAnalysisContext $context, string $class, string $here, array $names): bool
+    private static function reachedAs(AfterAnalysisContext $context, string $class, string $here, array $names): ?string
     {
         foreach ($names as $name) {
             $declaring = $context->codebase->getDeclaringMethod($class, $name);
             if ($declaring instanceof FunctionLikeMetadata
                 && $declaring->location->file . ':' . $declaring->location->span->start === $here
             ) {
-                return true;
+                return $name;
             }
         }
 
-        return false;
+        return null;
     }
 
     /**

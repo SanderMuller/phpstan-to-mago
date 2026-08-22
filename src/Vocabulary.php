@@ -488,9 +488,9 @@ final class Vocabulary
         return match ($metric) {
             'parameters' => 'the parameter aggregate over-counts against the original at corpus scale, and '
                 . 'most of the gap is not portable. On hihaho (2933 files) PHPStan counts 13694 parameters '
-                . 'where this counts 13773, and on mijntp (4372 files) 11428 against 11464; reproduce with '
+                . 'where this counts 13775, and on mijntp (4372 files) 11428 against 11465; reproduce with '
                 . '`php tests/Support/run-coverage-corpus.php <consumer-root>`. Bisected by configured path, '
-                . "56 of hihaho's 79 and 16 of mijntp's 33 sit in database/factories, and mijntp has "
+                . "56 of hihaho's 81 and 16 of mijntp's 37 sit in database/factories, and mijntp has "
                 . 'exactly 16 factory methods named for* or has*. That is '
                 . "larastan's ModelFactoryMethodsClassReflectionExtension answering hasMethod() for a "
                 . 'relation the model declares: the collector skips a method whose name a parent has, and '
@@ -505,10 +505,9 @@ final class Vocabulary
                 . 'on Illuminate\\Contracts\\Auth\\Authenticatable by looking the name up on the configured '
                 . "auth model, so implementing that contract puts every one of that model's own method names on "
                 . 'an ancestor. Controlled to the name: in a class implementing only that contract, a method '
-                . 'named after one the auth model has is skipped and an invented name is counted. That leaves -2 '
-                . 'in one enum directory, the only under-count measured anywhere, and it is not traced: the '
-                . 'one trait adaptation there was the obvious suspect, and reading aliased trait methods '
-                . 'changed that number by nothing while mijntp gained 3. '
+                . 'named after one the auth model has is skipped and an invented name is counted. Nothing '
+                . 'under-counts anywhere now: the last one was a renamed trait method, whose guard PHPStan '
+                . 'asks about the alias rather than the original. '
                 . '`php tests/Support/run-coverage-setdiff.php <consumer-root> <file>` names the declarations '
                 . 'behind any of these',
             default => null,
