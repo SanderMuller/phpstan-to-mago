@@ -5611,6 +5611,15 @@ PHP;
         }
 
         $subject = $this->resolve($count->getArgs()[0]->value, $line);
+
+        // An argument list is not a PHP array on the other side — it is a node whose `Argument` children are
+        // the arguments — so it counts through the helper that already answers `count($args) === 0` on the
+        // equality path. Reaching here at all was the gap: the same expression compared with `<` refused
+        // where compared with `===` it emitted, which reads as the vocabulary not covering argument counts.
+        if ($subject['kind'] === 'args') {
+            return $this->backend->call('arg_count', [$this->operand($subject)]);
+        }
+
         if (! in_array($subject['kind'], ['found-nodes', 'method-members', 'param-decls', 'property-members', 'config-list', 'list'], true)) {
             throw new Refusal("count() of a {$subject['kind']} compared numerically", $line);
         }
