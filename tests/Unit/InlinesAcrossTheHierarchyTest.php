@@ -131,6 +131,20 @@ final class InlinesAcrossTheHierarchyTest extends TestCase
         $this->emit('CyclicHelperRule');
     }
 
+    /**
+     * The shape `hihaho/phpstan-rules` v3.15.2 introduced, and the reason it is refused rather than narrowed.
+     *
+     * The old message — "is assigned but does not build a rule error" — described what this path expected
+     * instead of what the rule does, which is the failure mode a refusal exists to avoid.
+     */
+    public function test_a_record_folded_inside_a_loop_is_refused_for_escaping_it(): void
+    {
+        $this->expectException(Refusal::class);
+        $this->expectExceptionMessageMatches('/assigned inside a loop and hands back a record/');
+
+        $this->emit('FoldsARecordRule');
+    }
+
     private function emit(string $rule): string
     {
         return (new Transpiler(self::RULES . '/' . $rule . '.php'))->transpile()['rust'];

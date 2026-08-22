@@ -4590,6 +4590,23 @@ PHP;
                 return;
             }
 
+            // A record producer assigned inside a loop is the accumulator fold, and it is not a gap in this
+            // path — it is the same escape `$anchorNeedsLoop` guards. A record's fields are expressions over
+            // the item the emitted `foreach` binds, so a fold that assigns one to a name declared before the
+            // loop and reads it after would name a variable that is out of scope there.
+            //
+            // `hihaho/phpstan-rules` v3.15.2 introduced the shape in `agreedFlagSite()`, and the refusal used
+            // to read "is assigned but does not build a rule error", which describes this path's expectations
+            // rather than the rule's obstacle.
+            if ($this->inLoop && $target instanceof Variable) {
+                throw new Refusal(
+                    "{$method}() is assigned inside a loop and hands back a record, whose fields are "
+                    . 'expressions over the item the emitted foreach binds, so folding it into a name declared '
+                    . 'before the loop would read that item after it is out of scope',
+                    $line,
+                );
+            }
+
             throw new Refusal("{$method}() is assigned but does not build a rule error", $line);
         }
 
