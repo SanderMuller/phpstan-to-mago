@@ -49,3 +49,4 @@ phpstan.neon
 .config/boost/
 .github/prompts/
 # <<< boost (managed) <<<
+.DS_Store
