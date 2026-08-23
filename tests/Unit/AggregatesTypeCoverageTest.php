@@ -8,6 +8,7 @@ use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use RuntimeException;
 use Sandermuller\PhpstanToMago\Tests\Support\PhpstanReport;
+use Sandermuller\PhpstanToMago\Tests\Support\Subprocess;
 use Sandermuller\PhpstanToMago\Transpiler;
 use Sandermuller\PhpstanToMago\Vocabulary;
 
@@ -196,6 +197,35 @@ final class AggregatesTypeCoverageTest extends TestCase
         );
     }
 
+    /**
+     * PHPStan's own report reaches the differential, not a tool wrapper's summary of it.
+     *
+     * `laravel/pao` is a dev dependency that autoloads through a composer `files` entry and rewrites
+     * `phpstan analyse` whenever an agent is driving the terminal: it forces `--error-format=json`, silences
+     * stdout, and prints its own `{"tool": "phpstan", ...}` envelope instead. Every sandbox here symlinks this
+     * repository's `vendor`, so PHPStan loads that autoloader and the rewrite applies.
+     *
+     * The envelope *caps* how many errors it lists, which makes it useless as the original side of a
+     * differential. {@see Subprocess} switches the wrapper off; this asserts the switch works, because the
+     * suite would otherwise stay green while comparing against a truncated original — the one failure mode
+     * `PhpstanReport` exists to refuse, and the one that produced a spurious full-suite failure once.
+     */
+    public function test_the_original_side_is_phpstans_own_uncapped_report(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $output = $this->execute([
+            $root . '/vendor/bin/phpstan',
+            'analyse',
+            '--no-progress',
+            '--error-format=json',
+            '--configuration=phpstan.neon',
+        ]);
+
+        // `totals` is PHPStan's own key and appears in no wrapper envelope.
+        $this->assertStringContainsString('"totals"', $output, 'A tool wrapper answered instead of PHPStan, and its output caps the errors it lists.');
+        $this->assertStringNotContainsString('"tool":"phpstan"', $output);
+    }
+
     public function test_the_reimplementation_agrees_with_the_real_rule_on_this_fixture(): void
     {
         $this->assertSame(
@@ -270,7 +300,7 @@ final class AggregatesTypeCoverageTest extends TestCase
     /** @param list<string> $command */
     private function execute(array $command): string
     {
-        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->sandbox);
+        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->sandbox, Subprocess::environment());
         if (! is_resource($process)) {
             throw new RuntimeException('Could not start ' . $command[0]);
         }

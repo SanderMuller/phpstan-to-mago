@@ -670,7 +670,7 @@ final class CorpusDifferential
      */
     private function run(array $command, string $directory): string
     {
-        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $directory);
+        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $directory, Subprocess::environment());
         if (! is_resource($process)) {
             throw new RuntimeException('Could not start ' . $command[0]);
         }

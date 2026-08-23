@@ -551,7 +551,7 @@ final readonly class FiresGate
     private function run(array $command, string $sandbox): string
     {
         $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-        $process = proc_open($command, $descriptors, $pipes, $sandbox);
+        $process = proc_open($command, $descriptors, $pipes, $sandbox, Subprocess::environment());
         if (! is_resource($process)) {
             throw new RuntimeException('Could not start ' . $command[0]);
         }

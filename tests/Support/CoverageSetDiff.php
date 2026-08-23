@@ -229,7 +229,7 @@ final readonly class CoverageSetDiff
     /** @param list<string> $command */
     private function run(array $command, string $cwd): string
     {
-        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $cwd);
+        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $cwd, Subprocess::environment());
         if (! is_resource($process)) {
             throw new RuntimeException('Could not start ' . $command[0]);
         }
