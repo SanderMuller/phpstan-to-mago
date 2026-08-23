@@ -1939,7 +1939,7 @@ PHP;
         // class-like, so there is always one — the same argument the produced-value cases above make, and
         // gated on the hook's kind because in any other hook the scope may genuinely have no class.
         if ($subject['kind'] === 'class-reflection'
-            && in_array($this->nodeKind, self::HOOK_KINDS_ALWAYS_IN_A_CLASS, true)
+            && $this->everyHookKindIsInAClass()
         ) {
             return $this->unreachable(
                 'this hook fires on a class-like or on one of its members, so the scope it carries always has '
@@ -8003,6 +8003,30 @@ PHP;
         return $this->nodeKind === 'Program' ? 'Support::fileAnchor($context, $node)' : '$node->span';
     }
 
+    /**
+     * Whether every node kind this plugin registers sits inside a class-like.
+     *
+     * `$this->nodeKind` alone is not the question. A rule declaring `FunctionLike` gets `Method` as its primary
+     * kind — which is always in a class — while the plugin registers `Function`, `Closure` and `ArrowFunction`
+     * as well, and a plain function is not. Asking the primary kind would fold `isInClass()` and
+     * `getClassReflection() === null` to constants for exactly the rules where the answer varies at runtime.
+     *
+     * `$this->hookKinds` holds the set only when there is more than one, so a single-kind hook falls back to
+     * the kind itself.
+     */
+    private function everyHookKindIsInAClass(): bool
+    {
+        $kinds = $this->hookKinds === [] ? [$this->nodeKind] : $this->hookKinds;
+
+        foreach ($kinds as $kind) {
+            if (! in_array($kind, self::HOOK_KINDS_ALWAYS_IN_A_CLASS, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private function alwaysHolds(string $reason): string
     {
         $this->unreachableGuard = $reason;
@@ -8020,9 +8044,11 @@ PHP;
         }
 
         if ($method === 'isInClass' && $expr->var instanceof Variable && $expr->var->name === 'scope') {
-            // Inside a declaration hook the answer is yes by construction.
-            return $this->classFrom === 'metadata'
-                ? 'true'
+            // Folded only where every kind the plugin registers is inside a class-like, and the fold *says
+            // so*: it used to return a bare `true`, which left `$unreachableGuard` unset and refused the rule
+            // its own fold had just made trivially true. Three rules were refused that way.
+            return $this->everyHookKindIsInAClass()
+                ? $this->alwaysHolds('this hook fires only on a class-like or one of its members, so the scope it carries is always in a class')
                 : $this->backend->call('is_in_class', self::$target === 'php' ? ['$context', '$node'] : ['context']);
         }
 

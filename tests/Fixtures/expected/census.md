@@ -59,7 +59,7 @@ REFUSE  NoConstructorOverrideRule
 REFUSE  NoControllerMethodInjectionRule
         getParams() of a method-decl rather than of the declaration under analysis
 REFUSE  NoDoctrineListenerWithoutContractRule
-        guard translates to a constant with no reason it cannot hold
+        no mapping for ->implements on a hook-node
 REFUSE  NoDocumentMockingRule
         access path outside the vocabulary: ->getConstantStrings()
 EMIT    NoDoubleConsecutiveTestMockRule
@@ -90,7 +90,7 @@ REFUSE  NoJustPropertyAssignRule
 REFUSE  NoLeadingBackslashInNameRule
         list contains something other than a string literal
 REFUSE  NoListenerWithoutContractRule
-        guard translates to a constant with no reason it cannot hold
+        no mapping for ->implements on a hook-node
 ENGINE  NoMissingVariableDimFetchRule  (mago reports undefined-variable)
 REFUSE  NoMissnamedDocTagRule
         assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
@@ -122,7 +122,7 @@ REFUSE  NoStringInGetSubscribedEventsRule
 REFUSE  NoTestMocksRule  (the package registers it nowhere)
         access path outside the vocabulary: ->getConstantStrings()
 REFUSE  NoValueObjectInServiceConstructorRule  (the package registers it nowhere)
-        guard translates to a constant with no reason it cannot hold
+        access path outside the vocabulary: preg_match()
 EMIT    NoWithOnStubRule
 REFUSE  ParamNameToTypeConventionRule  (the package registers it nowhere)
         no hook mapping for node type PhpParser\Node\Param
