@@ -713,15 +713,7 @@ final class Transpiler
         $this->ruleNamespace = SourceIndex::namespaceOf($ast, $className);
         $this->collectConstants($class);
 
-        // A collector-and-consumer pair has no per-file body to translate, so it is recognised and re-emitted
-        // rather than walked. Checked before anything else reads the body, because reading it would refuse on
-        // constructs that are beside the point for this shape.
-        if (self::$target === 'php' && $this->implementsCollector($class) && AggregateRule::onlyFeedsAWriter($this->file)) {
-            throw new Refusal(
-                'every rule that consumes this collector reports nothing and writes a file instead, so the '
-                . 'pair cannot become a plugin whatever the collector body does',
-            );
-        }
+        $this->refuseWhatNoBodyCouldFix($class);
 
         if (self::$target === 'php') {
             $aggregate = AggregateRule::from($class, $this->file, PackageConfiguration::forRuleFile($this->file));
@@ -1126,6 +1118,66 @@ PHP;
         $lines = explode("\n", wordwrap($accepted['note'], 110));
 
         return "/**\n * " . implode("\n * ", $lines) . "\n */\n";
+    }
+
+    /**
+     * The shapes no hook, table row or body translation can make portable.
+     *
+     * Both are checked before anything reads the body, because reading it would refuse on whichever construct
+     * it happened to trip on first — and that construct is not the obstacle. A refusal naming the wrong
+     * obstacle is worse than none: it sizes the work wrongly for whoever reads it next.
+     */
+    private function refuseWhatNoBodyCouldFix(Class_ $class): void
+    {
+        // A collector-and-consumer pair has no per-file body to translate, so it is recognised and re-emitted
+        // rather than walked.
+        if (self::$target === 'php' && $this->implementsCollector($class) && AggregateRule::onlyFeedsAWriter($this->file)) {
+            throw new Refusal(
+                'every rule that consumes this collector reports nothing and writes a file instead, so the '
+                . 'pair cannot become a plugin whatever the collector body does',
+            );
+        }
+
+        if ($this->feedsBackIntoPhpstan($class)) {
+            throw new Refusal(
+                'this rule reports nothing: its whole output is $scope->invokeNodeCallback(), which synthesises '
+                . "a node with inferred argument types and hands it back to PHPStan's own analysis so that "
+                . "*other* rules fire on it. An analyzer plugin's only output is report(), and there is no "
+                . 'equivalent of feeding a node back into Mago, so no node hook and no vocabulary entry can '
+                . 'make this one portable',
+            );
+        }
+    }
+
+    /**
+     * Whether a rule's only output is a node it hands back to PHPStan rather than a finding.
+     *
+     * `DataProviderDataRule` is the one in the corpus: it returns `[]` on every path and calls
+     * `$scope->invokeNodeCallback()` with a `MethodCall` it builds out of inferred argument types, so PHPStan's
+     * own argument-type rules report on a call that does not exist in the source. Nothing in Mago receives a
+     * synthesised node, so the rule is unportable for a reason no hook or table row touches.
+     *
+     * Traced rather than inferred from the name: the whole body was read, and the refusal it produced before
+     * this check named a missing node predicate — a construct that was never the obstacle. Same class of
+     * misdirection as an unwired configured list refusing on `in_array()`.
+     *
+     * The call alone is enough; whether the rule also builds findings is not asked. A rule doing both is not
+     * half portable — emitting the reporting half and dropping the callback would be narrower than the
+     * original with nothing saying so, which is the failure mode to design against. Nothing in any installed
+     * package does both, so no branch here pretends to handle it.
+     *
+     * Paired with {@see AggregateRule::reportsNothing()}, which answers the same question for a rule that
+     * writes a file instead.
+     */
+    private function feedsBackIntoPhpstan(ClassLike $class): bool
+    {
+        foreach ((new NodeFinder())->findInstanceOf([$class], MethodCall::class) as $call) {
+            if ($call->name instanceof Identifier && $call->name->toString() === 'invokeNodeCallback') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

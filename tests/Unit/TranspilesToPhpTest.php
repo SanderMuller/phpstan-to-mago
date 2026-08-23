@@ -332,6 +332,23 @@ final class TranspilesToPhpTest extends TestCase
         }
     }
 
+    /**
+     * A rule whose output is a node PHPStan re-analyses cannot become a plugin, whatever its hook.
+     *
+     * `DataProviderDataRule` is the corpus case, and it refused for the wrong reason for a long time: it
+     * registers for `Node::class` and branches on three statement kinds, so the refusal named a missing node
+     * predicate and read as "one table row away". Reading the whole body settled it — the rule returns `[]`
+     * everywhere and its only effect is `$scope->invokeNodeCallback()`, which has no counterpart in Mago. So
+     * this is checked before the body, or the refusal sizes the work wrongly for whoever reads it next.
+     */
+    public function test_refuses_a_rule_whose_output_is_a_node_phpstan_re_analyses(): void
+    {
+        $this->expectException(Refusal::class);
+        $this->expectExceptionMessage('invokeNodeCallback()');
+
+        $this->transpile(self::RULES . '/FeedsBackIntoPhpstanRule.php');
+    }
+
     public function test_refuses_a_construct_outside_the_vocabulary(): void
     {
         $this->expectException(Refusal::class);
