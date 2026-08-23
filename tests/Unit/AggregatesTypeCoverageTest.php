@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 use RuntimeException;
-use Sandermuller\PhpstanToMago\Refusal;
 use Sandermuller\PhpstanToMago\Tests\Support\PhpstanReport;
 use Sandermuller\PhpstanToMago\Transpiler;
+use Sandermuller\PhpstanToMago\Vocabulary;
 
 /**
  * The aggregate-rule differential: a coverage percentage, computed two ways.
@@ -20,15 +21,17 @@ use Sandermuller\PhpstanToMago\Transpiler;
  *
  * **Scope, stated up front: this establishes fixture-level agreement, not corpus-level.** The same counting
  * agreed exactly here and then disagreed on a 585-file dependency tree — PHPStan counted 4057 parameters with
- * 1994 typed where the port counted 3079 with 2927. Both causes are fixed since, the counting agrees on ten
- * controls (see {@see CountsParametersLikeTheCollectorTest}), and it now over-counts by 79 of 13694 on one
- * real consumer and 33 of 11428 on another — close, and not equal, so the transpiler still refuses the rule.
- * `tests/Support/run-coverage-corpus.php` is what produces those numbers, and most of the gap turns out to be
- * a divergence rather than a bug: the collector's LSP guard reads `ClassReflection::hasMethod()`, which
- * PHPStan's reflection extensions answer for methods nobody wrote. These tests hold the design still while
- * what remains after that is traced.
+ * 1994 typed where the port counted 3079 with 2927. Both causes are fixed since, and the counting now agrees
+ * on thirteen controls, with a fourteenth pinning the one divergence
+ * (see {@see CountsParametersLikeTheCollectorTest}). What is left on a real consumer is
+ * +81 of 13694 and +37 of 11428, all of it one unportable cause, so the rule is emitted with that bound
+ * rather than refused: {@see Vocabulary::ACCEPTED_DIVERGENCE} states it, `tests/Support/run-coverage-corpus.php`
+ * is the gate that fails when a corpus run leaves it, and the `reflection-extension` control pins the
+ * mechanism in CI.
  *
- * The plugin under test is a hand-written reference of the shape the transpiler would emit.
+ * The plugin under test *is* the transpiler's output, asserted byte for byte below. It began as a hand-written
+ * reference of the shape the emission would take, which was the right shape while the rule was refused and the
+ * wrong one the moment it emitted: a reference that drifts from the emission gates a plugin nobody ships.
  *
  * The fixture project earns each of its parts. It holds a trait and a class that uses it, a magic method, a variadic
  * parameter and a constructor, because a weaker fixture agreed while exercising none of the filters: removing
@@ -122,41 +125,75 @@ final class AggregatesTypeCoverageTest extends TestCase
         Transpiler::$allowUnverified = false;
     }
 
-    public function test_the_transpiler_refuses_the_rule_until_a_corpus_differential_agrees(): void
+    /**
+     * The rule emits by default, and the plugin says what it is off by.
+     *
+     * It was refused for as long as the corpus gap had no named cause. Every part of that gap now traces to
+     * `ClassReflection::hasMethod()` answered by reflection extensions a Mago plugin cannot reproduce, so the
+     * honest outcome is a stated bound — refusing forever on something the port cannot close blocks the rule
+     * permanently for nothing. The number belongs in the generated file, because a reader of a plugin has no
+     * reason to know a bound was measured and a coverage percentage quietly 1% off is the plausible-but-wrong
+     * shape to design against.
+     */
+    public function test_the_rule_emits_and_carries_the_divergence_it_is_emitted_with(): void
     {
         Transpiler::$target = 'php';
         Transpiler::$survey = false;
         Transpiler::$allowUnverified = false;
 
-        // The emission works — it produced this fixture — and is deliberately not mapped, because fixture
-        // agreement turned out not to generalise. Refusing is the honest state, and this pins it so the
-        // mapping cannot be restored without the corpus differential that justifies it.
-        $this->expectException(Refusal::class);
-        $this->expectExceptionMessageMatches('/over-counts against the original at corpus scale, and most of the gap is not portable/');
-
-        (new Transpiler(
-            dirname(__DIR__, 2) . '/vendor/tomasvotruba/type-coverage/src/Rules/ParamTypeCoverageRule.php',
-        ))->transpile();
-    }
-
-    public function test_the_emission_still_works_behind_the_opt_in(): void
-    {
-        Transpiler::$target = 'php';
-        Transpiler::$survey = false;
-        Transpiler::$allowUnverified = true;
-
         $emitted = (new Transpiler(
             dirname(__DIR__, 2) . '/vendor/tomasvotruba/type-coverage/src/Rules/ParamTypeCoverageRule.php',
         ))->transpile()['rust'];
 
-        // The whole loop still runs: the rule's source is read, the collector is recognised, the threshold and
-        // message come from the package, and an after-analysis plugin comes out. What is withheld is the
-        // default, not the capability.
+        // The whole loop runs: the rule's source is read, the collector is recognised, and the threshold and
+        // message come from the package rather than from here.
         $this->assertStringContainsString('implements AfterAnalysisHook, Plugin', $emitted);
         $this->assertStringContainsString('TypeCoverage::parameters($context)', $emitted);
         $this->assertStringContainsString('public readonly float $required = 99', $emitted);
         $this->assertStringContainsString("'typeCoverage.paramTypeCoverage'", $emitted);
         $this->assertStringContainsString('Out of %d possible param types', $emitted);
+
+        $this->assertStringContainsString('Over-counts the original by up to 1.11%', $emitted);
+        $this->assertStringContainsString('run-coverage-corpus.php', $emitted);
+    }
+
+    /**
+     * And a metric with no accepted divergence carries no note.
+     *
+     * Without this the docblock could be unconditional and every test above would still pass, which would put
+     * a bound on an aggregate nobody measured — the opposite of the point.
+     */
+    public function test_an_aggregate_with_no_stated_divergence_carries_no_note(): void
+    {
+        $note = new ReflectionMethod(Transpiler::class, 'divergenceNote');
+
+        $this->assertSame('', $note->invoke(new Transpiler(
+            dirname(__DIR__, 2) . '/vendor/tomasvotruba/type-coverage/src/Rules/ParamTypeCoverageRule.php',
+        ), 'returns'));
+    }
+
+    /**
+     * The plugin this test runs is the emission, not a copy of it that once matched.
+     *
+     * Everything below runs `tests/Fixtures/aggregate/ParamTypeCoverageRule.php` under real mago. That file is
+     * only evidence about the shipped rule while it stays identical to what the transpiler emits, and nothing
+     * said so until the rule started emitting by default.
+     */
+    public function test_the_plugin_under_test_is_what_the_transpiler_emits(): void
+    {
+        Transpiler::$target = 'php';
+        Transpiler::$survey = false;
+
+        $emitted = (new Transpiler(
+            dirname(__DIR__, 2) . '/vendor/tomasvotruba/type-coverage/src/Rules/ParamTypeCoverageRule.php',
+        ))->transpile()['rust'];
+
+        $this->assertSame(
+            file_get_contents(self::FIXTURE . '/ParamTypeCoverageRule.php'),
+            $emitted . "\n",
+            'The plugin the rest of this file runs is no longer what the transpiler emits, so it proves '
+            . 'nothing about the shipped rule.',
+        );
     }
 
     public function test_the_reimplementation_agrees_with_the_real_rule_on_this_fixture(): void

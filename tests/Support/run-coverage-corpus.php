@@ -7,9 +7,17 @@ declare(strict_types=1);
  *
  *   php tests/Support/run-coverage-corpus.php <consumer-root> [--paths=a,b] [--exclude=a,b] [--sandbox=DIR]
  *
- * Prints the corpus size, the real rule's total, the port's, and the delta. This is the instrument behind the
- * numbers `Vocabulary::unverifiedAggregate('parameters')` quotes, and it is in the repository so that those
- * numbers can be repeated rather than taken on trust.
+ * Prints the corpus size, the real rule's total, the port's, the delta, and the delta against the bound the
+ * rule is emitted with. This is the instrument behind the numbers `Vocabulary::ACCEPTED_DIVERGENCE` quotes,
+ * and it is in the repository so that those numbers can be repeated rather than taken on trust.
+ *
+ * **It is a gate, not only a report.** Exits non-zero when the port under-counts at all, or over-counts by
+ * more than the stated ceiling. Accepting a bound without pinning it is how it silently becomes +400, and an
+ * under-count is a different bug wearing the same ratio.
+ *
+ * A whole-corpus run is what the bound is stated against, so `--paths=` and `--exclude=` turn the gate off:
+ * the delta over one directory has no ceiling of its own, and comparing it against the whole corpus's would
+ * fail a bisect that is working correctly.
  *
  * Paths and exclusions come from the consumer's own configuration, so neither tool is measured on a corpus the
  * other never saw. Writes nothing into the consumer.
@@ -18,6 +26,7 @@ declare(strict_types=1);
 use Nette\Neon\Neon;
 use Sandermuller\PhpstanToMago\Tests\Support\CorpusDifferential;
 use Sandermuller\PhpstanToMago\Tests\Support\CoverageCorpus;
+use Sandermuller\PhpstanToMago\Vocabulary;
 
 require __DIR__ . '/../../vendor/autoload.php';
 
@@ -111,4 +120,30 @@ $totals = $corpus->totals();
 printf("%s  (%d files)\n", $consumer, $corpus->files());
 printf("  original: %d parameters\n", $totals['original']);
 printf("  port:     %d parameters\n", $totals['port']);
-printf("  delta:    %+d\n", $totals['port'] - $totals['original']);
+$delta = $totals['port'] - $totals['original'];
+
+printf("  delta:    %+d\n", $delta);
+
+$whole = $requested === null && $extraExcludes === [];
+if (! $whole) {
+    printf("  bound:    not checked, because this run is a bisect rather than the whole corpus\n");
+
+    exit(0);
+}
+
+$ceiling = Vocabulary::ACCEPTED_DIVERGENCE['parameters']['ceiling'];
+$ratio = $totals['original'] === 0 ? 0.0 : $delta / $totals['original'];
+
+printf("  bound:    %+.3f%% against a ceiling of +%.3f%% and a floor of 0\n", $ratio * 100, $ceiling * 100);
+
+if ($delta < 0) {
+    fwrite(STDERR, "The port under-counts, which the stated divergence does not allow. Run run-coverage-setdiff.php to name the declarations.\n");
+
+    exit(1);
+}
+
+if ($ratio > $ceiling) {
+    fwrite(STDERR, "The port over-counts beyond the stated ceiling. Run run-coverage-setdiff.php to name the declarations.\n");
+
+    exit(1);
+}

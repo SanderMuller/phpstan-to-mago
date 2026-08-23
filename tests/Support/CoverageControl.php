@@ -139,6 +139,14 @@ final readonly class CoverageControl
             command = ["php", "worker.php"]
             TOML);
 
+        // A control may register PHPStan services of its own — the `reflection-extension` one registers a
+        // `MethodsClassReflectionExtension`, because that is the only way to reproduce the cause of the
+        // parameter aggregate's accepted divergence. Appended rather than always present, so every other
+        // control is measured against a plain PHPStan.
+        $services = is_file($this->project . '/services.neon')
+            ? "\n" . file_get_contents($this->project . '/services.neon')
+            : '';
+
         // The extension installer already registers type-coverage, so including its neon here would register
         // `MethodNodeAnalyser` twice and PHPStan would abort before analysing. Only the parameters are set,
         // and `measure` is what makes the rule report a count rather than a threshold breach.
@@ -154,7 +162,7 @@ final readonly class CoverageControl
                     property_type: 0
                     constant_type: 0
                     declare: 0
-            NEON);
+            NEON . $services);
 
         return $sandbox;
     }

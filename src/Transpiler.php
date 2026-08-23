@@ -90,9 +90,10 @@ final class Transpiler
     /**
      * Whether to emit a rule whose numbers do not yet agree with the original.
      *
-     * Off by default, and the refusal it produces carries the measurement that says why — see
-     * {@see Vocabulary::unverifiedAggregate()}. The flag exists so the emission can be exercised and measured
-     * without the default being a rule that reports 95 % where the original reports 49 %.
+     * Off by default, and nothing is withheld today: the parameter aggregate is emitted with a stated bound
+     * instead — see {@see Vocabulary::ACCEPTED_DIVERGENCE}. The flag stays because it is what a *new*
+     * aggregate is exercised and measured behind, without the default being a rule that reports 95 % where the
+     * original reports 49 %. {@see Vocabulary::unverifiedAggregate()} is the table it reads.
      *
      * A rule-level counterpart existed briefly, for `CombinedMethodCallRule` reporting 33 findings on a real
      * project that the original did not. It is gone because the disagreement is: 26 were a real defect
@@ -1028,7 +1029,7 @@ use Mago\Sdk\Reporting\Issue;
 use Mago\Sdk\Reporting\Level;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 
-final class {CLASS} implements AfterAnalysisHook, Plugin
+{DIVERGENCE}final class {CLASS} implements AfterAnalysisHook, Plugin
 {
     public function __construct(public readonly float $required = {THRESHOLD}) {}
 
@@ -1089,6 +1090,7 @@ PHP;
             '{METRIC}' => $metric,
             '{MESSAGE}' => $message,
             '{CODE}' => $code,
+            '{DIVERGENCE}' => $this->divergenceNote($metric),
         ]);
 
         return [
@@ -1103,6 +1105,27 @@ PHP;
             'identifiers' => [$aggregate->identifier],
             'messages' => [$aggregate->message],
         ];
+    }
+
+    /**
+     * The docblock an aggregate carries when it is emitted with a known divergence, or nothing when it is not.
+     *
+     * The number belongs next to the rule, not only in this repository: someone reading a generated plugin has
+     * no reason to know a bound was measured, and a coverage percentage that is quietly 1% off is exactly the
+     * plausible-but-wrong shape to design against.
+     *
+     * @see Vocabulary::ACCEPTED_DIVERGENCE
+     */
+    private function divergenceNote(string $metric): string
+    {
+        $accepted = Vocabulary::ACCEPTED_DIVERGENCE[$metric] ?? null;
+        if ($accepted === null) {
+            return '';
+        }
+
+        $lines = explode("\n", wordwrap($accepted['note'], 110));
+
+        return "/**\n * " . implode("\n * ", $lines) . "\n */\n";
     }
 
     /**

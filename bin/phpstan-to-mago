@@ -30,9 +30,11 @@ if ($argv === [] || in_array('--help', $argv, true) || in_array('-h', $argv, tru
                         it installs: a rule arriving through an include is counted, and one PHPStan
                         ships itself is not. May be a project directory or a config file, and may
                         be combined with paths
-      --unverified      also emit a rule whose numbers do not yet agree with the original;
-                        refused by default, and the refusal says by how much. Accepts the older
-                        spelling --unverified-aggregates
+      --unverified      also emit an aggregate whose numbers do not yet agree with the original
+                        and whose gap has no named cause; refused by default, and the refusal
+                        says by how much. Nothing is withheld today: the parameter aggregate is
+                        emitted with a stated bound, which the generated file carries. Accepts
+                        the older spelling --unverified-aggregates
       --out=DIR         where to write, defaulting to the current directory
       --examples=DIR    PHP files the linter target reads its examples from
 

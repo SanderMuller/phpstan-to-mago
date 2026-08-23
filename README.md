@@ -22,9 +22,10 @@ vendor/bin/phpstan-to-mago --survey vendor/hihaho/phpstan-rules/src
 --out=DIR          the root to write under, defaulting to the current directory
 --examples=DIR     PHP files the linter target reads its good and bad examples from
 --survey           report what each rule would need, writing nothing
---unverified-aggregates
-                   also emit an aggregate rule whose numbers do not yet agree with the
-                   original; refused by default, and the refusal says by how much
+--unverified       also emit an aggregate rule whose numbers do not yet agree with the
+                   original and whose gap has no named cause; refused by default, and the
+                   refusal says by how much. Nothing is withheld today. Accepts the older
+                   spelling --unverified-aggregates
 ```
 
 Each target writes into its own subdirectory of `--out`, so the command above writes
@@ -182,17 +183,24 @@ Four rule packages, surveyed with the tool rather than from memory. All four are
 rule by rule in `tests/Fixtures/expected/census.md`, which a test regenerates — so an upstream release that
 adds or rewrites a rule shows up as a diff there rather than as a stale table here:
 
-| package | rules | emit | refused |
-|:--|--:|--:|--:|
-| `symplify/phpstan-rules` | 96 | 32 | 64 |
-| `hihaho/phpstan-rules` | 20 | 5 | 15 |
-| `tomasvotruba/type-coverage` | 10 | 0 | 10 |
-| `tomasvotruba/cognitive-complexity` | 3 | 0 | 3 |
+The denominator is what each package *registers*, which is the honest one: a rule a package ships but wires
+nowhere cannot run for anybody, and counting it would understate every row.
+
+| package | registers | emit | refused | covered by the engine |
+|:--|--:|--:|--:|--:|
+| `symplify/phpstan-rules` | 88 | 32 | 55 | 1 |
+| `hihaho/phpstan-rules` | 9 | 4 | 5 | 0 |
+| `tomasvotruba/type-coverage` | 10 | 1 | 9 | 0 |
+| `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
 
 Every emitted rule is proven to *run*: the gate transpiles it, starts the real `mago` binary with a worker
 registering only that rule, and compares the findings against PHPStan running the original over the same two
 files, on line **and** message text. A rule that emits and reports nothing fails that gate, which is how
 five rules were found to have been silently dead.
+
+One rule is gated elsewhere and says so: `ParamTypeCoverageRule` is an aggregate over a whole project, so a
+per-file pair is the wrong instrument for it. `AggregatesTypeCoverageTest` runs the real rule under real
+PHPStan against the transpiler's own emission under real mago and compares by file, line, message and count.
 
 The vocabulary covers guard chains, `foreach` with an inline report, `sprintf` messages, inlined helpers,
 string and integer comparisons, `instanceof` narrowing into a binding, class-hierarchy questions about the
@@ -222,9 +230,14 @@ against 19, with 17 agreeing. Two things are mixed together in that gap and have
 Mago analyses without an autoloader, so the two tools do not see the same resolved classes; and at least
 one port is genuinely wider than its original.
 
-The `type-coverage` parameter aggregate is measured and wrong: PHPStan counts 4057 parameters with 1994
-typed where the port counts 3079 with 2927. It is implemented, refused by default, and its refusal quotes
-those numbers. `--unverified-aggregates` emits it anyway for whoever works on it next.
+The `type-coverage` parameter aggregate is measured and *bounded*. It was refused by default while the gap
+had no named cause; every part of that gap now traces to one cause the port cannot reproduce, so it is emitted
+with the bound stated in the generated file. On two Laravel consumers it over-counts by 81 of 13694 and by 37
+of 11428, never under-counts, and the whole residue is `ClassReflection::hasMethod()` answered by PHPStan
+reflection extensions — larastan's factory and auth extensions, plus three classes that ship inside
+`phpstan.phar`. A Mago plugin has no equivalent. `php tests/Support/run-coverage-corpus.php <consumer-root>`
+reproduces the numbers and fails when a corpus run leaves the bound; one control isolates the mechanism in
+CI.
 
 That is the honest state: per-rule agreement on example pairs is proven and gated; corpus-scale agreement is
 not, and no number here should be read as claiming it.

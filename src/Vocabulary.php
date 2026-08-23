@@ -449,9 +449,9 @@ final class Vocabulary
      *
      * What is named here is only what the source cannot say: *which* pass answers the question.
      *
-     * {@see unverifiedAggregate()} withholds a mapped aggregate until a *corpus* differential agrees, and
-     * there is no counterpart here because that bar cannot be met — for a measured reason rather than an
-     * assumed one. `../hihaho` reports nothing under `unvalidatedFormRequestField`, because every `rules()`
+     * A mapped aggregate is held to a *corpus* differential — it agrees, or it states the bound it is off by,
+     * or it refuses. There is no counterpart here because that bar cannot be met, for a measured reason rather
+     * than an assumed one. `../hihaho` reports nothing under `unvalidatedFormRequestField`, because every `rules()`
      * on a class extending a request base there is conditional and so opaque to the original too. A corpus
      * differential would agree on zero, and two tools agreeing on nothing is the one result that proves
      * neither looked.
@@ -461,8 +461,9 @@ final class Vocabulary
      * runs the real rule under real PHPStan against the emitted plugin under real mago and compares line and
      * message, including one example whose `rules()` is declared in another file. Breaking the resolver on
      * purpose turns that comparison red and names the two findings that vanish, which is what says the pass
-     * is load-bearing rather than incidental. An entry whose pass ever *does* need withholding gets the
-     * `unverifiedAggregate()` treatment then, with its number.
+     * is load-bearing rather than incidental. An entry whose pass ever *does* disagree gets the aggregate
+     * treatment then, with its number: {@see ACCEPTED_DIVERGENCE} where the cause is named and unportable,
+     * {@see unverifiedAggregate()} where it is not.
      *
      * @var array<string, array{pass: string, arguments: list<int>}>
      */
@@ -478,46 +479,78 @@ final class Vocabulary
     ];
 
     /**
-     * Why a mapped aggregate is not emitted by default, or null once it agrees with the original.
+     * The divergence a mapped aggregate is emitted *with*, where it does not reach exact agreement.
      *
-     * The parameter metric agreed exactly with the original on a small fixture and then disagreed on a
-     * 585-file dependency tree. Keeping the mapping and refusing here — rather than dropping the mapping —
-     * means the refusal names the real obstacle and a number, instead of saying nothing was mapped.
+     * The parameter metric agreed exactly on a small fixture, then disagreed on a 585-file dependency tree,
+     * and was withheld while the gap was traced. Every remaining part of the gap has the same cause and that
+     * cause is not portable, so the honest outcome is a bound rather than a refusal — refusing forever on
+     * something the port cannot close blocks the rule permanently for nothing.
      *
-     * A method rather than a table: every mapped metric happens to be withheld today, and a constant would let
-     * a static analyser prove the emission unreachable and report it as dead code, which it is not.
+     * **The measurement, and what it is against.** `php tests/Support/run-coverage-corpus.php <consumer-root>`
+     * on two Laravel consumers. On hihaho (2933 files) PHPStan counts 13694 parameters where this counts
+     * 13775; on mijntp (4372 files) 11428 against 11465. Both single-signed, so the port never under-counts.
+     * Independently, `type-coverage`'s own param count on the first consumer is 11164 today and 7317 with two
+     * pending semantics fixes applied — a different measurement against a different extension set, quoted
+     * because it sizes the *worst case*: the same +81 is 0.73% of that denominator now and 1.11% after those
+     * fixes land. `CEILING` is set against the post-fix figure so landing them cannot turn the gate red
+     * without a real regression.
      *
-     * An entry disappears from here when a *corpus* differential agrees, not a fixture one.
+     * **The one cause, three times.** The collector's LSP guard reads `ClassReflection::hasMethod()`, and
+     * PHPStan answers that from reflection mago cannot see.
+     *
+     * - 56 of hihaho's 81 and 16 of mijntp's 37 sit in `database/factories`, and mijntp has exactly 16 factory
+     *   methods named `for*` or `has*`: larastan's `ModelFactoryMethodsClassReflectionExtension` answering for
+     *   a relation the model declares. Controlled both ways — the same method is skipped when the factory
+     *   annotates `@extends Factory<Model>` and counted when it does not.
+     * - Another 12 of hihaho's is three classes implementing PHPStan reflection-extension interfaces that ship
+     *   inside `phpstan.phar`, which mago cannot resolve either.
+     * - The +11 left over `app/` is the same thing a third time: +12 of it is the auth model, because
+     *   larastan's `AuthsMethodsExtension` answers `hasMethod()` on `Illuminate\Contracts\Auth\Authenticatable`
+     *   by looking the name up on the configured auth model. Controlled to the name: in a class implementing
+     *   only that contract, a method named after one the auth model has is skipped and an invented name is
+     *   counted.
+     *
+     * Reproducing any of it means reproducing every installed reflection extension, which a Mago plugin cannot
+     * do. `CountsParametersLikeTheCollectorTest` holds the mechanism itself still, with a control that
+     * registers such an extension and pins the exact divergence, so a *widening* of it is caught in CI rather
+     * than at the next corpus run.
+     * `php tests/Support/run-coverage-setdiff.php <consumer-root> <file>` names the declarations behind any of
+     * these.
+     *
+     * `NOTE` is what the emitted plugin carries, so a reader of the generated rule finds the bound without
+     * finding this file.
+     *
+     * @var array<string, array{ceiling: float, note: string}>
+     */
+    public const array ACCEPTED_DIVERGENCE = [
+        'parameters' => [
+            'ceiling' => 0.0111,
+            'note' => 'Over-counts the original by up to 1.11%, and never under-counts. The collector skips a '
+                . 'method whose name an ancestor has, and PHPStan answers that from reflection extensions a '
+                . 'Mago plugin cannot reproduce. Measured on two Laravel consumers: +81 of 13694 and +37 of '
+                . '11428. Reproduce with `php tests/Support/run-coverage-corpus.php <consumer-root>`.',
+        ],
+    ];
+
+    /**
+     * Why a mapped aggregate is not emitted by default, or null once it is accepted.
+     *
+     * Nothing is withheld today: the parameter metric moved to {@see ACCEPTED_DIVERGENCE} once its whole gap
+     * traced to one unportable cause. The route is kept rather than deleted because it is the one a *future*
+     * disagreeing aggregate takes, and {@see CROSS_FILE_CHECKS} already points here for that — a metric whose
+     * gap has no named cause has to refuse, not carry a bound it cannot justify.
      */
     public static function unverifiedAggregate(string $metric): ?string
     {
-        return match ($metric) {
-            'parameters' => 'the parameter aggregate over-counts against the original at corpus scale, and '
-                . 'most of the gap is not portable. On hihaho (2933 files) PHPStan counts 13694 parameters '
-                . 'where this counts 13775, and on mijntp (4372 files) 11428 against 11465; reproduce with '
-                . '`php tests/Support/run-coverage-corpus.php <consumer-root>`. Bisected by configured path, '
-                . "56 of hihaho's 81 and 16 of mijntp's 37 sit in database/factories, and mijntp has "
-                . 'exactly 16 factory methods named for* or has*. That is '
-                . "larastan's ModelFactoryMethodsClassReflectionExtension answering hasMethod() for a "
-                . 'relation the model declares: the collector skips a method whose name a parent has, and '
-                . "PHPStan's parent has whatever the installed extensions say it has. Controlled both ways "
-                . '— the same method is skipped when the factory annotates @extends Factory<Model> and '
-                . 'counted when it does not. Reproducing that means reproducing every installed reflection '
-                . 'extension, so the residue is a divergence rather than a gap to close. Another 12 of '
-                . "hihaho's is three classes implementing PHPStan reflection-extension interfaces that ship "
-                . 'inside phpstan.phar, which mago cannot resolve either. What is left over app/, +11, is the '
-                . 'same root cause a third time: +12 of it is the auth model, whose every declared method is '
-                . "skipped while its closures are counted. larastan's AuthsMethodsExtension answers hasMethod() "
-                . 'on Illuminate\\Contracts\\Auth\\Authenticatable by looking the name up on the configured '
-                . "auth model, so implementing that contract puts every one of that model's own method names on "
-                . 'an ancestor. Controlled to the name: in a class implementing only that contract, a method '
-                . 'named after one the auth model has is skipped and an invented name is counted. Nothing '
-                . 'under-counts anywhere now: the last one was a renamed trait method, whose guard PHPStan '
-                . 'asks about the alias rather than the original. '
-                . '`php tests/Support/run-coverage-setdiff.php <consumer-root> <file>` names the declarations '
-                . 'behind any of these',
-            default => null,
-        };
+        /**
+         * Metric to the refusal it owes. Empty today, and a table rather than a `match` so that emptying it
+         * reads as "nothing is withheld" instead of as a branch a reader has to check for a fall-through.
+         *
+         * @var array<string, string> $withheld
+         */
+        $withheld = [];
+
+        return $withheld[$metric] ?? null;
     }
 
     /** PHPStan node class -> the support predicate that recognises it. */

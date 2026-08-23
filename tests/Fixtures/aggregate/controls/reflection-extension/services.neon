@@ -1,0 +1,5 @@
+services:
+    -
+        class: Sandermuller\PhpstanToMago\Tests\Support\ControlMethodsExtension
+        tags:
+            - phpstan.broker.methodsClassReflectionExtension

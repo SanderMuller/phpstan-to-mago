@@ -127,13 +127,13 @@ EMIT    TraitRequiresInterfaceRule
 REFUSE  UnvalidatedFormRequestFieldRule  (the package registers it nowhere)
 REFUSE  WriteNamedArgumentManifestRule
 
-## tomasvotruba/type-coverage — 0 of 10 the package registers emit, 0 covered by the engine, 10 refuse, 0 it registers nowhere
+## tomasvotruba/type-coverage — 1 of 10 the package registers emit, 0 covered by the engine, 9 refuse, 0 it registers nowhere
 
 REFUSE  ConstantTypeCoverageRule
 REFUSE  ConstantTypeDeclarationCollector
 REFUSE  DeclareCollector
 REFUSE  DeclareCoverageRule
-REFUSE  ParamTypeCoverageRule
+EMIT    ParamTypeCoverageRule
 REFUSE  ParamTypeDeclarationCollector
 REFUSE  PropertyTypeCoverageRule
 REFUSE  PropertyTypeDeclarationCollector

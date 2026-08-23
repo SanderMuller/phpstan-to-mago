@@ -12,10 +12,11 @@ use SplFileInfo;
 /**
  * The parameter aggregate, counted by the real `type-coverage` rule and by the port, over a consumer project.
  *
- * `Vocabulary::unverifiedAggregate('parameters')` withholds the mapping until a *corpus* differential agrees,
- * and quotes two numbers per corpus. Those numbers were produced by a script that lived outside the
- * repository, which makes a refusal message rest on a measurement nobody else can repeat — the same mistake
- * as reporting a suite green from a dependency set only one machine had. So the instrument lives here.
+ * `Vocabulary::ACCEPTED_DIVERGENCE` states the bound the rule is emitted with, and quotes two numbers per
+ * corpus. Those numbers were produced by a script that lived outside the repository, which makes a stated
+ * bound rest on a measurement nobody else can repeat — the same mistake as reporting a suite green from a
+ * dependency set only one machine had. So the instrument lives here, and `run-coverage-corpus.php` fails when
+ * a corpus run leaves the bound.
  *
  * Four details are load-bearing, and each was learnt by getting a wrong answer first:
  *

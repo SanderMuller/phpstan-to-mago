@@ -7,7 +7,9 @@ namespace Sandermuller\PhpstanToMago\Tests\Unit;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
+use Sandermuller\PhpstanToMago\Tests\Support\ControlMethodsExtension;
 use Sandermuller\PhpstanToMago\Tests\Support\CoverageControl;
+use Sandermuller\PhpstanToMago\Vocabulary;
 
 /**
  * The parameter aggregate, control by control, against the rule it came from.
@@ -81,5 +83,27 @@ final class CountsParametersLikeTheCollectorTest extends TestCase
         // changes the counting fails here instead of silently redefining what the port has to match.
         $this->assertSame($expected, $original, "The real rule no longer counts {$control} as {$expected}.");
         $this->assertSame($original, $port, "The port disagrees with the real rule on {$control}.");
+    }
+
+    /**
+     * The one control that is *meant* to disagree: the whole cause of the accepted divergence, isolated.
+     *
+     * The rule is emitted with a bound rather than exact agreement, because the collector's LSP guard reads
+     * `ClassReflection::hasMethod()` and PHPStan answers that from reflection extensions a Mago plugin cannot
+     * reproduce. On real consumers that is larastan's factory and auth extensions; here it is
+     * {@see ControlMethodsExtension}, which claims one method name and nothing else.
+     *
+     * Asserted as the exact divergence, not as "at least". A bound nobody pins is how +2 becomes +400, and the
+     * numbers were written before the run: `Contract` declares nothing, `Subject` declares `invented()` with
+     * two parameters and `plain()` with one, so the original counts 1 and the port 3.
+     *
+     * @see Vocabulary::ACCEPTED_DIVERGENCE
+     */
+    public function test_a_reflection_extension_answering_hasmethod_is_the_whole_divergence(): void
+    {
+        [$original, $port] = (new CoverageControl(self::CONTROLS . '/reflection-extension'))->totals();
+
+        $this->assertSame(1, $original, 'The real rule no longer skips the method the extension claims.');
+        $this->assertSame(3, $port, 'The port no longer counts every declaration in the control.');
     }
 }

@@ -41,6 +41,13 @@ final class EmittedRuleFiresTest extends TestCase
         // Added when its first rule emitted. An emitted rule outside these corpora is the silence this gate
         // exists to remove: the census counts it and nothing ever runs it.
         __DIR__ . '/../../vendor/tomasvotruba/cognitive-complexity/src',
+        // `tomasvotruba/type-coverage` is deliberately absent, and this is the one exclusion. Its emitting rule
+        // is `ParamTypeCoverageRule`, an aggregate: PHPStan reduces a *collection* rather than deciding per
+        // node, so registering it here would need a collector service this gate cannot add and a threshold, and
+        // the per-file Bad/Good comparison is the wrong instrument for one project-wide percentage.
+        // {@see AggregatesTypeCoverageTest} is the right one and already runs it — the real rule under real
+        // PHPStan against the transpiler's own emission under real mago, compared by file, line and message,
+        // plus the counts. Naming the exclusion rather than leaving the corpus list looking complete.
     ];
 
     private const string FIXTURES = __DIR__ . '/../Fixtures/Rules';
