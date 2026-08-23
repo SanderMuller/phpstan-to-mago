@@ -7454,6 +7454,20 @@ PHP;
             return $this->nameEquals($this->resolve($args[0]->value, $expr->getStartLine()), $literal, $expr->getStartLine());
         }
 
+        // The plural, whose body is `array_any($names, fn ($name) => self::isName($node, $name))` — the same
+        // question of a list, which {@see oneOf} already answers. Found by auditing what refusals name rather
+        // than by reading the vocabulary: without this the call falls through to generic resolution, which
+        // tries to resolve the list and refuses with `access path outside the vocabulary: Expr_Array`. Two
+        // rules were refused that way, and the array literal was never the obstacle.
+        if ($helper === 'NamingHelper' && $method === 'isNames' && count($args) === 2) {
+            return $this->oneOf(
+                $args[0]->value,
+                $this->stringList($args[1]->value, $expr->getStartLine()),
+                'NamingHelper::isNames()',
+                $expr->getStartLine(),
+            );
+        }
+
         if ($helper === 'MethodCallNameAnalyzer' && $method === 'isThisMethodCall' && count($args) === 2) {
             $literal = $this->stringLiteral($args[1]->value, $expr->getStartLine());
 
