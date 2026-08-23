@@ -870,6 +870,24 @@ final class Transpiler
         };
     }
 
+    /**
+     * Why a `foreach` cannot be translated, naming what the rule wrote rather than what it resolved to.
+     *
+     * The message used to be "no iteration mapped for a {kind}", where the kind is this transpiler's internal
+     * name for whatever the loop subject turned out to be. `subtree` told a reader nothing: three rules refused
+     * that way and all three write `foreach (... ->stmts as ...)`, which is one nameable missing capability —
+     * iterating the statements of a declaration or a closure body — and not three unrelated gaps.
+     *
+     * `->stmts` is the whole cluster. Two more rules need it behind their own first obstacle
+     * (`NoReferenceRule` and `NewWithFollowingSettersCollector` read it across seven node kinds), so five rules
+     * sit behind it. Nothing here iterates a statement list yet: there is no `Support::` reader for one and no
+     * `ITERABLES` entry, so this is a capability to add rather than a row to fill.
+     */
+    private function noIterationRefusal(Expr $subject, string $kind): string
+    {
+        return sprintf('no iteration mapped for %s, which resolved to a %s', $this->describe($subject), $kind);
+    }
+
     /** A member's written name, or a placeholder — this is for a message, so a dynamic name must not throw. */
     private function memberLabel(Node|string $name): string
     {
@@ -2902,7 +2920,10 @@ PHP;
         }
 
         if (! isset(Vocabulary::ITERABLES[$subject['kind']])) {
-            throw new Refusal("no iteration mapped for a {$subject['kind']} in an inlined helper", $statement->getStartLine());
+            throw new Refusal(
+                $this->noIterationRefusal($statement->expr, $subject['kind']) . ', in an inlined helper',
+                $statement->getStartLine(),
+            );
         }
 
         $saved = $this->locals;
@@ -6486,7 +6507,7 @@ PHP;
         }
 
         if (! isset(Vocabulary::ITERABLES[$subject['kind']])) {
-            throw new Refusal("no iteration mapped for a {$subject['kind']}", $stmt->getStartLine());
+            throw new Refusal($this->noIterationRefusal($stmt->expr, $subject['kind']), $stmt->getStartLine());
         }
 
         $iterable = Vocabulary::ITERABLES[$subject['kind']];

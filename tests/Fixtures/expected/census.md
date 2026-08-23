@@ -101,7 +101,7 @@ REFUSE  NoOnlyNullReturnInRefactorRule
 EMIT    NoParentRepositoryRule
 EMIT    NoPropertyNodeAssignRule
 REFUSE  NoProtectedClassStmtRule  (the package registers it nowhere)
-        no iteration mapped for a subtree
+        no iteration mapped for ->stmts, which resolved to a subtree
 REFUSE  NoReferenceRule
         PhpParser\Node covers several node kinds, and this rule narrows to 8 of them with `instanceof`: AssignRef, Closure, ArrowFunction, Function_, ClassMethod, Arg, Foreach_, ArrayItem. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
 EMIT    NoRepositoryCallInDataFixtureRule
@@ -112,7 +112,7 @@ EMIT    NoRouteTrailingSlashPathRule
 REFUSE  NoRoutingPrefixRule
         no node predicate for instanceof PhpParser\Node\Identifier on a bytes
 REFUSE  NoServiceAutowireDuplicateRule
-        no iteration mapped for a subtree
+        no iteration mapped for ->stmts, which resolved to a subtree
 REFUSE  NoServiceSameNameSetClassRule
         no node predicate for instanceof PhpParser\Node\Expr\ClassConstFetch on a expr
 REFUSE  NoSetClassServiceDuplicationRule
@@ -164,7 +164,7 @@ REFUSE  SingleRequiredMethodRule
         assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
 EMIT    StringFileAbsolutePathExistsRule  (the package registers it nowhere)
 REFUSE  TaggedIteratorOverRepeatedServiceCallRule
-        no iteration mapped for a subtree
+        no iteration mapped for ->stmts, which resolved to a subtree
 EMIT    UppercaseConstantRule
 
 ## hihaho/phpstan-rules — 4 of 9 the package registers emit, 0 covered by the engine, 5 refuse, 11 it registers nowhere
@@ -209,7 +209,7 @@ REFUSE  ConstantTypeCoverageRule
 REFUSE  ConstantTypeDeclarationCollector
         no hook mapping for node type PHPStan\Node\ClassConstantsNode
 REFUSE  DeclareCollector
-        no iteration mapped for a hook-node
+        no iteration mapped for ->getNodes(), which resolved to a hook-node
 REFUSE  DeclareCoverageRule
         no aggregate mapped for the collector DeclareCollector
 EMIT    ParamTypeCoverageRule
