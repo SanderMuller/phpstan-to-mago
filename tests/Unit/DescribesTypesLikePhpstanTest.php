@@ -38,8 +38,12 @@ use Sandermuller\PhpstanToMago\Tests\Support\TypeDescriptions;
  * So `describe()` is refused because **no renderer over the atomics exists**, not because the model is missing
  * anything. A rule interpolating a type into its message cannot refuse mid-analysis, so shipping the lossy
  * rendering would be right on fifteen shapes and wrong on five — and building the renderer is work with a
- * corpus payoff of zero today, since 27 of the 28 rules that render a type belong to
- * `phpstan/phpstan-strict-rules`.
+ * corpus payoff of zero today. 27 of the 28 rules that render a type belong to
+ * `phpstan/phpstan-strict-rules`, whose `rules.neon` gates every one behind `conditionalTags` keyed on
+ * `%strictRules.allRules%`, and the measured consumer sets that to `false`. So they are switched off by
+ * choice rather than by accident, and the denominator moves when someone flips the flag rather than when
+ * anything here is fixed. The twenty-eighth is `type-coverage`'s `NarrowPrivateClassMethodParamTypeRule`,
+ * which is registered and blocked earlier.
  *
  * Pinned as a test rather than written down, because the interesting events are the SDK's rendering changing
  * and the atomics ceasing to carry a fact a renderer would need. A dated note in a file nobody runs would

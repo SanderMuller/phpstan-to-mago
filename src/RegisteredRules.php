@@ -20,6 +20,12 @@ use Nette\Neon\Neon;
  * and runs no analysis, with a bootstrap file that names every service registered under the rule tag. That
  * settles level resolution, includes, and extension discovery by letting PHPStan do them.
  *
+ * The strongest case for that measured so far: `phpstan/phpstan-strict-rules` is a direct dev dependency of a
+ * consumer, is listed in `extension-installer`'s generated config, and registers **none** of its 27 rules —
+ * because its `rules.neon` gates every one behind `conditionalTags` keyed on `%strictRules.allRules%`, and the
+ * project sets that to `false`. A config reader would have to evaluate a conditional tag against an
+ * interpolated parameter to get that right. Asking the container is the only route that does.
+ *
  * This says nothing about how a rule is configured. Generated plugins deliberately carry their own package's
  * defaults rather than a consuming project's overrides, so that a generated project stands alone; see
  * `PackageConfiguration`.

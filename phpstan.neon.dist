@@ -38,6 +38,9 @@ parameters:
         # loose is the fixture: an untyped `array` parameter and a docblock-only intersection are two of the
         # shapes being measured, so typing them would remove the rows.
         - tests/Fixtures/types
+        # Three classes and a probe over them. One extends a class nothing declares, and being
+        # unresolvable is the whole fixture: it is what makes the *cannot tell* state observable.
+        - tests/Fixtures/hierarchy
         # A configuration value object whose getters sit deliberately just outside the shape the transpiler
         # recognises — a loose `==`, a populated literal, an argument that decides the key. Being wrong in
         # those specific ways is the fixture: it is input the transpiler reads, and each near miss proves a
@@ -104,6 +107,7 @@ parameters:
                 - tests/Support/CoverageCorpus.php
                 - tests/Support/CoverageSetDiff.php
                 - tests/Support/TypeDescriptions.php
+                - tests/Support/HierarchyKnowledge.php
                 - tests/Support/FiresGate.php
                 - tests/Unit/AggregatesTypeCoverageTest.php
             reportUnmatched: false
