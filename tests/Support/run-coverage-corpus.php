@@ -116,8 +116,27 @@ $corpus = new CoverageCorpus(
 );
 
 $totals = $corpus->totals();
+$untracked = $corpus->untracked();
 
 printf("%s  (%d files)\n", $consumer, $corpus->files());
+
+// Printed before the numbers, because it decides whether they are comparable with anyone else's. An untracked
+// or ignored `.php` file inside an analysed path is part of the corpus for this machine and absent on the next,
+// and it moves both totals by the same amount — so the delta and the bound survive it while the absolute
+// figures do not. Without this line, honest drift and a real change in the divergence read identically.
+if ($untracked === null) {
+    printf("  corpus:   not a git working tree, so whether these files are reproducible elsewhere is unknown\n");
+} elseif ($untracked !== []) {
+    $listed = array_slice($untracked, 0, 10);
+    printf(
+        "  corpus:   %d analysed file(s) git does not track, so the two totals below are machine-specific.\n"
+        . "            The delta and the bound are not, because both are differences and these cancel.\n%s%s",
+        count($untracked),
+        implode('', array_map(static fn (string $path): string => '              ' . $path . "\n", $listed)),
+        count($untracked) > count($listed) ? "              ...\n" : '',
+    );
+}
+
 printf("  original: %d parameters\n", $totals['original']);
 printf("  port:     %d parameters\n", $totals['port']);
 $delta = $totals['port'] - $totals['original'];

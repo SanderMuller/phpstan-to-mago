@@ -84,6 +84,85 @@ final readonly class CoverageCorpus
         return $files;
     }
 
+    /**
+     * The analysed `.php` files git does not track, or null when the consumer is not a git working tree.
+     *
+     * The corpus is whatever the consumer's `paths:` contain *right now*, so one untracked file inside them
+     * silently redefines it: the same commit on two machines then produces different absolute totals. Measured
+     * rather than assumed — a run predicted at 2933 files / 13694 parameters came back at 2934 / 13695, and the
+     * whole +1 was one untracked `.config/pipeline.php` with a single typed parameter. The delta and the bound
+     * survived it, because both are differences and the extra file cancels; the absolute figures did not.
+     *
+     * Reported rather than excluded. The consumer's own PHPStan analyses these files, so leaving them out would
+     * measure a corpus neither tool sees — but a reader comparing two runs has to be told the corpus moved,
+     * because otherwise honest drift and a real change in the divergence look identical.
+     *
+     * Ignored files count too, not only untracked ones: PHPStan does not read `.gitignore`, so an ignored file
+     * inside an analysed path is just as invisible to a second machine.
+     *
+     * @return list<string>|null paths relative to the consumer root
+     */
+    public function untracked(): ?array
+    {
+        if (! is_dir($this->consumerRoot . '/.git')) {
+            return null;
+        }
+
+        $found = [];
+        foreach ([['--others', '--exclude-standard'], ['--others', '--ignored', '--exclude-standard']] as $flags) {
+            $listed = $this->git(['ls-files', ...$flags, '--', ...$this->paths]);
+            if ($listed === null) {
+                return null;
+            }
+
+            foreach (explode("\n", $listed) as $line) {
+                $line = trim($line);
+                if ($line === '' || ! str_ends_with($line, '.php')) {
+                    continue;
+                }
+
+                $absolute = $this->consumerRoot . '/' . $line;
+                foreach ($this->excludes as $excluded) {
+                    if ($absolute === $excluded || str_starts_with($absolute, rtrim($excluded, '/') . '/')) {
+                        continue 2;
+                    }
+                }
+
+                $found[$line] = true;
+            }
+        }
+
+        $paths = array_keys($found);
+        sort($paths);
+
+        return $paths;
+    }
+
+    /**
+     * One git command in the consumer, or null when git is unavailable or refuses.
+     *
+     * @param list<string> $arguments
+     */
+    private function git(array $arguments): ?string
+    {
+        $process = proc_open(
+            ['git', '-C', $this->consumerRoot, ...$arguments],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+            $this->consumerRoot,
+            Subprocess::environment(),
+        );
+        if (! is_resource($process)) {
+            return null;
+        }
+
+        $stdout = (string) stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        return proc_close($process) === 0 ? $stdout : null;
+    }
+
     private function write(): void
     {
         if (! is_dir($this->sandbox) && ! mkdir($this->sandbox, 0o777, true)) {
@@ -261,7 +340,7 @@ final readonly class CoverageCorpus
     /** @param list<string> $command */
     private function run(array $command, string $cwd): string
     {
-        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $cwd);
+        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $cwd, Subprocess::environment());
         if (! is_resource($process)) {
             throw new RuntimeException('Could not start ' . $command[0]);
         }
