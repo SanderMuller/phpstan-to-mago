@@ -2007,6 +2007,30 @@ PHP;
             ];
         }
 
+        // `$node->namespacedName` on a class-like declaration — the fully qualified name PHPStan's name
+        // resolution put there. `enclosingClassName()` reads it off the CST rather than out of metadata, so the
+        // case survives: measured as `App\Forms\ContactFormType`, which matters because both rules reaching
+        // this do a case-sensitive `str_ends_with` on it.
+        //
+        // PHPStan makes it null for an anonymous class, and both rules guard on that. The port never sees one:
+        // `AnonymousClass` is a node kind of its own in Mago and a class-like hook registers `Class`, `Enum`
+        // and `Interface`, so the declaration never arrives. Probed — a `Class` hook over a file holding one
+        // fired exactly once, for the named class.
+        if ($base['kind'] === 'hook-node' && $property === 'namespacedName'
+            && in_array($this->nodeKind, self::CLASS_LIKE_HOOK_KINDS, true)
+        ) {
+            if (self::$target !== 'php') {
+                throw new Refusal("a declaration's qualified name, which only the PHP target carries", $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'class-name',
+                'key' => $key,
+                'php' => 'Support::enclosingClassName($context, $node)',
+            ];
+        }
+
         // `$classLike->implements` — the interfaces the declaration writes. Only from a class-like hook: on
         // anything else the property is not this question.
         if ($base['kind'] === 'hook-node' && $property === 'implements'
@@ -7823,6 +7847,27 @@ PHP;
             return $this->alwaysHolds(
                 'a class-like found by a subtree search is always named: Mago models an anonymous class as its '
                 . 'own node kind, which a search for classes, interfaces, traits and enums never returns',
+            );
+        }
+
+        // `$node->namespacedName instanceof Name` on a class-like declaration. PHPStan makes that property
+        // null for an anonymous class, which is the only way the test can fail — and a class-like hook never
+        // receives one, for the reason the branch above already measured: Mago models an anonymous class as its
+        // own `AnonymousClass` kind, and the hook registers `Class`, `Enum` and `Interface`. Probed a second
+        // time from this side: a `Class` hook over a file holding an anonymous class fired once, for the named
+        // one.
+        //
+        // Folded rather than translated, because the translation was wrong. `instanceof Name` on a name *string*
+        // emitted `Support::isName()`, whose parameter is a `Part` — so the plugin would have died with a
+        // TypeError the first time the rule ran. Nothing caught it because neither corpus rule reaching this
+        // emits, which is luck rather than safety.
+        if ($wanted === Name::class && $subject['kind'] === 'class-name'
+            && in_array($this->nodeKind, self::CLASS_LIKE_HOOK_KINDS, true)
+        ) {
+            return $this->alwaysHolds(
+                'a class-like declaration reaching this hook always has a qualified name: PHPStan leaves it '
+                . 'null only for an anonymous class, and Mago gives those their own node kind, which this hook '
+                . 'does not register',
             );
         }
 

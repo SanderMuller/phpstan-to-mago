@@ -36,7 +36,7 @@ REFUSE  ForbiddenNodeRule
 EMIT    ForbiddenStaticClassConstFetchRule
 EMIT    ForeachCeptionRule
 REFUSE  FormTypeClassNameRule
-        no mapping for ->namespacedName on a hook-node
+        assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
 REFUSE  NewOverSettersRule
         no aggregate mapped for the collector NewWithFollowingSettersCollector
 REFUSE  NewWithFollowingSettersCollector
@@ -129,7 +129,7 @@ REFUSE  ParamNameToTypeConventionRule  (the package registers it nowhere)
 REFUSE  PhpUpgradeDowngradeRegisteredInSetRule
         assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
 REFUSE  PhpUpgradeImplementsMinPhpVersionInterfaceRule
-        no mapping for ->namespacedName on a hook-node
+        access path outside the vocabulary: Strings::match()
 REFUSE  PreferAutowireAttributeOverConfigParamRule
         not a resolvable list of strings
 REFUSE  PreferDirectIsNameRule
