@@ -309,7 +309,12 @@ final class TranspilesToPhpTest extends TestCase
         $strict = str_replace("['forbidden', 'alsoForbidden']", "['forbidden', 'alsoForbidden'], true", $loose);
         $this->assertNotSame($loose, $strict, 'The strict spelling was not substituted, so this compared a file with itself.');
 
-        $file = sys_get_temp_dir() . '/StrictNameSetRule.php';
+        // Its own directory, because the emitted class name comes from the file name: the strict spelling has
+        // to arrive as `StrictNameSetRule.php`, and a fixed path in a shared temp directory is what two
+        // concurrent suite runs on one machine would clobber.
+        $directory = sys_get_temp_dir() . '/phpstan-to-mago-strict-' . getmypid();
+        mkdir($directory, 0o777, true);
+        $file = $directory . '/StrictNameSetRule.php';
         file_put_contents($file, str_replace(['LooseNameSet', 'looseNameSet'], ['StrictNameSet', 'strictNameSet'], $strict));
 
         try {
@@ -323,6 +328,7 @@ final class TranspilesToPhpTest extends TestCase
             );
         } finally {
             unlink($file);
+            rmdir($directory);
         }
     }
 

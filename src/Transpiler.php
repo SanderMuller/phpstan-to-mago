@@ -1559,6 +1559,10 @@ PHP;
      * Shared by `in_array($x, [...], true)` and `isset(self::MAP[$x])`, which ask the same question of the
      * same kinds of subject. `$asked` names the construct so a refusal says which one could not be answered.
      *
+     * Every accepted kind has to be text. {@see refuseLooseUnlessItAgreesWithStrict} leans on that to
+     * translate the loose `in_array()` as this one: `true == 'abc'` and `null == ''` both hold where `===`
+     * does not, so a non-text kind added here would take the loose form with it and no test would say so.
+     *
      * @param list<string> $options
      */
     private function oneOf(Expr $subjectExpr, array $options, string $asked, int $line): string
