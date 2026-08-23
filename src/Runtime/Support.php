@@ -2279,10 +2279,16 @@ final class Support
     /**
      * The inferred type of any sub-expression, which is what `$scope->getType($expr)` gives a rule.
      *
-     * Available to a plain node hook, not only to an after-file one, as long as the plugin asks for
-     * `FileAnalysisRequirement::ExpressionTypes` — probed, because two rounds of this repository's own
-     * documentation said otherwise. Null when the node is not an expression: a class member has no type, and
-     * a rule asking one of those gets nothing rather than a wrong answer.
+     * Available to a plain node hook, not only to an after-file one — probed, because two rounds of this
+     * repository's own documentation said otherwise. Emitted plugins declare
+     * `FileAnalysisRequirement::ExpressionTypes` when they ask this, and that is where the requirement stands;
+     * what has actually been measured is narrower. For a sub-expression *of the plugin's own target node*, the
+     * types arrive whether or not the requirement is declared: removing it from the type-rendering probe left
+     * every row unchanged. Nothing has been measured about a position outside the target subtree, so the
+     * requirement stays declared rather than being dropped on one node kind's evidence.
+     *
+     * Null when the node is not an expression: a class member has no type, and a rule asking one of those gets
+     * nothing rather than a wrong answer.
      */
     public static function expressionType(NodeAnalysisContext $context, Part|Node|null $subject): ?Type
     {
