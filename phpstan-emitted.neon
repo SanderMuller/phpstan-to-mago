@@ -1,0 +1,40 @@
+# The generated plugins, analysed. `phpstan.neon.dist` excludes them on purpose — reformatting reviewed
+# output would change what the snapshot test compares against — and excluding them from *analysis* came
+# along with that for free. It was never the intent: the emitted plugin is what this project calls the
+# contract, and it was the only output nothing type-checked.
+#
+# What that cost: two snapshots pass a `string` where `Support::` declares a `Part`, and pass a `list<Part>`
+# where it declares a `list<string>`, on the same line. The existing gate checks that every helper an emitted
+# plugin calls exists and is public; it never checked that the arguments fit. A near-identical defect was
+# caught the same week by a mutation on a fixture that happened to exist — this catches the next one without
+# needing the fixture.
+#
+# Its own config rather than a path added to the main one, because the main one carries this project's house
+# style and generated code should not answer for it. Only the checks that say the emission is *wrong* are on.
+parameters:
+    tmpDir: .cache/phpstan-emitted
+
+    paths:
+        - tests/Fixtures/expected
+        - tests/Fixtures/aggregate/ParamTypeCoverageRule.php
+
+    level: 8
+
+    # Matched to phpstan.neon.dist. Without it, two guards in the snapshots read as constants — a phpdoc
+    # nullable taken as certain — and that is a disagreement between two configs rather than a defect in the
+    # emission.
+    treatPhpDocTypesAsCertain: false
+
+    # The generated file is the transpiler's business, not a contributor's. `type_coverage` and cognitive
+    # complexity are style rules about source somebody writes by hand, and five of the seventeen findings on
+    # the first run were exactly those — noise that would have buried the four that matter.
+    type_coverage:
+        return: 0
+        param: 0
+        property: 0
+        constant: 0
+        declare: 0
+
+    cognitive_complexity:
+        class: 500
+        function: 500

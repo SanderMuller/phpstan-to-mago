@@ -20,6 +20,7 @@ use Sandermuller\PhpstanToMago\Runtime\Support;
 final class ConstructedLookupRule implements Plugin, NodeAnalysisHook
 {
 
+    /** @var array<string, mixed> */
     private readonly array $built;
 
     public function __construct() {
@@ -58,7 +59,7 @@ final class ConstructedLookupRule implements Plugin, NodeAnalysisHook
             return;
         }
 
-        if (!(isset($this->built[Support::textOf(Support::nthExpression($context, $node, 0))]))) {
+        if (!(Support::lookupHas($this->built, Support::textOf(Support::nthExpression($context, $node, 0))))) {
             return;
         }
 

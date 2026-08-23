@@ -1588,6 +1588,11 @@ PHP;
         $derived = [];
         $assignments = [];
         foreach ($this->pure as $property => $expression) {
+            // Typed, because the generated plugin is analysed and a bare `array` fails at level 8. Every
+            // producer the vocabulary allows here builds a set keyed by the names the rule listed —
+            // `array_fill_keys([..], true)` and `array_flip([..])` — so the value type is what a membership
+            // test reads, and `isset()` is the only thing that ever reads it.
+            $derived[] = '    /** @var array<string, mixed> */';
             $derived[] = '    private readonly array $' . $property . ';';
             $assignments[] = '        $this->' . $property . ' = '
                 . (new Standard(['shortArraySyntax' => true]))->prettyPrintExpr($expression) . ';';
@@ -1859,7 +1864,7 @@ PHP;
 
             $property = $this->resolve($table, $expr->getStartLine());
 
-            return 'isset(' . $this->operand($property) . '[' . $this->stringValue($fetch->dim, $expr->getStartLine()) . '])';
+            return $this->backend->call('lookup_has', [$this->operand($property), $this->stringValue($fetch->dim, $expr->getStartLine())]);
         }
 
         // The same table reached through a parameter: a helper takes `$this->unsafeMethodsLookup` as an
@@ -1871,7 +1876,7 @@ PHP;
 
             $bound = $this->locals[$table->name];
             if (in_array($bound['kind'], ['lookup', 'config-list'], true)) {
-                return 'isset(' . $this->operand($bound) . '[' . $this->stringValue($fetch->dim, $expr->getStartLine()) . '])';
+                return $this->backend->call('lookup_has', [$this->operand($bound), $this->stringValue($fetch->dim, $expr->getStartLine())]);
             }
 
             throw new Refusal("isset() over a {$bound['kind']}", $expr->getStartLine());
@@ -6293,7 +6298,89 @@ PHP;
             );
         }
 
+        // An identical guard immediately before this one has already decided the same question, so emitting it
+        // again is dead weight in the contract. It happens when a helper forwards to the one that decides and
+        // both check their argument: `ForwardingHelperRule` emitted
+        // `Support::isName(Support::nthExpression($context, $node, 0))` twice in a row, and analysing the
+        // generated plugins is what surfaced it — PHPStan proved the second redundant.
+        //
+        // Only an *adjacent* duplicate, and only at the same indent and exit. Every condition the vocabulary
+        // emits is a pure `Support::` predicate over the node, so between two adjacent tests of the same text
+        // nothing can have changed; with a statement in between, something could have.
+        $previous = $this->lines === [] ? null : $this->lines[count($this->lines) - 1];
+        if ($previous instanceof Stm && $previous->kind === 'guard'
+            && $previous->indent === $this->indent
+            && ($previous->args['exit'] ?? null) === $exit
+        ) {
+            $already = $this->unwrap($previous->args['condition'] ?? '');
+            $here = $this->unwrap($bail);
+
+            if ($already === $here) {
+                return;
+            }
+
+            // And the same question as the *left* half of this one. A guard's condition is the *negated* test —
+            // `!(A)` exits unless A holds — so a chain of helpers each re-checking their argument emits `!(A)`
+            // and then `!(A && B)`. Past the first, A is true, so the second is `!(B)`; PHPStan reads the
+            // untouched form as a conjunct that cannot be false.
+            $establishedTest = $this->negatedTest($already);
+            $hereTest = $this->negatedTest($here);
+            if ($establishedTest !== null && $hereTest !== null
+                && str_starts_with($hereTest, $establishedTest . ' && ')
+            ) {
+                $bail = '!(' . substr($hereTest, strlen($establishedTest . ' && ')) . ')';
+            }
+        }
+
         $this->lines[] = new Stm('guard', ['condition' => $bail, 'exit' => $exit], $this->indent);
+    }
+
+    /**
+     * The test inside a guard's `!( .. )`, unwrapped, or null when the condition is not that shape.
+     *
+     * A guard exits when its condition holds, so the condition a rule's `if (! $x) { return []; }` becomes is
+     * the negation of what the rule is asking. Comparing two guards means comparing what they *ask*.
+     */
+    private function negatedTest(string $condition): ?string
+    {
+        $condition = trim($condition);
+        if (! str_starts_with($condition, '!(') || ! str_ends_with($condition, ')')) {
+            return null;
+        }
+
+        return $this->unwrap(substr($condition, 1));
+    }
+
+    /**
+     * A condition with every fully-wrapping parenthesis removed, for comparing one guard against another.
+     *
+     * `stripOuterParentheses()` is deliberately conservative about what it rewrites; this only ever feeds a
+     * comparison, so it can take them all off. Inlining leaves six layers on a chained predicate, and two
+     * conditions that differ only in those are the same question.
+     */
+    private function unwrap(string $condition): string
+    {
+        $condition = trim($condition);
+        while (str_starts_with($condition, '(') && str_ends_with($condition, ')')) {
+            $depth = 0;
+            $wraps = true;
+            foreach (str_split(substr($condition, 0, -1)) as $character) {
+                $depth += $character === '(' ? 1 : ($character === ')' ? -1 : 0);
+                if ($depth === 0) {
+                    $wraps = false;
+
+                    break;
+                }
+            }
+
+            if (! $wraps) {
+                break;
+            }
+
+            $condition = trim(substr($condition, 1, -1));
+        }
+
+        return $condition;
     }
 
     /**

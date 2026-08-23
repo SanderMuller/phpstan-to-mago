@@ -1308,10 +1308,32 @@ final class Support
     }
 
     /**
+     * Whether a lookup table the plugin built holds a key, where the key may not have resolved.
+     *
+     * `isset($table[$key])` with a null key is not an error in PHP — it reads `$table['']` — so the emitted
+     * form worked and analysing the generated plugins is what flagged it. Worth a helper rather than a cast:
+     * a rule's table is keyed by names it wrote, and `''` is a name it *could* write, so coercing an
+     * unresolved key into it would answer yes to a question nobody asked.
+     *
+     * @param array<string, mixed> $table
+     */
+    public static function lookupHas(array $table, ?string $key): bool
+    {
+        return $key !== null && isset($table[$key]);
+    }
+
+    /**
      * `array_any()` is PHP 8.4, and the generated rules should run on 8.1.
      *
-     * @param list<string> $items
-     * @param callable(string): bool $predicate
+     * Generic, because the body is: the emitter hands it a list of names from a configured list and a list of
+     * `Part`s from a declaration's items, and annotating one of those made every emission of the other a type
+     * error. Nothing noticed until the generated plugins were analysed — the gate that checks a helper *exists*
+     * cannot see what it is handed.
+     *
+     * @template TItem
+     *
+     * @param list<TItem> $items
+     * @param callable(TItem): bool $predicate
      */
     public static function anyOf(array $items, callable $predicate): bool
     {

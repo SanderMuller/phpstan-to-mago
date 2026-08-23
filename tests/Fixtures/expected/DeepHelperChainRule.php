@@ -52,7 +52,7 @@ final class DeepHelperChainRule implements Plugin, NodeAnalysisHook
             return;
         }
 
-        if (!((((((Support::isName(Support::nthExpression($context, $node, 0)) && Support::nameEquals(Support::nthExpression($context, $node, 0), 'forbidden')))))))) {
+        if (!(Support::nameEquals(Support::nthExpression($context, $node, 0), 'forbidden'))) {
             return;
         }
 

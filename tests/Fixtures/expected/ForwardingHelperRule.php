@@ -52,10 +52,6 @@ final class ForwardingHelperRule implements Plugin, NodeAnalysisHook
             return;
         }
 
-        if (!(Support::isName(Support::nthExpression($context, $node, 0)))) {
-            return;
-        }
-
         if (!(Support::nameEquals(Support::nthExpression($context, $node, 0), 'forbidden'))) {
             return;
         }
