@@ -1978,7 +1978,7 @@ PHP;
      *
      * @return array{rust: string, kind: string, key?: string, php?: string}|null
      */
-    private function resolvePropertyDeclaration(array $base, string $property, string $key): ?array
+    private function resolvePropertyDeclaration(array $base, string $property, string $key, int $line): ?array
     {
         if ($base['kind'] === 'property-item' && $property === 'name') {
             return [
@@ -1986,6 +1986,23 @@ PHP;
                 'kind' => 'bytes',
                 'key' => $key,
                 'php' => $this->backend->call('property_item_name', [$this->operand($base)]),
+            ];
+        }
+
+        // `$classLike->implements` — the interfaces the declaration writes. Only from a class-like hook: on
+        // anything else the property is not this question.
+        if ($base['kind'] === 'hook-node' && $property === 'implements'
+            && in_array($this->nodeKind, self::CLASS_LIKE_HOOK_KINDS, true)
+        ) {
+            if (self::$target !== 'php') {
+                throw new Refusal('the interfaces a declaration writes, which only the PHP target carries', $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'class-names',
+                'key' => $key,
+                'php' => 'Support::directInterfaceNames($context, $node)',
             ];
         }
 
@@ -9847,7 +9864,7 @@ PHP;
 
             // `$node->name->name` on a Name node is its text, the same thing `->toString()` yields. Both
             // spellings appear in real rules, so both resolve to the name itself rather than a new kind.
-            $declared = $this->resolvePropertyDeclaration($base, $property, $key);
+            $declared = $this->resolvePropertyDeclaration($base, $property, $key, $line);
             if ($declared !== null) {
                 return $declared;
             }

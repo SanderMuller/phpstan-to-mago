@@ -495,6 +495,31 @@ final class Support
     }
 
     /**
+     * The interfaces the enclosing class-like's declaration writes, which is `$classLike->implements`.
+     *
+     * `$directParentInterfaces`, not `$parentInterfaces`. Measured, because the two differ on exactly the case
+     * these rules turn on: a class that implements nothing itself and extends one that implements `Target`
+     * has an empty direct list and a populated transitive one. PHPStan reads the `implements` clause off the
+     * declaration, so the direct list is the match and the transitive one would have made
+     * `$classLike->implements !== []` true for a class whose declaration says nothing.
+     *
+     * Lowercased by the metadata, like every other name it holds.
+     *
+     * @return list<string>
+     */
+    public static function directInterfaceNames(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        $className = self::enclosingClassName($context, $subject);
+        if ($className === null) {
+            return [];
+        }
+
+        $metadata = $context->codebase->getClassLike($className);
+
+        return $metadata instanceof ClassLikeMetadata ? array_values(array_unique($metadata->directParentInterfaces)) : [];
+    }
+
+    /**
      * Every trait the enclosing declaration picks up, as metadata spells them.
      *
      * `usedTraits` is already transitive and already inherited — probed on a trait using a trait, and on a

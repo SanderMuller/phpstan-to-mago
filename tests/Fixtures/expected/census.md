@@ -59,7 +59,7 @@ REFUSE  NoConstructorOverrideRule
 REFUSE  NoControllerMethodInjectionRule
         getParams() of a method-decl rather than of the declaration under analysis
 REFUSE  NoDoctrineListenerWithoutContractRule
-        no mapping for ->implements on a hook-node
+        a foreach in an inlined helper whose body is not a guard chain: Stmt_If
 REFUSE  NoDocumentMockingRule
         access path outside the vocabulary: ->getConstantStrings()
 EMIT    NoDoubleConsecutiveTestMockRule
@@ -90,7 +90,7 @@ REFUSE  NoJustPropertyAssignRule
 REFUSE  NoLeadingBackslashInNameRule
         list contains something other than a string literal
 REFUSE  NoListenerWithoutContractRule
-        no mapping for ->implements on a hook-node
+        access path outside the vocabulary: Scalar_String
 ENGINE  NoMissingVariableDimFetchRule  (mago reports undefined-variable)
 REFUSE  NoMissnamedDocTagRule
         assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
