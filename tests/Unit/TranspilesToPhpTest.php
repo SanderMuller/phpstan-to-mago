@@ -264,6 +264,68 @@ final class TranspilesToPhpTest extends TestCase
         $this->transpile(self::RULES . '/AnchorEscapesLoopRule.php');
     }
 
+    /**
+     * A loose `in_array()` is translated only where `==` and `===` cannot disagree.
+     *
+     * Two numeric strings compare numerically since PHP 8, so `'0' == '0.0'` holds where `===` does not. The
+     * haystack decides it, and a haystack of method names would never show the difference — which is why the
+     * fixture carries the numeric entry no real rule would.
+     */
+    public function test_refuses_a_loose_membership_test_a_strict_one_would_answer_differently(): void
+    {
+        $this->expectException(Refusal::class);
+        $this->expectExceptionMessage("numeric string '0'");
+
+        $this->transpile(self::RULES . '/LooseNumericNameSetRule.php');
+    }
+
+    /**
+     * The other way the two forms stop agreeing: a haystack the plugin canonicalises.
+     *
+     * A strict test against names metadata holds is translated as a case-folded comparison, because metadata
+     * lowercases what it holds and the needle keeps whatever spelling its author wrote. `==` between two
+     * strings is already case-sensitive, so carrying the fold over to the loose form would report where the
+     * rule stays silent.
+     */
+    public function test_refuses_a_loose_membership_test_over_names_it_would_case_fold(): void
+    {
+        $this->expectException(Refusal::class);
+        $this->expectExceptionMessage('names the plugin canonicalises');
+
+        $this->transpile(self::RULES . '/LooseTraitNameSetRule.php');
+    }
+
+    /**
+     * The accepted half, asserted as the equivalence itself rather than as "it emitted".
+     *
+     * Adding the strict third argument must not change one byte of the emission. That is the whole claim: the
+     * loose form is translated as the strict one, so the two spellings have to produce the same plugin.
+     */
+    public function test_a_loose_membership_test_emits_what_the_strict_spelling_emits(): void
+    {
+        $loose = file_get_contents(self::RULES . '/LooseNameSetRule.php');
+        $this->assertIsString($loose);
+
+        $strict = str_replace("['forbidden', 'alsoForbidden']", "['forbidden', 'alsoForbidden'], true", $loose);
+        $this->assertNotSame($loose, $strict, 'The strict spelling was not substituted, so this compared a file with itself.');
+
+        $file = sys_get_temp_dir() . '/StrictNameSetRule.php';
+        file_put_contents($file, str_replace(['LooseNameSet', 'looseNameSet'], ['StrictNameSet', 'strictNameSet'], $strict));
+
+        try {
+            $this->assertSame(
+                str_replace(
+                    ['LooseNameSet', 'loose-name-set', 'looseNameSet'],
+                    ['StrictNameSet', 'strict-name-set', 'strictNameSet'],
+                    $this->transpile(self::RULES . '/LooseNameSetRule.php'),
+                ),
+                $this->transpile($file),
+            );
+        } finally {
+            unlink($file);
+        }
+    }
+
     public function test_refuses_a_construct_outside_the_vocabulary(): void
     {
         $this->expectException(Refusal::class);

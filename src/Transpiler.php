@@ -1504,6 +1504,56 @@ PHP;
     }
 
     /**
+     * `in_array($needle, $haystack)` as one set-membership test, strict or loose.
+     *
+     * @param array<Arg> $args
+     */
+    private function inArrayPredicate(array $args, int $line): string
+    {
+        // Anything other than a literal `true` is treated as loose, including a flag the rule computes:
+        // {@see refuseLooseUnlessItAgreesWithStrict} proves the two forms answer the same question, so a
+        // flag whose value is unknown does not change the answer either.
+        $strict = count($args) >= 3 && $args[2]->value instanceof ConstFetch
+            && strtolower($args[2]->value->name->toString()) === 'true';
+
+        // A list the plugin computes at analysis time rather than one written in the rule: the traits a
+        // declaration uses, for instance. Compared case-insensitively, because metadata lowercases the names
+        // it holds while the needle keeps whatever spelling its author wrote — a strict comparison between
+        // the two is the silent-miss shape, and folding case is what PHPStan gets by canonicalising both
+        // sides through reflection.
+        // Only where the haystack is not one of the written forms {@see stringList} reads. Resolving those
+        // first refused a literal array by its node kind, which cost an emitting rule.
+        $written = $args[1]->value instanceof Array_ || $args[1]->value instanceof ClassConstFetch;
+        // Only a list of *names* metadata produced. Those arrive lowercased, so folding case is what the
+        // original's strict comparison against canonical names asks. A list the rule built itself holds
+        // whatever it put there, and folding case for that would be wider than the `true` it was given.
+        $haystack = $written ? null : $this->resolve($args[1]->value, $line);
+        if ($haystack !== null && $this->holdsMetadataNames($haystack)) {
+            // The fold above belongs to the strict form: `==` between two strings is already case-sensitive,
+            // so carrying it over would report where the rule stays silent.
+            if (! $strict) {
+                throw new Refusal('in_array() without strict comparison, over names the plugin canonicalises', $line);
+            }
+
+            if (self::$target !== 'php') {
+                throw new Refusal('in_array() over a computed list, which only the PHP target carries', $line);
+            }
+
+            return $this->backend->call('names_contain', [
+                $this->operand($haystack),
+                $this->nameText($this->resolve($args[0]->value, $line), $line),
+            ]);
+        }
+
+        $options = $this->stringList($args[1]->value, $line);
+        if (! $strict) {
+            $this->refuseLooseUnlessItAgreesWithStrict($options, $line);
+        }
+
+        return $this->oneOf($args[0]->value, $options, 'in_array()', $line);
+    }
+
+    /**
      * `<subject> is one of <options>`, dispatched on what the subject is.
      *
      * Shared by `in_array($x, [...], true)` and `isset(self::MAP[$x])`, which ask the same question of the
@@ -1524,6 +1574,36 @@ PHP;
             'bytes', 'class-name' => $this->backend->call('bytes_is_one_of', [$this->operand($subject), self::$target === 'php' ? $list : '&' . $list]),
             default => throw new Refusal("{$asked} over a {$subject['kind']}", $line),
         };
+    }
+
+    /**
+     * A loose `in_array()` is translated only where `==` and `===` cannot disagree.
+     *
+     * Rules do write the loose form, and treating it as the strict one would be an approximation — except
+     * where the two provably answer the same question. Three things have to hold, and only the last is
+     * checked here:
+     *
+     * - Every element is a written string literal. {@see stringList} accepts nothing else.
+     * - The needle is a name or text. This matters on its own: `true == 'abc'` and `null == ''` both hold
+     *   where `===` does not, and neither needle is a string. {@see oneOf} accepts only name and text kinds
+     *   and refuses the rest by kind, which is what carries it.
+     * - None of the elements is numeric. Since PHP 8 two numeric strings compare numerically, so
+     *   `'0' == '0.0'` holds where `===` does not.
+     *
+     * Where it does not hold the refusal names the element, not the construct, because the construct is not
+     * the obstacle. `PreferDirectIsNameRule` is the case that has to stay refused for a different reason
+     * again: it compares an `Identifier` object against strings and genuinely depends on `==` calling
+     * `__toString()`, which is why the needle half is not merely a formality.
+     *
+     * @param list<string> $options
+     */
+    private function refuseLooseUnlessItAgreesWithStrict(array $options, int $line): void
+    {
+        foreach ($options as $option) {
+            if (is_numeric($option)) {
+                throw new Refusal("in_array() without strict comparison, against the numeric string '{$option}'", $line);
+            }
+        }
     }
 
     /**
@@ -8089,39 +8169,7 @@ PHP;
         }
 
         if ($name === 'in_array' && count($args) >= 2) {
-            if (count($args) < 3 || ! $args[2]->value instanceof ConstFetch
-                || strtolower($args[2]->value->name->toString()) !== 'true'
-            ) {
-                // Loose in_array() compares with ==, which is not what any of these rules mean.
-                throw new Refusal('in_array() without strict comparison', $expr->getStartLine());
-            }
-
-            // A list the plugin computes at analysis time rather than one written in the rule: the traits a
-            // declaration uses, for instance. Compared case-insensitively, because metadata lowercases the names
-            // it holds while the needle keeps whatever spelling its author wrote — a strict comparison between
-            // the two is the silent-miss shape, and folding case is what PHPStan gets by canonicalising both
-            // sides through reflection.
-            // Only where the haystack is not one of the written forms {@see stringList} reads. Resolving those
-            // first refused a literal array by its node kind, which cost an emitting rule.
-            $written = $args[1]->value instanceof Array_ || $args[1]->value instanceof ClassConstFetch;
-            // Only a list of *names* metadata produced. Those arrive lowercased, so folding case is what the
-            // original's strict comparison against canonical names asks. A list the rule built itself holds
-            // whatever it put there, and folding case for that would be wider than the `true` it was given.
-            $haystack = $written ? null : $this->resolve($args[1]->value, $expr->getStartLine());
-            if ($haystack !== null && $this->holdsMetadataNames($haystack)) {
-                if (self::$target !== 'php') {
-                    throw new Refusal('in_array() over a computed list, which only the PHP target carries', $expr->getStartLine());
-                }
-
-                return $this->backend->call('names_contain', [
-                    $this->operand($haystack),
-                    $this->nameText($this->resolve($args[0]->value, $expr->getStartLine()), $expr->getStartLine()),
-                ]);
-            }
-
-            $options = $this->stringList($args[1]->value, $expr->getStartLine());
-
-            return $this->oneOf($args[0]->value, $options, 'in_array()', $expr->getStartLine());
+            return $this->inArrayPredicate($args, $expr->getStartLine());
         }
 
         if ($name === 'file_exists' && count($args) === 1) {

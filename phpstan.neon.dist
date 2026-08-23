@@ -42,6 +42,12 @@ parameters:
         # Calls a helper nothing in its hierarchy declares. Being invalid is the whole fixture: it proves
         # the transpiler refuses such a call by name instead of translating it into something plausible.
         - tests/Fixtures/Rules/MissingHelperRule.php
+        # Three fixtures written with the loose `in_array()`, which this project's own strict rules forbid.
+        # Using the loose form is the whole fixture: one proves the transpiler translates it where `==` and
+        # `===` provably agree, and the other two prove it refuses where they do not.
+        - tests/Fixtures/Rules/LooseNameSetRule.php
+        - tests/Fixtures/Rules/LooseNumericNameSetRule.php
+        - tests/Fixtures/Rules/LooseTraitNameSetRule.php
         # Anchors a finding on a loop item and returns it from outside the loop. Being wrong is the fixture: it
         # proves the transpiler refuses that instead of emitting a report on whatever PHP left in the variable.
         - tests/Fixtures/Rules/AnchorEscapesLoopRule.php
