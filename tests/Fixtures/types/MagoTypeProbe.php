@@ -10,11 +10,20 @@ use Mago\Sdk\Analyzer\NodeAnalysisHook;
 use Mago\Sdk\Analyzer\Plugin;
 use Mago\Sdk\Analyzer\PluginDefinition;
 use Mago\Sdk\Analyzer\PluginRegistry;
+use Mago\Sdk\Analyzer\Type;
+use Mago\Sdk\Analyzer\Type\ListType;
+use Mago\Sdk\Analyzer\Type\NamedObjectType;
+use Mago\Sdk\Analyzer\Type\ScalarType;
 use Mago\Sdk\Syntax\NodeKind;
 use Sandermuller\PhpstanToMago\Runtime\Support;
 
 /**
  * The same rows, from the only window a plugin has onto an inferred type: `Type::__toString()`.
+ *
+ * Writes two things per shape: what `Type::__toString()` renders, and what `Type::$atomicTypes` still holds of
+ * whatever that rendering dropped. The second column is the point — the rendering being lossy says nothing
+ * about the SDK withholding the information, and reading only the first column is how this repository came to
+ * publish that it did.
  *
  * `ExpressionTypes` is declared because every emitted plugin that asks a sub-expression's type declares it. It
  * is not what makes the types arrive here, though: removing it leaves every row unchanged. That is a narrower
@@ -45,6 +54,35 @@ final class MagoTypeProbe implements NodeAnalysisHook, Plugin
         return [FileAnalysisRequirement::TargetSubtree, FileAnalysisRequirement::SourceText, FileAnalysisRequirement::ExpressionTypes];
     }
 
+    /**
+     * What the atomics still carry of what the rendering dropped, as one `key=value` line.
+     *
+     * Read through the public API rather than by walking every property with reflection: an exploratory dump
+     * crashed on an enum-typed field and would fail on any unrelated SDK addition, and what is being pinned is
+     * four specific facts rather than the shape of the whole model.
+     */
+    private static function recoverable(Type $type): string
+    {
+        $facts = ['atomics=' . count($type->atomicTypes)];
+        foreach ($type->atomicTypes as $atomic) {
+            if ($atomic instanceof NamedObjectType && $atomic->intersections !== null) {
+                foreach ($atomic->intersections as $member) {
+                    $facts[] = 'intersection=' . ($member instanceof NamedObjectType ? $member->name : (string) $member);
+                }
+            }
+
+            if ($atomic instanceof ScalarType && is_bool($atomic->refinement)) {
+                $facts[] = 'refinement=' . ($atomic->refinement ? 'true' : 'false');
+            }
+
+            if ($atomic instanceof ListType) {
+                $facts[] = 'element=' . $atomic->elementType;
+            }
+        }
+
+        return implode(' ', $facts);
+    }
+
     public function analyze(NodeAnalysisContext $context): void
     {
         $node = $context->node;
@@ -62,7 +100,8 @@ final class MagoTypeProbe implements NodeAnalysisHook, Plugin
 
         file_put_contents(
             (string) getenv('PROBE_OUT'),
-            $callee . "\t" . ($type === null ? '<no type>' : (string) $type) . "\n",
+            $callee . "\t" . ($type === null ? '<no type>' : (string) $type)
+                . "\t" . ($type === null ? '-' : self::recoverable($type)) . "\n",
             FILE_APPEND,
         );
     }

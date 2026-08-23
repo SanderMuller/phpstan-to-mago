@@ -2303,6 +2303,10 @@ final class Support
      * PHPStan spells this `ConstantStringType` and reads it with `->getValue()`. Mago's `Type` *renders* as
      * plain `string` either way — the literal is in the structure, on the scalar's refinement — so reading the
      * rendering would answer "not a constant" for every string in the corpus. Probed, not read.
+     *
+     * The same gap between the rendering and the structure runs through every shape, not only strings:
+     * `DescribesTypesLikePhpstanTest` measures four more, and
+     * `Type::$atomicTypes` carries all four.
      */
     public static function constantStringOf(?Type $type): ?string
     {

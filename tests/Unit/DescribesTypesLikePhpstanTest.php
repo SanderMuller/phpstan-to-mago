@@ -18,73 +18,76 @@ use Sandermuller\PhpstanToMago\Tests\Support\TypeDescriptions;
  * this waiting behind whatever stops them first, which is why the boundary is worth measuring rather than
  * waiting for.
  *
- * The refusal used to name the method, which read as one table row away. It is not: a plugin's only window
- * onto a type is `Mago\Sdk\Analyzer\Type::__toString()`, and this measures what that window loses.
- *
- * Fifteen of twenty shapes render identically. The five that do not are four causes, and only the first is
- * formatting:
+ * Fifteen of twenty shapes render identically through `Mago\Sdk\Analyzer\Type::__toString()`. The five that do
+ * not are four causes, and only the first is formatting:
  *
  * - **member order for a nullable scalar** — `int|null` against `null|int`. Narrow: a nullable *class* agrees,
  *   and three of them sorting either side of the word `null` all agree, so it is not name-dependent;
- * - **intersections** keep only their first member;
+ * - **intersections** render only their first member;
  * - a **literal `true`** renders as `bool`, where PHPStan keeps the literal at this verbosity;
- * - a **generic** loses its parameters.
+ * - a **generic** renders without its parameters.
  *
- * The last three are information the string does not carry. `Type` exposes `getLiteralInt()`,
- * `getLiteralString()`, `getLiteralClassString()`, `getLiteralBool()`, `encode()`, `isRequestReference()` and
- * `__toString()` — there is no accessor for the atomic types, so there is nothing else to read.
+ * **None of that is information the SDK withholds, and an earlier version of this file said it was.**
+ * `Type::$atomicTypes` is a public readonly property, and every one of the four divergences is recoverable
+ * from it — measured, third column: the intersection's second member is on
+ * `NamedObjectType::$intersections`, the literal is on `ScalarType::$refinement`, the element type is on
+ * `ListType::$elementType`, and the reversed union has both its atomics. The claim was reached by grepping
+ * `public function` and missing a promoted property, which is the same defect as a refusal naming the wrong
+ * obstacle: it sent a reader toward filing an upstream request for an API that ships today.
  *
- * So `describe()` is refused, and this is why: a rule interpolating a type into its message cannot refuse
- * mid-analysis. It would print a right message on fifteen shapes and a wrong one on five, which is the
- * plausible-but-wrong rule this project exists to avoid emitting.
+ * So `describe()` is refused because **no renderer over the atomics exists**, not because the model is missing
+ * anything. A rule interpolating a type into its message cannot refuse mid-analysis, so shipping the lossy
+ * rendering would be right on fifteen shapes and wrong on five — and building the renderer is work with a
+ * corpus payoff of zero today, since 27 of the 28 rules that render a type belong to
+ * `phpstan/phpstan-strict-rules`.
  *
- * Pinned as a test rather than written down, because the interesting event is the SDK *changing*. A row that
- * starts matching is the signal to revisit the refusal, and a dated note in a file nobody runs would not give
- * it.
+ * Pinned as a test rather than written down, because the interesting events are the SDK's rendering changing
+ * and the atomics ceasing to carry a fact a renderer would need. A dated note in a file nobody runs would
+ * catch neither.
  */
 final class DescribesTypesLikePhpstanTest extends TestCase
 {
-    /** @var array<string, array{string, string}>|null */
+    /** @var array<string, array{string, string, string}>|null */
     private static ?array $rendered = null;
 
     /**
      * Every probed shape, with what each tool renders it as.
      *
-     * @return iterable<string, array{string, string, string}>
+     * @return iterable<string, array{string, string, string, string}>
      */
     public static function shapes(): iterable
     {
         $rows = [
             // Every scalar, and every class-like name, agrees. This is the part a port could rely on.
-            'int' => ['probe_int', 'int', 'int'],
-            'float' => ['probe_float', 'float', 'float'],
-            'string' => ['probe_string', 'string', 'string'],
-            'bool' => ['probe_bool', 'bool', 'bool'],
-            'array' => ['probe_array', 'array', 'array'],
-            'mixed' => ['probe_mixed', 'mixed', 'mixed'],
-            'null' => ['probe_null', 'null', 'null'],
-            'a class' => ['probe_class', 'TypeShapes\\Thing', 'TypeShapes\\Thing'],
-            'an enum' => ['probe_enum', 'TypeShapes\\Suit', 'TypeShapes\\Suit'],
-            'a union of scalars' => ['probe_union', 'int|string', 'int|string'],
+            'int' => ['probe_int', 'int', 'int', 'atomics=1'],
+            'float' => ['probe_float', 'float', 'float', 'atomics=1'],
+            'string' => ['probe_string', 'string', 'string', 'atomics=1'],
+            'bool' => ['probe_bool', 'bool', 'bool', 'atomics=1'],
+            'array' => ['probe_array', 'array', 'array', 'atomics=1'],
+            'mixed' => ['probe_mixed', 'mixed', 'mixed', 'atomics=1'],
+            'null' => ['probe_null', 'null', 'null', 'atomics=1'],
+            'a class' => ['probe_class', 'TypeShapes\\Thing', 'TypeShapes\\Thing', 'atomics=1'],
+            'an enum' => ['probe_enum', 'TypeShapes\\Suit', 'TypeShapes\\Suit', 'atomics=1'],
+            'a union of scalars' => ['probe_union', 'int|string', 'int|string', 'atomics=2'],
             // `typeOnly()` collapses a literal string and a literal int, and so does Mago — so these agree for
             // a different reason than they look like they do.
-            'a literal string' => ['probe_literal_string', 'string', 'string'],
-            'a literal int' => ['probe_literal_int', 'int', 'int'],
+            'a literal string' => ['probe_literal_string', 'string', 'string', 'atomics=1'],
+            'a literal int' => ['probe_literal_int', 'int', 'int', 'atomics=1'],
             // A nullable *class* agrees, and the three of them are here to say the ordering below is not about
             // the name: `Aaa`, `Thing` and `Zzz` sort either side of the word `null` and all three put the
             // class first, the way PHPStan does.
-            'a nullable class' => ['probe_nullable', 'TypeShapes\\Thing|null', 'TypeShapes\\Thing|null'],
-            'a nullable class sorting before null' => ['probe_nullable_early', 'TypeShapes\\Aaa|null', 'TypeShapes\\Aaa|null'],
-            'a nullable class sorting after null' => ['probe_nullable_late', 'TypeShapes\\Zzz|null', 'TypeShapes\\Zzz|null'],
+            'a nullable class' => ['probe_nullable', 'TypeShapes\\Thing|null', 'TypeShapes\\Thing|null', 'atomics=2'],
+            'a nullable class sorting before null' => ['probe_nullable_early', 'TypeShapes\\Aaa|null', 'TypeShapes\\Aaa|null', 'atomics=2'],
+            'a nullable class sorting after null' => ['probe_nullable_late', 'TypeShapes\\Zzz|null', 'TypeShapes\\Zzz|null', 'atomics=2'],
 
             // And the five that do not agree.
-            'a nullable scalar' => ['probe_nullable_scalar', 'int|null', 'null|int'],
-            'a docblock intersection' => ['probe_intersection', 'TypeShapes\\Alpha&TypeShapes\\Beta', 'TypeShapes\\Alpha'],
+            'a nullable scalar' => ['probe_nullable_scalar', 'int|null', 'null|int', 'atomics=2'],
+            'a docblock intersection' => ['probe_intersection', 'TypeShapes\\Alpha&TypeShapes\\Beta', 'TypeShapes\\Alpha', 'atomics=1 intersection=TypeShapes\\Beta'],
             // The control that makes the row above mean something: written as a real PHP intersection rather
             // than in a docblock it renders the same way, so Mago is not merely ignoring the docblock.
-            'a native intersection' => ['probe_native_intersection', 'TypeShapes\\Alpha&TypeShapes\\Beta', 'TypeShapes\\Alpha'],
-            'a literal true' => ['probe_literal_bool', 'true', 'bool'],
-            'a generic list' => ['probe_call', 'list<TypeShapes\\Thing>', 'list'],
+            'a native intersection' => ['probe_native_intersection', 'TypeShapes\\Alpha&TypeShapes\\Beta', 'TypeShapes\\Alpha', 'atomics=1 intersection=TypeShapes\\Beta'],
+            'a literal true' => ['probe_literal_bool', 'true', 'bool', 'atomics=1 refinement=true'],
+            'a generic list' => ['probe_call', 'list<TypeShapes\\Thing>', 'list', 'atomics=1 element=TypeShapes\\Thing'],
         ];
 
         foreach ($rows as $label => $row) {
@@ -93,7 +96,7 @@ final class DescribesTypesLikePhpstanTest extends TestCase
     }
 
     #[DataProvider('shapes')]
-    public function test_renders_the_shape_the_way_each_tool_does(string $callee, string $phpstan, string $mago): void
+    public function test_renders_the_shape_the_way_each_tool_does(string $callee, string $phpstan, string $mago, string $recoverable): void
     {
         $rendered = $this->rendered();
 
@@ -103,6 +106,11 @@ final class DescribesTypesLikePhpstanTest extends TestCase
         // what the other has to match — the same discipline the parameter controls hold to.
         $this->assertSame($phpstan, $rendered[$callee][0], "PHPStan no longer renders {$callee} as {$phpstan}.");
         $this->assertSame($mago, $rendered[$callee][1], "Mago no longer renders {$callee} as {$mago}. If it now matches PHPStan, the describe() refusal can be revisited.");
+
+        // And what the atomics carry, which is what says the refusal is about a missing renderer rather than a
+        // missing model. A row losing a fact here would make the renderer unbuildable for that shape, which is
+        // a different and much worse finding than the rendering changing.
+        $this->assertSame($recoverable, $rendered[$callee][2], "Mago's atomics no longer carry what its rendering of {$callee} drops.");
     }
 
     /**
@@ -123,7 +131,7 @@ final class DescribesTypesLikePhpstanTest extends TestCase
     }
 
     /**
-     * @return array<string, array{string, string}>
+     * @return array<string, array{string, string, string}>
      */
     private function rendered(): array
     {

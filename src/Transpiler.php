@@ -10119,20 +10119,20 @@ PHP;
         }
 
         // Named rather than left to the generic refusal below, because the generic one reads as a missing table
-        // row and this is a measured boundary. 28 rules across the installed packages render a type into their
-        // message; one reaches this refusal today and the rest have it waiting behind whatever stops them
-        // first, so the count is what the boundary is worth rather than what it currently blocks.
+        // row and this is measured. 28 rules across the installed packages render a type into their message;
+        // one reaches this refusal today and the rest have it waiting behind whatever stops them first, so the
+        // count is what the work would be worth rather than what it currently blocks.
         if ($expr instanceof MethodCall && $this->memberName($expr->name, $line) === 'describe') {
             throw new Refusal(
-                "a type rendered as text, which a plugin cannot reproduce. A plugin's only window onto an "
-                . "inferred type is Mago's Type::__toString(), which agrees with "
-                . 'describe(VerbosityLevel::typeOnly()) on 15 of 20 measured shapes and loses the others: an '
-                . 'intersection keeps only its first member, a literal true renders as bool, a generic loses '
-                . 'its parameters, and a nullable scalar reverses its members. There is no accessor for the '
-                . 'atomic types, so there is nothing else to read. A rule interpolating a type into its message '
-                . 'cannot refuse mid-analysis, so it would be right on 15 shapes and wrong on 5. '
-                . 'DescribesTypesLikePhpstanTest holds the table, and a row that starts matching is the signal '
-                . 'to revisit this',
+                'a type rendered as text, which nothing here renders yet. '
+                . "Mago's Type::__toString() agrees with describe(VerbosityLevel::typeOnly()) on 15 of 20 "
+                . 'measured shapes: an intersection renders only its first member, a literal true renders as '
+                . 'bool, a generic renders without its parameters, and a nullable scalar reverses its members. '
+                . 'None of that is missing from the model — Type::$atomicTypes is public, and each of those four '
+                . 'facts is measured to still be on it — so a renderer over the atomics is buildable and is what '
+                . 'this refusal is waiting for. A rule interpolating a type cannot refuse mid-analysis, so '
+                . 'shipping the rendering as it stands would be right on 15 shapes and wrong on 5. '
+                . 'DescribesTypesLikePhpstanTest holds both columns',
                 $line,
             );
         }

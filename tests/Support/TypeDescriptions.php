@@ -21,9 +21,12 @@ final readonly class TypeDescriptions
     public function __construct(private string $fixture, private string $repositoryRoot) {}
 
     /**
-     * `callee => [phpstan, mago]` for every probed shape.
+     * `callee => [phpstan, mago, recoverable]` for every probed shape.
      *
-     * @return array<string, array{string, string}>
+     * The third column is what Mago's atomics still hold of whatever its rendering dropped, and it is empty on
+     * the PHPStan side because PHPStan's rendering drops nothing being measured here.
+     *
+     * @return array<string, array{string, string, string}>
      */
     public function rendered(): array
     {
@@ -41,11 +44,13 @@ final readonly class TypeDescriptions
 
         $pairs = [];
         foreach ($phpstan as $callee => $described) {
-            $pairs[$callee] = [$described, $mago[$callee] ?? '<not reached>'];
+            [$rendered, $recoverable] = array_pad(explode("\t", $mago[$callee] ?? '<not reached>', 2), 2, '');
+            $pairs[$callee] = [$described, $rendered, $recoverable];
         }
 
-        foreach (array_diff_key($mago, $phpstan) as $callee => $rendered) {
-            $pairs[$callee] = ['<not reached>', $rendered];
+        foreach (array_diff_key($mago, $phpstan) as $callee => $row) {
+            [$rendered, $recoverable] = array_pad(explode("\t", $row, 2), 2, '');
+            $pairs[$callee] = ['<not reached>', $rendered, $recoverable];
         }
 
         ksort($pairs);
