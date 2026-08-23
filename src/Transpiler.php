@@ -7417,11 +7417,22 @@ PHP;
                 return $this->unreachable("this plugin does not register {$wanted}, so the branch never runs");
             }
 
-            return $this->backend->call('node_kind_is', [
-                '$context',
-                '$node',
-                $this->backend->bytes(Vocabulary::EXPRESSION_KINDS[$wanted]),
-            ]);
+            // `instanceof MethodCall` also holds for `?->` on PHPStan's side: it desugars a nullsafe call into
+            // a `MethodCall` carrying a `virtualNullsafeMethodCall` attribute, which is why
+            // `hihaho/phpstan-rules` has a trait method that tests for exactly that. Mago keeps the two kinds
+            // apart, so the test has to name both or the port stays silent where the original reports —
+            // measured on a fixture pair, where PHPStan reported the nullsafe call and the port did not.
+            $kinds = [Vocabulary::EXPRESSION_KINDS[$wanted]];
+            if ($wanted === MethodCall::class && in_array('NullSafeMethodCall', $this->hookKinds, true)) {
+                $kinds[] = 'NullSafeMethodCall';
+            }
+
+            $tests = [];
+            foreach ($kinds as $kind) {
+                $tests[] = $this->backend->call('node_kind_is', ['$context', '$node', $this->backend->bytes($kind)]);
+            }
+
+            return count($tests) === 1 ? $tests[0] : '(' . implode(' || ', $tests) . ')';
         }
 
         if ($wanted === Class_::class && $subject['kind'] === 'hook-node') {

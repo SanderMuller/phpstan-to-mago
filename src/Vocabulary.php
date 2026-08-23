@@ -9,6 +9,7 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\BinaryOp\Concat;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\FuncCall;
@@ -112,6 +113,11 @@ final class Vocabulary
         // below answer for every one of them, which is what makes one `kind` enough: `->name` is a selector
         // under five and the called expression under `FunctionCall`, and `namePart()` covers both.
         Expr::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'Expr', 'phpOnly' => true],
+        // `CallLike` is `FuncCall`, `MethodCall`, `NullsafeMethodCall`, `StaticCall` and `New_`, and a rule
+        // asking for it narrows in its own body. Registered for every call kind it covers rather than for the
+        // ones a given rule keeps, for the reason {@see HOOK_KINDS} gives: what a node type covers is a fact
+        // about the type, and letting the body decide the registration makes the targets depend on branches.
+        CallLike::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'MethodCall', 'phpOnly' => true],
         Concat::class => [
             'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
             'gate' => "Support::binaryOperatorIs(\$context, \$node, '.')", 'phpOnly' => true,
@@ -542,6 +548,11 @@ final class Vocabulary
      */
     public const array HOOK_KINDS = [
         Expr::class => ['ClassConstantAccess', 'StaticPropertyAccess', 'MethodCall', 'StaticMethodCall', 'FunctionCall', 'PropertyAccess'],
+        // The three call kinds share their children exactly — `Expression`, `ClassLikeMemberSelector`,
+        // `ArgumentList`, in that order, probed on all of them — which is why one body reads all three
+        // without rebinding. A first-class callable is a *different* kind (`MethodPartialApplication`), so a
+        // hook on these never sees one, and `isFirstClassCallable()` cannot hold under these targets.
+        CallLike::class => ['MethodCall', 'StaticMethodCall', 'NullSafeMethodCall', 'FunctionCall'],
         // All four, not the two a given rule narrows to: the kinds a node type *covers* are a fact about the
         // type, and letting a rule's own `instanceof` decide the registration would make the targets depend on
         // the body rather than on what PHPStan would have visited.
@@ -562,6 +573,7 @@ final class Vocabulary
         Variable::class => 'is_variable',
         PropertyFetch::class => 'is_property_fetch',
         MethodCall::class => 'is_method_call',
+        StaticCall::class => 'is_static_call',
         Array_::class => 'is_array',
         Int_::class => 'is_int',
         // Declaration kinds a rule narrows a function-like hook to. Answered from the node's own kind, which

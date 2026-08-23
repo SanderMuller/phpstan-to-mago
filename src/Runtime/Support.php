@@ -914,6 +914,11 @@ final class Support
         return self::concreteCall($part)?->kind === NodeKind::MethodCall;
     }
 
+    public static function isStaticCall(?Part $part): bool
+    {
+        return self::concreteCall($part)?->kind === NodeKind::StaticMethodCall;
+    }
+
     /**
      * A call in an expression position, unwrapped from its category node.
      *
