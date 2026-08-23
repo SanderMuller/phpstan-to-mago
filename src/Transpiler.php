@@ -728,20 +728,8 @@ final class Transpiler
         $nodeType = $this->findNodeType($class);
         if (! isset(Vocabulary::HOOKS[$nodeType])) {
             if (! self::$survey) {
-                // A rule that names an *abstract* php-parser class asks PHPStan for every node under it and
-                // then branches on the concrete ones — `NoDynamicNameRule` says so in a comment, calling
-                // `return Expr::class` "a trick to allow multiple node types". That is not a missing table row.
-                // Mago's hooks are per node kind and a plugin may register several, so the shape is reachable,
-                // but the rule's `instanceof` branches would each have to *rebind* which kind the body is
-                // reading: `$node->name` means a different child under `MethodCall` than under
-                // `ClassConstantAccess`, and the field table is keyed by kind. Naming it here so the refusal
-                // says which change it wants rather than reading as an omission.
                 if (in_array($nodeType, self::MULTI_KIND_NODE_TYPES, true)) {
-                    throw new Refusal(
-                        "{$nodeType} covers several node kinds, so the rule branches on the concrete one. A "
-                        . 'plugin can register several targets, but each branch would have to rebind which kind '
-                        . 'the body reads, and the field table is keyed by one kind per rule',
-                    );
+                    throw new Refusal($this->multiKindRefusal($nodeType, $class));
                 }
 
                 throw new Refusal("no hook mapping for node type $nodeType");
@@ -1118,6 +1106,72 @@ PHP;
         $lines = explode("\n", wordwrap($accepted['note'], 110));
 
         return "/**\n * " . implode("\n * ", $lines) . "\n */\n";
+    }
+
+    /**
+     * Why a rule naming an abstract php-parser class is refused, saying what this rule actually does.
+     *
+     * A rule returning one of those asks PHPStan for every node beneath it and narrows in the body —
+     * `NoDynamicNameRule` says so in a comment, calling `return Expr::class` "a trick to allow multiple node
+     * types". Mago's hooks are per node kind and a plugin may register several, so the shape is reachable in
+     * principle and this is not a missing table row.
+     *
+     * What it *is* differs per rule, and this refusal used to assert one answer for all of them: that each
+     * branch would have to rebind which child the body reads. That is raised from `getNodeType()` alone,
+     * before the body is read, and reading the four rules in the corpus that reach it found the claim true of
+     * one. `PreferredClassRule` does dispatch each kind to a different helper. `NoReferenceRule` and
+     * `NewWithFollowingSettersCollector` test seven kinds each and read the *same* child in every branch —
+     * `->byRef` and `->stmts` — so rebinding is not their obstacle and they are closer to portable than the
+     * message said. `ForbiddenNodeRule` is further from it: its `instanceof` is against a *configured* list of
+     * class names, so its target set is a runtime value and no static `getTargets()` can express it.
+     *
+     * So the message names the kinds the rule tests, and states the condition a body has to meet without
+     * claiming to have checked it. A refusal that asserts something about a body it never read is how work
+     * gets sized wrongly, which is the whole reason this one was rewritten.
+     */
+    private function multiKindRefusal(string $nodeType, ClassLike $class): string
+    {
+        // `processNode`'s own body, and only tests against the variable it takes. Both narrowings were forced
+        // by getting the number wrong: walking the whole class counted `instanceof` tests inside helpers on
+        // *sub*-nodes and made `NewWithFollowingSettersCollector` sixteen kinds, and matching the variable by
+        // name alone still made it nine, because one of its helpers names its own parameter `$node` too. It
+        // dispatches on seven. A message whose point is accuracy cannot be loose about the number it prints.
+        $entry = $class->getMethod('processNode');
+        $subject = $entry?->params[0]->var ?? null;
+        $hookVariable = $subject instanceof Variable && is_string($subject->name) ? $subject->name : null;
+
+        $kinds = [];
+        foreach ((new NodeFinder())->findInstanceOf($entry instanceof ClassMethod ? [$entry] : [$class], Instanceof_::class) as $test) {
+            if ($hookVariable !== null
+                && (! $test->expr instanceof Variable || $test->expr->name !== $hookVariable)
+            ) {
+                continue;
+            }
+
+            if (! $test->class instanceof Name) {
+                return "{$nodeType} covers several node kinds, and this rule narrows to them with `instanceof` "
+                    . 'against a value rather than a written class name — a configured list of node classes. A '
+                    . "plugin declares its targets statically, so there is no shape to register: the rule's "
+                    . 'target set is only known at analysis time';
+            }
+
+            $kinds[$test->class->toString()] = true;
+        }
+
+        if ($kinds === []) {
+            return "{$nodeType} covers several node kinds and this rule narrows to none of them, so there is no "
+                . 'target set to derive';
+        }
+
+        return sprintf(
+            '%s covers several node kinds, and this rule narrows to %d of them with `instanceof`: %s. A plugin '
+            . 'can register several targets, so the shape is reachable — what it needs is a hook and a field '
+            . 'mapping for each kind, and a body that reads the same child in every branch, because the field '
+            . 'table is keyed by one kind per rule. Whether this body does has not been checked here',
+            $nodeType,
+            count($kinds),
+            implode(', ', array_map(static fn (string $name): string => substr($name, (int) strrpos('\\' . $name, '\\')), array_keys($kinds))),
+        );
     }
 
     /**

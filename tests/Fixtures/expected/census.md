@@ -32,7 +32,7 @@ EMIT    ForbiddenMultipleClassLikeInOneFileRule
 REFUSE  ForbiddenNewArgumentRule  (the package registers it nowhere)
         $forbiddenTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Complexity\ForbiddenNewArgumentRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
 REFUSE  ForbiddenNodeRule
-        PhpParser\Node covers several node kinds, so the rule branches on the concrete one. A plugin can register several targets, but each branch would have to rebind which kind the body reads, and the field table is keyed by one kind per rule
+        PhpParser\Node covers several node kinds, and this rule narrows to them with `instanceof` against a value rather than a written class name — a configured list of node classes. A plugin declares its targets statically, so there is no shape to register: the rule's target set is only known at analysis time
 EMIT    ForbiddenStaticClassConstFetchRule
 EMIT    ForeachCeptionRule
 REFUSE  FormTypeClassNameRule
@@ -40,7 +40,7 @@ REFUSE  FormTypeClassNameRule
 REFUSE  NewOverSettersRule
         no aggregate mapped for the collector NewWithFollowingSettersCollector
 REFUSE  NewWithFollowingSettersCollector
-        PhpParser\Node covers several node kinds, so the rule branches on the concrete one. A plugin can register several targets, but each branch would have to rebind which kind the body reads, and the field table is keyed by one kind per rule
+        PhpParser\Node covers several node kinds, and this rule narrows to 7 of them with `instanceof`: ClassMethod, Function_, If_, ElseIf_, While_, Foreach_, For_. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
 REFUSE  NoAbstractControllerConstructorRule
         method call outside the vocabulary ->getMethod()
 EMIT    NoArrayMapWithArrayCallableRule
@@ -103,7 +103,7 @@ EMIT    NoPropertyNodeAssignRule
 REFUSE  NoProtectedClassStmtRule  (the package registers it nowhere)
         no iteration mapped for a subtree
 REFUSE  NoReferenceRule
-        PhpParser\Node covers several node kinds, so the rule branches on the concrete one. A plugin can register several targets, but each branch would have to rebind which kind the body reads, and the field table is keyed by one kind per rule
+        PhpParser\Node covers several node kinds, and this rule narrows to 8 of them with `instanceof`: AssignRef, Closure, ArrowFunction, Function_, ClassMethod, Arg, Foreach_, ArrayItem. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
 EMIT    NoRepositoryCallInDataFixtureRule
 EMIT    NoRequiredOutsideClassRule
 REFUSE  NoReturnSetterMethodRule
@@ -135,7 +135,7 @@ REFUSE  PreferAutowireAttributeOverConfigParamRule
 REFUSE  PreferDirectIsNameRule
         isAbstract() outside a declaration hook
 REFUSE  PreferredClassRule
-        PhpParser\Node covers several node kinds, so the rule branches on the concrete one. A plugin can register several targets, but each branch would have to rebind which kind the body reads, and the field table is keyed by one kind per rule
+        PhpParser\Node covers several node kinds, and this rule narrows to 5 of them with `instanceof`: New_, InClassNode, StaticCall, Instanceof_, Name. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
 EMIT    PreventParentMethodVisibilityOverrideRule
 EMIT    PublicStaticDataProviderRule
 EMIT    RequireAtLeastOneRule
