@@ -1722,6 +1722,18 @@ PHP;
             return $this->unreachable('an index produced behind guards is never null once those guards have run');
         }
 
+        // `$scope->getClassReflection() === null` inside a class-declaration hook. The hook fires *on* a
+        // class-like, so there is always one — the same argument the produced-value cases above make, and
+        // gated on the hook's kind because in any other hook the scope may genuinely have no class.
+        if ($subject['kind'] === 'class-reflection'
+            && in_array($this->nodeKind, self::HOOK_KINDS_ALWAYS_IN_A_CLASS, true)
+        ) {
+            return $this->unreachable(
+                'this hook fires on a class-like or on one of its members, so the scope it carries always has '
+                . 'a class reflection',
+            );
+        }
+
         // `$docComment === null` is `instanceof Doc` the other way round, and the descriptor is already the text.
         if ($subject['kind'] === 'docblock') {
             return $this->operand($subject) . ' === null';
@@ -8347,6 +8359,16 @@ PHP;
             return $wanted === 'true' ? $flag : "!{$flag}";
         }
 
+        // `$classReflection->is(TestCase::class) === false` — a predicate compared to a boolean literal. The
+        // literal is what makes translating the left side as a predicate safe: an expression compared to
+        // `true` or `false` can only have been one, so this cannot turn out to have been a value whose
+        // inlining left lines behind.
+        if ($left instanceof MethodCall && ($wanted = $this->isBooleanLiteral($right)) !== null) {
+            $predicate = $this->methodPredicate($left);
+
+            return $wanted === 'true' ? $predicate : '!(' . $this->stripOuterParentheses($predicate) . ')';
+        }
+
         $againstNull = $this->nullComparison($left, $right, $line);
         if ($againstNull !== null) {
             return $againstNull;
@@ -10085,7 +10107,22 @@ PHP;
         }
 
         $alias = $expr->class->getFirst();
-        $fqcn = $this->useMap[$alias] ?? $expr->class->toString();
+        $written = $expr->class->toString();
+        $fqcn = $this->useMap[$alias] ?? $written;
+
+        // An unimported `Foo::class` in a namespaced file is `<namespace>\Foo`, and PHP resolves it that way
+        // whether or not the rule wrote an import. Taking the short name instead emits a comparison against a
+        // name no ancestor has, so the rule loads, runs and matches nothing — the failure mode that looks like
+        // coverage. Only for a name that is neither imported nor already qualified.
+        if ($fqcn === $written
+            && $this->ruleNamespace !== null
+            && ! $expr->class instanceof FullyQualified
+            && ! str_contains($written, '\\')
+            && ! in_array($written, ['self', 'static', 'parent'], true)
+        ) {
+            $fqcn = $this->ruleNamespace . '\\' . $written;
+        }
+
         $constant = $this->memberName($expr->name, $expr->getStartLine());
 
         if ($constant === 'class') {
@@ -10152,6 +10189,15 @@ PHP;
 
     /** Hook kinds that are a class-like declaration, where the node under analysis is always named. */
     private const array CLASS_LIKE_HOOK_KINDS = ['Class', 'Interface', 'Trait', 'Enum'];
+
+    /**
+     * Hook kinds whose scope always carries a class reflection, so `=== null` on one cannot hold.
+     *
+     * A class-like hook fires on the class itself; a `Method` hook fires on a class member, which by
+     * definition has one. `Function`, `Closure` and `ArrowFunction` are absent because those genuinely may sit
+     * outside a class, and folding the check there would drop a guard the rule needs.
+     */
+    private const array HOOK_KINDS_ALWAYS_IN_A_CLASS = ['Class', 'Interface', 'Trait', 'Enum', 'Method'];
 
     /** Node predicates only the PHP runtime carries; the Rust backends have no counterpart. */
     private const array PHP_ONLY_PREDICATES = ['is_dir_constant', 'is_literal_string'];
