@@ -175,25 +175,25 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Property Sandermuller\PhpstanToMago\Transpiler::$lines (list<Sandermuller\PhpstanToMago\Stm>) does not accept non-empty-list<Sandermuller\PhpstanToMago\Stm|(literal-string&non-falsy-string)>.'
+			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$lines (list<Sandermuller\PhpstanToMago\Stm>) does not accept non-empty-list<Sandermuller\PhpstanToMago\Stm|(literal-string&non-falsy-string)>.'
 			identifier: assign.propertyType
 			count: 1
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Property Sandermuller\PhpstanToMago\Transpiler::$locals (array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, ...}>) does not accept non-empty-array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array<string>>, collector?: string, service?: string, classPhp?: string, ...}>.'
+			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$locals (array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, ...}>) does not accept non-empty-array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array<string>>, collector?: string, service?: string, classPhp?: string, ...}>.'
 			identifier: assign.propertyType
 			count: 1
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Property Sandermuller\PhpstanToMago\Transpiler::$refinements (array<string, array<string, array{0: string, 1: string, 2?: string}>>) does not accept non-empty-array<string, array<string, array<string>>>.'
+			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$refinements (array<string, array<string, array{0: string, 1: string, 2?: string}>>) does not accept non-empty-array<string, array<string, array<string>>>.'
 			identifier: assign.propertyType
 			count: 1
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Property Sandermuller\PhpstanToMago\Transpiler::$useMap (array<string, string>) does not accept array.'
+			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$useMap (array<string, string>) does not accept array.'
 			identifier: assign.propertyType
 			count: 1
 			path: src/Transpiler.php
