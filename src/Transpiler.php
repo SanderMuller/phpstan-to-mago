@@ -6216,6 +6216,22 @@ PHP;
                 }
             }
 
+            // `return $this->decide(..);` — the rule hands its whole decision to a helper that returns the
+            // findings. Nothing above looks at that, so it used to fall through to the bare return below and be
+            // *dropped*: the guards translated, the helper's work did not, and the only reason a narrower rule
+            // was not emitted is that no message was found either — surfacing much later as "could not find the
+            // reported message", which names this transpiler's state and not the cause.
+            //
+            // Refused where it happens instead. A rule whose message *is* found elsewhere would otherwise emit
+            // a plugin missing whatever the helper decides, which is the silent-narrowing shape.
+            if ($stmt->expr instanceof MethodCall && $this->isOwnMethodCall($stmt->expr)) {
+                throw new Refusal(sprintf(
+                    'the rule returns whatever %s() decides, and that helper builds the findings rather than '
+                    . 'answering a question — so there is nothing here to translate into guards',
+                    $this->memberLabel($stmt->expr->name),
+                ), $stmt->getStartLine());
+            }
+
             return; // the emitted rule reports once all guards pass
         }
 

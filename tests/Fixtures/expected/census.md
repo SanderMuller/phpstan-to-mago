@@ -17,7 +17,7 @@ REFUSE  AvoidFeatureSetAttributeInRectorRule
 REFUSE  CheckRequiredInterfaceInContractNamespaceRule
         no hook mapping for node type PhpParser\Node\Stmt\Interface_
 REFUSE  ClassNameRespectsParentSuffixRule
-        could not find the reported message
+        the rule returns whatever processClassNameAndShort() decides, and that helper builds the findings rather than answering a question — so there is nothing here to translate into guards
 REFUSE  ExplicitClassPrefixSuffixRule
         no hook mapping for node type PhpParser\Node\Stmt\ClassLike
 EMIT    ExplicitExpectsMockMethodRule
