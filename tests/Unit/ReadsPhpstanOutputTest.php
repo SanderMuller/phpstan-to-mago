@@ -176,4 +176,47 @@ final class ReadsPhpstanOutputTest extends TestCase
         // Sorted as strings, which is what the other side is sorted by too, so the two are comparable.
         $this->assertSame(['30: a', '4: a'], $findings['Bad.php']);
     }
+
+    /**
+     * A file PHPStan could not parse is a file no rule ran in, and the port runs in it anyway.
+     *
+     * Reproduced from a real run: pointing the differential at `phpstan-src`'s rule tests, where fixture
+     * files are invalid PHP on purpose, printed `agree 0, only-original 0, only-port 313` — a table that
+     * reads like a catastrophic divergence and measures nothing.
+     */
+    public function test_a_file_phpstan_could_not_parse_refuses_the_whole_report(): void
+    {
+        $output = json_encode([
+            'files' => [
+                '/project/tests/data/void-parameter-typehint.php' => ['messages' => [
+                    ['line' => 5, 'message' => 'void cannot be used as a parameter type on line 5', 'identifier' => 'phpstan.parse'],
+                ]],
+                '/project/src/Handler.php' => ['messages' => [
+                    ['line' => 8, 'message' => 'Do not do that', 'identifier' => self::IDENTIFIER],
+                ]],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('void-parameter-typehint.php');
+
+        PhpstanReport::findings($output, self::IDENTIFIER, 'the rule', '/project');
+    }
+
+    /** And a report with no parse error is read as before, so the guard is not a blanket refusal. */
+    public function test_a_report_that_parses_everything_is_still_read(): void
+    {
+        $output = json_encode([
+            'files' => [
+                '/project/src/Handler.php' => ['messages' => [
+                    ['line' => 8, 'message' => 'Do not do that', 'identifier' => self::IDENTIFIER],
+                ]],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->assertSame(
+            ['src/Handler.php' => ['8: Do not do that']],
+            PhpstanReport::findings($output, self::IDENTIFIER, 'the rule', '/project'),
+        );
+    }
 }

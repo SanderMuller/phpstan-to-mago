@@ -322,6 +322,25 @@ any of them have produced against code nobody wrote for them.
 
 Across all four corpora **17 identifiers have now fired**, against 7 before.
 
+Two more corpora were run for the `rector.*` identifiers, which stay silent even on Rector's own `src`
+because its `AbstractRector` subclasses live under `rules/`. That directory — 801 files — is **260 agreeing,
+0 original-only, 269 port-only**, and 200 files of third-party Rector rules (`driftingly/rector-laravel` and
+one closed-source package) are **70 / 0 / 68**. Neither fires a `rector.*` identifier, and both port-only
+figures are the threshold difference.
+
+A control rather than a shrug, because "no Rector rule violates a rule about Rector rules" is exactly the
+story that would be comfortable and wrong. Parsing all 1001 files finds **649 `refactor()` methods and not one
+whose every `return` is `null`** — the shape `rector.noOnlyNullReturnInRefactor` forbids — so there is nothing
+to find. Both rules have example pairs under `tests/Fixtures/examples` where the gate makes them fire, so the
+other half, that the port never looked, is ruled out separately.
+
+A sixth corpus was attempted and **discarded**: `phpstan-src`'s rule tests printed
+`agree 0, only-original 0, only-port 313`, which reads like a catastrophic divergence. PHPStan had reported
+three `phpstan.parse` errors — those fixture files are invalid PHP on purpose — and analysed nothing, while
+the port has its own parser and analysed them anyway. `PhpstanReport` refuses such a report now, naming the
+files: a file the original could not parse is a file no rule ran in, and every port finding there is a phantom.
+Removing the guard fails its test, and the run above refuses instead of printing counts.
+
 That second run also arrived with **73 original-only** on `typeCoverage.paramTypeCoverage` — the direction that
 matters, the port narrower than the rule. It is not a defect, and a control rather than a reading says so. The
 consumer configures `param: 100`; the generated plugin carries the package's own default of `99`, deliberately,

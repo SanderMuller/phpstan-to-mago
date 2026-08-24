@@ -44,6 +44,8 @@ final readonly class PhpstanReport
             throw new RuntimeException("PHPStan produced no JSON for {$context}:\n" . $output);
         }
 
+        self::refuseUnanalysedFiles($decoded, $context);
+
         // PHPStan's own `--error-format=json`.
         if (isset($decoded['files']) && is_array($decoded['files'])) {
             /** @var array<string, array{messages?: list<array{line?: int, identifier?: string, message?: string}>}> $files */
@@ -93,6 +95,63 @@ final readonly class PhpstanReport
         }
 
         throw new RuntimeException("PHPStan did not run for {$context}, so there is nothing to compare:\n" . $output);
+    }
+
+    /**
+     * Refuses a run where PHPStan could not analyse a file at all.
+     *
+     * A `phpstan.parse` error is not a finding: it says PHPStan stopped at that file, so **no rule ran in
+     * it**. The port has its own parser and analyses the file anyway, which turns every finding it makes
+     * there into a phantom disagreement — silently, and only in the port's direction.
+     *
+     * Measured rather than imagined. Pointing the differential at `phpstan-src`'s rule tests gave
+     * `agree 0, only-original 0, only-port 313`, a table that reads like a catastrophic divergence. PHPStan
+     * had reported three `phpstan.parse` errors on fixture files that are invalid PHP *on purpose* —
+     * `void cannot be used as a parameter type` — and analysed nothing. Without this guard that run printed
+     * counts, and counts from a run where one side never looked are worse than no counts.
+     *
+     * Named, not summarised: the fix is to exclude the file, and a reader needs to know which.
+     *
+     * @param array<string, mixed> $decoded
+     */
+    private static function refuseUnanalysedFiles(array $decoded, string $context): void
+    {
+        /** @var array<string, mixed> $sources */
+        $sources = [];
+        foreach (['files', 'error_details'] as $key) {
+            $section = $decoded[$key] ?? null;
+            if (is_array($section)) {
+                $sources = $section;
+
+                break;
+            }
+        }
+
+        $unanalysed = [];
+        foreach ($sources as $path => $entry) {
+            /** @var list<array{identifier?: string}> $messages */
+            $messages = is_array($entry) ? ($entry['messages'] ?? $entry) : [];
+            foreach ($messages as $message) {
+                if (is_array($message) && str_starts_with((string) ($message['identifier'] ?? ''), 'phpstan.parse')) {
+                    $unanalysed[] = (string) $path;
+
+                    break;
+                }
+            }
+        }
+
+        if ($unanalysed !== []) {
+            throw new RuntimeException(sprintf(
+                "PHPStan could not parse %d file(s) for %s, so no rule ran in them and the port's findings "
+                . 'there would be phantom disagreements. Exclude them from the corpus, or measure a corpus '
+                . 'that parses:
+  %s',
+                count($unanalysed),
+                $context,
+                implode('
+  ', $unanalysed),
+            ));
+        }
     }
 
     /**
