@@ -1,6 +1,18 @@
 parameters:
 	ignoreErrors:
 		-
+			rawMessage: 'Only booleans are allowed in &&, bool|string given on the left side.'
+			identifier: booleanAnd.leftNotBoolean
+			count: 1
+			path: src/Emitter.php
+
+		-
+			rawMessage: 'Parameter #3 $subject of function str_replace expects array<string>|string, bool|string given.'
+			identifier: argument.type
+			count: 1
+			path: src/Emitter.php
+
+		-
 			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\ExampleReader::forRule()" is 36, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
@@ -58,142 +70,136 @@ parameters:
 			rawMessage: Cannot cast PhpParser\Node\Expr|PhpParser\Node\Identifier to string.
 			identifier: cast.string
 			count: 15
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 1961, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 1792, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::bindLocal()" is 42, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 42, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::inlineErrorHelper()" is 23, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::equality()" is 47, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::equality()" is 47, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::functionPredicate()" is 40, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::functionPredicate()" is 40, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::inlineErrorHelper()" is 23, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::instanceofPredicate()" is 85, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::instanceofPredicate()" is 85, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::methodPredicate()" is 85, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::methodPredicate()" is 85, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::resolve()" is 78, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolve()" is 78, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::resolveReflection()" is 329, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveReflection()" is 329, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::translateIf()" is 24, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::translateIf()" is 24, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::translateMethodAsPredicate()" is 22, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::translateMethodAsPredicate()" is 22, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Transpiler::translateStatement()" is 64, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::translateStatement()" is 64, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Method Sandermuller\PhpstanToMago\Transpiler::inlineMethod() has parameter $uses with no value type specified in iterable type array.'
+			rawMessage: 'Method Sandermuller\PhpstanToMago\Translator::inlineMethod() has parameter $uses with no value type specified in iterable type array.'
 			identifier: missingType.iterableValue
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
 			rawMessage: 'Offset 2 on array{''&{bind}.method'', ''name-selector'', ''Support::selector(…''}|array{''{bind}.object'', ''expr'', ''Support:…''} in isset() always exists and is not nullable.'
 			identifier: isset.offset
 			count: 1
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Only booleans are allowed in &&, bool|string given on the left side.'
-			identifier: booleanAnd.leftNotBoolean
-			count: 1
-			path: src/Emitter.php
+			path: src/Translator.php
 
 		-
 			rawMessage: 'Parameter #1 $name of static method Sandermuller\PhpstanToMago\Emitter::snake() expects string, mixed given.'
 			identifier: argument.type
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
-			rawMessage: 'Parameter #3 $args of method Sandermuller\PhpstanToMago\Transpiler::inlineMethod() expects list<PhpParser\Node\Arg>, array<PhpParser\Node\Arg> given.'
+			rawMessage: 'Parameter #3 $args of method Sandermuller\PhpstanToMago\Translator::inlineMethod() expects list<PhpParser\Node\Arg>, array<PhpParser\Node\Arg> given.'
 			identifier: argument.type
 			count: 2
-			path: src/Transpiler.php
-
-		-
-			rawMessage: 'Parameter #3 $subject of function str_replace expects array<string>|string, bool|string given.'
-			identifier: argument.type
-			count: 1
-			path: src/Emitter.php
+			path: src/Translator.php
 
 		-
 			rawMessage: Possibly invalid array key type PhpParser\Node\Expr|string.
 			identifier: offsetAccess.invalidOffset
 			count: 4
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
 			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$lines (list<Sandermuller\PhpstanToMago\Stm>) does not accept non-empty-list<Sandermuller\PhpstanToMago\Stm|(literal-string&non-falsy-string)>.'
 			identifier: assign.propertyType
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
 			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$locals (array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, ...}>) does not accept non-empty-array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array<string>>, collector?: string, service?: string, classPhp?: string, ...}>.'
 			identifier: assign.propertyType
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
 			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$refinements (array<string, array<string, array{0: string, 1: string, 2?: string}>>) does not accept non-empty-array<string, array<string, array<string>>>.'
 			identifier: assign.propertyType
 			count: 1
-			path: src/Transpiler.php
+			path: src/Translator.php
 
 		-
 			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$useMap (array<string, string>) does not accept array.'
 			identifier: assign.propertyType
+			count: 1
+			path: src/Translator.php
+
+		-
+			rawMessage: 'Class cognitive complexity is 169, keep it under 80'
+			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php
