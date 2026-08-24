@@ -273,6 +273,18 @@ handle through `soleObjectClass()`, a public helper three emission sites call by
 regenerating every snapshot that holds it. For one site on one corpus, against an imprecision that is arguably
 Mago's rather than the port's.
 
+A third, `rector/rector`'s `src` — 490 files, chosen because these rules are written by the same author as
+that codebase: **158 agreeing, 1 original-only, 81 port-only**, and again **7 of 48 identifiers exercised**. The
+81 are the threshold difference. The `rector.*` identifiers stay silent even here, because Rector's `src` holds
+the framework and its `AbstractRector` subclasses live under `rules/`.
+
+The 1 is `ForbiddenArrayMethodCallRule` again — and a **different cause** from the `commonmark` one, which is
+the more interesting result. Instrumenting the plugin over the whole corpus traces 58 array literals reaching
+the hook, three of which agree, and the missed site
+(`RectorConfigBuilder.php:163`, `\Closure::fromCallable([$rectorConfig, 'make'])`) appears in none of them: the
+node never arrives. That is a worse class of gap than a type imprecision, and it is untraced beyond "nested two
+calls deep, while flatter literals in the same file reach the hook".
+
 This run started at **203** port-only, of which 169 came from `NoDynamicNameRule` and were false positives.
 `Support::isWrittenName()` descends into a name's first child, and a name written with a leading `\` arrives as
 an `Identifier` whose child is a `FullyQualifiedIdentifier` — a kind the written-name list did not hold. So
