@@ -242,6 +242,18 @@ plugin deliberately carries its own package's defaults so that a generated proje
 threshold is lower and it reports more. The same decision is why the aggregate's message differs at every site
 it agrees on.
 
+A second corpus, run for the same reason the first one is here — a green result on one tree says little.
+`league/commonmark`'s 302 files: **34 agreeing, 1 original-only, 23 port-only**. The 23 are the same threshold
+difference. The 1 is `ForbiddenArrayMethodCallRule` staying silent at `Environment.php:411`, where the original
+reports, and that direction matters more: the port is *narrower* there.
+
+Traced as far as a control goes and no further. The site is `[$normalizer, 'clearHistory']`, where `$normalizer`
+is reassigned and then narrowed by a nested `instanceof` — so the rule's question depends on flow-sensitive
+narrowing rather than on a declared type. The obvious suspect was the interface-typed receiver, and a control
+refutes it: `typeHasMethod()` answers yes for an interface-typed value and for a class-typed one alike. What is
+left is a difference in how far each engine narrows a reassigned variable, which is untraced and recorded as
+such.
+
 This run started at **203** port-only, of which 169 came from `NoDynamicNameRule` and were false positives.
 `Support::isWrittenName()` descends into a name's first child, and a name written with a leading `\` arrives as
 an `Identifier` whose child is a `FullyQualifiedIdentifier` — a kind the written-name list did not hold. So
