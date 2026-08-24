@@ -53,7 +53,7 @@ REFUSE  NoClassLevelRouteRule
 REFUSE  NoClassReflectionStaticReflectionRule
         early return from a helper that is not a boolean literal
 REFUSE  NoConstructorAndRequiredTogetherRule
-        isAnonymous() on something other than a class reflection
+        method call outside the vocabulary ->getMethod()
 REFUSE  NoConstructorOverrideRule
         null comparison against ->stmts, which resolved to a subtree
 REFUSE  NoControllerMethodInjectionRule

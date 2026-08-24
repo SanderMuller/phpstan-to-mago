@@ -8304,8 +8304,23 @@ PHP;
         // never for anonymous ones, which are a separate node in Mago.
         if (in_array($method, ['isClass', 'isAnonymous', 'isAbstract', 'isInterface', 'isTrait', 'isEnum'], true) && $args === []) {
             $subject = $this->resolve($expr->var, $expr->getStartLine());
-            if ($subject['kind'] !== 'class-reflection') {
-                throw new Refusal("{$method}() on something other than a class reflection", $expr->getStartLine());
+
+            // Either spelling of the same subject. A rule may ask `$scope->getClassReflection()->isAnonymous()`
+            // or `$node->isAnonymous()` straight off the declaration the hook fired for, and every answer below
+            // is about *which hook fired* rather than about how the rule reached it — so gating on the
+            // reflection spelling refused `NoConstructorAndRequiredTogetherRule` for writing the shorter one.
+            $onTheDeclaration = $subject['kind'] === 'hook-node'
+                && in_array($this->nodeKind, self::CLASS_LIKE_HOOK_KINDS, true);
+
+            if ($subject['kind'] !== 'class-reflection' && ! $onTheDeclaration) {
+                throw new Refusal(
+                    sprintf(
+                        '%s() on a %s, which is neither a class reflection nor the class-like declaration a hook fired for',
+                        $method,
+                        $subject['kind'],
+                    ),
+                    $expr->getStartLine(),
+                );
             }
 
             if ($this->classFrom !== 'metadata') {
