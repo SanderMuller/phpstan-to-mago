@@ -691,6 +691,48 @@ final readonly class Translator
     }
 
     /**
+     * `Strings::match($subject, $pattern)` or `preg_match($pattern, $subject)` as a boolean, or null.
+     *
+     * Only the yes-or-no half. A caller reading a capture — `$match[1]` — is asking a second question this
+     * does not answer, and falls through to the refusal that names the construct.
+     *
+     * The pattern has to be a literal at transpile time, which every caller in the corpus writes as a class
+     * constant. A pattern built while the plugin runs would be a different capability.
+     */
+    private function patternTest(Expr $expr, int $line): ?string
+    {
+        if ($expr instanceof StaticCall
+            && $expr->class instanceof Name
+            && $expr->class->getLast() === 'Strings'
+            && $this->memberName($expr->name, $line) === 'match'
+            && count($expr->getArgs()) === 2
+        ) {
+            [$subject, $pattern] = $expr->getArgs();
+        } elseif ($expr instanceof FuncCall
+            && $expr->name instanceof Name
+            && $expr->name->toString() === 'preg_match'
+            && count($expr->getArgs()) === 2
+        ) {
+            [$pattern, $subject] = $expr->getArgs();
+        } else {
+            return null;
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a pattern test, which only the PHP target carries', $line);
+        }
+
+        // `bytesValue()` rather than `bytes()` on the raw literal. A pattern is the one string in the corpus
+        // that is *about* backslashes — `#\\Php\d+\\#` matches a namespace separator — and `PhpBackend::bytes()`
+        // undoes Rust's two escape sequences on what it is handed. Passing the value straight in emitted one
+        // backslash where the rule has two, which is a different regex and a PCRE warning at analysis time.
+        return $this->context->backend->call('matches_pattern', [
+            $this->nameText($this->resolve($subject->value, $line), $line),
+            $this->bytesValue($pattern->value, $line),
+        ]);
+    }
+
+    /**
      * `<a nullable string> === null`, or null when the right-hand side is not the null literal.
      *
      * The shape a rule uses before asking anything of a value. Real rules null-check the namespace before
@@ -701,6 +743,16 @@ final readonly class Translator
     {
         if (! $right instanceof ConstFetch || strtolower($right->name->toString()) !== 'null') {
             return null;
+        }
+
+        // `Strings::match($subject, $pattern) === null` is "the pattern does not match", spelled through the
+        // return value. Nette hands back the capture array or null, and with two arguments and the defaults
+        // that is exactly `preg_match()`'s own answer — read from `Strings::match()` rather than assumed:
+        // the `u` modifier it can append is behind a `$utf8` parameter neither caller passes. A call with
+        // more arguments than the two is refused below, where an unknown static helper is.
+        $match = $this->patternTest($left, $line);
+        if ($match !== null) {
+            return '! ' . $match;
         }
 
         $subject = $this->resolve($left, $line);
@@ -7126,6 +7178,16 @@ final readonly class Translator
     {
         if ($left instanceof FuncCall && $left->name instanceof Name && $left->name->toString() === 'count') {
             return $this->countComparison($left, $right, $line);
+        }
+
+        // `preg_match($pattern, $subject) === 1`, which is how the corpus spells a pattern test that is not
+        // written through Nette. The `1` is the only value worth comparing against — `0` is no match and
+        // `false` is a broken pattern — and the helper answers the same boolean either way.
+        if ($right instanceof Int_ && $right->value === 1) {
+            $match = $this->patternTest($left, $line);
+            if ($match !== null) {
+                return $match;
+            }
         }
 
         // A value that cannot exist in Mago's model, compared against anything, is false. Folded here rather

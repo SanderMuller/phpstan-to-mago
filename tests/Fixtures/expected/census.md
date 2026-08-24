@@ -119,14 +119,14 @@ REFUSE  NoStringInGetSubscribedEventsRule
 REFUSE  NoTestMocksRule  (the package registers it nowhere)
         access path outside the vocabulary: Expr_New
 REFUSE  NoValueObjectInServiceConstructorRule  (the package registers it nowhere)
-        access path outside the vocabulary: preg_match()
+        no mapping for ->params on a hook-node
 EMIT    NoWithOnStubRule
 REFUSE  ParamNameToTypeConventionRule  (the package registers it nowhere)
         no hook mapping for node type PhpParser\Node\Param
 REFUSE  PhpUpgradeDowngradeRegisteredInSetRule
         assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
 REFUSE  PhpUpgradeImplementsMinPhpVersionInterfaceRule
-        access path outside the vocabulary: Strings::match()
+        instanceof FullyQualified, which PHPStan answers after its own name resolution: an imported name arrives as one too, so the test is about resolution rather than spelling and the comparison after it would have to read resolved names
 REFUSE  PreferAutowireAttributeOverConfigParamRule
         not a resolvable list of strings
 REFUSE  PreferDirectIsNameRule

@@ -1639,6 +1639,18 @@ final class Support
     }
 
     /**
+     * Whether a pattern matches, which is `Strings::match(..) !== null` and `preg_match(..) === 1`.
+     *
+     * Nette's helper hands back the capture array or null; with two arguments and its defaults that is
+     * `preg_match()`'s own answer, so the two spellings reduce to one question here. A null subject cannot
+     * match anything, which is what the guards in front of it already assume.
+     */
+    public static function matchesPattern(?string $subject, string $pattern): bool
+    {
+        return $subject !== null && preg_match($pattern, $subject) === 1;
+    }
+
+    /**
      * Whether a written class name resolves to one of a set of class names.
      *
      * The counterpart of {@see bytesIsOneOf} for a list the rule wrote as `::class` fetches. PHPStan compares
