@@ -64,7 +64,7 @@ REFUSE  NoDocumentMockingRule
         access path outside the vocabulary: ->getConstantStrings()
 EMIT    NoDoubleConsecutiveTestMockRule
 REFUSE  NoDuplicateArgAutowireByTypeRule
-        no node predicate for instanceof PhpParser\Node\Expr\FuncCall on a expr
+        list contains something other than a string literal
 REFUSE  NoDuplicateArgsAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
 EMIT    NoDynamicNameRule
@@ -114,7 +114,7 @@ REFUSE  NoRoutingPrefixRule
 REFUSE  NoServiceAutowireDuplicateRule
         no iteration mapped for ->stmts, which resolved to a subtree
 REFUSE  NoServiceSameNameSetClassRule
-        no node predicate for instanceof PhpParser\Node\Expr\ClassConstFetch on a expr
+        assignment value outside the vocabulary: no mapping for ->class on a expr
 REFUSE  NoSetClassServiceDuplicationRule
         expected a string literal
 REFUSE  NoStringInGetSubscribedEventsRule

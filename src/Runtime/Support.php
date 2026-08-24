@@ -985,6 +985,44 @@ final class Support
      * `$this->any()` arrives as `Call`, so a kind check against `MethodCall` silently never matched and
      * the rule reported nothing.
      */
+    /**
+     * Whether the part is a plain function call, which is php-parser's `Expr\FuncCall`.
+     *
+     * Through the same `Call` unwrapping as {@see isMethodCall} and {@see isStaticCall}: Mago wraps every call
+     * in a `Call` node whose first child carries the concrete kind, and asking the wrapper answers no for all
+     * three.
+     */
+    public static function isFunctionCall(?Part $part): bool
+    {
+        return self::concreteCall($part)?->kind === NodeKind::FunctionCall;
+    }
+
+    /** Whether the part is a `Foo::BAR` access, which is php-parser's `Expr\ClassConstFetch`. */
+    public static function isClassConstantAccess(?Part $part): bool
+    {
+        return self::concreteMemberAccess($part)?->kind === NodeKind::ClassConstantAccess;
+    }
+
+    /**
+     * The concrete access under an `Access` wrapper, or the part itself.
+     *
+     * Named apart from `concreteAccess()` below, which answers a different question — that one takes a context
+     * and searches for any of several kinds. This one has a `Part` already and asks what the wrapper holds.
+     *
+     * Mago wraps a member access the way it wraps a call: `Foo::BAR` arrives as an `Access` whose child is a
+     * `ClassConstantAccess`, and `$a->b` as an `Access` whose child is a `PropertyAccess`. Measured — a probe
+     * over `$this->configure(ref(), Marker::NAME)` reported `kind=Access text=Marker::NAME`, and the predicate
+     * written against the concrete kind answered no.
+     */
+    private static function concreteMemberAccess(?Part $part): ?Part
+    {
+        if (! $part instanceof Part) {
+            return null;
+        }
+
+        return $part->kind === NodeKind::Access ? $part->firstChild() : $part;
+    }
+
     private static function concreteCall(?Part $part): ?Part
     {
         if (! $part instanceof Part) {
@@ -1011,7 +1049,15 @@ final class Support
 
     public static function isPropertyFetch(?Part $part): bool
     {
-        return $part instanceof Part && $part->kind === NodeKind::Access;
+        // Through the wrapper, and against the *concrete* kind. Comparing against `Access` itself answered yes
+        // for every member access there is — `Foo::BAR` included — so a rule asking `instanceof PropertyFetch`
+        // was answered yes about a class constant. Found while adding the class-constant predicate beside it,
+        // where a probe reported `kind=Access text=Marker::NAME`.
+        //
+        // No test covers this one either way: nothing in the corpus or the fixtures reaches
+        // `is_property_fetch` yet, so reverting the narrowing breaks nothing. Corrected anyway rather than left
+        // for the first rule that does reach it to widen silently, and recorded as untested rather than gated.
+        return self::concreteMemberAccess($part)?->kind === NodeKind::PropertyAccess;
     }
 
     public static function isArrayDimFetch(?Part $part): bool

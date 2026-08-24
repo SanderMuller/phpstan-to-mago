@@ -611,6 +611,11 @@ final class Vocabulary
         PropertyFetch::class => 'is_property_fetch',
         MethodCall::class => 'is_method_call',
         StaticCall::class => 'is_static_call',
+        // Both added by auditing what a refusal names: two `symplify` config-closure rules ask these of an
+        // argument's value, and the refusal said "no node predicate for instanceof FuncCall on a expr" — which
+        // reads as a predicate that exists for other positions and did not exist at all.
+        FuncCall::class => 'is_function_call',
+        ClassConstFetch::class => 'is_class_constant_access',
         Array_::class => 'is_array',
         Int_::class => 'is_int',
         // Declaration kinds a rule narrows a function-like hook to. Answered from the node's own kind, which
