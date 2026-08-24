@@ -391,6 +391,10 @@ final readonly class FiresGate
      * generated plugin as constructor defaults. Both sides then run at the package's defaults — a rule whose
      * two sides are configured differently is not a comparison, and PHPStan refuses to construct a rule whose
      * scalar parameter nobody supplied, which is why these rules were outside the gate until now.
+     *
+     * {@see CorpusDifferential} deliberately does *not* do this, and its docblock says why: it measures what a
+     * consumer would see at their own configuration rather than whether the translation is faithful. Two
+     * instruments, two questions. Neither should be changed to match the other.
      */
     private function arguments(string $ruleFile): string
     {

@@ -340,6 +340,22 @@ final class CorpusDifferential
      *
      * The consumer's config is included by absolute path so its own relative paths still resolve, and its
      * baseline is replaced with nothing — neon's `!` overwrites where a plain key would merge.
+     *
+     * **The consumer's parameter values are left alone, and {@see FiresGate} does the opposite on purpose.**
+     * That gate registers the original with the package's own defaults, because the plugin carries those and
+     * "a rule whose two sides are configured differently is not a comparison" — it is proving a *translation*.
+     * This is proving something else: what a consumer running the port would see instead of what their PHPStan
+     * tells them today. Those differ, and the difference is most of what this instrument reports.
+     *
+     * Measured, so the cost of the choice is on the record rather than implied. Across `nikic/php-parser` and
+     * `league/commonmark`, 57 of 59 disagreements are exactly this — the consumer sets
+     * `cognitive_complexity: class: 80, function: 20` and `tomasvotruba/cognitive-complexity` ships `40` and
+     * `9`, so the port's threshold is lower and it reports more.
+     *
+     * Forcing both sides to package defaults here would take that number to 2 and measure a different question
+     * — one the fires-gate already answers, per rule, against a reviewed example pair. A consumer deciding
+     * whether to switch needs this one. The manifest names every parameter now, so closing the 57 is a value
+     * the consumer passes rather than a change to either instrument.
      */
     public function writePhpstanConfig(): string
     {
