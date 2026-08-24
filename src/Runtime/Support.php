@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Runtime;
 
 use LogicException;
+use Mago\Sdk\Analyzer\Metadata\AttributeMetadata;
 use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata;
 use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\Metadata\MetadataFlags;
@@ -492,6 +493,38 @@ final class Support
         $node = self::node($subject);
 
         return $node instanceof Node && $node->kind->value === $kind;
+    }
+
+    /**
+     * The attributes on the declaration a hook fired for, by fully qualified name.
+     *
+     * `$node->attrGroups` in php-parser is two levels — groups, each holding attributes — and the rules that
+     * read it only ever walk both to reach the names. Metadata carries them already flattened, and *resolved*:
+     * measured, an imported `#[Entity]` comes back as `Doctrine\ORM\Mapping\Entity`, which is what
+     * `$attr->name->toString()` gives a rule after PHPStan's own name resolution. Case survives too, unlike
+     * every other name metadata holds — so a comparison against a written attribute name matches without
+     * folding case, and folding it would be wider than the rule.
+     *
+     * Both hooks that ask: a class-like declaration reads its own attributes, and a method declaration reads
+     * the ones on the method rather than on the class around it.
+     *
+     * @return list<string>
+     */
+    public static function attributeNames(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        $className = self::enclosingClassName($context, $subject);
+        if ($className === null) {
+            return [];
+        }
+
+        $metadata = self::isMethodDeclaration($subject)
+            ? $context->codebase->getMethod($className, (string) self::declarationName($context, $subject))
+            : $context->codebase->getClassLike($className);
+
+        return $metadata === null ? [] : array_values(array_map(
+            static fn (AttributeMetadata $attribute): string => $attribute->name,
+            $metadata->attributes,
+        ));
     }
 
     /**

@@ -361,6 +361,10 @@ final class Vocabulary
         'args' => ['iter' => self::PHP_ONLY, 'item' => 'argument', 'phpIter' => 'Support::arguments({rust})'],
         // The names of the classes a declaration extends, one written name each.
         'class-names' => ['iter' => self::PHP_ONLY, 'item' => 'class-name', 'phpIter' => '{rust}'],
+        // Attribute names a declaration carries, already resolved and *not* lowercased — kept apart from
+        // `class-names` for exactly that reason: anything comparing against one of those folds case, and these
+        // match a written attribute name as it stands.
+        'attribute-names' => ['iter' => self::PHP_ONLY, 'item' => 'bytes', 'phpIter' => '{rust}'],
         // The elements of an array literal, one wrapped element each.
         'array-items' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => '{rust}'],
     ];

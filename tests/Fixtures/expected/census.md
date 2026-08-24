@@ -107,7 +107,7 @@ REFUSE  NoReferenceRule
 EMIT    NoRepositoryCallInDataFixtureRule
 EMIT    NoRequiredOutsideClassRule
 REFUSE  NoReturnSetterMethodRule
-        no mapping for ->attrGroups on a hook-node
+        comparison outside the vocabulary: Expr_Variable against Scalar_String
 EMIT    NoRouteTrailingSlashPathRule
 REFUSE  NoRoutingPrefixRule
         no node predicate for instanceof PhpParser\Node\Identifier on a bytes

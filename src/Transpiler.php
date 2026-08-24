@@ -2012,6 +2012,30 @@ PHP;
             ];
         }
 
+        // `$node->attrGroups` — the attributes on the method this hook fired for. php-parser nests them one
+        // level deeper, groups each holding attributes, and metadata carries them flattened. Exact for the
+        // question `NoReturnSetterMethodRule` asks, because a declaration has an empty group list exactly when
+        // it has no attributes.
+        //
+        // Method only, though the same field exists on a class-like: `NoEntityOutsideEntityNamespaceRule` is
+        // the class-like case and this does not carry it, because it walks *both* levels to reach each
+        // attribute's name. Answering that from a flattened list would take an `->attrs` and a `->name` that
+        // each hand back what they were given — three mappings pretending the tree has a shape it does not,
+        // where one wrong step reads as a rule that works. It refuses instead, and the refusal now names
+        // `->attrs` on a flattened list rather than the field.
+        if ($base['kind'] === 'hook-node' && $property === 'attrGroups' && $this->nodeKind === 'Method') {
+            if (self::$target !== 'php') {
+                throw new Refusal("a declaration's attributes, which only the PHP target carries", $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'attribute-names',
+                'key' => $key,
+                'php' => 'Support::attributeNames($context, $node)',
+            ];
+        }
+
         // `$node->namespacedName` on a class-like declaration — the fully qualified name PHPStan's name
         // resolution put there. `enclosingClassName()` reads it off the CST rather than out of metadata, so the
         // case survives: measured as `App\Forms\ContactFormType`, which matters because both rules reaching
