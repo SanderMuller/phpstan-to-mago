@@ -492,7 +492,12 @@ final class Vocabulary
      *
      * **The measurement, and what it is against.** `php tests/Support/run-coverage-corpus.php <consumer-root>`
      * on two Laravel consumers. On hihaho (2933 files) PHPStan counts 13694 parameters where this counts
-     * 13775; on mijntp (4372 files) 11428 against 11465. Both single-signed, so the port never under-counts.
+     * 13775; on mijntp (4372 files) 11428 against 11465. Both over-count — but "never under-counts" was a claim
+     * about two corpora and it is false in general. `nikic/php-parser`, in this repository's own vendor
+     * directory, measures -7, and the whole -7 is one file: `Internal/TokenPolyfill.php` declares
+     * `TokenPolyfill` twice, once inside a version guard that returns. PHPStan counts what the file writes and
+     * the port, reading metadata keyed by class name, counts neither body. The control
+     * `conditionally-redeclared` pins it.
      * Independently, `type-coverage`'s own param count on the first consumer is 11164 today and 7317 with two
      * pending semantics fixes applied — a different measurement against a different extension set, quoted
      * because it sizes the *worst case*: the same +81 is 0.73% of that denominator now and 1.11% after those
@@ -529,10 +534,12 @@ final class Vocabulary
     public const array ACCEPTED_DIVERGENCE = [
         'parameters' => [
             'ceiling' => 0.0111,
-            'note' => 'Over-counts the original by up to 1.11%, and never under-counts. The collector skips a '
-                . 'method whose name an ancestor has, and PHPStan answers that from reflection extensions a '
-                . 'Mago plugin cannot reproduce. Measured on two Laravel consumers: +81 of 13694 and +37 of '
-                . '11428. Reproduce with `php tests/Support/run-coverage-corpus.php <consumer-root>`.',
+            'note' => 'Over-counts the original by up to 1.11% on the two Laravel consumers it was measured '
+                . 'on: +81 of 13694 and +37 of 11428. The collector skips a method whose name an ancestor has, '
+                . 'and PHPStan answers that from reflection extensions a Mago plugin cannot reproduce. It can '
+                . 'also *under*-count, by a separate cause: a class declared twice in one file behind a version '
+                . 'guard is counted by PHPStan and by neither body here, which is -7 on nikic/php-parser. '
+                . 'Reproduce either with `php tests/Support/run-coverage-corpus.php <consumer-root>`.',
         ],
     ];
 

@@ -15,6 +15,11 @@ declare(strict_types=1);
  * more than the stated ceiling. Accepting a bound without pinning it is how it silently becomes +400, and an
  * under-count is a different bug wearing the same ratio.
  *
+ * One under-count has a known cause and still stops the gate on purpose: a class declared twice in one file
+ * behind a version guard is counted by PHPStan and by neither body here. `nikic/php-parser` measures -7 that
+ * way. It stops rather than being allowed, because a corpus containing it needs a reader to confirm that is
+ * what the number is — and confirming takes one run of `run-coverage-setdiff.php`.
+ *
  * A whole-corpus run is what the bound is stated against, so `--paths=` and `--exclude=` turn the gate off:
  * the delta over one directory has no ceiling of its own, and comparing it against the whole corpus's would
  * fail a bisect that is working correctly.
@@ -156,7 +161,7 @@ $ratio = $totals['original'] === 0 ? 0.0 : $delta / $totals['original'];
 printf("  bound:    %+.3f%% against a ceiling of +%.3f%% and a floor of 0\n", $ratio * 100, $ceiling * 100);
 
 if ($delta < 0) {
-    fwrite(STDERR, "The port under-counts, which the stated divergence does not allow. Run run-coverage-setdiff.php to name the declarations.\n");
+    fwrite(STDERR, "The port under-counts. One cause is known — a class declared twice in one file behind a\nversion guard is counted by neither body here. Run run-coverage-setdiff.php to name the declarations and\nconfirm that is what this is.\n");
 
     exit(1);
 }

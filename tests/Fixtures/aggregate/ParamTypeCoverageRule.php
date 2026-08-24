@@ -16,10 +16,11 @@ use Mago\Sdk\Reporting\Level;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 
 /**
- * Over-counts the original by up to 1.11%, and never under-counts. The collector skips a method whose name an
- * ancestor has, and PHPStan answers that from reflection extensions a Mago plugin cannot reproduce. Measured on
- * two Laravel consumers: +81 of 13694 and +37 of 11428. Reproduce with `php
- * tests/Support/run-coverage-corpus.php <consumer-root>`.
+ * Over-counts the original by up to 1.11% on the two Laravel consumers it was measured on: +81 of 13694 and +37
+ * of 11428. The collector skips a method whose name an ancestor has, and PHPStan answers that from reflection
+ * extensions a Mago plugin cannot reproduce. It can also *under*-count, by a separate cause: a class declared
+ * twice in one file behind a version guard is counted by PHPStan and by neither body here, which is -7 on
+ * nikic/php-parser. Reproduce either with `php tests/Support/run-coverage-corpus.php <consumer-root>`.
  */
 final class ParamTypeCoverageRule implements AfterAnalysisHook, Plugin
 {

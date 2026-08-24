@@ -225,17 +225,49 @@ exists at analysis time.
 
 ### Where it does not agree yet
 
-On 585 files of dependency-tree source the emitted rules report more than PHPStan does: 214 findings
-against 19, with 17 agreeing. Two things are mixed together in that gap and have not been separated:
-Mago analyses without an autoloader, so the two tools do not see the same resolved classes; and at least
-one port is genuinely wider than its original.
+On `nikic/php-parser`'s 270 files of library source — a tree this repository installs, so the number can be
+re-run — the differential is **1086 agreeing, 1 original-only, 203 port-only**. Reproduce with
+`php tests/Support/run-corpus-differential.php . --paths=vendor/nikic/php-parser/lib`.
+
+The 203 are four identifiers, and only one of them is a mystery:
+
+| identifier | agree | only-original | only-port |
+|:--|--:|--:|--:|
+| `symplify.noDynamicName` | 13 | 0 | **169** |
+| `complexity.functionLike` | 11 | 0 | 28 |
+| `complexity.classLike` | 4 | 0 | 6 |
+| `typeCoverage.paramTypeCoverage` | 1053 | 1 | 0 |
+
+The 34 cognitive-complexity findings are a configured threshold against a package default, and the numbers say
+so: this project's `phpstan.neon.dist` sets `class: 80, function: 20`, and the package ships `class: 40,
+function: 9`. A generated plugin deliberately carries its own package's defaults so that a generated project
+stands alone, so the port's threshold is lower and it reports more. The same decision is why the aggregate's
+message differs at every site it agrees on.
+
+**The 169 from `NoDynamicNameRule` are not explained, and that is the largest open item here.** Spot-checking
+one — `$arg->name = BuilderHelpers::normalizeIdentifier($key)` in `BuilderFactory.php` — the name is a written
+identifier, so the original correctly stays silent and the port reports. The emitted guard reads with the right
+polarity, which points at `Support::isWrittenName()` or `namePart()` answering wrongly for a wrapped member
+access, the same shape that made `isPropertyFetch()` answer yes for `Foo::BAR`. Untraced, so stated as a
+suspicion rather than a cause.
+
+An earlier figure here read "585 files of dependency-tree source, 214 findings against 19, with 17 agreeing".
+That corpus was a consumer's vendor tree nobody else has, and the run predates the discovery that
+`laravel/pao` was rewriting PHPStan's output for every one of these harnesses. Replaced rather than re-quoted:
+a headline resting on an instrument since fixed, over a corpus nobody can obtain, is worth less than a smaller
+number anyone can check.
 
 The `type-coverage` parameter aggregate is measured and *bounded*. It was refused by default while the gap
 had no named cause; every part of that gap now traces to one cause the port cannot reproduce, so it is emitted
 with the bound stated in the generated file. On two Laravel consumers it over-counts by 81 of 13694 and by 37
-of 11428, never under-counts, and the whole residue is `ClassReflection::hasMethod()` answered by PHPStan
+of 11428, and that residue is `ClassReflection::hasMethod()` answered by PHPStan
 reflection extensions — larastan's factory and auth extensions, plus three classes that ship inside
-`phpstan.phar`. A Mago plugin has no equivalent. `php tests/Support/run-coverage-corpus.php <consumer-root>`
+`phpstan.phar`. A Mago plugin has no equivalent.
+
+It can under-count too, by a separate cause found on this repository's own vendor tree: a class declared twice
+in one file behind a version guard is counted by PHPStan and by neither body here, which is -7 on
+`nikic/php-parser`. Named because an earlier version of this paragraph said the port never under-counts, which
+was a claim about two corpora rather than a property. `php tests/Support/run-coverage-corpus.php <consumer-root>`
 reproduces the numbers and fails when a corpus run leaves the bound; one control isolates the mechanism in
 CI.
 
