@@ -274,16 +274,24 @@ regenerating every snapshot that holds it. For one site on one corpus, against a
 Mago's rather than the port's.
 
 A third, `rector/rector`'s `src` — 490 files, chosen because these rules are written by the same author as
-that codebase: **158 agreeing, 1 original-only, 81 port-only**, and again **7 of 48 identifiers exercised**. The
+that codebase: **159 agreeing, 0 original-only, 81 port-only**, and again **7 of 48 identifiers exercised**. The
 81 are the threshold difference. The `rector.*` identifiers stay silent even here, because Rector's `src` holds
 the framework and its `AbstractRector` subclasses live under `rules/`.
 
-The 1 is `ForbiddenArrayMethodCallRule` again — and a **different cause** from the `commonmark` one, which is
-the more interesting result. Instrumenting the plugin over the whole corpus traces 58 array literals reaching
-the hook, three of which agree, and the missed site
-(`RectorConfigBuilder.php:163`, `\Closure::fromCallable([$rectorConfig, 'make'])`) appears in none of them: the
-node never arrives. That is a worse class of gap than a type imprecision, and it is untraced beyond "nested two
-calls deep, while flatter literals in the same file reach the hook".
+That corpus arrived with one original-only finding, and tracing it found a real defect.
+`ForbiddenArrayMethodCallRule` was silent on `\Closure::fromCallable([$rectorConfig, 'make'])` because
+`Support::typeHasMethod()` asked the codebase for a method the class *declares* — so it answered no for every
+method inherited from a parent. Measured on `RectorConfig::make()`, which comes from the container it extends:
+`getMethod` null, `getDeclaringMethod` found, `methodExists` yes, hierarchy complete, four ancestors. It asks
+`methodExists()` now, which is the hierarchy-inclusive question PHPStan's `hasMethod()->yes()` is.
+
+The rule's example pair passed throughout, because `[$this, 'handle']` names a method written on the class
+itself and the pair had no inherited method in it. It has one now.
+
+*An earlier version of this paragraph said the node never reached the rule's hook.* That was wrong, and wrong
+for an avoidable reason: the instrumentation I read it from had crashed part-way through the corpus, and I drew
+a conclusion from a truncated log without checking the run had finished. The array reaches the hook, with two
+elements, and both its types resolve.
 
 This run started at **203** port-only, of which 169 came from `NoDynamicNameRule` and were false positives.
 `Support::isWrittenName()` descends into a name's first child, and a name written with a leading `\` arrives as

@@ -1649,11 +1649,24 @@ final class Support
         return false;
     }
 
+    /**
+     * Whether an inferred type has a method, which is `$type->hasMethod($m)->yes()` in PHPStan.
+     *
+     * `methodExists()`, not `getMethod()`. The latter answers about methods the class *declares*, so it returns
+     * null for every inherited one — measured on `Rector\Config\RectorConfig::make()`, which comes from the
+     * container it extends: `getMethod` NULL, `getDeclaringMethod` found, `methodExists` yes, hierarchy
+     * complete, four ancestors. PHPStan's question is hierarchy-inclusive, so this was answering no about any
+     * method a class did not write itself, and `ForbiddenArrayMethodCallRule` stayed silent on
+     * `[$rectorConfig, 'make']` where the original reports.
+     *
+     * The `getMethod()` call left in {@see attributeNames} is correct for the opposite reason: a declaration
+     * hook fires on a method this class-like writes, so its own attributes are what that reads.
+     */
     public static function typeHasMethod(NodeAnalysisContext $context, ?Type $type, string $method): bool
     {
         $className = self::namedObjectName($type, false);
 
-        return $className !== null && $context->codebase->getMethod($className, $method) instanceof FunctionLikeMetadata;
+        return $className !== null && $context->codebase->methodExists($className, $method);
     }
 
     /**
