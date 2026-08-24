@@ -1726,7 +1726,7 @@ PHP;
             $this->refuseLooseUnlessItAgreesWithStrict($options, $line);
         }
 
-        return $this->oneOf($args[0]->value, $options, 'in_array()', $line);
+        return $this->oneOf($args[0]->value, $options, 'in_array()', $line, $this->classNameList($args[1]->value, $line));
     }
 
     /**
@@ -1741,10 +1741,25 @@ PHP;
      *
      * @param list<string> $options
      */
-    private function oneOf(Expr $subjectExpr, array $options, string $asked, int $line): string
+    private function oneOf(Expr $subjectExpr, array $options, string $asked, int $line, bool $classNames = false): string
     {
         $subject = $this->resolve($subjectExpr, $line);
         $list = $this->byteSliceList($options);
+
+        // A list of class names, compared against the name the file resolves to rather than the one it
+        // writes. {@see classNameList} says why, and `resolvedNameIsOneOf()` carries the same leading-`\`
+        // and case handling `nameEquals()` was measured into.
+        if ($classNames) {
+            if (self::$target !== 'php') {
+                throw new Refusal("{$asked} over class names, which only the PHP target resolves", $line);
+            }
+
+            if ($subject['kind'] !== 'name-expr') {
+                throw new Refusal("{$asked} over class names against a {$subject['kind']}", $line);
+            }
+
+            return $this->backend->call('resolved_name_is_one_of', ['$context', $this->operand($subject), $list]);
+        }
 
         return match ($subject['kind']) {
             'local-name' => self::$target === 'php'
@@ -1765,7 +1780,8 @@ PHP;
      * where the two provably answer the same question. Three things have to hold, and only the last is
      * checked here:
      *
-     * - Every element is a written string literal. {@see stringList} accepts nothing else.
+     * - Every element folds to a string literal at transpile time. {@see stringList} accepts nothing else:
+     *   a written literal, or a constant whose value is one and is read here.
      * - The needle is a name or text. This matters on its own: `true == 'abc'` and `null == ''` both hold
      *   where `===` does not, and neither needle is a string. {@see oneOf} accepts only name and text kinds
      *   and refuses the rest by kind, which is what carries it.
@@ -2748,6 +2764,44 @@ PHP;
     }
 
     /**
+     * Whether every element of a written list is a `::class` fetch.
+     *
+     * The provenance decides what the comparison is *against*. `[Name::class, FullyQualified::class]` is a
+     * list of class names, and PHPStan compares it to `$node->class->toString()` — which php-parser has
+     * already resolved through the file's imports. Mago's tree keeps the name as written, so comparing the
+     * written text to a fully-qualified list is silent on exactly the imported spelling the rule targets.
+     * {@see oneOf} asks the resolved name instead when this holds.
+     *
+     * A mixed list is refused rather than guessed: half the elements would need one operand and half the
+     * other, and there is no single comparison that answers both.
+     *
+     * Only literal `::class` fetches count. `SensioClass::IS_GRANTED` folds to a fully-qualified *string* and
+     * is indistinguishable from one a rule wrote out, which is why this reads the node and not the value.
+     */
+    private function classNameList(Expr $expr, int $line): bool
+    {
+        if (! $expr instanceof Array_ || $expr->items === []) {
+            return false;
+        }
+
+        $classNames = 0;
+        foreach ($expr->items as $item) {
+            if ($item !== null
+                && $item->value instanceof ClassConstFetch
+                && $this->memberName($item->value->name, $line) === 'class'
+            ) {
+                ++$classNames;
+            }
+        }
+
+        if ($classNames !== 0 && $classNames !== count($expr->items)) {
+            throw new Refusal('list mixes ::class fetches with other elements, which compare against different operands', $line);
+        }
+
+        return $classNames !== 0;
+    }
+
+    /**
      * A list of string literals, written inline or as one of the rule's own constants.
      *
      * @return list<string>
@@ -2765,15 +2819,27 @@ PHP;
         if ($expr instanceof Array_) {
             $values = [];
             foreach ($expr->items as $item) {
-                if ($item === null || ! $item->value instanceof String_) {
-                    // Names the item. "something other than a string literal" is true of an array, a variable
-                    // and a constant alike, and the two rules refusing here hold neither of the first two: they
-                    // list `SensioClass::IS_GRANTED` and friends, constants on *other* classes in the same
-                    // package. That is one nameable capability behind two rules, and the old message hid which.
-                    throw new Refusal(sprintf(
-                        'list contains %s rather than a string literal',
-                        $item === null ? 'a hole' : $this->describe($item->value),
-                    ), $line);
+                if ($item === null) {
+                    throw new Refusal('list contains a hole rather than a string literal', $line);
+                }
+
+                // A constant standing for a string, resolved the same way a name argument is: the rules that
+                // reach here list `SensioClass::IS_GRANTED` and `SymfonyFunctionName::SERVICE`, constants on
+                // *other* classes in the same package, and `Name::class`. Each is known at transpile time
+                // exactly as a literal would be, so the emitted comparison is against the value. Not a
+                // catch-all: `rawStringLiteral()` refuses a variable, an array and a dynamic class alike, and
+                // the item is named in the refusal so a new shape says which one stopped it.
+                if (! $item->value instanceof String_) {
+                    try {
+                        $values[] = $this->rawStringLiteral($item->value, $line);
+
+                        continue;
+                    } catch (Refusal) {
+                        throw new Refusal(sprintf(
+                            'list contains %s rather than a string literal',
+                            $this->describe($item->value),
+                        ), $line);
+                    }
                 }
 
                 $values[] = $item->value->value;
@@ -7748,6 +7814,7 @@ PHP;
                 $this->stringList($args[1]->value, $expr->getStartLine()),
                 'NamingHelper::isNames()',
                 $expr->getStartLine(),
+                $this->classNameList($args[1]->value, $expr->getStartLine()),
             );
         }
 

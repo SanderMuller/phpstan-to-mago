@@ -1610,6 +1610,36 @@ final class Support
         return $subject !== null && in_array($subject, $values, true);
     }
 
+    /**
+     * Whether a written class name resolves to one of a set of class names.
+     *
+     * The counterpart of {@see bytesIsOneOf} for a list the rule wrote as `::class` fetches. PHPStan compares
+     * such a list against `Name::toString()`, and php-parser has already rewritten that name through the
+     * file's imports — so `new Name(..)` under `use PhpParser\Node\Name;` reads back fully qualified. Mago
+     * keeps the name as written, which is why the resolved name is asked for instead of the text.
+     *
+     * Leading `\` and case are handled as {@see nameEquals} handles them, for the reason recorded there:
+     * php-parser does not keep the separator, and a comparison that does is silent on the fully-qualified
+     * spelling.
+     *
+     * @param list<string> $names
+     */
+    public static function resolvedNameIsOneOf(NodeAnalysisContext $context, Part|Node|null $subject, array $names): bool
+    {
+        $resolved = self::resolvedName($context, $subject);
+        if ($resolved === null) {
+            return false;
+        }
+
+        foreach ($names as $name) {
+            if (strcasecmp(ltrim($resolved, '\\'), ltrim($name, '\\')) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** @param list<string> $names */
     public static function selectorIsOneOf(?Part $part, array $names): bool
     {

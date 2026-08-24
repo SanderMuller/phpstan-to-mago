@@ -7,7 +7,7 @@ A diff here is upstream drift — a rule added, removed, or rewritten into a sha
 does or does not cover — or a change in what a refusal says stops a rule. Both are worth reading:
 a refusal naming the wrong obstacle is how work gets sized wrongly.
 
-## symplify/phpstan-rules — 33 of 88 the package registers emit, 1 covered by the engine, 54 refuse, 8 it registers nowhere
+## symplify/phpstan-rules — 34 of 88 the package registers emit, 1 covered by the engine, 53 refuse, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -64,7 +64,7 @@ REFUSE  NoDocumentMockingRule
         access path outside the vocabulary: ->getConstantStrings()
 EMIT    NoDoubleConsecutiveTestMockRule
 REFUSE  NoDuplicateArgAutowireByTypeRule
-        list contains SymfonyFunctionName::SERVICE rather than a string literal
+        assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
 REFUSE  NoDuplicateArgsAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
 EMIT    NoDynamicNameRule
@@ -87,8 +87,7 @@ REFUSE  NoIntegerRefactorReturnRule
         no mapping for ->returnType on a hook-node
 REFUSE  NoJustPropertyAssignRule
         no hook mapping for node type PhpParser\Node\Stmt\Expression
-REFUSE  NoLeadingBackslashInNameRule
-        list contains Name::class rather than a string literal
+EMIT    NoLeadingBackslashInNameRule
 REFUSE  NoListenerWithoutContractRule
         access path outside the vocabulary: Scalar_String
 ENGINE  NoMissingVariableDimFetchRule  (mago reports undefined-variable)
