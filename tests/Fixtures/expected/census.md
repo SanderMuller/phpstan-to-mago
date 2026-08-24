@@ -116,7 +116,7 @@ REFUSE  NoServiceSameNameSetClassRule
 REFUSE  NoSetClassServiceDuplicationRule
         expected a string literal
 REFUSE  NoStringInGetSubscribedEventsRule
-        access path outside the vocabulary: SymfonyClass::EVENT_SUBSCRIBER_INTERFACE
+        assignment value outside the vocabulary: no searchable node kind mapped for PhpParser\Node\ArrayItem
 REFUSE  NoTestMocksRule  (the package registers it nowhere)
         access path outside the vocabulary: ->getConstantStrings()
 REFUSE  NoValueObjectInServiceConstructorRule  (the package registers it nowhere)

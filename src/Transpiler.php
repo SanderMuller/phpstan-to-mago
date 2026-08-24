@@ -4511,6 +4511,24 @@ PHP;
     }
 
     /**
+     * The interface an `implementsInterface()` asks about, as text.
+     *
+     * A written literal or a constant standing for one is folded here, the same way a method name is
+     * {@see methodNameArgument}: `implementsInterface(SymfonyClass::EVENT_SUBSCRIBER_INTERFACE)` names a
+     * class through a class of constants, and the value is known at transpile time exactly as a literal
+     * would be. Without this the argument went through generic resolution, which refuses a string literal by
+     * node kind — so both spellings a rule can write were refused and only a name read off the node worked.
+     */
+    private function interfaceNameArgument(Expr $expr, int $line): string
+    {
+        if ($expr instanceof String_ || $expr instanceof ClassConstFetch || $expr instanceof Concat) {
+            return $this->bytesValue($expr, $line);
+        }
+
+        return $this->nameText($this->resolve($expr, $line), $line);
+    }
+
+    /**
      * A descriptor read as the string a name-taking `Support` helper expects.
      *
      * The name a rule hands `hasFunction()` is usually the call's own name *node*, and the helpers take the
@@ -8490,7 +8508,7 @@ PHP;
             return $this->backend->call('class_implements', [
                 '$context',
                 '$node',
-                $this->nameText($this->resolve($args[0]->value, $expr->getStartLine()), $expr->getStartLine()),
+                $this->interfaceNameArgument($args[0]->value, $expr->getStartLine()),
             ]);
         }
 
@@ -10754,8 +10772,12 @@ PHP;
         $short = substr($fqcn, (int) strrpos('\\' . $fqcn, '\\'));
         foreach ($this->index->paths($short, $this->file) as $path) {
             $source = (string) file_get_contents($path);
-            if (preg_match('/const\s+(?:string\s+)?' . preg_quote($constant, '/') . '\s*=\s*\'([^\']*)\'/', $source, $match) === 1) {
-                return $match[1];
+            if (preg_match('/const\s+(?:string\s+)?' . preg_quote($constant, '/') . '\s*=\s*\'((?:[^\'\\\\]|\\\\.)*)\'/', $source, $match) === 1) {
+                // The capture is source text, so it still carries whatever the author escaped. PHP's single
+                // quotes undo exactly two sequences, and a class name is where it shows: `'A\\B'` and `'A\B'`
+                // are the same value, and returning the first as written emitted a name with a doubled
+                // separator — which resolves to nothing and makes the rule silent rather than wrong.
+                return str_replace(['\\\\', "\\'"], ['\\', "'"], $match[1]);
             }
         }
 

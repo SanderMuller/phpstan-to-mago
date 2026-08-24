@@ -244,3 +244,16 @@ class Request
         return $default;
     }
 }
+
+namespace Examples\Stubs;
+
+/**
+ * Two interfaces an example implements, for `ImplementsNamedInterfaceRule`.
+ *
+ * One is named in the rule by a written literal and one by a constant on another class, which are the two
+ * spellings `implementsInterface()` has to fold. They sit here rather than beside the rule because mago
+ * resolves only the sandbox's own source paths, and both tools have to see the same hierarchy.
+ */
+interface NamedByLiteral {}
+
+interface NamedByConstant {}
