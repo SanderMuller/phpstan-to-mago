@@ -105,6 +105,22 @@ final class Cli
                     'identifier' => $rule['identifier'],
                     'identifiers' => $rule['identifiers'],
                     'messages' => $rule['messages'],
+                    // The plugin's constructor parameters, by name, with the rule package's own default.
+                    //
+                    // A generated plugin carries package defaults so that a generated project stands alone, and
+                    // a consumer overrides by constructing it with values in its own worker — which it can read
+                    // from `[extension-hosts.<name>.environment]` in `mago.toml`. That works and nothing said
+                    // the knobs were there: the parameter names lived only in the generated PHP, so using them
+                    // meant reading emitted code.
+                    //
+                    // Worth having measured rather than as a nicety. Across the two differential corpora, 57 of
+                    // 59 disagreements are a consumer's configured threshold against a package default — this
+                    // project sets `class: 80, function: 20` where `cognitive-complexity` ships `40` and `9`.
+                    // Every one of those closes by passing a value the manifest now names.
+                    //
+                    // Each default's own JSON type is the parameter's type; no rule in the four packages
+                    // defaults one to null, so nothing here is ambiguous between "a string" and "absent".
+                    'parameters' => $rule['arguments'],
                 ];
             }
 

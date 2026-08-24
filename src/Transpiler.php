@@ -1119,7 +1119,10 @@ PHP;
             'kind' => 'CollectedData',
             'module' => $this->snake($className),
             'rust' => $rust,
-            'arguments' => [],
+            // The threshold is this plugin's one knob, and it was absent here while the emitted constructor
+            // carried it — so a consumer reading the manifest could not see that the value existed, let alone
+            // what it defaulted to.
+            'arguments' => ['required' => $aggregate->default],
             'identifier' => $aggregate->identifier,
             'identifiers' => [$aggregate->identifier],
             'messages' => [$aggregate->message],
