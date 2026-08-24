@@ -130,12 +130,21 @@ $agree = 0;
 $onlyOriginal = 0;
 $onlyPort = 0;
 $suppressed = 0;
+$silent = [];
 foreach ($differential->compare($original, $port) as $identifier => $result) {
     $rules = implode(', ', $differential->identifiers()[$identifier]);
     $agree += count($result['agree']);
     $onlyOriginal += count($result['onlyOriginal']);
     $onlyPort += count($result['onlyPort']);
     $suppressed += count($result['suppressed']);
+
+    // An identifier neither tool reported anything for proves nothing about this corpus, and its `0 0 0` row
+    // reads exactly like a clean agreement. `.ai/guidelines/verification.md` names this: two tools reporting
+    // nothing is equally consistent with "the code is clean" and "the second one never looked". Collected so
+    // the summary can say how much of the row count is coverage and how much is silence.
+    if ($result['agree'] === [] && $result['onlyOriginal'] === [] && $result['onlyPort'] === [] && $result['suppressed'] === []) {
+        $silent[] = $identifier;
+    }
 
     printf(
         "%-46s agree %3d  only-original %3d  only-port %3d  suppressed %3d   %s\n",
@@ -166,5 +175,24 @@ foreach ($differential->compare($original, $port) as $identifier => $result) {
 
 echo "\ntotal: agree {$agree}, only-original {$onlyOriginal}, only-port {$onlyPort}",
 $suppressed === 0 ? "\n" : ", suppressed {$suppressed} (the original finds these too, and the consumer silenced them with @phpstan-ignore)\n";
+
+$exercised = count($differential->identifiers()) - count($silent);
+printf(
+    "exercised: %d of %d identifiers; %d reported nothing on either side, so this corpus says nothing about them\n",
+    $exercised,
+    count($differential->identifiers()),
+    count($silent),
+);
+
+if ($silent !== []) {
+    // Named, not just counted. A corpus is chosen, and which rules it cannot reach is the first thing that
+    // tells you to choose another one — every Laravel-shaped rule is silent on a library, and reading the
+    // total alone would never say so.
+    sort($silent);
+    echo '  ', implode("\n  ", array_map(
+        static fn (string $identifier): string => $identifier,
+        array_slice($silent, 0, 40),
+    )), count($silent) > 40 ? "\n  ..." : '', "\n";
+}
 
 exit($onlyOriginal === 0 && $onlyPort === 0 ? 0 : 1);

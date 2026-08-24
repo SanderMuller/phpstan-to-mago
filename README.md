@@ -242,6 +242,12 @@ plugin deliberately carries its own package's defaults so that a generated proje
 threshold is lower and it reports more. The same decision is why the aggregate's message differs at every site
 it agrees on.
 
+**Read the denominator before the agreement.** Of 48 identifiers under test, `php-parser` exercises **7** — 41
+report nothing on either side, and a `0 0 0` row reads exactly like a clean agreement. Every Laravel- and
+PHPUnit-shaped rule is in that 41, because a parser library contains nothing for them to find. The runner names
+them now rather than leaving them in the total, so a reader can see that 1086 agreements come from seven rules
+and choose a corpus that reaches the rest.
+
 A second corpus, run for the same reason the first one is here — a green result on one tree says little.
 `league/commonmark`'s 302 files: **34 agreeing, 1 original-only, 23 port-only**. The 23 are the same threshold
 difference. The 1 is `ForbiddenArrayMethodCallRule` staying silent at `Environment.php:411`, where the original
