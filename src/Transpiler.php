@@ -888,6 +888,27 @@ final class Transpiler
         return sprintf('no iteration mapped for %s, which resolved to a %s', $this->describe($subject), $kind);
     }
 
+    /**
+     * What an `if` in an inlined helper is, beyond being an `if`.
+     *
+     * A helper is inlined as a guard chain: single-statement bodies that exit. `Stmt_If` alone read as a missing
+     * statement type, and the four rules refusing that way turned out to be three different shapes — a nested
+     * early `return true`, a return of a non-literal expression, and a `foreach` inside a recursive helper. The
+     * body is what separates them, so the message says what it is.
+     */
+    private function ifShape(If_ $statement): string
+    {
+        $body = $statement->stmts;
+        $last = $body === [] ? null : $body[count($body) - 1];
+
+        return sprintf(
+            'an if whose body is %d %s%s, which is a decision tree rather than a guard that exits',
+            count($body),
+            count($body) === 1 ? 'statement' : 'statements',
+            $last instanceof Node ? ' ending in ' . $this->describe($last) : '',
+        );
+    }
+
     /** A member's written name, or a placeholder — this is for a message, so a dynamic name must not throw. */
     private function memberLabel(Node|string $name): string
     {
@@ -1982,7 +2003,14 @@ PHP;
         }
 
         if (! in_array($subject['kind'], ['bytes', 'class-name'], true)) {
-            throw new Refusal("null comparison against a {$subject['kind']}", $line);
+            // Names what was written as well as what it resolved to. `null comparison against a subtree` told a
+            // reader nothing: the one rule refusing that way asks `$node->stmts === null`, which is *whether the
+            // declaration has a body* — a question with an answer, where `subtree` reads as an internal state.
+            throw new Refusal(sprintf(
+                'null comparison against %s, which resolved to a %s',
+                $this->describe($left),
+                $subject['kind'],
+            ), $line);
         }
 
         return self::$target === 'php'
@@ -3336,7 +3364,7 @@ PHP;
             throw new Refusal(sprintf(
                 'statement in %s() outside the vocabulary: %s',
                 $method->name->toString(),
-                $this->describe($statement),
+                $statement instanceof If_ ? $this->ifShape($statement) : $this->describe($statement),
             ), $statement->getStartLine());
         }
 

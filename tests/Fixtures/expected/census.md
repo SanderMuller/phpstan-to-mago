@@ -79,7 +79,7 @@ EMIT    NoGetInControllerRule
 REFUSE  NoGetRepositoryOnServiceRepositoryEntityRule
         access path outside the vocabulary: ->resolveFromEntityClass()
 REFUSE  NoGetRepositoryOutsideServiceRule
-        statement in isDynamicArg() outside the vocabulary: Stmt_If
+        statement in isDynamicArg() outside the vocabulary: an if whose body is 2 statements ending in Stmt_Return, which is a decision tree rather than a guard that exits
 EMIT    NoGlobalConstRule
 REFUSE  NoInstanceOfStaticReflectionRule
         no node predicate for instanceof PhpParser\Node\Expr\Instanceof_ on a hook-node
@@ -118,7 +118,7 @@ REFUSE  NoServiceSameNameSetClassRule
 REFUSE  NoSetClassServiceDuplicationRule
         expected a string literal
 REFUSE  NoStringInGetSubscribedEventsRule
-        null comparison against a subtree
+        null comparison against ->stmts, which resolved to a subtree
 REFUSE  NoTestMocksRule  (the package registers it nowhere)
         access path outside the vocabulary: ->getConstantStrings()
 REFUSE  NoValueObjectInServiceConstructorRule  (the package registers it nowhere)
@@ -149,7 +149,7 @@ REFUSE  RequireInvokableControllerRule
 REFUSE  RequireIsGrantedEnumRule
         no hook mapping for node type PhpParser\Node\Attribute
 REFUSE  RequireQueryBuilderOnRepositoryRule
-        statement in isValidRepositoryObjectType() outside the vocabulary: Stmt_If
+        statement in isValidRepositoryObjectType() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Foreach, which is a decision tree rather than a guard that exits
 REFUSE  RequireRouteNameToGenerateControllerRouteRule
         expected a string literal
 EMIT    RequireServiceRepositoryParentRule  (the package registers it nowhere)
@@ -174,7 +174,7 @@ EMIT    CombinedFuncCallRule
 REFUSE  CombinedMethodCallRule
         flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
 REFUSE  CombinedStaticCallRule
-        statement in isLaravelStaticDebugCall() outside the vocabulary: Stmt_If
+        statement in isLaravelStaticDebugCall() outside the vocabulary: an if whose body is 2 statements ending in Stmt_If, which is a decision tree rather than a guard that exits
 REFUSE  FlagArgumentManifestCollector
         every rule that consumes this collector reports nothing and writes a file instead, so the pair cannot become a plugin whatever the collector body does
 EMIT    NoDebugInNamespaceRule  (the package registers it nowhere)
@@ -195,7 +195,7 @@ REFUSE  PositionalFlagArgumentNullsafeMethodCallRule
 REFUSE  PositionalFlagArgumentStaticCallRule  (the package registers it nowhere)
         $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
 REFUSE  StaticChainedNoDebugInNamespaceRule  (the package registers it nowhere)
-        statement in isLaravelStaticDebugCall() outside the vocabulary: Stmt_If
+        statement in isLaravelStaticDebugCall() outside the vocabulary: an if whose body is 2 statements ending in Stmt_If, which is a decision tree rather than a guard that exits
 EMIT    TraitRequiresInterfaceRule
 REFUSE  UnvalidatedFormRequestFieldRule  (the package registers it nowhere)
         $fieldAccessorsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
