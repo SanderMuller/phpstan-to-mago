@@ -257,3 +257,17 @@ namespace Examples\Stubs;
 interface NamedByLiteral {}
 
 interface NamedByConstant {}
+
+namespace Examples\Stubs\Mocked;
+
+/**
+ * Three class-likes for `MockedClassKindRule`, one per answer its predicates give.
+ *
+ * The abstract one and the interface are what make `namedClassIsAbstract()` and `namedClassIsInterface()`
+ * load-bearing: a pair holding only the concrete class passes with both predicates stubbed to false.
+ */
+class Concrete {}
+
+abstract class Pending {}
+
+interface Contract {}

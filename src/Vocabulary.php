@@ -367,6 +367,11 @@ final class Vocabulary
         'attribute-names' => ['iter' => self::PHP_ONLY, 'item' => 'bytes', 'phpIter' => '{rust}'],
         // The elements of an array literal, one wrapped element each.
         'array-items' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => '{rust}'],
+        // Every literal string a type names, which is PHPStan's `getConstantStrings()`. A union of them names
+        // more than one, and the rules that walk it act per element — so this is the list rather than the
+        // single reduction `constantStringOf()` gives. The item stays a *type* rather than becoming text,
+        // because the rules ask it for `->getValue()`.
+        'constant-strings' => ['iter' => self::PHP_ONLY, 'item' => 'constant-string', 'phpIter' => '{rust}'],
     ];
 
     /**

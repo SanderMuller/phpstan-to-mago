@@ -6,6 +6,7 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 
 use LogicException;
 use Mago\Sdk\Analyzer\Metadata\AttributeMetadata;
+use Mago\Sdk\Analyzer\Metadata\ClassLikeKind;
 use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata;
 use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\Metadata\MetadataFlags;
@@ -13,6 +14,8 @@ use Mago\Sdk\Analyzer\Metadata\ParameterMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
 use Mago\Sdk\Analyzer\Type\CallableType;
+use Mago\Sdk\Analyzer\Type\ClassLikeStringType;
+use Mago\Sdk\Analyzer\Type\ClassLikeStringVariant;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
 use Mago\Sdk\Analyzer\Type\ScalarType;
 use Mago\Sdk\Analyzer\Type\ScalarTypeKind;
@@ -62,6 +65,31 @@ final class Support
         }
 
         return $context->codebase->classLikeExists($name);
+    }
+
+    /**
+     * Whether a class named by a *value* is abstract, which is `ReflectionProvider::getClass(..)->isAbstract()`.
+     *
+     * Kept apart from {@see declarationIsAbstract}, which reads the modifier on the declaration a hook fired
+     * for. Here the name arrives as a string the plugin only has while it runs — the class a `createMock()`
+     * argument names — so the question goes to the codebase instead.
+     *
+     * An unknown class answers false, the same way the rules that ask this guard with `hasClass()` first and
+     * skip when it says no.
+     */
+    public static function namedClassIsAbstract(NodeAnalysisContext $context, ?string $name): bool
+    {
+        $metadata = $name === null || $name === '' ? null : $context->codebase->getClassLike($name);
+
+        return $metadata instanceof ClassLikeMetadata && $metadata->flags->contains(MetadataFlags::ABSTRACT);
+    }
+
+    /** Whether a class named by a value is an interface. {@see namedClassIsAbstract} says why this is separate. */
+    public static function namedClassIsInterface(NodeAnalysisContext $context, ?string $name): bool
+    {
+        $metadata = $name === null || $name === '' ? null : $context->codebase->getClassLike($name);
+
+        return $metadata instanceof ClassLikeMetadata && $metadata->kind === ClassLikeKind::Interface;
     }
 
     /**
@@ -2510,18 +2538,54 @@ final class Support
      */
     public static function constantStringOf(?Type $type): ?string
     {
+        return self::constantStringsOf($type)[0] ?? null;
+    }
+
+    /**
+     * Every literal string a type names, which is PHPStan's `Type::getConstantStrings()`.
+     *
+     * The plural, and the singular above is now the first of these. A union of literal strings names more
+     * than one, and the rules that reach here `foreach` the list and act per element — so reducing to one
+     * would decide something the rule does not. Filtering the atomics is what the plural needs; the singular
+     * reduces afterwards, where reducing is what the caller asked for.
+     *
+     * @return list<string>
+     */
+    public static function constantStringsOf(?Type $type): array
+    {
+        $values = [];
         foreach ($type instanceof Type ? $type->atomicTypes : [] as $atomic) {
-            if (! $atomic instanceof ScalarType || $atomic->kind !== ScalarTypeKind::String) {
+            if (! $atomic instanceof ScalarType) {
                 continue;
             }
 
             $refinement = $atomic->refinement;
-            if ($refinement instanceof StringType && is_string($refinement->literalValue)) {
-                return $refinement->literalValue;
+
+            if ($atomic->kind === ScalarTypeKind::String) {
+                if ($refinement instanceof StringType && is_string($refinement->literalValue)) {
+                    $values[] = $refinement->literalValue;
+                }
+
+                continue;
+            }
+
+            // `Foo::class` is not a plain string to Mago: it is a `ClassLikeString` whose refinement holds
+            // the name. PHPStan gives the same expression a `ConstantStringType`, so a rule asking
+            // `getConstantStrings()` about a `::class` argument saw nothing here — measured on
+            // `createMock(Concrete::class)`, where the atomic came back `ClassLikeString` and the list empty.
+            //
+            // Only the `Literal` variant. `class-string<T>` and the generic forms are the same atomic kind
+            // with no literal behind them, and answering for those would name a class the code does not.
+            if ($atomic->kind === ScalarTypeKind::ClassLikeString
+                && $refinement instanceof ClassLikeStringType
+                && $refinement->variant === ClassLikeStringVariant::Literal
+                && is_string($refinement->literal)
+            ) {
+                $values[] = $refinement->literal;
             }
         }
 
-        return null;
+        return $values;
     }
 
     /**

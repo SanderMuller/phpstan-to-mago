@@ -61,7 +61,7 @@ REFUSE  NoControllerMethodInjectionRule
 REFUSE  NoDoctrineListenerWithoutContractRule
         a foreach in an inlined helper whose body is not a guard chain: Stmt_If
 REFUSE  NoDocumentMockingRule
-        access path outside the vocabulary: ->getConstantStrings()
+        statement in shouldSkipDocumentClass() outside the vocabulary: an if whose body is 3 statements ending in Stmt_If, which is a decision tree rather than a guard that exits
 EMIT    NoDoubleConsecutiveTestMockRule
 REFUSE  NoDuplicateArgAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
@@ -69,7 +69,7 @@ REFUSE  NoDuplicateArgsAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
 EMIT    NoDynamicNameRule
 REFUSE  NoEntityMockingRule
-        access path outside the vocabulary: ->getConstantStrings()
+        assignment value outside the vocabulary: access path outside the vocabulary: ->getAttributes()
 REFUSE  NoEntityOutsideEntityNamespaceRule  (the package registers it nowhere)
         no mapping for ->attrGroups on a hook-node
 EMIT    NoFindTaggedServiceIdsCallRule
@@ -118,7 +118,7 @@ REFUSE  NoSetClassServiceDuplicationRule
 REFUSE  NoStringInGetSubscribedEventsRule
         assignment value outside the vocabulary: no searchable node kind mapped for PhpParser\Node\ArrayItem
 REFUSE  NoTestMocksRule  (the package registers it nowhere)
-        access path outside the vocabulary: ->getConstantStrings()
+        access path outside the vocabulary: Expr_New
 REFUSE  NoValueObjectInServiceConstructorRule  (the package registers it nowhere)
         access path outside the vocabulary: preg_match()
 EMIT    NoWithOnStubRule
@@ -149,7 +149,7 @@ REFUSE  RequireIsGrantedEnumRule
 REFUSE  RequireQueryBuilderOnRepositoryRule
         statement in isValidRepositoryObjectType() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Foreach, which is a decision tree rather than a guard that exits
 REFUSE  RequireRouteNameToGenerateControllerRouteRule
-        expected a string literal
+        ClassReflection test on something else
 EMIT    RequireServiceRepositoryParentRule  (the package registers it nowhere)
 EMIT    RequireUniqueEnumConstantRule
 EMIT    RequiredOnlyInAbstractRule

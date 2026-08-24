@@ -1488,7 +1488,21 @@ PHP;
                 return $this->backend->call('class_exists', ['$context', $named]);
             }
 
-            $literal = $this->classLiteral($args[0]->value, $expr->getStartLine());
+            try {
+                $literal = $this->classLiteral($args[0]->value, $expr->getStartLine());
+            } catch (Refusal $refusal) {
+                // A third spelling, and the one the mocking rules use: the name is a *value* the plugin holds
+                // while it runs — a literal string the mocked type names, walked out of `getConstantStrings()`.
+                // Neither a written literal nor a name read off a node, and `classExists()` takes the text
+                // either way. Tried only after the literal path, because `resolve()` refuses a string literal
+                // by node kind on purpose and reaching for it first cost an already-emitting rule.
+                $value = self::$target === 'php' ? $this->resolve($args[0]->value, $expr->getStartLine()) : null;
+                if ($value !== null && in_array($value['kind'], ['bytes', 'class-name', 'config-bytes'], true)) {
+                    return $this->backend->call('class_exists', ['$context', $this->operand($value)]);
+                }
+
+                throw $refusal;
+            }
 
             return $this->backend->call('class_exists', self::$target === 'php'
                 ? ['$context', $this->backend->bytes($literal)]
@@ -8422,6 +8436,24 @@ PHP;
             }
         }
 
+        // The same two predicates asked of a class the rule *named* rather than of the declaration a hook
+        // fired for. `$reflectionProvider->getClass($someName)->isAbstract()` is a question about a class the
+        // plugin only knows while it runs, so it goes to the codebase instead of to the hook's own node. Kept
+        // ahead of the declaration arm and matched on the subject's kind, so that arm's folds — which are
+        // about *which hook fired* — cannot be widened onto a subject they do not describe.
+        if (in_array($method, ['isAbstract', 'isInterface'], true) && $args === []) {
+            $subject = $this->resolve($expr->var, $expr->getStartLine());
+            if ($subject['kind'] === 'named-class') {
+                if (self::$target !== 'php') {
+                    throw new Refusal("{$method}() of a named class, which only the PHP target carries", $expr->getStartLine());
+                }
+
+                $helper = $method === 'isAbstract' ? 'named_class_is_abstract' : 'named_class_is_interface';
+
+                return $this->backend->call($helper, ['$context', $this->operand($subject)]);
+            }
+        }
+
         // Reflection predicates. Inside a declaration hook these come from the class metadata, and
         // two of them are settled by which hook it is: the class hook fires only for classes, and
         // never for anonymous ones, which are a separate node in Mago.
@@ -9400,6 +9432,34 @@ PHP;
                     'php' => 'Support::constantStringOf(' . $this->operand($of) . ')',
                 ];
             }
+
+            // An element of `getConstantStrings()`. PHPStan hands back a `ConstantStringType` per element and
+            // the rule asks each for its value; the list here already holds the values, so the reduction is
+            // the identity and only the kind changes.
+            if ($of['kind'] === 'constant-string') {
+                return ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'php' => $this->operand($of)];
+            }
+        }
+
+        // `->getConstantStrings()` on a type — every literal string it names, which a rule walks.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getConstantStrings'
+            && $expr->args === []
+        ) {
+            $of = $this->resolve($expr->var, $line);
+            if ($of['kind'] !== 'type') {
+                throw new Refusal("getConstantStrings() of a {$of['kind']} rather than of a type", $line);
+            }
+
+            if (self::$target !== 'php') {
+                throw new Refusal('the constant strings of a type, which only the PHP target carries', $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'constant-strings',
+                'php' => 'Support::constantStringsOf(' . $this->operand($of) . ')',
+            ];
         }
 
         // `getObjectClassReflections()` on a type. Mago has no reflection object, and a rule only ever asks
