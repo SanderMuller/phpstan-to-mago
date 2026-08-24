@@ -247,12 +247,25 @@ A second corpus, run for the same reason the first one is here — a green resul
 difference. The 1 is `ForbiddenArrayMethodCallRule` staying silent at `Environment.php:411`, where the original
 reports, and that direction matters more: the port is *narrower* there.
 
-Traced as far as a control goes and no further. The site is `[$normalizer, 'clearHistory']`, where `$normalizer`
-is reassigned and then narrowed by a nested `instanceof` — so the rule's question depends on flow-sensitive
-narrowing rather than on a declared type. The obvious suspect was the interface-typed receiver, and a control
-refutes it: `typeHasMethod()` answers yes for an interface-typed value and for a class-typed one alike. What is
-left is a difference in how far each engine narrows a reassigned variable, which is untraced and recorded as
-such.
+Traced. The site is `[$normalizer, 'clearHistory']`, where `$normalizer` is reassigned and then narrowed by a
+nested `instanceof UniqueSlugNormalizerInterface`. Instrumenting the emitted plugin in the differential's own
+sandbox prints the type it gets:
+
+    t0 = UniqueSlugNormalizer|UniqueSlugNormalizerInterface   soleObjectClass = NULL
+
+Mago's narrowing keeps a **union of the class and the interface it implements**, where PHPStan resolves to one
+type. `Support::soleObjectClass()` requires exactly one class — deliberately, because a rule naming a parameter
+against one arbitrary member of a union would suggest a name the other does not have — so the port bails and
+stays silent.
+
+The obvious suspect was the interface-typed receiver, since the nine agreeing sites are class-typed, and a
+control refutes it: `typeHasMethod()` answers yes for an interface-typed value and a class-typed one alike.
+
+Not fixed, and the cost is why. A union whose every member is an ancestor of one particular member does collapse
+to that member, and checking that needs `Codebase::getClassAncestors()` — which means threading a codebase
+handle through `soleObjectClass()`, a public helper three emission sites call by that signature, and
+regenerating every snapshot that holds it. For one site on one corpus, against an imprecision that is arguably
+Mago's rather than the port's.
 
 This run started at **203** port-only, of which 169 came from `NoDynamicNameRule` and were false positives.
 `Support::isWrittenName()` descends into a name's first child, and a name written with a leading `\` arrives as
