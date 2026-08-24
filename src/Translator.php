@@ -1788,6 +1788,67 @@ final readonly class Translator
             && $hit->cond->getArgs()[1]->value->name === $cache;
     }
 
+    /**
+     * `if (outer) { <bindings> if (inner) return <bool>; }` folded into the helper's guard chain.
+     *
+     * A guard that exits is `if (cond) return <bool>;` and folds to one `[cond, value]` pair. A helper that
+     * groups two such guards under a shared condition — `hasClass()` before asking what kind of class it is —
+     * is the same question written one level in, and folds to `[outer && inner, value]` per inner guard.
+     *
+     * The bindings between them are the reason the shape exists: `$classReflection = getClass($name)` is only
+     * meaningful once `hasClass($name)` holds. `&&` short-circuits, so anding the outer condition into each
+     * pair keeps that order — and the names are scoped to the block, because a later statement reading one
+     * would be reading a value the outer condition does not guarantee.
+     *
+     * Null rather than a refusal when the body is some other shape, so the caller's message still names it.
+     *
+     * @return list<array{string, string}>|null
+     */
+    private function nestedGuards(If_ $outer): ?array
+    {
+        $saved = [$this->context->locals, $this->context->literals, $this->context->caches];
+        $guards = [];
+
+        try {
+            $condition = $this->translateCondition($outer->cond);
+
+            foreach ($outer->stmts as $statement) {
+                if ($statement instanceof Expression && $statement->expr instanceof Assign) {
+                    $this->bindLocal($statement->expr, $statement->getStartLine());
+
+                    continue;
+                }
+
+                if ($this->takesACacheStatement($statement)) {
+                    continue;
+                }
+
+                if (! $statement instanceof If_
+                    || $statement->elseifs !== []
+                    || $statement->else instanceof Else_
+                    || count($statement->stmts) !== 1
+                    || ! $statement->stmts[0] instanceof Return_
+                ) {
+                    return null;
+                }
+
+                $returned = $statement->stmts[0]->expr;
+                if (! $returned instanceof ConstFetch) {
+                    return null;
+                }
+
+                $guards[] = [
+                    '(' . $condition . ' && ' . $this->translateCondition($statement->cond) . ')',
+                    strtolower($returned->name->toString()) === 'true' ? 'true' : 'false',
+                ];
+            }
+        } finally {
+            [$this->context->locals, $this->context->literals, $this->context->caches] = $saved;
+        }
+
+        return $guards === [] ? null : $guards;
+    }
+
     /** The accepted helper shapes, as one Rust expression. */
     private function translateMethodAsPredicate(ClassMethod $method, int $line): string
     {
@@ -1852,6 +1913,17 @@ final readonly class Translator
                 $guards[] = [$this->foreachAsAny($statement), $this->loopMatchValue($statement)];
 
                 continue;
+            }
+
+            if ($statement instanceof If_ && $statement->elseifs === [] && ! $statement->else instanceof Else_) {
+                $nested = $this->nestedGuards($statement);
+                if ($nested !== null) {
+                    foreach ($nested as $guard) {
+                        $guards[] = $guard;
+                    }
+
+                    continue;
+                }
             }
 
             // Named, because a line number alone does not say *which* helper: two rules refused at "line 50"

@@ -73,7 +73,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 1792, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 1811, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Translator.php
@@ -133,7 +133,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::translateMethodAsPredicate()" is 22, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::translateMethodAsPredicate()" is 32, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php

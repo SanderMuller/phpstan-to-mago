@@ -271,3 +271,22 @@ class Concrete {}
 abstract class Pending {}
 
 interface Contract {}
+
+namespace Examples\Stubs\Domain\Entity;
+
+/**
+ * Three class-likes under an `\Entity\` namespace, for `NoDocumentMockingRule`.
+ *
+ * The rule skips a mocked class that is abstract or an interface, and those two skips are the whole reason
+ * its helper could not be inlined before. A pair holding only the concrete one proves neither.
+ */
+class Invoice {}
+
+abstract class Ledger {}
+
+interface Receipt {}
+
+namespace Examples\Stubs\Domain\Plain;
+
+/** Neither `\Document\` nor `\Entity\` in the name, so the rule never asks what kind of class it is. */
+class Note {}

@@ -208,6 +208,52 @@ final class EmittedRuleFiresTest extends TestCase
     }
 
     /**
+     * And every example pair needs a rule that still emits.
+     *
+     * The other direction, and it was a hole. `coveredRules()` yields nothing for a rule that stopped
+     * emitting, so its four gate cases disappear rather than fail — the suite goes from 302 to 298 and
+     * stays green. Measured that way: making the nested-guard fold return null took `NoDocumentMockingRule`
+     * back to a refusal and nothing said so.
+     *
+     * A pair that names a rule nothing emits is either a rule that regressed or a directory left behind, and
+     * both are worth a failure. Fixture rules are excluded because a fixture may be written to prove a
+     * *refusal*.
+     */
+    public function test_every_example_pair_has_a_rule_that_emits(): void
+    {
+        $emitting = array_keys(self::corpusRules());
+        $fixtures = array_keys(self::fixtureRules());
+
+        $orphaned = [];
+        $directories = glob(self::EXAMPLES . '/*', GLOB_ONLYDIR);
+        foreach ($directories === false ? [] : $directories as $directory) {
+            $rule = basename($directory);
+            if ($rule === 'stubs' || in_array($rule, $emitting, true) || in_array($rule, $fixtures, true)) {
+                continue;
+            }
+
+            $orphaned[] = $rule;
+        }
+
+        // Asserted as an exact set rather than as "none", because both directions matter. A pair added for a
+        // rule that does not emit is a case that never runs; a rule here that starts emitting again leaves a
+        // stale entry, and the equality is what makes that fail too.
+        //
+        // These two were already orphaned when the check was written, and the finding is what it is for:
+        // both refuse on `flagRecord()` being assigned inside a loop, and their pairs have been running
+        // nothing since. Kept rather than deleted — they are the proof material for the day that refusal
+        // closes.
+        $expected = ['CombinedMethodCallRule', 'PositionalFlagArgumentNullsafeMethodCallRule'];
+        sort($orphaned);
+
+        $this->assertSame(
+            $expected,
+            $orphaned,
+            "The set of example pairs with no emitting rule changed:\n  " . implode("\n  ", $orphaned),
+        );
+    }
+
+    /**
      * A dropped guard has to name the proof that lets it be dropped.
      *
      * Dropping a guard widens the rule, so it is only sound where the case the guard filters out cannot

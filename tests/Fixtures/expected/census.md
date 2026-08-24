@@ -7,7 +7,7 @@ A diff here is upstream drift — a rule added, removed, or rewritten into a sha
 does or does not cover — or a change in what a refusal says stops a rule. Both are worth reading:
 a refusal naming the wrong obstacle is how work gets sized wrongly.
 
-## symplify/phpstan-rules — 34 of 88 the package registers emit, 1 covered by the engine, 53 refuse, 8 it registers nowhere
+## symplify/phpstan-rules — 35 of 88 the package registers emit, 1 covered by the engine, 52 refuse, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -60,8 +60,7 @@ REFUSE  NoControllerMethodInjectionRule
         getParams() of a method-decl rather than of the declaration under analysis
 REFUSE  NoDoctrineListenerWithoutContractRule
         a foreach in an inlined helper whose body is not a guard chain: Stmt_If
-REFUSE  NoDocumentMockingRule
-        statement in shouldSkipDocumentClass() outside the vocabulary: an if whose body is 3 statements ending in Stmt_If, which is a decision tree rather than a guard that exits
+EMIT    NoDocumentMockingRule
 EMIT    NoDoubleConsecutiveTestMockRule
 REFUSE  NoDuplicateArgAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
@@ -172,7 +171,7 @@ EMIT    CombinedFuncCallRule
 REFUSE  CombinedMethodCallRule
         flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
 REFUSE  CombinedStaticCallRule
-        statement in isLaravelStaticDebugCall() outside the vocabulary: an if whose body is 2 statements ending in Stmt_If, which is a decision tree rather than a guard that exits
+        ClassReflection test on something else
 REFUSE  FlagArgumentManifestCollector
         every rule that consumes this collector reports nothing and writes a file instead, so the pair cannot become a plugin whatever the collector body does
 EMIT    NoDebugInNamespaceRule  (the package registers it nowhere)
@@ -193,7 +192,7 @@ REFUSE  PositionalFlagArgumentNullsafeMethodCallRule
 REFUSE  PositionalFlagArgumentStaticCallRule  (the package registers it nowhere)
         $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
 REFUSE  StaticChainedNoDebugInNamespaceRule  (the package registers it nowhere)
-        statement in isLaravelStaticDebugCall() outside the vocabulary: an if whose body is 2 statements ending in Stmt_If, which is a decision tree rather than a guard that exits
+        ClassReflection test on something else
 EMIT    TraitRequiresInterfaceRule
 REFUSE  UnvalidatedFormRequestFieldRule  (the package registers it nowhere)
         $fieldAccessorsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
