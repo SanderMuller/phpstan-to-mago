@@ -58,6 +58,10 @@ parameters:
         # Anchors a finding on a loop item and returns it from outside the loop. Being wrong is the fixture: it
         # proves the transpiler refuses that instead of emitting a report on whatever PHP left in the variable.
         - tests/Fixtures/Rules/AnchorEscapesLoopRule.php
+        # Written with `instanceof ConstantStringType`, which PHPStan deprecates in favour of
+        # `Type::getConstantStrings()`. Using the deprecated form is the fixture: three corpus rules write it,
+        # and the shape being translated is the `?ClassReflection` helper around it.
+        - tests/Fixtures/Rules/ReflectedMockedClassRule.php
 
     level: max
 

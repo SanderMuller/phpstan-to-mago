@@ -148,7 +148,7 @@ REFUSE  RequireIsGrantedEnumRule
 REFUSE  RequireQueryBuilderOnRepositoryRule
         statement in isValidRepositoryObjectType() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Foreach, which is a decision tree rather than a guard that exits
 REFUSE  RequireRouteNameToGenerateControllerRouteRule
-        ClassReflection test on something else
+        assignment value outside the vocabulary: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
 EMIT    RequireServiceRepositoryParentRule  (the package registers it nowhere)
 EMIT    RequireUniqueEnumConstantRule
 EMIT    RequiredOnlyInAbstractRule
@@ -171,7 +171,7 @@ EMIT    CombinedFuncCallRule
 REFUSE  CombinedMethodCallRule
         flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
 REFUSE  CombinedStaticCallRule
-        ClassReflection test on something else
+        ClassReflection test on a service, which the plugin has no equivalent for
 REFUSE  FlagArgumentManifestCollector
         every rule that consumes this collector reports nothing and writes a file instead, so the pair cannot become a plugin whatever the collector body does
 EMIT    NoDebugInNamespaceRule  (the package registers it nowhere)
@@ -192,7 +192,7 @@ REFUSE  PositionalFlagArgumentNullsafeMethodCallRule
 REFUSE  PositionalFlagArgumentStaticCallRule  (the package registers it nowhere)
         $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
 REFUSE  StaticChainedNoDebugInNamespaceRule  (the package registers it nowhere)
-        ClassReflection test on something else
+        ClassReflection test on a service, which the plugin has no equivalent for
 EMIT    TraitRequiresInterfaceRule
 REFUSE  UnvalidatedFormRequestFieldRule  (the package registers it nowhere)
         $fieldAccessorsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from

@@ -6305,8 +6305,28 @@ final readonly class Translator
         }
 
         if ($wanted === ClassReflection::class) {
+            // `$x instanceof ClassReflection` where `$x` came from `getClass(<a value>)`. The reflection object
+            // has no equivalent here — the handle *is* the name — so the test is whether the codebase knows
+            // that name, which is the `hasClass()` the producing helper guards with. Emitted rather than
+            // folded away: whether that guard has already run is a fact about the inliner, and a redundant
+            // test is cheap where a wrong assumption is not.
+            if ($subject['kind'] === 'named-class') {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal('a named-class test, which only the PHP target carries', $expr->getStartLine());
+                }
+
+                return $this->context->backend->call('class_exists', ['$context', $this->operand($subject)]);
+            }
+
             if ($subject['kind'] !== 'class-reflection') {
-                throw new Refusal('ClassReflection test on something else', $expr->getStartLine());
+                // Names what it is. A rule holding a `?ClassReflection` the package *wires* — the facade
+                // reflection two debug rules take in their constructor — is stopped by that service having no
+                // equivalent, not by the `instanceof` around it, and the old message hid which.
+                throw new Refusal(sprintf(
+                    'ClassReflection test on a %s%s',
+                    $subject['kind'],
+                    $subject['kind'] === 'service' ? ', which the plugin has no equivalent for' : '',
+                ), $expr->getStartLine());
             }
 
             return $this->context->classFrom === 'metadata'
