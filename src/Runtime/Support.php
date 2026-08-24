@@ -6,22 +6,10 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 
 use LogicException;
 use Mago\Sdk\Analyzer\Metadata\AttributeMetadata;
-use Mago\Sdk\Analyzer\Metadata\ClassLikeKind;
 use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata;
 use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
-use Mago\Sdk\Analyzer\Metadata\MetadataFlags;
-use Mago\Sdk\Analyzer\Metadata\ParameterMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
-use Mago\Sdk\Analyzer\Type\CallableType;
-use Mago\Sdk\Analyzer\Type\ClassLikeStringType;
-use Mago\Sdk\Analyzer\Type\ClassLikeStringVariant;
-use Mago\Sdk\Analyzer\Type\NamedObjectType;
-use Mago\Sdk\Analyzer\Type\ScalarType;
-use Mago\Sdk\Analyzer\Type\ScalarTypeKind;
-use Mago\Sdk\Analyzer\Type\SimpleAtomicType;
-use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
-use Mago\Sdk\Analyzer\Type\StringType;
 use Mago\Sdk\Analyzer\Type\Visibility;
 use Mago\Sdk\Span;
 use Mago\Sdk\Syntax\Node;
@@ -60,11 +48,7 @@ final class Support
      */
     public static function classExists(NodeAnalysisContext $context, ?string $name): bool
     {
-        if ($name === null || $name === '') {
-            return false;
-        }
-
-        return $context->codebase->classLikeExists($name);
+        return Reflect::classExists($context, $name);
     }
 
     /**
@@ -79,17 +63,13 @@ final class Support
      */
     public static function namedClassIsAbstract(NodeAnalysisContext $context, ?string $name): bool
     {
-        $metadata = $name === null || $name === '' ? null : $context->codebase->getClassLike($name);
-
-        return $metadata instanceof ClassLikeMetadata && $metadata->flags->contains(MetadataFlags::ABSTRACT);
+        return Reflect::namedClassIsAbstract($context, $name);
     }
 
     /** Whether a class named by a value is an interface. {@see namedClassIsAbstract} says why this is separate. */
     public static function namedClassIsInterface(NodeAnalysisContext $context, ?string $name): bool
     {
-        $metadata = $name === null || $name === '' ? null : $context->codebase->getClassLike($name);
-
-        return $metadata instanceof ClassLikeMetadata && $metadata->kind === ClassLikeKind::Interface;
+        return Reflect::namedClassIsInterface($context, $name);
     }
 
     /**
@@ -139,13 +119,7 @@ final class Support
      */
     public static function declaringClassOfMethod(NodeAnalysisContext $context, ?string $class, ?string $method): ?string
     {
-        if ($class === null || $method === null) {
-            return null;
-        }
-
-        $declared = $context->codebase->getDeclaringMethod($class, $method);
-
-        return $declared instanceof FunctionLikeMetadata ? self::declaringClassName($context, $class, $method) : null;
+        return Reflect::declaringClassOfMethod($context, $class, $method);
     }
 
     /**
@@ -157,15 +131,7 @@ final class Support
      */
     public static function parameterName(NodeAnalysisContext $context, ?string $class, ?string $method, int $index): ?string
     {
-        $parameter = self::parameterAt($context, $class, $method, $index);
-        if (! $parameter instanceof ParameterMetadata) {
-            return null;
-        }
-
-        // `ParameterMetadata->name` keeps the sigil — `$urgent` — where PHPStan's `getName()` drops it.
-        // Measured against the real rule: the port landed on the right line with `($urgent: ...)` in a message
-        // that has to read `(urgent: ...)`, because it is telling the reader what to type.
-        return ltrim($parameter->name, '$');
+        return Reflect::parameterName($context, $class, $method, $index);
     }
 
     /**
@@ -176,7 +142,7 @@ final class Support
      */
     public static function parameterIsVariadic(NodeAnalysisContext $context, ?string $class, ?string $method, int $index): bool
     {
-        return self::parameterAt($context, $class, $method, $index)?->flags->contains(MetadataFlags::VARIADIC) === true;
+        return Reflect::parameterIsVariadic($context, $class, $method, $index);
     }
 
     /**
@@ -187,23 +153,7 @@ final class Support
      */
     public static function hasParameterAt(NodeAnalysisContext $context, ?string $class, ?string $method, int $index): bool
     {
-        return self::parameterAt($context, $class, $method, $index) instanceof ParameterMetadata;
-    }
-
-    private static function parameterAt(NodeAnalysisContext $context, ?string $class, ?string $method, int $index): ?ParameterMetadata
-    {
-        if ($class === null || $method === null || $index < 0) {
-            return null;
-        }
-
-        $declared = $context->codebase->getDeclaringMethod($class, $method);
-        if (! $declared instanceof FunctionLikeMetadata) {
-            return null;
-        }
-
-        $parameter = $declared->parameters[$index] ?? null;
-
-        return $parameter instanceof ParameterMetadata ? $parameter : null;
+        return Reflect::hasParameterAt($context, $class, $method, $index);
     }
 
     /**
@@ -221,102 +171,7 @@ final class Support
      */
     public static function methodExists(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
-        if ($class === null || $method === null || $class === '' || $method === '') {
-            return false;
-        }
-
-        return $context->codebase->getDeclaringMethod($class, $method) instanceof FunctionLikeMetadata;
-    }
-
-    /**
-     * The class PHPStan would call a method's declaring class, spelled as it was written.
-     *
-     * Read from `getDeclaringMethod()->identifier->class`, which is the only answer that covers a method a
-     * *trait* provides. Two earlier versions walked the class's own `methods` list instead and were wrong twice
-     * over: that list is lowercased, so a camelCase method matched nothing, and it does not contain
-     * trait-provided methods at all — `Illuminate\Support\Collection` has 115 methods and `dump` is not among
-     * them, because `EnumeratesValues` provides it. Each time, the rule went quiet while every other guard
-     * passed.
-     *
-     * Where the two engines disagree, PHPStan wins, because that is what the rule was written against: it
-     * flattens traits, so a trait method's declaring class is the class that *uses* the trait. Mago names the
-     * trait, so a trait is mapped back to the using class here.
-     *
-     * The **most ancestral** user, not the nearest, and that distinction was worth 26 wrong findings on a real
-     * project. `ClassLikeMetadata->usedTraits` is flattened: `App\Collections\AnswerCollection extends
-     * Illuminate\Support\Collection` lists `EnumeratesValues` itself, though its parent is what writes the
-     * `use`. Taking the first candidate therefore answered `App\Collections\AnswerCollection` for
-     * `->where(…)`, so a rule gating on first-party code reported every Eloquent collection call while
-     * PHPStan resolved the same method to `Illuminate\Support\Collection` and declined. Measured in
-     * `internal/probe-flattened-used-traits.php`.
-     *
-     * Metadata carries no "directly used" list and a node hook cannot read another file's `use` statements, so
-     * the most ancestral user is the best available answer. It is exact wherever one class writes the `use`.
-     * A subclass that *re-uses* the same trait is a real divergence — PHPStan attributes the method to the
-     * subclass there — and it is named rather than handled, because nothing in metadata separates a re-use
-     * from the flattening this fixes.
-     */
-    private static function declaringClassName(NodeAnalysisContext $context, string $class, string $method): ?string
-    {
-        $declaring = $context->codebase->getDeclaringMethod($class, $method);
-        if (! $declaring instanceof FunctionLikeMetadata) {
-            return null;
-        }
-
-        $declared = $declaring->identifier->class;
-        if ($declared === null) {
-            return null;
-        }
-
-        $using = self::classUsingTrait($context, $class, $declared);
-        if ($using !== null) {
-            return $using;
-        }
-
-        $metadata = $context->codebase->getClass($declared);
-
-        return $metadata instanceof ClassLikeMetadata ? $metadata->originalName : $declared;
-    }
-
-    /**
-     * The class in `$class`'s hierarchy that uses `$trait`, or null when `$trait` is not a trait it uses.
-     *
-     * PHPStan attributes a trait method to the class using the trait, and a rule asking where a method comes
-     * from means that. Names are compared case-insensitively because metadata lowercases `usedTraits`.
-     */
-    private static function classUsingTrait(NodeAnalysisContext $context, string $class, string $trait): ?string
-    {
-        $name = null;
-        $depth = null;
-        foreach ([$class, ...$context->codebase->getClassAncestors($class)] as $candidate) {
-            $metadata = $context->codebase->getClass($candidate);
-            if (! $metadata instanceof ClassLikeMetadata) {
-                continue;
-            }
-
-            $uses = false;
-            foreach ($metadata->usedTraits as $used) {
-                if (strcasecmp($used, $trait) === 0) {
-                    $uses = true;
-
-                    break;
-                }
-            }
-
-            if (! $uses) {
-                continue;
-            }
-
-            // The most ancestral user wins, and "most ancestral" is decided by how many ancestors a candidate
-            // has rather than by the order they arrive in, which nothing documents.
-            $candidateDepth = count($context->codebase->getClassAncestors($candidate));
-            if ($depth === null || $candidateDepth < $depth) {
-                $name = $metadata->originalName;
-                $depth = $candidateDepth;
-            }
-        }
-
-        return $name;
+        return Reflect::methodExists($context, $class, $method);
     }
 
     /** Declaration kinds, by backed value: see the note in {@see enclosingClassName}. */
@@ -651,17 +506,7 @@ final class Support
      */
     public static function namesContain(array $names, ?string $name): bool
     {
-        if ($name === null) {
-            return false;
-        }
-
-        foreach ($names as $candidate) {
-            if (strcasecmp(ltrim($candidate, '\\'), ltrim($name, '\\')) === 0) {
-                return true;
-            }
-        }
-
-        return false;
+        return Text::namesContain($names, $name);
     }
 
     /**
@@ -688,16 +533,7 @@ final class Support
      */
     public static function repeatedValues(array $values): array
     {
-        $repeated = [];
-        foreach (array_count_values($values) as $value => $count) {
-            if ($count <= 1) {
-                continue;
-            }
-
-            $repeated[] = $value;
-        }
-
-        return $repeated;
+        return Text::repeatedValues($values);
     }
 
     /**
@@ -717,17 +553,7 @@ final class Support
      */
     public static function foldedKeys(array $map): array
     {
-        $folded = [];
-        foreach ($map as $key => $value) {
-            $folded[strtolower(ltrim((string) $key, '\\'))] = [$key, $value];
-        }
-
-        $collapsed = [];
-        foreach ($folded as [$key, $value]) {
-            $collapsed[$key] = $value;
-        }
-
-        return $collapsed;
+        return Text::foldedKeys($map);
     }
 
     /**
@@ -774,21 +600,7 @@ final class Support
      */
     public static function typeIsCallable(?Type $type): bool
     {
-        if (! $type instanceof Type) {
-            return false;
-        }
-
-        foreach ($type->atomicTypes as $atomic) {
-            if ($atomic instanceof CallableType) {
-                return true;
-            }
-
-            if ($atomic instanceof NamedObjectType && strcasecmp(ltrim($atomic->name, '\\'), 'Closure') === 0) {
-                return true;
-            }
-        }
-
-        return false;
+        return Types::typeIsCallable($type);
     }
 
     /**
@@ -799,7 +611,7 @@ final class Support
      */
     public static function typeIsUnion(?Type $type): bool
     {
-        return $type instanceof Type && count($type->atomicTypes) > 1;
+        return Types::typeIsUnion($type);
     }
 
     /**
@@ -1273,7 +1085,7 @@ final class Support
     /** `->toLowerString()` on a name, which rules use so a comparison ignores how the name was written. */
     public static function lowerBytes(?string $text): ?string
     {
-        return $text === null ? null : strtolower($text);
+        return Text::lowerBytes($text);
     }
 
     /**
@@ -1297,16 +1109,7 @@ final class Support
      */
     public static function objectClasses(?Type $type): array
     {
-        $names = [];
-        foreach ($type instanceof Type ? $type->atomicTypes : [] as $atomic) {
-            if (! $atomic instanceof NamedObjectType) {
-                return [];
-            }
-
-            $names[] = $atomic->name;
-        }
-
-        return $names;
+        return Types::objectClasses($type);
     }
 
     /**
@@ -1318,21 +1121,7 @@ final class Support
      */
     public static function classDescendsFrom(NodeAnalysisContext $context, ?string $class, string $parent): bool
     {
-        if ($class === null || $class === '') {
-            return false;
-        }
-
-        if (strcasecmp($class, $parent) === 0) {
-            return true;
-        }
-
-        foreach ($context->codebase->getClassAncestors($class) as $ancestor) {
-            if (strcasecmp($ancestor, $parent) === 0) {
-                return true;
-            }
-        }
-
-        return false;
+        return Reflect::classDescendsFrom($context, $class, $parent);
     }
 
     /**
@@ -1392,7 +1181,7 @@ final class Support
     /** The other half of `lowerBytes()`, for a rule that folds the other way. */
     public static function upperBytes(?string $text): ?string
     {
-        return $text === null ? null : strtoupper($text);
+        return Text::upperBytes($text);
     }
 
     /**
@@ -1434,7 +1223,7 @@ final class Support
      */
     public static function lookupHas(array $table, ?string $key): bool
     {
-        return $key !== null && isset($table[$key]);
+        return Text::lookupHas($table, $key);
     }
 
     /**
@@ -1452,13 +1241,7 @@ final class Support
      */
     public static function anyOf(array $items, callable $predicate): bool
     {
-        foreach ($items as $item) {
-            if ($predicate($item)) {
-                return true;
-            }
-        }
-
-        return false;
+        return Text::anyOf($items, $predicate);
     }
 
     /**
@@ -1467,13 +1250,7 @@ final class Support
      */
     public static function allOf(array $items, callable $predicate): bool
     {
-        foreach ($items as $item) {
-            if (! $predicate($item)) {
-                return false;
-            }
-        }
-
-        return true;
+        return Text::allOf($items, $predicate);
     }
 
     /**
@@ -1611,17 +1388,17 @@ final class Support
 
     public static function bytesContain(?string $haystack, string $needle): bool
     {
-        return $haystack !== null && str_contains($haystack, $needle);
+        return Text::bytesContain($haystack, $needle);
     }
 
     public static function bytesEndWith(?string $haystack, string $needle): bool
     {
-        return $haystack !== null && str_ends_with($haystack, $needle);
+        return Text::bytesEndWith($haystack, $needle);
     }
 
     public static function bytesStartWith(?string $haystack, string $needle): bool
     {
-        return $haystack !== null && str_starts_with($haystack, $needle);
+        return Text::bytesStartWith($haystack, $needle);
     }
 
     /**
@@ -1635,7 +1412,7 @@ final class Support
      */
     public static function bytesIsOneOf(?string $subject, array $values): bool
     {
-        return $subject !== null && in_array($subject, $values, true);
+        return Text::bytesIsOneOf($subject, $values);
     }
 
     /**
@@ -1647,7 +1424,7 @@ final class Support
      */
     public static function matchesPattern(?string $subject, string $pattern): bool
     {
-        return $subject !== null && preg_match($pattern, $subject) === 1;
+        return Text::matchesPattern($subject, $pattern);
     }
 
     /**
@@ -1689,7 +1466,7 @@ final class Support
     /** Whether the inferred type is a single named object rather than a union, scalar or mixed. */
     public static function typeIsNamedObject(?Type $type): bool
     {
-        return self::namedObjectName($type, false) !== null;
+        return Types::typeIsNamedObject($type);
     }
 
     /**
@@ -1701,22 +1478,7 @@ final class Support
      */
     public static function typeIsInstanceOf(NodeAnalysisContext $context, ?Type $type, string $name): bool
     {
-        $className = self::namedObjectName($type, false);
-        if ($className === null) {
-            return false;
-        }
-
-        if (strcasecmp($className, $name) === 0) {
-            return true;
-        }
-
-        foreach ($context->codebase->getClassAncestors($className) as $ancestor) {
-            if (strcasecmp($ancestor, $name) === 0) {
-                return true;
-            }
-        }
-
-        return false;
+        return Types::typeIsInstanceOf($context, $type, $name);
     }
 
     /**
@@ -1734,9 +1496,7 @@ final class Support
      */
     public static function typeHasMethod(NodeAnalysisContext $context, ?Type $type, string $method): bool
     {
-        $className = self::namedObjectName($type, false);
-
-        return $className !== null && $context->codebase->methodExists($className, $method);
+        return Types::typeHasMethod($context, $type, $method);
     }
 
     /**
@@ -1751,7 +1511,7 @@ final class Support
      */
     public static function soleObjectClass(?Type $type): ?string
     {
-        return self::namedObjectName($type, false);
+        return Types::soleObjectClass($type);
     }
 
     /**
@@ -1767,29 +1527,7 @@ final class Support
      */
     public static function soleObjectClassIgnoringNull(?Type $type): ?string
     {
-        return self::namedObjectName($type, true);
-    }
-
-    private static function namedObjectName(?Type $type, bool $droppingNull): ?string
-    {
-        if (! $type instanceof Type) {
-            return null;
-        }
-
-        $names = [];
-        foreach ($type->atomicTypes as $atomic) {
-            if ($droppingNull && $atomic instanceof SimpleAtomicType && $atomic->kind === SimpleAtomicTypeKind::Null) {
-                continue;
-            }
-
-            if (! $atomic instanceof NamedObjectType) {
-                return null;
-            }
-
-            $names[strtolower($atomic->name)] = $atomic->name;
-        }
-
-        return count($names) === 1 ? reset($names) : null;
+        return Types::soleObjectClassIgnoringNull($type);
     }
 
     /**
@@ -2045,7 +1783,7 @@ final class Support
     /** Whether a name is written entirely in upper case, as a constant convention check. */
     public static function isUppercase(?string $value): bool
     {
-        return $value !== null && $value === strtoupper($value);
+        return Text::isUppercase($value);
     }
 
     /** A hint's written name, resolved through the file's imports where possible. */
@@ -2296,16 +2034,7 @@ final class Support
      */
     public static function methodIsPublic(?Part $method): bool
     {
-        // The null case answers *no*, unlike the missing-modifier case. Absence of a modifier means public;
-        // absence of a node means the navigation found nothing, and a predicate that says yes to that turns a
-        // failed navigation into a reported finding. Every other helper here already defaults that way.
-        if (! $method instanceof Part) {
-            return false;
-        }
-
-        $modifiers = self::methodModifiers($method);
-
-        return ! in_array('private', $modifiers, true) && ! in_array('protected', $modifiers, true);
+        return Reflect::methodIsPublic($method);
     }
 
     /**
@@ -2333,25 +2062,19 @@ final class Support
      */
     public static function captured(string $pattern, ?string $subject, string $group): ?string
     {
-        if ($subject === null || preg_match($pattern, $subject, $matches) !== 1) {
-            return null;
-        }
-
-        $value = $matches[$group] ?? null;
-
-        return is_string($value) && $value !== '' ? $value : null;
+        return Text::captured($pattern, $subject, $group);
     }
 
     /** Whether a method declaration is written `private`, which php-parser answers from its modifiers. */
     public static function methodIsPrivate(?Part $method): bool
     {
-        return $method instanceof Part && in_array('private', self::methodModifiers($method), true);
+        return Reflect::methodIsPrivate($method);
     }
 
     /** Whether a method declaration is written `protected`. */
     public static function methodIsProtected(?Part $method): bool
     {
-        return $method instanceof Part && in_array('protected', self::methodModifiers($method), true);
+        return Reflect::methodIsProtected($method);
     }
 
     /**
@@ -2386,24 +2109,7 @@ final class Support
 
     public static function methodIsStatic(?Part $method): bool
     {
-        return in_array('static', self::methodModifiers($method), true);
-    }
-
-    /** @return list<string> */
-    private static function methodModifiers(?Part $method): array
-    {
-        if (! $method instanceof Part) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($method->children() as $child) {
-            if ($child->kind === NodeKind::Modifier) {
-                $out[] = strtolower(trim($child->text));
-            }
-        }
-
-        return $out;
+        return Reflect::methodIsStatic($method);
     }
 
     /**
@@ -2502,18 +2208,7 @@ final class Support
      */
     public static function docblockTags(?string $docblock, string $tag): array
     {
-        if ($docblock === null) {
-            return [];
-        }
-
-        $found = [];
-        foreach (explode("\n", $docblock) as $line) {
-            if (preg_match('/(?<![\\w@])' . preg_quote($tag, '/') . '(?![\\w-])/', $line) === 1) {
-                $found[] = trim($line);
-            }
-        }
-
-        return $found;
+        return Text::docblockTags($docblock, $tag);
     }
 
     /**
@@ -2550,7 +2245,7 @@ final class Support
      */
     public static function constantStringOf(?Type $type): ?string
     {
-        return self::constantStringsOf($type)[0] ?? null;
+        return Types::constantStringOf($type);
     }
 
     /**
@@ -2565,39 +2260,7 @@ final class Support
      */
     public static function constantStringsOf(?Type $type): array
     {
-        $values = [];
-        foreach ($type instanceof Type ? $type->atomicTypes : [] as $atomic) {
-            if (! $atomic instanceof ScalarType) {
-                continue;
-            }
-
-            $refinement = $atomic->refinement;
-
-            if ($atomic->kind === ScalarTypeKind::String) {
-                if ($refinement instanceof StringType && is_string($refinement->literalValue)) {
-                    $values[] = $refinement->literalValue;
-                }
-
-                continue;
-            }
-
-            // `Foo::class` is not a plain string to Mago: it is a `ClassLikeString` whose refinement holds
-            // the name. PHPStan gives the same expression a `ConstantStringType`, so a rule asking
-            // `getConstantStrings()` about a `::class` argument saw nothing here — measured on
-            // `createMock(Concrete::class)`, where the atomic came back `ClassLikeString` and the list empty.
-            //
-            // Only the `Literal` variant. `class-string<T>` and the generic forms are the same atomic kind
-            // with no literal behind them, and answering for those would name a class the code does not.
-            if ($atomic->kind === ScalarTypeKind::ClassLikeString
-                && $refinement instanceof ClassLikeStringType
-                && $refinement->variant === ClassLikeStringVariant::Literal
-                && is_string($refinement->literal)
-            ) {
-                $values[] = $refinement->literal;
-            }
-        }
-
-        return $values;
+        return Types::constantStringsOf($type);
     }
 
     /**
@@ -2629,7 +2292,7 @@ final class Support
     /** Two written names compared the way PHP compares them: case-insensitively, and null matching nothing. */
     public static function nameIs(?string $written, string $name): bool
     {
-        return $written !== null && strcasecmp($written, $name) === 0;
+        return Text::nameIs($written, $name);
     }
 
     /** The fully-qualified name an attribute names, which is what `$attr->name->toString()` gives a rule. */
@@ -2755,7 +2418,7 @@ final class Support
      */
     public static function pathExists(?string $path): bool
     {
-        return $path !== null && file_exists($path);
+        return Text::pathExists($path);
     }
 
     public static function fileContains(NodeAnalysisContext $context, string $needle): bool
