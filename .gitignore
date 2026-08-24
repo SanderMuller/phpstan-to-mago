@@ -13,6 +13,13 @@ storage/logs
 .cache
 /build
 
+# Where the CLI writes when it is run by hand from the repository root, one directory per target
+# ({@see Options::outDir}). Scratch output: the reviewed emissions live under tests/Fixtures/expected,
+# which the snapshot tests compare against, and pint rewriting these was noise in every run.
+/generated
+/generated-php
+/generated-lint
+
 # What the census test saw when it disagreed with the committed census: a review artefact, never a commit.
 tests/Fixtures/expected/census.md.actual
 
