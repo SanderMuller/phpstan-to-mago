@@ -64,7 +64,7 @@ REFUSE  NoDocumentMockingRule
         access path outside the vocabulary: ->getConstantStrings()
 EMIT    NoDoubleConsecutiveTestMockRule
 REFUSE  NoDuplicateArgAutowireByTypeRule
-        list contains something other than a string literal
+        list contains SymfonyFunctionName::SERVICE rather than a string literal
 REFUSE  NoDuplicateArgsAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
 EMIT    NoDynamicNameRule
@@ -88,7 +88,7 @@ REFUSE  NoIntegerRefactorReturnRule
 REFUSE  NoJustPropertyAssignRule
         no hook mapping for node type PhpParser\Node\Stmt\Expression
 REFUSE  NoLeadingBackslashInNameRule
-        list contains something other than a string literal
+        list contains Name::class rather than a string literal
 REFUSE  NoListenerWithoutContractRule
         access path outside the vocabulary: Scalar_String
 ENGINE  NoMissingVariableDimFetchRule  (mago reports undefined-variable)

@@ -2763,7 +2763,14 @@ PHP;
             $values = [];
             foreach ($expr->items as $item) {
                 if ($item === null || ! $item->value instanceof String_) {
-                    throw new Refusal('list contains something other than a string literal', $line);
+                    // Names the item. "something other than a string literal" is true of an array, a variable
+                    // and a constant alike, and the two rules refusing here hold neither of the first two: they
+                    // list `SensioClass::IS_GRANTED` and friends, constants on *other* classes in the same
+                    // package. That is one nameable capability behind two rules, and the old message hid which.
+                    throw new Refusal(sprintf(
+                        'list contains %s rather than a string literal',
+                        $item === null ? 'a hole' : $this->describe($item->value),
+                    ), $line);
                 }
 
                 $values[] = $item->value->value;
