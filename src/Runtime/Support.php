@@ -5,17 +5,11 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Runtime;
 
 use LogicException;
-use Mago\Sdk\Analyzer\Metadata\AttributeMetadata;
-use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata;
-use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
-use Mago\Sdk\Analyzer\Type\Visibility;
 use Mago\Sdk\Span;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
-use Mago\Sdk\Syntax\ResolvedName;
-use Mago\Sdk\Syntax\SourceFile;
 use Mago\Sdk\Syntax\TriviaKind;
 
 /**
@@ -93,22 +87,7 @@ final class Support
      */
     public static function resolvedName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return null;
-        }
-
-        if ($node->kind === NodeKind::Keyword) {
-            $keyword = strtolower(trim($context->source->getText($node)));
-
-            return $keyword === 'self' || $keyword === 'static'
-                ? self::enclosingClassName($context, $node)
-                : null;
-        }
-
-        $resolved = $context->source->getResolvedName($node);
-
-        return $resolved instanceof ResolvedName && $resolved->name !== '' ? $resolved->name : null;
+        return Names::resolvedName($context, $subject);
     }
 
     /**
@@ -174,50 +153,6 @@ final class Support
         return Reflect::methodExists($context, $class, $method);
     }
 
-    /** Declaration kinds, by backed value: see the note in {@see enclosingClassName}. */
-    private const array CLASS_LIKE_KINDS = ['Class', 'Interface', 'Trait', 'Enum'];
-
-    /** Kinds that stand in for `instanceof PhpParser\Node\Name`. */
-    private const array NAME_KINDS = [NodeKind::Identifier, NodeKind::Keyword, NodeKind::LocalIdentifier];
-
-    /**
-     * The node kinds a *written* member name is spelled with, as opposed to a computed one.
-     *
-     * Probed across the six accesses php-parser puts a `->name` on. `DirectVariable` belongs here because a
-     * static property's written name is `$prop`, which is a variable in the tree and an identifier to the rule.
-     *
-     * @var list<NodeKind>
-     */
-    private const array WRITTEN_NAME_KINDS = [
-        NodeKind::Identifier,
-        NodeKind::LocalIdentifier,
-        // A name written with a leading `\` or a namespace prefix is as *written* as a bare one, and both were
-        // missing. `\is_string(..)` arrives as an `Identifier` whose child is a `FullyQualifiedIdentifier`, and
-        // this method descends into that child — so a written qualified name answered "not written" and every
-        // rule asking `! $node->name instanceof Expr` inverted on it. `NoDynamicNameRule` reported 169 sites on
-        // `nikic/php-parser`, which writes `\`-prefixed globals throughout, and three of them are the three
-        // `\is_string(..)` calls in `BuilderFactory.php`.
-        NodeKind::FullyQualifiedIdentifier,
-        NodeKind::QualifiedIdentifier,
-        NodeKind::DirectVariable,
-    ];
-
-    private static function part(NodeAnalysisContext $context, Node $node): Part
-    {
-        return new Part($node->kind, trim($context->source->getText($node)), $node, $context->source);
-    }
-
-    /**
-     * Navigation takes either a raw node or an already-navigated part.
-     *
-     * A narrowing binding hands back a Part, and the rule then reads a field off it, so the same
-     * helpers have to accept both without the generated code caring which it holds.
-     */
-    private static function node(Part|Node|null $subject): ?Node
-    {
-        return $subject instanceof Part ? $subject->node : $subject;
-    }
-
     /**
      * The nth `Expression` child, unwrapped.
      *
@@ -226,78 +161,30 @@ final class Support
      */
     public static function nthExpression(NodeAnalysisContext $context, Part|Node|null $subject, int $index): ?Part
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return null;
-        }
-
-        $seen = 0;
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind !== NodeKind::Expression) {
-                continue;
-            }
-
-            if ($seen++ !== $index) {
-                continue;
-            }
-
-            $inner = $context->source->getChildren($child)[0] ?? null;
-
-            return self::part($context, $inner ?? $child);
-        }
-
-        return null;
+        return Calls::nthExpression($context, $subject, $index);
     }
 
     /** The class side of a class-constant access or static call. */
     public static function classPart(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        return self::nthExpression($context, $subject, 0);
+        return Calls::classPart($context, $subject);
     }
 
     /** The member selector of a method call: `->expects(..)` gives `expects`. */
     public static function selector(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return null;
-        }
-
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind === NodeKind::ClassLikeMemberSelector) {
-                $inner = $context->source->getChildren($child)[0] ?? null;
-
-                return self::part($context, $inner ?? $child);
-            }
-        }
-
-        return null;
+        return Calls::selector($context, $subject);
     }
 
     public static function argumentList(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return null;
-        }
-
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind === NodeKind::ArgumentList) {
-                return self::part($context, $child);
-            }
-        }
-
-        return null;
+        return Calls::argumentList($context, $subject);
     }
 
     /** A navigated part's source text, for interpolating into a message. */
     public static function textOf(Part|string|null $subject): ?string
     {
-        if ($subject === null || is_string($subject)) {
-            return $subject;
-        }
-
-        return $subject->text;
+        return Names::textOf($subject);
     }
 
     /**
@@ -321,40 +208,7 @@ final class Support
      */
     public static function functionLikeName(NodeAnalysisContext $context, Part|Node|null $subject): string
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return '';
-        }
-
-        if ($node->kind === NodeKind::Closure) {
-            return 'closure';
-        }
-
-        if ($node->kind === NodeKind::ArrowFunction) {
-            return 'arrow function';
-        }
-
-        $name = self::declaredName($context, $node) . '()';
-        if ($node->kind !== NodeKind::Method) {
-            return $name;
-        }
-
-        $class = self::enclosingClassName($context, $node);
-
-        return $class === null ? $name : $class . '::' . $name;
-    }
-
-    /** The identifier a declaration was written with, or an empty string when it has none. */
-    private static function declaredName(NodeAnalysisContext $context, Node $node): string
-    {
-        [$file, $located] = self::locate($context, $node);
-        foreach ($file->getChildren($located) as $child) {
-            if ($child->kind === NodeKind::LocalIdentifier || $child->kind === NodeKind::Identifier) {
-                return trim($file->getText($child));
-            }
-        }
-
-        return '';
+        return Members::functionLikeName($context, $subject);
     }
 
     /**
@@ -366,24 +220,18 @@ final class Support
      */
     public static function isMethodDeclaration(Part|Node|null $subject): bool
     {
-        $node = self::node($subject);
-
-        return $node instanceof Node && $node->kind === NodeKind::Method;
+        return Members::isMethodDeclaration($subject);
     }
 
     /** Whether the node is a plain function declaration. See {@see isMethodDeclaration()}. */
     public static function isFunctionDeclaration(Part|Node|null $subject): bool
     {
-        $node = self::node($subject);
-
-        return $node instanceof Node && $node->kind === NodeKind::Function;
+        return Members::isFunctionDeclaration($subject);
     }
 
     public static function declarationKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool
     {
-        $node = self::node($subject);
-
-        return $node instanceof Node && $node->kind->value === $kind;
+        return Declares::declarationKindIs($context, $subject, $kind);
     }
 
     /**
@@ -403,19 +251,7 @@ final class Support
      */
     public static function attributeNames(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        $className = self::enclosingClassName($context, $subject);
-        if ($className === null) {
-            return [];
-        }
-
-        $metadata = self::isMethodDeclaration($subject)
-            ? $context->codebase->getMethod($className, (string) self::declarationName($context, $subject))
-            : $context->codebase->getClassLike($className);
-
-        return $metadata === null ? [] : array_values(array_map(
-            static fn (AttributeMetadata $attribute): string => $attribute->name,
-            $metadata->attributes,
-        ));
+        return Attributes::attributeNames($context, $subject);
     }
 
     /**
@@ -433,14 +269,7 @@ final class Support
      */
     public static function directInterfaceNames(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        $className = self::enclosingClassName($context, $subject);
-        if ($className === null) {
-            return [];
-        }
-
-        $metadata = $context->codebase->getClassLike($className);
-
-        return $metadata instanceof ClassLikeMetadata ? array_values(array_unique($metadata->directParentInterfaces)) : [];
+        return Declares::directInterfaceNames($context, $subject);
     }
 
     /**
@@ -454,14 +283,7 @@ final class Support
      */
     public static function usedTraitNames(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        $className = self::enclosingClassName($context, $subject);
-        if ($className === null) {
-            return [];
-        }
-
-        $metadata = $context->codebase->getClassLike($className);
-
-        return $metadata instanceof ClassLikeMetadata ? array_values(array_unique($metadata->usedTraits)) : [];
+        return Declares::usedTraitNames($context, $subject);
     }
 
     /**
@@ -473,27 +295,7 @@ final class Support
      */
     public static function classImplements(NodeAnalysisContext $context, Part|Node|null $subject, ?string $interface): bool
     {
-        if ($interface === null) {
-            return false;
-        }
-
-        $className = self::enclosingClassName($context, $subject);
-        if ($className === null) {
-            return false;
-        }
-
-        $metadata = $context->codebase->getClassLike($className);
-        if (! $metadata instanceof ClassLikeMetadata) {
-            return false;
-        }
-
-        foreach ($metadata->parentInterfaces as $implemented) {
-            if (strcasecmp(ltrim($implemented, '\\'), ltrim($interface, '\\')) === 0) {
-                return true;
-            }
-        }
-
-        return false;
+        return Declares::classImplements($context, $subject, $interface);
     }
 
     /**
@@ -517,7 +319,7 @@ final class Support
      */
     public static function classHasMethod(NodeAnalysisContext $context, Part|Node|null $subject, ?string $method): bool
     {
-        return self::declaringClassOfMethod($context, self::enclosingClassName($context, $subject), $method) !== null;
+        return Declares::classHasMethod($context, $subject, $method);
     }
 
     /**
@@ -565,30 +367,7 @@ final class Support
      */
     public static function enclosingFunctionName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return null;
-        }
-
-        [$file, $located] = self::locate($context, $node);
-
-        foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
-            if ($ancestor->kind === NodeKind::Closure || $ancestor->kind === NodeKind::ArrowFunction) {
-                return null;
-            }
-
-            if ($ancestor->kind !== NodeKind::Method && $ancestor->kind !== NodeKind::Function) {
-                continue;
-            }
-
-            foreach ($file->getChildren($ancestor) as $child) {
-                if ($child->kind === NodeKind::LocalIdentifier || $child->kind === NodeKind::Identifier) {
-                    return trim($file->getText($child));
-                }
-            }
-        }
-
-        return null;
+        return Declares::enclosingFunctionName($context, $subject);
     }
 
     /**
@@ -622,7 +401,7 @@ final class Support
      */
     public static function nodeKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool
     {
-        $node = self::node($subject);
+        $node = Tree::node($subject);
 
         return $node instanceof Node && $node->kind->value === $kind;
     }
@@ -642,20 +421,7 @@ final class Support
      */
     public static function namePart(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return null;
-        }
-
-        $wanted = [NodeKind::ClassLikeConstantSelector, NodeKind::ClassLikeMemberSelector, NodeKind::Variable];
-        foreach ($context->source->getChildren($node) as $child) {
-            if (in_array($child->kind, $wanted, true)) {
-                return self::part($context, $child);
-            }
-        }
-
-        // A function call names its target with an expression rather than a selector.
-        return $node->kind === NodeKind::FunctionCall ? self::nthExpression($context, $node, 0) : null;
+        return Calls::namePart($context, $subject);
     }
 
     /**
@@ -667,7 +433,7 @@ final class Support
      */
     public static function hasDynamicName(NodeAnalysisContext $context, Part|Node|null $subject): bool
     {
-        return ! self::isWrittenName(self::namePart($context, $subject));
+        return Calls::hasDynamicName($context, $subject);
     }
 
     /**
@@ -683,44 +449,25 @@ final class Support
      */
     public static function isWrittenName(?Part $part): bool
     {
-        if (! $part instanceof Part) {
-            return false;
-        }
-
-        $inner = $part->children()[0] ?? null;
-
-        return in_array(($inner instanceof Part ? $inner : $part)->kind, self::WRITTEN_NAME_KINDS, true);
+        return Calls::isWrittenName($part);
     }
 
     /** The enclosing declaration's extends clause, joined as PHPStan prints it. */
     public static function extendsText(NodeAnalysisContext $context, Part|Node|null $subject): string
     {
-        return implode(', ', self::extendsNames($context, $subject));
+        return Inheritance::extendsText($context, $subject);
     }
 
     /** Whether a binary expression's operator is the one written, which Mago keeps in a child node. */
     public static function binaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return false;
-        }
-
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind === NodeKind::BinaryOperator) {
-                return trim($context->source->getText($child)) === $operator;
-            }
-        }
-
-        return false;
+        return Calls::binaryOperatorIs($context, $subject, $operator);
     }
 
     /** Whether a navigated part is `__DIR__`, which php-parser models as its own node class. */
     public static function isDirConstant(?Part $part): bool
     {
-        return $part instanceof Part
-            && $part->kind === NodeKind::MagicConstant
-            && strcasecmp(trim($part->text), '__DIR__') === 0;
+        return Names::isDirConstant($part);
     }
 
     /**
@@ -733,48 +480,34 @@ final class Support
      */
     public static function literalStringValue(NodeAnalysisContext $context, ?Part $part): ?string
     {
-        if (! $part instanceof Part) {
-            return null;
-        }
-
-        $literals = self::findKind($context, $part, ['LiteralString']);
-        $text = $literals === [] ? null : trim($literals[0]->text);
-        if ($text === null || strlen($text) < 2) {
-            return null;
-        }
-
-        return substr($text, 1, -1);
+        return Names::literalStringValue($context, $part);
     }
 
     /** Whether a navigated part is a quoted string, which is php-parser's `Scalar\String_`. */
     public static function isLiteralString(NodeAnalysisContext $context, ?Part $part): bool
     {
-        return $part instanceof Part && self::findKind($context, $part, ['LiteralString']) !== [];
+        return Names::isLiteralString($context, $part);
     }
 
     public static function isName(?Part $part): bool
     {
-        return $part instanceof Part && in_array($part->kind, self::NAME_KINDS, true);
+        return Names::isName($part);
     }
 
     public static function nameEquals(?Part $part, string $literal): bool
     {
-        // A leading `\` is dropped on both sides, because the rule's literal is written the way php-parser
-        // spells a name and php-parser does not keep it: `\Livewire\invade(..)` and `Livewire\invade(..)` both
-        // read back as `Livewire\invade`. Mago keeps the separator, so comparing the text as written made the
-        // port silent on exactly the fully-qualified spelling the rule exists to catch.
-        return $part instanceof Part && strcasecmp(ltrim($part->text, '\\'), ltrim($literal, '\\')) === 0;
+        return Names::nameEquals($part, $literal);
     }
 
     /** The selector's own name, which is case sensitive in PHP as method names are compared. */
     public static function selectorIs(?Part $part, string $literal): bool
     {
-        return $part instanceof Part && $part->text === $literal;
+        return Calls::selectorIs($part, $literal);
     }
 
     public static function selectorIsIdentifier(?Part $part): bool
     {
-        return $part instanceof Part && in_array($part->kind, self::NAME_KINDS, true);
+        return Names::selectorIsIdentifier($part);
     }
 
     /**
@@ -786,7 +519,7 @@ final class Support
      */
     public static function isSpecialClassName(?Part $part): bool
     {
-        return $part instanceof Part && $part->kind === NodeKind::Keyword;
+        return Names::isSpecialClassName($part);
     }
 
     /**
@@ -797,32 +530,28 @@ final class Support
      */
     public static function isRelativeName(?Part $part): bool
     {
-        return $part instanceof Part && str_starts_with(strtolower($part->text), 'namespace\\');
+        return Names::isRelativeName($part);
     }
 
     public static function isVariable(?Part $part): bool
     {
-        return $part instanceof Part && $part->kind === NodeKind::Variable;
+        return Names::isVariable($part);
     }
 
     /** `$foo` gives `foo`; anything else, including `$$foo`, gives null. */
     public static function directVariableName(?Part $part): ?string
     {
-        if (! $part instanceof Part || $part->kind !== NodeKind::Variable) {
-            return null;
-        }
-
-        return str_starts_with($part->text, '$') ? substr($part->text, 1) : null;
+        return Names::directVariableName($part);
     }
 
     public static function isMethodCall(?Part $part): bool
     {
-        return self::concreteCall($part)?->kind === NodeKind::MethodCall;
+        return Calls::isMethodCall($part);
     }
 
     public static function isStaticCall(?Part $part): bool
     {
-        return self::concreteCall($part)?->kind === NodeKind::StaticMethodCall;
+        return Calls::isStaticCall($part);
     }
 
     /**
@@ -842,42 +571,13 @@ final class Support
      */
     public static function isFunctionCall(?Part $part): bool
     {
-        return self::concreteCall($part)?->kind === NodeKind::FunctionCall;
+        return Calls::isFunctionCall($part);
     }
 
     /** Whether the part is a `Foo::BAR` access, which is php-parser's `Expr\ClassConstFetch`. */
     public static function isClassConstantAccess(?Part $part): bool
     {
-        return self::concreteMemberAccess($part)?->kind === NodeKind::ClassConstantAccess;
-    }
-
-    /**
-     * The concrete access under an `Access` wrapper, or the part itself.
-     *
-     * Named apart from `concreteAccess()` below, which answers a different question — that one takes a context
-     * and searches for any of several kinds. This one has a `Part` already and asks what the wrapper holds.
-     *
-     * Mago wraps a member access the way it wraps a call: `Foo::BAR` arrives as an `Access` whose child is a
-     * `ClassConstantAccess`, and `$a->b` as an `Access` whose child is a `PropertyAccess`. Measured — a probe
-     * over `$this->configure(ref(), Marker::NAME)` reported `kind=Access text=Marker::NAME`, and the predicate
-     * written against the concrete kind answered no.
-     */
-    private static function concreteMemberAccess(?Part $part): ?Part
-    {
-        if (! $part instanceof Part) {
-            return null;
-        }
-
-        return $part->kind === NodeKind::Access ? $part->firstChild() : $part;
-    }
-
-    private static function concreteCall(?Part $part): ?Part
-    {
-        if (! $part instanceof Part) {
-            return null;
-        }
-
-        return $part->kind === NodeKind::Call ? $part->firstChild() : $part;
+        return Calls::isClassConstantAccess($part);
     }
 
     /**
@@ -888,29 +588,17 @@ final class Support
      */
     public static function isArray(?Part $part): bool
     {
-        // `Array` and `LegacyArray` are the short and `array(..)` spellings. `NodeKind::Array` is fine
-        // even though `array` is a reserved word: only `::class` is special-cased by the parser, which
-        // is worth stating because the `NodeKind::Class` trap looks like it should apply here and does not.
-        return $part instanceof Part
-            && ($part->kind === NodeKind::Array || $part->kind === NodeKind::LegacyArray);
+        return Calls::isArray($part);
     }
 
     public static function isPropertyFetch(?Part $part): bool
     {
-        // Through the wrapper, and against the *concrete* kind. Comparing against `Access` itself answered yes
-        // for every member access there is — `Foo::BAR` included — so a rule asking `instanceof PropertyFetch`
-        // was answered yes about a class constant. Found while adding the class-constant predicate beside it,
-        // where a probe reported `kind=Access text=Marker::NAME`.
-        //
-        // No test covers this one either way: nothing in the corpus or the fixtures reaches
-        // `is_property_fetch` yet, so reverting the narrowing breaks nothing. Corrected anyway rather than left
-        // for the first rule that does reach it to widen silently, and recorded as untested rather than gated.
-        return self::concreteMemberAccess($part)?->kind === NodeKind::PropertyAccess;
+        return Calls::isPropertyFetch($part);
     }
 
     public static function isArrayDimFetch(?Part $part): bool
     {
-        return $part instanceof Part && $part->kind === NodeKind::ArrayAccess;
+        return Calls::isArrayDimFetch($part);
     }
 
     public static function isInt(?Part $part): bool
@@ -951,23 +639,12 @@ final class Support
     /** @return list<Part> the positional arguments, in source order */
     public static function arguments(?Part $list): array
     {
-        if (! $list instanceof Part) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($list->children() as $child) {
-            if ($child->kind === NodeKind::Argument) {
-                $out[] = $child;
-            }
-        }
-
-        return $out;
+        return Calls::arguments($list);
     }
 
     public static function argCount(?Part $list): int
     {
-        return count(self::arguments($list));
+        return Calls::argCount($list);
     }
 
     /**
@@ -980,13 +657,13 @@ final class Support
      */
     public static function positionalArgAt(?Part $list, int $index): ?Part
     {
-        return self::argumentValue(self::argumentAt($list, $index));
+        return Calls::positionalArgAt($list, $index);
     }
 
     /** The nth argument, still wrapped, so the questions about *how* it was written can be asked of it. */
     public static function argumentAt(?Part $list, int $index): ?Part
     {
-        return self::arguments($list)[$index] ?? null;
+        return Calls::argumentAt($list, $index);
     }
 
     /**
@@ -1002,29 +679,7 @@ final class Support
      */
     public static function argumentValue(?Part $argument): ?Part
     {
-        if (! $argument instanceof Part) {
-            return null;
-        }
-
-        $inner = $argument;
-        foreach ([[NodeKind::PositionalArgument, NodeKind::NamedArgument], [NodeKind::Expression]] as $layer) {
-            $child = null;
-            foreach ($inner->children() as $candidate) {
-                if (in_array($candidate->kind, $layer, true)) {
-                    $child = $candidate;
-
-                    break;
-                }
-            }
-
-            if ($child === null) {
-                break;
-            }
-
-            $inner = $child;
-        }
-
-        return $inner->firstChild() ?? $inner;
+        return Calls::argumentValue($argument);
     }
 
     /**
@@ -1036,17 +691,7 @@ final class Support
      */
     public static function argumentIsNamed(?Part $argument): bool
     {
-        if (! $argument instanceof Part) {
-            return false;
-        }
-
-        foreach ([$argument, ...$argument->children()] as $candidate) {
-            if ($candidate->kind === NodeKind::NamedArgument) {
-                return true;
-            }
-        }
-
-        return false;
+        return Calls::argumentIsNamed($argument);
     }
 
     /**
@@ -1059,15 +704,7 @@ final class Support
      */
     public static function isConstantName(?Part $part): bool
     {
-        if (! $part instanceof Part) {
-            return false;
-        }
-
-        if ($part->kind === NodeKind::ConstantAccess) {
-            return true;
-        }
-
-        return $part->kind === NodeKind::Literal && $part->firstChild()?->kind === NodeKind::Keyword;
+        return Names::isConstantName($part);
     }
 
     /**
@@ -1079,7 +716,7 @@ final class Support
      */
     public static function constantNameText(?Part $part): ?string
     {
-        return self::isConstantName($part) ? trim((string) $part?->text) : null;
+        return Names::constantNameText($part);
     }
 
     /** `->toLowerString()` on a name, which rules use so a comparison ignores how the name was written. */
@@ -1132,13 +769,7 @@ final class Support
      */
     public static function lastNameSegment(?string $name): ?string
     {
-        if ($name === null) {
-            return null;
-        }
-
-        $position = strrpos($name, '\\');
-
-        return $position === false ? $name : substr($name, $position + 1);
+        return Names::lastNameSegment($name);
     }
 
     /**
@@ -1160,22 +791,7 @@ final class Support
      */
     public static function functionName(NodeAnalysisContext $context, ?string $name): ?string
     {
-        if ($name === null || $name === '') {
-            return null;
-        }
-
-        foreach ([$name, self::lastNameSegment($name)] as $candidate) {
-            if ($candidate === null) {
-                continue;
-            }
-
-            $function = $context->codebase->getFunction($candidate);
-            if ($function instanceof FunctionLikeMetadata) {
-                return $function->originalName;
-            }
-        }
-
-        return null;
+        return Names::functionName($context, $name);
     }
 
     /** The other half of `lowerBytes()`, for a rule that folds the other way. */
@@ -1196,19 +812,13 @@ final class Support
      */
     public static function argumentIsUnpacked(?Part $argument): bool
     {
-        return $argument instanceof Part && str_starts_with(ltrim($argument->text), '...');
+        return Calls::argumentIsUnpacked($argument);
     }
 
     /** `$this->foo(..)`, the receiver being `$this` rather than any expression. */
     public static function isThisMethodCall(NodeAnalysisContext $context, Part|Node|null $subject, string $method): bool
     {
-        if (! self::selectorIs(self::selector($context, $subject), $method)) {
-            return false;
-        }
-
-        $receiver = self::nthExpression($context, $subject, 0);
-
-        return $receiver instanceof Part && $receiver->text === '$this';
+        return Calls::isThisMethodCall($context, $subject, $method);
     }
 
     /**
@@ -1261,10 +871,7 @@ final class Support
      */
     public static function asMethodCall(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $part = $subject instanceof Part ? $subject : ($subject instanceof Node ? self::part($context, $subject) : null);
-        $call = self::concreteCall($part);
-
-        return $call?->kind === NodeKind::MethodCall ? $call : null;
+        return Calls::asMethodCall($context, $subject);
     }
 
     /**
@@ -1276,9 +883,7 @@ final class Support
      */
     public static function propertyFetchTarget(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $access = self::concreteAccess($context, $subject, [NodeKind::PropertyAccess, NodeKind::NullSafePropertyAccess]);
-
-        return $access instanceof Part ? self::nthExpression($context, $access, 0) : null;
+        return Calls::propertyFetchTarget($context, $subject);
     }
 
     /**
@@ -1289,101 +894,18 @@ final class Support
      */
     public static function dimFetchTarget(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $access = self::concreteAccess($context, $subject, [NodeKind::ArrayAccess]);
-
-        return $access instanceof Part ? self::nthExpression($context, $access, 0) : null;
-    }
-
-    /**
-     * A part narrowed to one of the given access kinds, looking through the `Access` category node.
-     *
-     * @param list<NodeKind> $kinds
-     */
-    private static function concreteAccess(NodeAnalysisContext $context, Part|Node|null $subject, array $kinds): ?Part
-    {
-        $part = self::asPart($context, $subject);
-        if (! $part instanceof Part) {
-            return null;
-        }
-
-        if (in_array($part->kind, $kinds, true)) {
-            return $part;
-        }
-
-        foreach ($part->children() as $child) {
-            if (in_array($child->kind, $kinds, true)) {
-                return $child;
-            }
-        }
-
-        return null;
+        return Calls::dimFetchTarget($context, $subject);
     }
 
     /** Whether the enclosing class-like declaration has an extends clause at all. */
     public static function hasExtends(NodeAnalysisContext $context, Part|Node|null $subject): bool
     {
-        return self::extendsNames($context, $subject) !== [];
+        return Inheritance::hasExtends($context, $subject);
     }
 
     public static function extendsIs(NodeAnalysisContext $context, Part|Node|null $subject, string $name): bool
     {
-        foreach (self::extendsNames($context, $subject) as $extended) {
-            if (strcasecmp($extended, $name) === 0) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * The names in the enclosing declaration's extends clause.
-     *
-     * Written from the probe rather than from the shape one would expect: the clause is its own node
-     * carrying the names, so this looks for it among the declaration's children instead of walking
-     * every descendant, which would also pick up names from the body.
-     *
-     * @return list<string>
-     */
-    private static function extendsNames(NodeAnalysisContext $context, Part|Node|null $subject): array
-    {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        // The same ancestor problem as `enclosingClassName()`, and the same fix: an `extends` question
-        // asked from an expression target read an empty ancestor list and answered "no parent".
-        [$file, $located] = self::locate($context, $node);
-
-        $declaration = null;
-        foreach ([$located, ...$file->getAncestors($located)] as $candidate) {
-            if (in_array($candidate->kind->value, self::CLASS_LIKE_KINDS, true)) {
-                $declaration = $candidate;
-                break;
-            }
-        }
-
-        if ($declaration === null) {
-            return [];
-        }
-
-        $names = [];
-        foreach ($file->getChildren($declaration) as $child) {
-            if ($child->kind !== NodeKind::Extends) {
-                continue;
-            }
-
-            foreach ($file->getChildren($child) as $part) {
-                $resolved = $file->getResolvedName($part);
-                $text = $resolved instanceof ResolvedName ? $resolved->name : trim($file->getText($part));
-                if ($text !== '' && $text !== 'extends') {
-                    $names[] = $text;
-                }
-            }
-        }
-
-        return $names;
+        return Inheritance::extendsIs($context, $subject, $name);
     }
 
     public static function bytesContain(?string $haystack, string $needle): bool
@@ -1443,24 +965,13 @@ final class Support
      */
     public static function resolvedNameIsOneOf(NodeAnalysisContext $context, Part|Node|null $subject, array $names): bool
     {
-        $resolved = self::resolvedName($context, $subject);
-        if ($resolved === null) {
-            return false;
-        }
-
-        foreach ($names as $name) {
-            if (strcasecmp(ltrim($resolved, '\\'), ltrim($name, '\\')) === 0) {
-                return true;
-            }
-        }
-
-        return false;
+        return Names::resolvedNameIsOneOf($context, $subject, $names);
     }
 
     /** @param list<string> $names */
     public static function selectorIsOneOf(?Part $part, array $names): bool
     {
-        return $part instanceof Part && in_array($part->text, $names, true);
+        return Names::selectorIsOneOf($part, $names);
     }
 
     /** Whether the inferred type is a single named object rather than a union, scalar or mixed. */
@@ -1537,19 +1048,7 @@ final class Support
      */
     public static function constantItems(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind === NodeKind::ClassLikeConstantItem || $child->kind === NodeKind::ConstantItem) {
-                $out[] = self::part($context, $child);
-            }
-        }
-
-        return $out;
+        return Constants::constantItems($context, $subject);
     }
 
     /**
@@ -1563,21 +1062,7 @@ final class Support
      */
     public static function constantDeclarations(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($context->source->getChildren($node) as $child) {
-            foreach ($context->source->getChildren($child) as $member) {
-                if ($member->kind === NodeKind::ClassLikeConstant) {
-                    $out[] = self::part($context, $member);
-                }
-            }
-        }
-
-        return $out;
+        return Constants::constantDeclarations($context, $subject);
     }
 
     /**
@@ -1589,35 +1074,13 @@ final class Support
      */
     public static function constantItemValue(NodeAnalysisContext $context, ?Part $item): ?Part
     {
-        if (! $item instanceof Part) {
-            return null;
-        }
-
-        foreach ($item->children() as $child) {
-            if ($child->kind !== NodeKind::Expression) {
-                continue;
-            }
-
-            return $child->children()[0] ?? $child;
-        }
-
-        return null;
+        return Constants::constantItemValue($context, $item);
     }
 
     /** A constant item's name, without its value. */
     public static function constantItemName(?Part $item): ?string
     {
-        if (! $item instanceof Part) {
-            return null;
-        }
-
-        foreach ($item->children() as $child) {
-            if ($child->kind === NodeKind::LocalIdentifier || $child->kind === NodeKind::Identifier) {
-                return $child->text;
-            }
-        }
-
-        return null;
+        return Constants::constantItemName($item);
     }
 
     /**
@@ -1629,35 +1092,17 @@ final class Support
      */
     public static function propertyHint(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return null;
-        }
-
-        foreach ([$node, ...$context->source->getChildren($node)] as $candidate) {
-            foreach ($context->source->getChildren($candidate) as $child) {
-                if ($child->kind === NodeKind::Hint) {
-                    return self::part($context, $child);
-                }
-            }
-        }
-
-        return null;
+        return Members::propertyHint($context, $subject);
     }
 
     public static function hintIsUnion(?Part $hint): bool
     {
-        return self::hintShape($hint) === NodeKind::UnionHint;
+        return Hints::hintIsUnion($hint);
     }
 
     public static function hintIsIntersection(?Part $hint): bool
     {
-        return self::hintShape($hint) === NodeKind::IntersectionHint;
-    }
-
-    private static function hintShape(?Part $hint): ?NodeKind
-    {
-        return $hint?->firstChild()?->kind;
+        return Hints::hintIsIntersection($hint);
     }
 
     /**
@@ -1667,23 +1112,7 @@ final class Support
      */
     public static function hintParts(?Part $hint): array
     {
-        if (! $hint instanceof Part) {
-            return [];
-        }
-
-        $shape = $hint->firstChild();
-        if (! $shape instanceof Part || ($shape->kind !== NodeKind::UnionHint && $shape->kind !== NodeKind::IntersectionHint)) {
-            return [$hint];
-        }
-
-        $out = [];
-        foreach ($shape->children() as $child) {
-            if ($child->kind === NodeKind::Hint) {
-                $out[] = $child;
-            }
-        }
-
-        return $out;
+        return Hints::hintParts($hint);
     }
 
     /**
@@ -1710,21 +1139,7 @@ final class Support
      */
     public static function hintIsName(?Part $hint): bool
     {
-        if (! $hint instanceof Part) {
-            return false;
-        }
-
-        $inner = $hint->firstChild();
-        if (! $inner instanceof Part) {
-            return false;
-        }
-
-        if ($inner->kind === NodeKind::Identifier) {
-            return true;
-        }
-
-        return $inner->kind === NodeKind::Keyword
-            && in_array(strtolower(trim($inner->text)), ['self', 'static', 'parent'], true);
+        return Hints::hintIsName($hint);
     }
 
     /**
@@ -1737,47 +1152,19 @@ final class Support
      */
     public static function declaredParams(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind !== NodeKind::FunctionLikeParameterList) {
-                continue;
-            }
-
-            foreach ($context->source->getChildren($child) as $parameter) {
-                if ($parameter->kind === NodeKind::FunctionLikeParameter) {
-                    $out[] = self::part($context, $parameter);
-                }
-            }
-        }
-
-        return $out;
+        return Members::declaredParams($context, $subject);
     }
 
     /** The nth declared parameter, or null when the declaration has no such position. */
     public static function declaredParamAt(NodeAnalysisContext $context, Part|Node|null $subject, int $index): ?Part
     {
-        return self::declaredParams($context, $subject)[$index] ?? null;
+        return Members::declaredParamAt($context, $subject, $index);
     }
 
     /** The written type of a declared parameter, or null when it has none. */
     public static function declaredParamHint(?Part $parameter): ?Part
     {
-        if (! $parameter instanceof Part) {
-            return null;
-        }
-
-        foreach ($parameter->children() as $child) {
-            if ($child->kind === NodeKind::Hint) {
-                return $child;
-            }
-        }
-
-        return null;
+        return Members::declaredParamHint($parameter);
     }
 
     /** Whether a name is written entirely in upper case, as a constant convention check. */
@@ -1789,20 +1176,12 @@ final class Support
     /** A hint's written name, resolved through the file's imports where possible. */
     public static function hintName(NodeAnalysisContext $context, ?Part $hint): ?string
     {
-        if (! $hint instanceof Part) {
-            return null;
-        }
-
-        $resolved = $context->source->getResolvedName($hint->node);
-
-        return $resolved instanceof ResolvedName ? $resolved->name : $hint->text;
+        return Hints::hintName($context, $hint);
     }
 
     public static function hintNameIs(NodeAnalysisContext $context, ?Part $hint, string $name): bool
     {
-        $written = self::hintName($context, $hint);
-
-        return $written !== null && strcasecmp($written, $name) === 0;
+        return Hints::hintNameIs($context, $hint, $name);
     }
 
     /**
@@ -1816,51 +1195,8 @@ final class Support
      */
     public static function classMethods(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        $out = [];
-        $walk = function (Node $parent, int $depth) use (&$walk, $context, &$out): void {
-            foreach ($context->source->getChildren($parent) as $child) {
-                if ($child->kind === NodeKind::Method) {
-                    $out[] = self::part($context, $child);
-
-                    continue;
-                }
-
-                if ($depth < self::MEMBER_DEPTH) {
-                    $walk($child, $depth + 1);
-                }
-            }
-        };
-        $walk($node, 0);
-
-        return $out;
+        return Declares::classMethods($context, $subject);
     }
-
-    /** How far below a class-like to look for its members: body, then member list. */
-    private const int MEMBER_DEPTH = 3;
-
-    /** Names php-parser treats as magic, copied from `ClassMethod::$magicNames` rather than recalled. */
-    private const array MAGIC_METHOD_NAMES = [
-        '__construct', '__destruct', '__call', '__callstatic', '__get', '__set', '__isset', '__unset',
-        '__sleep', '__wakeup', '__tostring', '__set_state', '__clone', '__invoke', '__debuginfo',
-        '__serialize', '__unserialize',
-    ];
-
-    /** Body kinds: what a declaration or a statement keeps its statements in. */
-    private const array BODY_KINDS = ['ForeachBody', 'Block', 'MethodBody', 'ForBody', 'WhileBody'];
-
-    /**
-     * What a body wrapper holds when the declaration has none.
-     *
-     * `MethodAbstractBody` for a method the class declares without one — abstract, or on an interface. Named
-     * rather than derived from the wrapper's text, because `";"` is also what a body wrapper would hold for a
-     * property hook and the kinds are the thing being asked about.
-     */
-    private const array ABSENT_BODY_KINDS = ['MethodAbstractBody', 'PropertyHookAbstractBody'];
 
     /**
      * The statements a node holds, which is php-parser's `$node->stmts`.
@@ -1876,26 +1212,7 @@ final class Support
      */
     public static function bodyOf(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return null;
-        }
-
-        foreach ($context->source->getChildren($node) as $child) {
-            if (! in_array($child->kind->value, self::BODY_KINDS, true)) {
-                continue;
-            }
-
-            foreach ($context->source->getChildren($child) as $inner) {
-                if (in_array($inner->kind->value, self::ABSENT_BODY_KINDS, true)) {
-                    return null;
-                }
-            }
-
-            return self::part($context, $child);
-        }
-
-        return null;
+        return Members::bodyOf($context, $subject);
     }
 
     /**
@@ -1917,41 +1234,13 @@ final class Support
      */
     public static function findKind(NodeAnalysisContext $context, Part|Node|null $within, array $kinds): array
     {
-        $node = self::node($within);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        $out = [];
-        $walk = function (Node $current) use (&$walk, $context, $kinds, &$out): void {
-            if (in_array($current->kind->value, $kinds, true)) {
-                $out[] = self::part($context, $current);
-            }
-
-            foreach ($context->source->getChildren($current) as $child) {
-                $walk($child);
-            }
-        };
-        $walk($node);
-
-        return $out;
+        return Tree::findKind($context, $within, $kinds);
     }
 
     /** Whether a class-like declaration is written `abstract`, which is a modifier on it. */
     public static function declarationIsAbstract(NodeAnalysisContext $context, Part|Node|null $subject): bool
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return false;
-        }
-
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind === NodeKind::Modifier && strtolower(trim($context->source->getText($child))) === 'abstract') {
-                return true;
-            }
-        }
-
-        return false;
+        return Declares::declarationIsAbstract($context, $subject);
     }
 
     /**
@@ -1962,18 +1251,7 @@ final class Support
      */
     public static function declarationName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return null;
-        }
-
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind === NodeKind::LocalIdentifier || $child->kind === NodeKind::Identifier) {
-                return trim($context->source->getText($child));
-            }
-        }
-
-        return null;
+        return Members::declarationName($context, $subject);
     }
 
     /**
@@ -1984,33 +1262,13 @@ final class Support
      */
     public static function methodNamed(NodeAnalysisContext $context, Part|Node|null $classLike, ?string $name): ?Part
     {
-        if ($name === null) {
-            return null;
-        }
-
-        foreach (self::classMethods($context, $classLike) as $method) {
-            if (strcasecmp((string) self::methodName($method), $name) === 0) {
-                return $method;
-            }
-        }
-
-        return null;
+        return Declares::methodNamed($context, $classLike, $name);
     }
 
     /** A method declaration's own name. */
     public static function methodName(?Part $method): ?string
     {
-        if (! $method instanceof Part) {
-            return null;
-        }
-
-        foreach ($method->children() as $child) {
-            if ($child->kind === NodeKind::LocalIdentifier) {
-                return trim($child->text);
-            }
-        }
-
-        return null;
+        return Members::methodName($method);
     }
 
     /**
@@ -2021,9 +1279,7 @@ final class Support
      */
     public static function methodIsMagic(?Part $method): bool
     {
-        $name = self::methodName($method);
-
-        return $name !== null && in_array(strtolower($name), self::MAGIC_METHOD_NAMES, true);
+        return Members::methodIsMagic($method);
     }
 
     /**
@@ -2046,11 +1302,7 @@ final class Support
      */
     public static function asPart(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        if ($subject instanceof Part) {
-            return $subject;
-        }
-
-        return $subject instanceof Node ? self::part($context, $subject) : null;
+        return Calls::asPart($context, $subject);
     }
 
     /**
@@ -2077,34 +1329,16 @@ final class Support
         return Reflect::methodIsProtected($method);
     }
 
-    /**
-     * The visibility of a method as the codebase knows it, which is what a rule asks of a reflection.
-     *
-     * Read from `FunctionLikeMetadata->visibility` rather than from `flags`: `MetadataFlags` carries `STATIC`,
-     * `ABSTRACT` and `FINAL` and no visibility at all, so a flags check would answer every method the same.
-     * Null when the method is not found, so each predicate below decides for itself what absence means.
-     */
-    private static function reflectedMethodVisibility(NodeAnalysisContext $context, ?string $class, ?string $method): ?Visibility
-    {
-        if ($class === null || $method === null) {
-            return null;
-        }
-
-        $declaring = $context->codebase->getDeclaringMethod($class, $method);
-
-        return $declaring instanceof FunctionLikeMetadata ? $declaring->visibility : null;
-    }
-
     /** Whether the codebase's method is public. A method that is not found is not public. */
     public static function reflectedMethodIsPublic(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
-        return self::reflectedMethodVisibility($context, $class, $method) === Visibility::Public;
+        return Members::reflectedMethodIsPublic($context, $class, $method);
     }
 
     /** Whether the codebase's method is private. */
     public static function reflectedMethodIsPrivate(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
-        return self::reflectedMethodVisibility($context, $class, $method) === Visibility::Private;
+        return Members::reflectedMethodIsPrivate($context, $class, $method);
     }
 
     public static function methodIsStatic(?Part $method): bool
@@ -2119,18 +1353,7 @@ final class Support
      */
     public static function attributeGroups(?Part $declaration): array
     {
-        if (! $declaration instanceof Part) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($declaration->children() as $child) {
-            if ($child->kind === NodeKind::AttributeList) {
-                $out[] = $child;
-            }
-        }
-
-        return $out;
+        return Attributes::attributeGroups($declaration);
     }
 
     /**
@@ -2140,18 +1363,7 @@ final class Support
      */
     public static function attributesOf(?Part $group): array
     {
-        if (! $group instanceof Part) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($group->children() as $child) {
-            if ($child->kind === NodeKind::Attribute) {
-                $out[] = $child;
-            }
-        }
-
-        return $out;
+        return Attributes::attributesOf($group);
     }
 
     /**
@@ -2163,7 +1375,7 @@ final class Support
      */
     public static function anchor(NodeAnalysisContext $context, Part|Node|null $subject): Span
     {
-        $node = self::node($subject);
+        $node = Tree::node($subject);
 
         return $node instanceof Node ? $node->span : $context->node->span;
     }
@@ -2179,7 +1391,7 @@ final class Support
      */
     public static function fileAnchor(NodeAnalysisContext $context, Part|Node|null $program): Span
     {
-        $node = self::node($program);
+        $node = Tree::node($program);
         if (! $node instanceof Node) {
             return $context->node->span;
         }
@@ -2227,7 +1439,7 @@ final class Support
      */
     public static function expressionType(NodeAnalysisContext $context, Part|Node|null $subject): ?Type
     {
-        $node = self::node($subject);
+        $node = Tree::node($subject);
 
         return $node instanceof Node ? $context->analysis->getExpressionType($node) : null;
     }
@@ -2274,19 +1486,7 @@ final class Support
      */
     public static function arrayElements(NodeAnalysisContext $context, Part|Node|null $array): array
     {
-        $node = self::node($array);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        $elements = [];
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind === NodeKind::ArrayElement) {
-                $elements[] = self::part($context, $child);
-            }
-        }
-
-        return $elements;
+        return Calls::arrayElements($context, $array);
     }
 
     /** Two written names compared the way PHP compares them: case-insensitively, and null matching nothing. */
@@ -2298,13 +1498,7 @@ final class Support
     /** The fully-qualified name an attribute names, which is what `$attr->name->toString()` gives a rule. */
     public static function attributeName(NodeAnalysisContext $context, ?Part $attribute): ?string
     {
-        if (! $attribute instanceof Part) {
-            return null;
-        }
-
-        $resolved = $context->source->getResolvedName($attribute->node);
-
-        return $resolved instanceof ResolvedName && $resolved->name !== '' ? $resolved->name : trim($attribute->text);
+        return Attributes::attributeName($context, $attribute);
     }
 
     /**
@@ -2321,7 +1515,7 @@ final class Support
         // Either shape: a member loop yields a `Part`, a hook hands over its own `Node`. Typed to `Part` alone
         // this threw a TypeError inside the worker, which surfaces as an orchestrator error naming the
         // *protocol* rather than the argument.
-        $node = self::node($declaration);
+        $node = Tree::node($declaration);
         if (! $node instanceof Node) {
             return null;
         }
@@ -2354,25 +1548,7 @@ final class Support
      */
     public static function classProperties(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($context->source->getChildren($node) as $member) {
-            if ($member->kind !== NodeKind::ClassLikeMember) {
-                continue;
-            }
-
-            foreach ($context->source->getChildren($member) as $child) {
-                if (in_array($child->kind->value, ['Property', 'PlainProperty', 'HookedProperty'], true)) {
-                    $out[] = self::part($context, $child);
-                }
-            }
-        }
-
-        return $out;
+        return Declares::classProperties($context, $subject);
     }
 
     public static function fileEndsWith(NodeAnalysisContext $context, string $suffix): bool
@@ -2439,74 +1615,6 @@ final class Support
     }
 
     /**
-     * The full tree of the file being analysed, and its nodes indexed by kind and span.
-     *
-     * One file, not a map of them: `getSourceFile()` is a host round-trip on first call and `getNodes()`
-     * walks the whole tree, and a node hook asks per node, so calling them per question cost 6.4s wall and
-     * 12.8s CPU on a 676-file corpus against 0.89s / 0.77s without. Memoising the current file brings that
-     * back to 0.99s / 1.05s. A single slot keeps a long-lived worker bounded; hooks arrive grouped per
-     * file, so a second file simply replaces the first.
-     *
-     * @var array{string, SourceFile, array<string, Node>}|null
-     */
-    private static ?array $tree = null;
-
-    /**
-     * The whole file, and this node's counterpart inside it.
-     *
-     * A node hook is handed `TargetSubtree`, which embeds "each targeted node's concrete-syntax subtree".
-     * So the target's `parentId` is null and `$context->source->getAncestors()` is empty — every question
-     * about an *enclosing* declaration silently answered "none", and five emitted rules reported nothing
-     * for it while parsing, loading and running.
-     *
-     * `$context->analysis->getSourceFile()` returns the complete analysed syntax. The target cannot simply
-     * be handed to it: the same node is a different object there, with a real parent chain, so it is
-     * relocated by kind and span first.
-     *
-     * @return array{SourceFile, Node}
-     */
-    private static function locate(NodeAnalysisContext $context, Node $node): array
-    {
-        $path = $context->source->path;
-        if (self::$tree === null || self::$tree[0] !== $path) {
-            $file = $context->analysis->getSourceFile();
-            $index = [];
-            foreach ($file->getNodes() as $candidate) {
-                $key = $candidate->kind->value . ':' . $candidate->span->start . ':' . $candidate->span->end;
-                // Two nodes of one kind at one span would make the index lose an entry, and relocation
-                // would then answer with the wrong node instead of failing. Detected here, where it costs
-                // one lookup per node, rather than trusted: a span identifying a node is an assumption.
-                if (isset($index[$key])) {
-                    throw new LogicException(sprintf('Two %s nodes share offsets %d-%d in %s, so a span does not identify one.', $candidate->kind->value, $candidate->span->start, $candidate->span->end, $file->path));
-                }
-
-                $index[$key] = $candidate;
-            }
-
-            self::$tree = [$path, $file, $index];
-        }
-
-        [, $file, $index] = self::$tree;
-        $key = $node->kind->value . ':' . $node->span->start . ':' . $node->span->end;
-        $matches = isset($index[$key]) ? [$index[$key]] : [];
-
-        // Neither branch below has been seen across the corpus. They throw rather than picking a candidate
-        // because guessing here is how the original bug behaved: an unanswerable question that answers
-        // anyway is invisible, and this method exists to stop exactly that.
-        if ($matches === []) {
-            throw new LogicException(sprintf(
-                'No %s node at offsets %d-%d in the full tree of %s.',
-                $node->kind->value,
-                $node->span->start,
-                $node->span->end,
-                $file->path,
-            ));
-        }
-
-        return [$file, $matches[0]];
-    }
-
-    /**
      * The namespace the analysed file declares, or null when it declares none.
      *
      * `$scope->getNamespace()` has no direct equivalent in the SDK. The file's own text does: `SourceFile`
@@ -2519,11 +1627,7 @@ final class Support
      */
     public static function enclosingNamespace(NodeAnalysisContext $context): ?string
     {
-        if (preg_match('/^\\s*namespace\\s+([^;{\\s]+)\\s*[;{]/m', $context->source->contents, $matches) !== 1) {
-            return null;
-        }
-
-        return trim($matches[1], '\\');
+        return Names::enclosingNamespace($context);
     }
 
     /**
@@ -2536,26 +1640,7 @@ final class Support
      */
     public static function propertyItems(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        $items = [];
-        foreach ($context->source->getChildren($node) as $child) {
-            // A property declaration may be plain or hooked; both hold the items.
-            if (! in_array($child->kind->value, ['PlainProperty', 'HookedProperty'], true)) {
-                continue;
-            }
-
-            foreach ($context->source->getChildren($child) as $item) {
-                if ($item->kind === NodeKind::PropertyItem) {
-                    $items[] = self::part($context, $item);
-                }
-            }
-        }
-
-        return $items;
+        return Members::propertyItems($context, $subject);
     }
 
     /**
@@ -2568,23 +1653,7 @@ final class Support
      */
     public static function propertyItemDefault(?Part $item): ?Part
     {
-        if (! $item instanceof Part) {
-            return null;
-        }
-
-        foreach ([$item, ...$item->children()] as $candidate) {
-            foreach ($candidate->children() as $child) {
-                if ($child->kind !== NodeKind::Expression) {
-                    continue;
-                }
-
-                $inner = $child->children()[0] ?? null;
-
-                return $inner ?? $child;
-            }
-        }
-
-        return null;
+        return Members::propertyItemDefault($item);
     }
 
     /**
@@ -2595,58 +1664,18 @@ final class Support
      */
     public static function propertyItemName(?Part $item): ?string
     {
-        if (! $item instanceof Part) {
-            return null;
-        }
-
-        foreach ([$item, ...$item->children()] as $candidate) {
-            foreach ($candidate->children() as $child) {
-                if ($child->kind === NodeKind::DirectVariable) {
-                    return ltrim($child->text, '$');
-                }
-            }
-        }
-
-        return null;
+        return Members::propertyItemName($item);
     }
 
     /** The enclosing class-like declaration's name, or null at top level. */
     public static function enclosingClassName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
-        $node = self::node($subject);
-        if (! $node instanceof Node) {
-            return null;
-        }
-
-        [$file, $located] = self::locate($context, $node);
-
-        // The node itself counts. A rule hooked on the class declaration is handed that declaration, so
-        // walking only ancestors finds the *enclosing* class and returns null at top level, which made
-        // every class-level name test silently fail.
-        foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
-            // Compared by backed value, not by case or by name. `NodeKind::Class` does not reference
-            // the case at all, because PHP special-cases `::class` and silently yields the class-name
-            // string, so every comparison against it is true and this method always returned null. The
-            // case is spelled `Class_` while its value stays `Class`, so the value is the stable thing.
-            if (! in_array($ancestor->kind->value, self::CLASS_LIKE_KINDS, true)) {
-                continue;
-            }
-
-            foreach ($file->getChildren($ancestor) as $child) {
-                if ($child->kind === NodeKind::LocalIdentifier || $child->kind === NodeKind::Identifier) {
-                    $resolved = $file->getResolvedName($child);
-
-                    return $resolved instanceof ResolvedName ? $resolved->name : trim($file->getText($child));
-                }
-            }
-        }
-
-        return null;
+        return Declares::enclosingClassName($context, $subject);
     }
 
     public static function isInClass(NodeAnalysisContext $context, Part|Node|null $node): bool
     {
-        return self::enclosingClassName($context, $node) !== null;
+        return Declares::isInClass($context, $node);
     }
 
     /**
@@ -2657,22 +1686,7 @@ final class Support
      */
     public static function enclosingClassIs(NodeAnalysisContext $context, Part|Node|null $node, string $name): bool
     {
-        $className = self::enclosingClassName($context, $node);
-        if ($className === null) {
-            return false;
-        }
-
-        if (strcasecmp($className, $name) === 0) {
-            return true;
-        }
-
-        foreach ($context->codebase->getClassAncestors($className) as $ancestor) {
-            if (strcasecmp($ancestor, $name) === 0) {
-                return true;
-            }
-        }
-
-        return false;
+        return Declares::enclosingClassIs($context, $node, $name);
     }
 
     /**
@@ -2686,19 +1700,12 @@ final class Support
      */
     public static function parentClassNames(NodeAnalysisContext $context, Part|Node|null $node): array
     {
-        $className = self::enclosingClassName($context, $node);
-        if ($className === null) {
-            return [];
-        }
-
-        $metadata = $context->codebase->getClassLike($className);
-
-        return $metadata instanceof ClassLikeMetadata ? array_values($metadata->parentClasses) : [];
+        return Inheritance::parentClassNames($context, $node);
     }
 
     /** The class-declaration hook's `metadata_is`, which asks the same question. */
     public static function metadataIs(NodeAnalysisContext $context, Part|Node|null $node, string $name): bool
     {
-        return self::enclosingClassIs($context, $node, $name);
+        return Declares::metadataIs($context, $node, $name);
     }
 }
