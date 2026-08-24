@@ -288,7 +288,7 @@ method inherited from a parent. Measured on `RectorConfig::make()`, which comes 
 The rule's example pair passed throughout, because `[$this, 'handle']` names a method written on the class
 itself and the pair had no inherited method in it. It has one now.
 
-The forty-ninth identifier is `phpParser.noLeadingBackslashInName`, and it is `0 0 0` on all three corpora.
+The forty-ninth identifier is `phpParser.noLeadingBackslashInName`, and it is `0 0 0` on every corpus here.
 That is the row shape this section warns about, so here is the control that separates "nothing to find" from
 "never looked": no file in the whole installed tree writes `new Name('\..')`, `new FullyQualified('\..')` or
 `new Relative('\..')` — the shape the rule forbids — including `nikic/php-parser` itself, whose classes the
@@ -299,6 +299,36 @@ with the same message.
 for an avoidable reason: the instrumentation I read it from had crashed part-way through the corpus, and I drew
 a conclusion from a truncated log without checking the run had finished. The array reaches the hook, with two
 elements, and both its types resolve.
+
+### The Laravel corpora, and the 41 identifiers that had never fired
+
+The three corpora above are libraries, and a library contains nothing for a Laravel- or PHPUnit-shaped rule to
+find. That left most of the identifiers under test at `0 0 0` — the row shape that reads exactly like a clean
+agreement. Two closed-source Laravel applications close most of that gap. Their numbers cannot be re-run by a
+reader, which is the cost of using them, and they are quoted here for the one thing the public corpora cannot
+say: whether these rules fire at all.
+
+The first — 1860 files, all four rule packages installed and enforced — is **248 agreeing, 0 original-only, 54
+port-only**, with the 54 the same configured-threshold-against-package-default difference as everywhere else.
+It exercises nine identifiers, four of them for the first time: `symplify.noGlobalConst` (90 agreeing),
+`symplify.requireExceptionNamespace` (111), `phpunit.noAssertFuncCallInTests` (26) and
+`symplify.parentMethodVisibilityOverride` (8).
+
+The second — 4228 files, the `hihaho` and coverage packages — is where the Laravel-shaped rules finally fire.
+Four `hihaho.*` identifiers report, and all four agree exactly: `noEloquentWithProperty` 2, `noDebugIn` 2 (with
+22 more the consumer silenced with `@phpstan-ignore`, which the harness counts separately), `noInvadeInAppCode`
+2, and `noUnsafeRequestHelper` 1. Small numbers, and the point is not their size: these are the first findings
+any of them have produced against code nobody wrote for them.
+
+Across all four corpora **17 identifiers have now fired**, against 7 before.
+
+That second run also arrived with **73 original-only** on `typeCoverage.paramTypeCoverage` — the direction that
+matters, the port narrower than the rule. It is not a defect, and a control rather than a reading says so. The
+consumer configures `param: 100`; the generated plugin carries the package's own default of `99`, deliberately,
+so that a generated project stands alone. The application's coverage sits between the two, so PHPStan reports
+and the port does not. Re-running the same plugin with `required: 100` gives **73 findings on exactly the same
+73 sites** — no site in one set and not the other. The plausible reading was that the port misses untyped
+closure and arrow-function parameters, since 72 of the 73 sites are closures; the control refutes it.
 
 This run started at **203** port-only, of which 169 came from `NoDynamicNameRule` and were false positives.
 `Support::isWrittenName()` descends into a name's first child, and a name written with a leading `\` arrives as
