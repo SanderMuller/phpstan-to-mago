@@ -61,7 +61,7 @@ parameters:
 			path: src/Transpiler.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 2036, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 1961, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php
@@ -148,10 +148,10 @@ parameters:
 			rawMessage: 'Only booleans are allowed in &&, bool|string given on the left side.'
 			identifier: booleanAnd.leftNotBoolean
 			count: 1
-			path: src/Transpiler.php
+			path: src/Emitter.php
 
 		-
-			rawMessage: 'Parameter #1 $name of method Sandermuller\PhpstanToMago\Transpiler::snake() expects string, mixed given.'
+			rawMessage: 'Parameter #1 $name of static method Sandermuller\PhpstanToMago\Emitter::snake() expects string, mixed given.'
 			identifier: argument.type
 			count: 1
 			path: src/Transpiler.php
@@ -166,7 +166,7 @@ parameters:
 			rawMessage: 'Parameter #3 $subject of function str_replace expects array<string>|string, bool|string given.'
 			identifier: argument.type
 			count: 1
-			path: src/Transpiler.php
+			path: src/Emitter.php
 
 		-
 			rawMessage: Possibly invalid array key type PhpParser\Node\Expr|string.
