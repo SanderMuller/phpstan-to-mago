@@ -242,7 +242,7 @@ plugin deliberately carries its own package's defaults so that a generated proje
 threshold is lower and it reports more. The same decision is why the aggregate's message differs at every site
 it agrees on.
 
-**Read the denominator before the agreement.** Of 48 identifiers under test, `php-parser` exercises **7** — 41
+**Read the denominator before the agreement.** Of 49 identifiers under test, `php-parser` exercises **7** — 42
 report nothing on either side, and a `0 0 0` row reads exactly like a clean agreement. Every Laravel- and
 PHPUnit-shaped rule is in that 41, because a parser library contains nothing for them to find. The runner names
 them now rather than leaving them in the total, so a reader can see that 1086 agreements come from seven rules
@@ -274,7 +274,7 @@ regenerating every snapshot that holds it. For one site on one corpus, against a
 Mago's rather than the port's.
 
 A third, `rector/rector`'s `src` — 490 files, chosen because these rules are written by the same author as
-that codebase: **159 agreeing, 0 original-only, 81 port-only**, and again **7 of 48 identifiers exercised**. The
+that codebase: **159 agreeing, 0 original-only, 81 port-only**, and again **7 of 49 identifiers exercised**. The
 81 are the threshold difference. The `rector.*` identifiers stay silent even here, because Rector's `src` holds
 the framework and its `AbstractRector` subclasses live under `rules/`.
 
@@ -287,6 +287,13 @@ method inherited from a parent. Measured on `RectorConfig::make()`, which comes 
 
 The rule's example pair passed throughout, because `[$this, 'handle']` names a method written on the class
 itself and the pair had no inherited method in it. It has one now.
+
+The forty-ninth identifier is `phpParser.noLeadingBackslashInName`, and it is `0 0 0` on all three corpora.
+That is the row shape this section warns about, so here is the control that separates "nothing to find" from
+"never looked": no file in the whole installed tree writes `new Name('\..')`, `new FullyQualified('\..')` or
+`new Relative('\..')` — the shape the rule forbids — including `nikic/php-parser` itself, whose classes the
+rule names. The pair under `tests/Fixtures/examples` is where both tools do land on it, on the same two lines
+with the same message.
 
 *An earlier version of this paragraph said the node never reached the rule's hook.* That was wrong, and wrong
 for an avoidable reason: the instrumentation I read it from had crashed part-way through the corpus, and I drew
