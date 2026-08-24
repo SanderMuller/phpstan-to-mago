@@ -2023,6 +2023,18 @@ PHP;
             return '! ' . $this->parameterQuestion('has_parameter_at', $subject, $line);
         }
 
+        // `$node->stmts === null` on a method declaration is *whether it has a body*: an abstract method and
+        // an interface method have none, and php-parser spells that absence as a null statement list.
+        // {@see Support::bodyOf} answers the same null, and its comment records what had to be measured to
+        // make it do so.
+        if ($subject['kind'] === 'subtree') {
+            if (self::$target !== 'php') {
+                throw new Refusal('a body test, which only the PHP target carries', $line);
+            }
+
+            return $this->operand($subject) . ' === null';
+        }
+
         if (! in_array($subject['kind'], ['bytes', 'class-name'], true)) {
             // Names what was written as well as what it resolved to. `null comparison against a subtree` told a
             // reader nothing: the one rule refusing that way asks `$node->stmts === null`, which is *whether the

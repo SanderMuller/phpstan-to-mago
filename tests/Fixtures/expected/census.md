@@ -55,7 +55,7 @@ REFUSE  NoClassReflectionStaticReflectionRule
 REFUSE  NoConstructorAndRequiredTogetherRule
         method call outside the vocabulary ->getMethod()
 REFUSE  NoConstructorOverrideRule
-        null comparison against ->stmts, which resolved to a subtree
+        function call outside the vocabulary fast_has_parent_constructor()
 REFUSE  NoControllerMethodInjectionRule
         getParams() of a method-decl rather than of the declaration under analysis
 REFUSE  NoDoctrineListenerWithoutContractRule
@@ -116,7 +116,7 @@ REFUSE  NoServiceSameNameSetClassRule
 REFUSE  NoSetClassServiceDuplicationRule
         expected a string literal
 REFUSE  NoStringInGetSubscribedEventsRule
-        null comparison against ->stmts, which resolved to a subtree
+        access path outside the vocabulary: SymfonyClass::EVENT_SUBSCRIBER_INTERFACE
 REFUSE  NoTestMocksRule  (the package registers it nowhere)
         access path outside the vocabulary: ->getConstantStrings()
 REFUSE  NoValueObjectInServiceConstructorRule  (the package registers it nowhere)

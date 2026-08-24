@@ -2076,10 +2076,25 @@ final class Support
     private const array BODY_KINDS = ['ForeachBody', 'Block', 'MethodBody', 'ForBody', 'WhileBody'];
 
     /**
+     * What a body wrapper holds when the declaration has none.
+     *
+     * `MethodAbstractBody` for a method the class declares without one — abstract, or on an interface. Named
+     * rather than derived from the wrapper's text, because `";"` is also what a body wrapper would hold for a
+     * property hook and the kinds are the thing being asked about.
+     */
+    private const array ABSENT_BODY_KINDS = ['MethodAbstractBody', 'PropertyHookAbstractBody'];
+
+    /**
      * The statements a node holds, which is php-parser's `$node->stmts`.
      *
      * Load-bearing that this is the *body* and not the node: `findInstanceOf($node->stmts, Foreach_::class)`
      * inside a foreach must not find the foreach it started from, or every count is one too high.
+     *
+     * A declaration with no body answers null, because php-parser's `$node->stmts` is null there and three
+     * rules in the corpus open by testing exactly that. Mago spells the absence one level down, which was
+     * measured rather than assumed: an abstract method and an interface method both carry a `MethodBody`
+     * child whose text is `";"` and whose only child is `MethodAbstractBody`. Reading the wrapper alone
+     * answered "has a body" for both, and the fires-gate caught it on a pair written for the question.
      */
     public static function bodyOf(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
@@ -2089,9 +2104,17 @@ final class Support
         }
 
         foreach ($context->source->getChildren($node) as $child) {
-            if (in_array($child->kind->value, self::BODY_KINDS, true)) {
-                return self::part($context, $child);
+            if (! in_array($child->kind->value, self::BODY_KINDS, true)) {
+                continue;
             }
+
+            foreach ($context->source->getChildren($child) as $inner) {
+                if (in_array($inner->kind->value, self::ABSENT_BODY_KINDS, true)) {
+                    return null;
+                }
+            }
+
+            return self::part($context, $child);
         }
 
         return null;
