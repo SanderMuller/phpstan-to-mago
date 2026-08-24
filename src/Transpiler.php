@@ -1744,7 +1744,9 @@ PHP;
         $list = $this->byteSliceList($options);
 
         return match ($subject['kind']) {
-            'local-name' => "support::local_name_is_one_of({$subject['rust']}, &{$list})",
+            'local-name' => self::$target === 'php'
+                ? $this->backend->call('bytes_is_one_of', [$this->operand($subject), $list])
+                : "support::local_name_is_one_of({$subject['rust']}, &{$list})",
             'name-selector' => $this->backend->call('selector_is_one_of', [$this->operand($subject), self::$target === 'php' ? $list : '&' . $list]),
             'name-expr' => $this->nameExprIsOneOf($subject, $list),
             'extends' => "support::extends_is_one_of(context, node, &{$list})",
@@ -8591,6 +8593,17 @@ PHP;
             throw new Refusal('is_string() on something outside the vocabulary', $expr->getStartLine());
         }
 
+        // `fast_node_named($node, 'name')` — a global function `symplify/phpstan-rules` ships in
+        // `src/functions/fast-functions.php`. Its body is
+        // `$node instanceof Identifier || $node instanceof Name ? $node->toString() === $desiredName : false`,
+        // which is the question `NamingHelper::isName()` asks and `nameEquals()` already answers. Two call sites
+        // in the corpus, and the refusal named it correctly — it just had no row.
+        if ($name === 'fast_node_named' && count($args) === 2) {
+            $literal = $this->stringLiteral($args[1]->value, $expr->getStartLine());
+
+            return $this->nameEquals($this->resolve($args[0]->value, $expr->getStartLine()), $literal, $expr->getStartLine());
+        }
+
         throw new Refusal("function call outside the vocabulary {$name}()", $expr->getStartLine());
     }
 
@@ -8968,7 +8981,13 @@ PHP;
     private function nameEquals(array $subject, string $literal, int $line): string
     {
         return match ($subject['kind']) {
-            'local-name' => "support::local_name_is({$subject['rust']}, b\"{$literal}\")",
+            // A declaration's own name. The descriptor carries a PHP rendering — `Vocabulary::FIELDS` maps
+            // `->name` on a declaration to `Support::declarationName()` — and this arm emitted Rust regardless,
+            // so the PHP target refused the rule with "operand is still Rust" and a Rust fragment for a reason.
+            // The comparison is the one the `bytes` arm makes: text against the literal.
+            'local-name' => self::$target === 'php'
+                ? $this->operand($subject) . ' === ' . $this->backend->bytes($literal)
+                : "support::local_name_is({$subject['rust']}, b\"{$literal}\")",
             'name-selector' => $this->backend->call('selector_is', [$this->operand($subject), $this->backend->bytes($literal)]),
             'name-expr' => $this->backend->call('name_equals', [$this->operand($subject), $this->backend->bytes($literal)]),
             // Already a string — a loop's bound item, a helper's parameter, the enclosing namespace. Compared

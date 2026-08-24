@@ -7,7 +7,7 @@ A diff here is upstream drift — a rule added, removed, or rewritten into a sha
 does or does not cover — or a change in what a refusal says stops a rule. Both are worth reading:
 a refusal naming the wrong obstacle is how work gets sized wrongly.
 
-## symplify/phpstan-rules — 32 of 88 the package registers emit, 1 covered by the engine, 55 refuse, 8 it registers nowhere
+## symplify/phpstan-rules — 33 of 88 the package registers emit, 1 covered by the engine, 54 refuse, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -55,7 +55,7 @@ REFUSE  NoClassReflectionStaticReflectionRule
 REFUSE  NoConstructorAndRequiredTogetherRule
         isAnonymous() on something other than a class reflection
 REFUSE  NoConstructorOverrideRule
-        function call outside the vocabulary fast_node_named()
+        null comparison against ->stmts, which resolved to a subtree
 REFUSE  NoControllerMethodInjectionRule
         getParams() of a method-decl rather than of the declaration under analysis
 REFUSE  NoDoctrineListenerWithoutContractRule
@@ -96,8 +96,7 @@ REFUSE  NoMissnamedDocTagRule
         assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
 EMIT    NoMockObjectAndRealObjectPropertyRule
 EMIT    NoMockOnlyTestRule
-REFUSE  NoOnlyNullReturnInRefactorRule
-        operand is still Rust and has no PHP rendering yet: !(support::local_name_is(&node.name, b"refactor"))
+EMIT    NoOnlyNullReturnInRefactorRule
 EMIT    NoParentRepositoryRule
 EMIT    NoPropertyNodeAssignRule
 REFUSE  NoProtectedClassStmtRule  (the package registers it nowhere)
