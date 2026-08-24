@@ -308,6 +308,14 @@ final class Support
     private const array WRITTEN_NAME_KINDS = [
         NodeKind::Identifier,
         NodeKind::LocalIdentifier,
+        // A name written with a leading `\` or a namespace prefix is as *written* as a bare one, and both were
+        // missing. `\is_string(..)` arrives as an `Identifier` whose child is a `FullyQualifiedIdentifier`, and
+        // this method descends into that child — so a written qualified name answered "not written" and every
+        // rule asking `! $node->name instanceof Expr` inverted on it. `NoDynamicNameRule` reported 169 sites on
+        // `nikic/php-parser`, which writes `\`-prefixed globals throughout, and three of them are the three
+        // `\is_string(..)` calls in `BuilderFactory.php`.
+        NodeKind::FullyQualifiedIdentifier,
+        NodeKind::QualifiedIdentifier,
         NodeKind::DirectVariable,
     ];
 

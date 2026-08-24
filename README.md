@@ -226,30 +226,29 @@ exists at analysis time.
 ### Where it does not agree yet
 
 On `nikic/php-parser`'s 270 files of library source — a tree this repository installs, so the number can be
-re-run — the differential is **1086 agreeing, 1 original-only, 203 port-only**. Reproduce with
+re-run — the differential is **1086 agreeing, 1 original-only, 34 port-only**. Reproduce with
 `php tests/Support/run-corpus-differential.php . --paths=vendor/nikic/php-parser/lib`.
-
-The 203 are four identifiers, and only one of them is a mystery:
 
 | identifier | agree | only-original | only-port |
 |:--|--:|--:|--:|
-| `symplify.noDynamicName` | 13 | 0 | **169** |
 | `complexity.functionLike` | 11 | 0 | 28 |
 | `complexity.classLike` | 4 | 0 | 6 |
 | `typeCoverage.paramTypeCoverage` | 1053 | 1 | 0 |
+| `symplify.noDynamicName` | 13 | 0 | 0 |
 
-The 34 cognitive-complexity findings are a configured threshold against a package default, and the numbers say
-so: this project's `phpstan.neon.dist` sets `class: 80, function: 20`, and the package ships `class: 40,
-function: 9`. A generated plugin deliberately carries its own package's defaults so that a generated project
-stands alone, so the port's threshold is lower and it reports more. The same decision is why the aggregate's
-message differs at every site it agrees on.
+All 34 are a configured threshold against a package default, and the numbers say so: this project's
+`phpstan.neon.dist` sets `class: 80, function: 20`, and the package ships `class: 40, function: 9`. A generated
+plugin deliberately carries its own package's defaults so that a generated project stands alone, so the port's
+threshold is lower and it reports more. The same decision is why the aggregate's message differs at every site
+it agrees on.
 
-**The 169 from `NoDynamicNameRule` are not explained, and that is the largest open item here.** Spot-checking
-one — `$arg->name = BuilderHelpers::normalizeIdentifier($key)` in `BuilderFactory.php` — the name is a written
-identifier, so the original correctly stays silent and the port reports. The emitted guard reads with the right
-polarity, which points at `Support::isWrittenName()` or `namePart()` answering wrongly for a wrapped member
-access, the same shape that made `isPropertyFetch()` answer yes for `Foo::BAR`. Untraced, so stated as a
-suspicion rather than a cause.
+This run started at **203** port-only, of which 169 came from `NoDynamicNameRule` and were false positives.
+`Support::isWrittenName()` descends into a name's first child, and a name written with a leading `\` arrives as
+an `Identifier` whose child is a `FullyQualifiedIdentifier` — a kind the written-name list did not hold. So
+`\count(..)` read as a *dynamic* name, and every `\`-prefixed global in a library became a finding. A bare
+`count(..)` answered correctly all along, which is why the rule's example pair passed: it had no function call
+in it at all. It has three now — bare, leading-backslash and namespace-qualified — and removing the fix fails
+the gate.
 
 An earlier figure here read "585 files of dependency-tree source, 214 findings against 19, with 17 agreeing".
 That corpus was a consumer's vendor tree nobody else has, and the run predates the discovery that
