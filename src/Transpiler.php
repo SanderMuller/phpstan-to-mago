@@ -47,6 +47,31 @@ final class Transpiler
     /** Survey mode: keep walking past gaps that are not about the body, to find the body gaps. */
     public static bool $survey = false;
 
+    /**
+     * Collect *every* obstacle a rule's body meets, rather than stopping at the first.
+     *
+     * The census records what stops a rule first, and sizing work from that is wrong by construction. It
+     * has been wrong three times: the type renderer looked like one customer where 27 rules need it, a
+     * five-rule family looked like one missing navigation where it needs that *and* the renderer, and a
+     * whole corpus looked absent because the package that would have read it refused for an unrelated
+     * reason. A first blocker says what to fix next; it never says what a fix is worth.
+     *
+     * Statement by statement, because that is the granularity a refusal can be resumed from: a statement
+     * that refuses is skipped and the next one is translated. Obstacles inside one statement — a helper
+     * inlined three levels down — still stop at the first, so the list is a *lower bound* on what a rule
+     * needs and says so.
+     *
+     * Survey mode only, and never during emission: skipping a statement is exactly the approximation the
+     * generator refuses to make.
+     *
+     * Off by default: it changes what a survey *reports*, because a rule whose statements are stepped over
+     * translates to the end and looks emitted. A caller asking for needs asks for the list, not the verdict.
+     */
+    public static bool $collectNeeds = false;
+
+    /** @var list<string> every obstacle this rule's body met, in the order it met them */
+    private array $needs = [];
+
     /** Which tier to emit for: 'analyzer' (a plugin) or 'linter' (a lint rule). */
     public static string $target = 'php';
 
@@ -192,7 +217,7 @@ final class Transpiler
             $processNode = $this->inheritedRuleMethod($class, 'processNode');
             $this->translator->assume("a hook for {$nodeType}");
             foreach ($processNode->stmts ?? [] as $stmt) {
-                $this->translator->translateStatement($stmt);
+                $this->translateOrCollect($stmt);
             }
 
             return [
@@ -229,7 +254,7 @@ final class Transpiler
         $processNode = $this->inheritedRuleMethod($class, 'processNode');
         $this->context->checkMode = self::$target === 'php' && $this->independentChecks($processNode) >= 2;
         foreach ($processNode->stmts ?? [] as $stmt) {
-            $this->translator->translateStatement($stmt);
+            $this->translateOrCollect($stmt);
         }
 
         $rust = match (self::$target) {
@@ -1226,6 +1251,36 @@ PHP;
         }
 
         throw new Refusal('getNodeType() is not a simple `return X::class`');
+    }
+
+    /** @return list<string> every obstacle this rule's body met, once collection was asked for */
+    public function needs(): array
+    {
+        return $this->needs;
+    }
+
+    /**
+     * One statement of `processNode()`, or — in survey mode — its obstacle, recorded and stepped over.
+     *
+     * {@see $needs} says why. Outside survey mode the refusal propagates, because a generator that skips
+     * what it cannot translate emits a rule that runs and answers a different question.
+     */
+    private function translateOrCollect(Stmt $stmt): void
+    {
+        if (! self::$survey || ! self::$collectNeeds) {
+            $this->translator->translateStatement($stmt);
+
+            return;
+        }
+
+        try {
+            $this->translator->translateStatement($stmt);
+        } catch (Refusal $refusal) {
+            $reason = trim((string) preg_replace('/ \(line \d+\)/', '', $refusal->getMessage()));
+            if (! in_array($reason, $this->needs, true)) {
+                $this->needs[] = $reason;
+            }
+        }
     }
 
     /**

@@ -138,14 +138,25 @@ final class TracksUpstreamDriftTest extends TestCase
             'A diff here is upstream drift — a rule added, removed, or rewritten into a shape the vocabulary',
             'does or does not cover — or a change in what a refusal says stops a rule. Both are worth reading:',
             'a refusal naming the wrong obstacle is how work gets sized wrongly.',
+            '',
+            'A refused rule also lists what its body `needs:`, which is the half a first blocker never says.',
+            'Sizing work from the first obstacle alone has been wrong three times here — a renderer that looked',
+            'like one customer, a five-rule family that looked like one missing navigation, a corpus that looked',
+            'absent. Grep a capability to count what it is worth before building it.',
+            '',
+            'The list is a **lower bound**. A statement that refuses is stepped over and the next one is',
+            'translated, so obstacles in different statements all appear and a second one inside a single',
+            'statement does not; a rule blocked early shows less than it needs.',
         ];
 
         foreach (self::PACKAGES as $package) {
             $source = dirname(__DIR__, 2) . '/vendor/' . $package . '/src';
             $outcomes = [];
+            $files = [];
             foreach (RulePaths::expand(is_dir($source) ? [$source] : []) as $file) {
                 $name = basename($file, '.php');
                 $outcomes[$name] = $this->outcome($file);
+                $files[$name] = $file;
             }
 
             // Sorted by name, because `RulePaths` walks the filesystem and its order is not the same on every
@@ -201,7 +212,9 @@ final class TracksUpstreamDriftTest extends TestCase
                 // the half nothing reviewed. Four refusals in one week named a construct that was not what
                 // stopped the rule, each read as one table row away, and none of them would have survived
                 // arriving as a diff here.
-                $lines[] = 'REFUSE  ' . $name . $where . "\n        " . substr($outcome, strlen('REFUSE '));
+                $needs = $this->needs($files[$name]);
+                $lines[] = 'REFUSE  ' . $name . $where . "\n        " . substr($outcome, strlen('REFUSE '))
+                    . ($needs === [] ? '' : "\n        needs: " . implode("\n        needs: ", $needs));
             }
         }
 
@@ -253,6 +266,64 @@ final class TracksUpstreamDriftTest extends TestCase
      * which reads as a vocabulary gap and is not one; nothing in the corpus throws anything else today, so
      * letting it fail loudly costs nothing and a bug cannot hide as an outcome.
      */
+    /**
+     * Everything a refused rule's body needs, rather than only what stops it first.
+     *
+     * The half the census was missing, and the half work gets sized from. A first blocker says what to fix
+     * next; it never says what a fix is worth, and reading it as though it did has been wrong three times —
+     * the type renderer looked like one customer where 27 rules interpolate a rendered type, a five-rule
+     * family looked like one missing navigation where it needs that *and* the renderer, and a whole corpus
+     * looked absent because the walk that would have read it stopped for an unrelated reason.
+     *
+     * A lower bound, and the shape of the collection is why: a statement that refuses is stepped over and
+     * the next one translated, so obstacles in *different* statements all appear, and a second obstacle
+     * inside one statement does not. `MatchingTypeInSwitchCaseConditionRule` shows `->cond` and `->cases`
+     * and not the `describe()` inside the loop it could not enter.
+     *
+     * @return list<string>
+     */
+    private function needs(string $file): array
+    {
+        $survey = Transpiler::$survey;
+        Transpiler::$survey = true;
+
+        Transpiler::$collectNeeds = true;
+
+        try {
+            $transpiler = new Transpiler($file);
+
+            try {
+                $transpiler->transpile();
+            } catch (Refusal) {
+                // The verdict is the caller's; this pass is only here for the list it collected on the way.
+            }
+
+            $needs = array_map(
+                static fn (string $need): string => trim((string) preg_replace('/ \(line \d+\)/', '', $need)),
+                $transpiler->needs(),
+            );
+
+            // `unknown local $x` is not a capability the rule needs; it is what stepping over the statement
+            // that bound `$x` produces. Keeping those would make every skipped assignment cost two lines and
+            // read as two gaps.
+            $needs = array_filter(
+                $needs,
+                static fn (string $need): bool => ! str_starts_with($need, 'unknown local $'),
+            );
+
+            // First sentence only. A needs entry is a *label* for sizing, and one refusal's full text runs to a
+            // paragraph — repeated across the 27 rules that share it, the census would be mostly that
+            // paragraph. The line above it still carries the whole reason for whichever rule it stops.
+            return array_values(array_map(
+                static fn (string $need): string => explode('. ', $need)[0],
+                $needs,
+            ));
+        } finally {
+            Transpiler::$survey = $survey;
+            Transpiler::$collectNeeds = false;
+        }
+    }
+
     private function outcome(string $file): string
     {
         try {

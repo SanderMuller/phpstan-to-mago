@@ -7,91 +7,156 @@ A diff here is upstream drift — a rule added, removed, or rewritten into a sha
 does or does not cover — or a change in what a refusal says stops a rule. Both are worth reading:
 a refusal naming the wrong obstacle is how work gets sized wrongly.
 
+A refused rule also lists what its body `needs:`, which is the half a first blocker never says.
+Sizing work from the first obstacle alone has been wrong three times here — a renderer that looked
+like one customer, a five-rule family that looked like one missing navigation, a corpus that looked
+absent. Grep a capability to count what it is worth before building it.
+
+The list is a **lower bound**. A statement that refuses is stepped over and the next one is
+translated, so obstacles in different statements all appear and a second one inside a single
+statement does not; a rule blocked early shows less than it needs.
+
 ## symplify/phpstan-rules — 35 of 88 the package registers emit, 1 covered by the engine, 52 refuse, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
+        needs: assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
 EMIT    AvoidAnyExpectsRule
 REFUSE  AvoidFeatureSetAttributeInRectorRule
         unknown local $ruleError
 REFUSE  CheckRequiredInterfaceInContractNamespaceRule
         no hook mapping for node type PhpParser\Node\Stmt\Interface_
+        needs: unknown static helper Strings::match()
 REFUSE  ClassNameRespectsParentSuffixRule
         the rule returns whatever processClassNameAndShort() decides, and that helper builds the findings rather than answering a question — so there is nothing here to translate into guards
+        needs: the rule returns whatever processClassNameAndShort() decides, and that helper builds the findings rather than answering a question — so there is nothing here to translate into guards
 REFUSE  ExplicitClassPrefixSuffixRule
         no hook mapping for node type PhpParser\Node\Stmt\ClassLike
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 EMIT    ExplicitExpectsMockMethodRule
 REFUSE  FileNameMatchesExtensionRule
         statement outside the vocabulary: Stmt_Expression
+        needs: statement outside the vocabulary: Stmt_Expression
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: basename()
 EMIT    ForbiddenArrayMethodCallRule
 REFUSE  ForbiddenExtendOfNonAbstractClassRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
+        needs: method call outside the vocabulary ->isBuiltin()
+        needs: assignment value outside the vocabulary: the file another class is declared in, so its source can be parsed
 REFUSE  ForbiddenFuncCallRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->normalizeConfig()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->normalizeConfig()
 EMIT    ForbiddenMultipleClassLikeInOneFileRule
 REFUSE  ForbiddenNewArgumentRule  (the package registers it nowhere)
         $forbiddenTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Complexity\ForbiddenNewArgumentRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        needs: $forbiddenTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Complexity\ForbiddenNewArgumentRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
 REFUSE  ForbiddenNodeRule
         PhpParser\Node covers several node kinds, and this rule narrows to them with `instanceof` against a value rather than a written class name — a configured list of node classes. A plugin declares its targets statically, so there is no shape to register: the rule's target set is only known at analysis time
+        needs: $forbiddenNodes is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
 EMIT    ForbiddenStaticClassConstFetchRule
 EMIT    ForeachCeptionRule
 REFUSE  FormTypeClassNameRule
         assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
+        needs: trinary tail on an unsupported query ->isSuperTypeOf()
 REFUSE  NewOverSettersRule
         no aggregate mapped for the collector NewWithFollowingSettersCollector
 REFUSE  NewWithFollowingSettersCollector
         PhpParser\Node covers several node kinds, and this rule narrows to 7 of them with `instanceof`: ClassMethod, Function_, If_, ElseIf_, While_, Foreach_, For_. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
+        needs: condition outside the vocabulary: ->isEnabled
+        needs: no node predicate for instanceof PhpParser\Node\Stmt\If_ on a hook-node
+        needs: access path outside the vocabulary: Expr_Cast_Array
+        needs: empty-array comparison against a accumulator
+        needs: collector returns something other than a list of values
 REFUSE  NoAbstractControllerConstructorRule
         method call outside the vocabulary ->getMethod()
+        needs: method call outside the vocabulary ->getMethod()
 EMIT    NoArrayMapWithArrayCallableRule
 EMIT    NoAssertFuncCallInTestsRule
 REFUSE  NoBareAndSecurityIsGrantedContentsRule
         no hook mapping for node type PhpParser\Node\Attribute
+        needs: in_array() over a expr
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
 EMIT    NoBundleResourceConfigRule
 REFUSE  NoClassLevelRouteRule
         method call outside the vocabulary ->isPublic()
+        needs: method call outside the vocabulary ->isPublic()
 REFUSE  NoClassReflectionStaticReflectionRule
         early return from a helper that is not a boolean literal
+        needs: early return from a helper that is not a boolean literal
 REFUSE  NoConstructorAndRequiredTogetherRule
         method call outside the vocabulary ->getMethod()
+        needs: method call outside the vocabulary ->getMethod()
+        needs: a foreach in an inlined helper whose body is not a single guard
 REFUSE  NoConstructorOverrideRule
         function call outside the vocabulary fast_has_parent_constructor()
+        needs: function call outside the vocabulary fast_has_parent_constructor()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->findFirst()
 REFUSE  NoControllerMethodInjectionRule
         getParams() of a method-decl rather than of the declaration under analysis
+        needs: getParams() of a method-decl rather than of the declaration under analysis
 REFUSE  NoDoctrineListenerWithoutContractRule
         a foreach in an inlined helper whose body is not a guard chain: Stmt_If
+        needs: a foreach in an inlined helper whose body is not a guard chain: Stmt_If
 EMIT    NoDocumentMockingRule
 EMIT    NoDoubleConsecutiveTestMockRule
 REFUSE  NoDuplicateArgAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
+        needs: no argument list on a expr node
+        needs: if statement that is not a single-statement guard
 REFUSE  NoDuplicateArgsAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
+        needs: no iteration mapped for ->items, which resolved to a expr
 EMIT    NoDynamicNameRule
 REFUSE  NoEntityMockingRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getAttributes()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getAttributes()
 REFUSE  NoEntityOutsideEntityNamespaceRule  (the package registers it nowhere)
         no mapping for ->attrGroups on a hook-node
+        needs: no iteration mapped for ->attrGroups, which resolved to a expr, in an inlined helper
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getParts()
 EMIT    NoFindTaggedServiceIdsCallRule
 EMIT    NoGetDoctrineInControllerRule
 EMIT    NoGetInCommandRule
 EMIT    NoGetInControllerRule
 REFUSE  NoGetRepositoryOnServiceRepositoryEntityRule
         access path outside the vocabulary: ->resolveFromEntityClass()
+        needs: access path outside the vocabulary: ->resolveFromEntityClass()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Strings::after()
+        needs: $errorMessage is not a message built in this rule
 REFUSE  NoGetRepositoryOutsideServiceRule
         statement in isDynamicArg() outside the vocabulary: an if whose body is 2 statements ending in Stmt_Return, which is a decision tree rather than a guard that exits
+        needs: statement in isDynamicArg() outside the vocabulary: an if whose body is 2 statements ending in Stmt_Return, which is a decision tree rather than a guard that exits
+        needs: if statement that is not a single-statement guard
 EMIT    NoGlobalConstRule
 REFUSE  NoInstanceOfStaticReflectionRule
         no node predicate for instanceof PhpParser\Node\Expr\Instanceof_ on a hook-node
+        needs: no node predicate for instanceof PhpParser\Node\Expr\Instanceof_ on a hook-node
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  NoIntegerRefactorReturnRule
         no mapping for ->returnType on a hook-node
+        needs: no node predicate for instanceof PhpParser\Node\UnionType on a expr
+        needs: no iteration mapped for ->types, which resolved to a expr
 REFUSE  NoJustPropertyAssignRule
         no hook mapping for node type PhpParser\Node\Stmt\Expression
+        needs: no node predicate for instanceof PhpParser\Node\Expr\Assign on a expr
+        needs: no PHP navigation for node.var (kind expr) on a Expression node
+        needs: assignment value outside the vocabulary: no PHP navigation for node.var (kind expr) on a Expression node
 EMIT    NoLeadingBackslashInNameRule
 REFUSE  NoListenerWithoutContractRule
         access path outside the vocabulary: Scalar_String
+        needs: access path outside the vocabulary: Scalar_String
+        needs: a foreach in an inlined helper whose body is not a guard chain: Stmt_If
+        needs: no iteration mapped for ->attrGroups, which resolved to a expr, in an inlined helper
+        needs: no iteration mapped for ->params, which resolved to a expr, in an inlined helper
 ENGINE  NoMissingVariableDimFetchRule  (mago reports undefined-variable)
 REFUSE  NoMissnamedDocTagRule
         assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
+        needs: getDocComment() on a const-decl
 EMIT    NoMockObjectAndRealObjectPropertyRule
 EMIT    NoMockOnlyTestRule
 EMIT    NoOnlyNullReturnInRefactorRule
@@ -99,69 +164,122 @@ EMIT    NoParentRepositoryRule
 EMIT    NoPropertyNodeAssignRule
 REFUSE  NoProtectedClassStmtRule  (the package registers it nowhere)
         no iteration mapped for ->stmts, which resolved to a subtree
+        needs: no iteration mapped for ->stmts, which resolved to a subtree
 REFUSE  NoReferenceRule
         PhpParser\Node covers several node kinds, and this rule narrows to 8 of them with `instanceof`: AssignRef, Closure, ArrowFunction, Function_, ClassMethod, Arg, Foreach_, ArrayItem. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
+        needs: no node predicate for instanceof PhpParser\Node\Expr\Closure on a hook-node
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
+        needs: if statement that is not a single-statement guard
 EMIT    NoRepositoryCallInDataFixtureRule
 EMIT    NoRequiredOutsideClassRule
 REFUSE  NoReturnSetterMethodRule
         comparison outside the vocabulary: Expr_Variable against Scalar_String
+        needs: comparison outside the vocabulary: Expr_Variable against Scalar_String
+        needs: unknown static helper Strings::match()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
 EMIT    NoRouteTrailingSlashPathRule
 REFUSE  NoRoutingPrefixRule
         no node predicate for instanceof PhpParser\Node\Identifier on a bytes
+        needs: no node predicate for instanceof PhpParser\Node\Identifier on a bytes
 REFUSE  NoServiceAutowireDuplicateRule
         no iteration mapped for ->stmts, which resolved to a subtree
+        needs: no iteration mapped for ->stmts, which resolved to a subtree
 REFUSE  NoServiceSameNameSetClassRule
         assignment value outside the vocabulary: no mapping for ->class on a expr
+        needs: assignment value outside the vocabulary: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  NoSetClassServiceDuplicationRule
         expected a string literal
+        needs: expected a string literal
+        needs: no argument list on a expr node
+        needs: access path outside the vocabulary: ->prettyPrintExpr()
+        needs: if statement that is not a single-statement guard
+        needs: $errorMessage is not a message built in this rule
 REFUSE  NoStringInGetSubscribedEventsRule
         assignment value outside the vocabulary: no searchable node kind mapped for PhpParser\Node\ArrayItem
+        needs: assignment value outside the vocabulary: no searchable node kind mapped for PhpParser\Node\ArrayItem
 REFUSE  NoTestMocksRule  (the package registers it nowhere)
         access path outside the vocabulary: Expr_New
+        needs: access path outside the vocabulary: Expr_New
+        needs: access path outside the vocabulary: ->getClassName()
+        needs: $errorMessage is not a message built in this rule
 REFUSE  NoValueObjectInServiceConstructorRule  (the package registers it nowhere)
         no mapping for ->params on a hook-node
+        needs: no iteration mapped for ->params, which resolved to a expr
 EMIT    NoWithOnStubRule
 REFUSE  ParamNameToTypeConventionRule  (the package registers it nowhere)
         no hook mapping for node type PhpParser\Node\Param
+        needs: no node predicate for instanceof PhpParser\Node on a expr
+        needs: condition outside the vocabulary: ->variadic
+        needs: no PHP navigation for node.var (kind expr) on a Param node
+        needs: assignment value outside the vocabulary: no PHP navigation for node.var (kind expr) on a Param node
+        needs: assignment value outside the vocabulary: $paramNamesToTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Convention\ParamNameToTypeConventionRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        needs: $errorMessage is not a message built in this rule
 REFUSE  PhpUpgradeDowngradeRegisteredInSetRule
         assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
+        needs: assignment value outside the vocabulary: unknown local $configFilePath
+        needs: $errorMessage is not a message built in this rule
 REFUSE  PhpUpgradeImplementsMinPhpVersionInterfaceRule
         instanceof FullyQualified, which PHPStan answers after its own name resolution: an imported name arrives as one too, so the test is about resolution rather than spelling and the comparison after it would have to read resolved names
+        needs: instanceof FullyQualified, which PHPStan answers after its own name resolution: an imported name arrives as one too, so the test is about resolution rather than spelling and the comparison after it would have to read resolved names
 REFUSE  PreferAutowireAttributeOverConfigParamRule
         not a resolvable list of strings
+        needs: not a resolvable list of strings
 REFUSE  PreferDirectIsNameRule
         isAbstract() outside a declaration hook
+        needs: isAbstract() outside a declaration hook
 REFUSE  PreferredClassRule
         PhpParser\Node covers several node kinds, and this rule narrows to 5 of them with `instanceof`: New_, InClassNode, StaticCall, Instanceof_, Name. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 EMIT    PreventParentMethodVisibilityOverrideRule
 EMIT    PublicStaticDataProviderRule
 EMIT    RequireAtLeastOneRule
 REFUSE  RequireAttributeNameRule
         no hook mapping for node type PhpParser\Node\AttributeGroup
+        needs: no iteration mapped for ->attrs, which resolved to a expr
 REFUSE  RequireAttributeNamespaceRule
         method call outside the vocabulary ->isAttributeClass()
+        needs: method call outside the vocabulary ->isAttributeClass()
 EMIT    RequireExceptionNamespaceRule
 REFUSE  RequireInvokableControllerRule
         assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
 REFUSE  RequireIsGrantedEnumRule
         no hook mapping for node type PhpParser\Node\Attribute
+        needs: in_array() over a expr
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
 REFUSE  RequireQueryBuilderOnRepositoryRule
         statement in isValidRepositoryObjectType() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Foreach, which is a decision tree rather than a guard that exits
+        needs: statement in isValidRepositoryObjectType() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Foreach, which is a decision tree rather than a guard that exits
 REFUSE  RequireRouteNameToGenerateControllerRouteRule
         assignment value outside the vocabulary: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
+        needs: assignment value outside the vocabulary: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 EMIT    RequireServiceRepositoryParentRule  (the package registers it nowhere)
 EMIT    RequireUniqueEnumConstantRule
 EMIT    RequiredOnlyInAbstractRule
 REFUSE  SeeAnnotationToTestRule
         not a resolvable list of strings
+        needs: not a resolvable list of strings
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolve()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getDeprecatedTag()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->find()
 REFUSE  ServicesExcludedDirectoryMustExistRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->find()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->find()
 EMIT    SingleArgEventDispatchRule
 REFUSE  SingleRequiredMethodRule
         assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
+        needs: statement outside the vocabulary: Stmt_Expression
+        needs: numeric comparison outside the vocabulary
+        needs: $errorMessage is not a message built in this rule
 EMIT    StringFileAbsolutePathExistsRule  (the package registers it nowhere)
 REFUSE  TaggedIteratorOverRepeatedServiceCallRule
         no iteration mapped for ->stmts, which resolved to a subtree
+        needs: no iteration mapped for ->stmts, which resolved to a subtree
 EMIT    UppercaseConstantRule
 
 ## hihaho/phpstan-rules — 4 of 9 the package registers emit, 0 covered by the engine, 5 refuse, 11 it registers nowhere
@@ -170,8 +288,11 @@ EMIT    ChainedNoDebugInNamespaceRule  (the package registers it nowhere)
 EMIT    CombinedFuncCallRule
 REFUSE  CombinedMethodCallRule
         flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
+        needs: flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
 REFUSE  CombinedStaticCallRule
         ClassReflection test on a service, which the plugin has no equivalent for
+        needs: ClassReflection test on a service, which the plugin has no equivalent for
+        needs: expected a string literal
 REFUSE  FlagArgumentManifestCollector
         every rule that consumes this collector reports nothing and writes a file instead, so the pair cannot become a plugin whatever the collector body does
 EMIT    NoDebugInNamespaceRule  (the package registers it nowhere)
@@ -179,23 +300,31 @@ EMIT    NoEloquentWithPropertyRule
 EMIT    NoInvadeInAppCode  (the package registers it nowhere)
 REFUSE  NoUnsafeRequestDataRule  (the package registers it nowhere)
         $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
+        needs: $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
 REFUSE  NoUnsafeRequestFacadeRule  (the package registers it nowhere)
         $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
+        needs: $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
 REFUSE  NoUnsafeRequestHelperRule  (the package registers it nowhere)
         $namespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Validation\NoUnsafeRequestHelperRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        needs: $namespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Validation\NoUnsafeRequestHelperRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
 EMIT    OnlyAllowFacadeAliasInBlade  (the package registers it nowhere)
 EMIT    PositionalFlagArgumentConstructorRule
 REFUSE  PositionalFlagArgumentMethodCallRule  (the package registers it nowhere)
         $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        needs: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
 REFUSE  PositionalFlagArgumentNullsafeMethodCallRule
         flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
+        needs: flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
 REFUSE  PositionalFlagArgumentStaticCallRule  (the package registers it nowhere)
         $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        needs: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
 REFUSE  StaticChainedNoDebugInNamespaceRule  (the package registers it nowhere)
         ClassReflection test on a service, which the plugin has no equivalent for
+        needs: ClassReflection test on a service, which the plugin has no equivalent for
 EMIT    TraitRequiresInterfaceRule
 REFUSE  UnvalidatedFormRequestFieldRule  (the package registers it nowhere)
         $fieldAccessorsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
+        needs: $fieldAccessorsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
 REFUSE  WriteNamedArgumentManifestRule
         this rule reports nothing: it writes a file and returns no findings, so there is nothing for a plugin to report. An analyzer plugin's only output is report(), and agreement has no meaning for a build artefact
 
@@ -205,26 +334,45 @@ REFUSE  ConstantTypeCoverageRule
         no aggregate mapped for the collector ConstantTypeDeclarationCollector
 REFUSE  ConstantTypeDeclarationCollector
         no hook mapping for node type PHPStan\Node\ClassConstantsNode
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
+        needs: assignment value outside the vocabulary: count() of a const-decls compared numerically
+        needs: access path outside the vocabulary: Scalar_Int
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
 REFUSE  DeclareCollector
         no iteration mapped for ->getNodes(), which resolved to a hook-node
+        needs: no iteration mapped for ->getNodes(), which resolved to a hook-node
+        needs: collector returns something other than a list of values
 REFUSE  DeclareCoverageRule
         no aggregate mapped for the collector DeclareCollector
 EMIT    ParamTypeCoverageRule
 REFUSE  ParamTypeDeclarationCollector
         empty-array comparison against a param-decls
+        needs: empty-array comparison against a param-decls
+        needs: access path outside the vocabulary: ->getParents()
+        needs: no iteration mapped for ->getParams(), which resolved to a param-decls
+        needs: cannot render a accumulator as a message argument
 REFUSE  PropertyTypeCoverageRule
         no aggregate mapped for the collector PropertyTypeDeclarationCollector
 REFUSE  PropertyTypeDeclarationCollector
         no mapping for ->props on a property
+        needs: access path outside the vocabulary: Scalar_Int
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
+        needs: cannot render a accumulator as a message argument
 REFUSE  ReturnTypeCoverageRule
         no aggregate mapped for the collector ReturnTypeDeclarationCollector
 REFUSE  ReturnTypeDeclarationCollector
         if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
+        needs: access path outside the vocabulary: Scalar_Int
 
 ## tomasvotruba/cognitive-complexity — 2 of 3 the package registers emit, 0 covered by the engine, 1 refuse, 0 it registers nowhere
 
 REFUSE  ClassDependencyTreeRule
         method call outside the vocabulary ->hasConstructor()
+        needs: method call outside the vocabulary ->hasConstructor()
+        needs: assignment value outside the vocabulary: getClass() of a config-bytes rather than of a class name
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
@@ -232,125 +380,264 @@ EMIT    FunctionLikeCognitiveComplexityRule
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ArgumentsNormalizer::reorderFuncArguments()
+        needs: if statement that is not a single-statement guard
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeType()
 REFUSE  BooleanInBooleanAndRule
         no hook mapping for node type PHPStan\Node\BooleanAndNode
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getOperatorSigil()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
+        needs: no PHP navigation for node.left (kind expr) on a BooleanAndNode node
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getRightScope()
 REFUSE  BooleanInBooleanNotRule
         no hook mapping for node type PhpParser\Node\Expr\BooleanNot
+        needs: no PHP navigation for node.expr (kind expr) on a BooleanNot node
+        needs: a type rendered as text, which nothing here renders yet
 REFUSE  BooleanInBooleanOrRule
         no hook mapping for node type PHPStan\Node\BooleanOrNode
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getOperatorSigil()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
+        needs: no PHP navigation for node.left (kind expr) on a BooleanOrNode node
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getRightScope()
 REFUSE  BooleanInDoWhileConditionRule
         no hook mapping for node type PhpParser\Node\Stmt\Do_
+        needs: no PHP navigation for node.cond (kind expr) on a Do_ node
+        needs: a type rendered as text, which nothing here renders yet
 REFUSE  BooleanInElseIfConditionRule
         no hook mapping for node type PhpParser\Node\Stmt\ElseIf_
+        needs: no PHP navigation for node.cond (kind expr) on a ElseIf_ node
+        needs: a type rendered as text, which nothing here renders yet
 REFUSE  BooleanInIfConditionRule
         no hook mapping for node type PhpParser\Node\Stmt\If_
+        needs: no PHP navigation for node.cond (kind expr) on a If_ node
+        needs: a type rendered as text, which nothing here renders yet
 REFUSE  BooleanInTernaryOperatorRule
         no hook mapping for node type PhpParser\Node\Expr\Ternary
+        needs: if statement that is not a single-statement guard
+        needs: no PHP navigation for node.cond (kind expr) on a Ternary node
+        needs: a type rendered as text, which nothing here renders yet
 REFUSE  BooleanInWhileConditionRule
         no hook mapping for node type PhpParser\Node\Stmt\While_
+        needs: no PHP navigation for node.cond (kind expr) on a While_ node
+        needs: a type rendered as text, which nothing here renders yet
 REFUSE  ClosureUsesThisRule
         no mapping for ->static on a hook-node
+        needs: condition outside the vocabulary: ->static
+        needs: method call outside the vocabulary ->isInClosureBind()
+        needs: no iteration mapped for ->uses, which resolved to a expr
 EMIT    DisallowedBacktickRule
 EMIT    DisallowedEmptyRule
 REFUSE  DisallowedImplicitArrayCreationRule
         statement outside the vocabulary: Stmt_While
+        needs: statement outside the vocabulary: Stmt_While
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->hasVariableType()
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  DisallowedLooseComparisonRule
         no hook mapping for node type PhpParser\Node\Expr\BinaryOp
+        needs: no node predicate for instanceof PhpParser\Node\Expr\BinaryOp\Equal on a hook-node
+        needs: assignment value outside the vocabulary: a type rendered as text, which nothing here renders yet
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
+        needs: message expression outside the vocabulary: Expr_Ternary
 REFUSE  DisallowedShortTernaryRule
         no hook mapping for node type PhpParser\Node\Expr\Ternary
+        needs: null comparison against ->if, which resolved to a expr
 REFUSE  DynamicCallOnStaticMethodsCallableRule
         no hook mapping for node type PHPStan\Node\MethodCallableNode
+        needs: access path outside the vocabulary: ->getName()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getName()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
+        needs: assignment value outside the vocabulary: unknown local $type
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  DynamicCallOnStaticMethodsRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
+        needs: assignment value outside the vocabulary: unknown local $type
+        needs: if statement that is not a single-statement guard
 EMIT    IllegalConstructorMethodCallRule
 REFUSE  IllegalConstructorStaticCallRule
         access path outside the vocabulary: ->getFunction()
+        needs: access path outside the vocabulary: ->getFunction()
 REFUSE  MatchingTypeInSwitchCaseConditionRule
         no hook mapping for node type PhpParser\Node\Stmt\Switch_
+        needs: no PHP navigation for node.cond (kind expr) on a Switch_ node
+        needs: no iteration mapped for ->cases, which resolved to a expr
 REFUSE  OperandInArithmeticPostDecrementRule
         no hook mapping for node type PhpParser\Node\Expr\PostDec
+        needs: no PHP navigation for node.var (kind expr) on a PostDec node
+        needs: no node predicate for instanceof PhpParser\Node\Expr\PreInc on a hook-node
 REFUSE  OperandInArithmeticPostIncrementRule
         no hook mapping for node type PhpParser\Node\Expr\PostInc
+        needs: no PHP navigation for node.var (kind expr) on a PostInc node
+        needs: no node predicate for instanceof PhpParser\Node\Expr\PreInc on a hook-node
 REFUSE  OperandInArithmeticPreDecrementRule
         no hook mapping for node type PhpParser\Node\Expr\PreDec
+        needs: no PHP navigation for node.var (kind expr) on a PreDec node
+        needs: no node predicate for instanceof PhpParser\Node\Expr\PreInc on a hook-node
 REFUSE  OperandInArithmeticPreIncrementRule
         no hook mapping for node type PhpParser\Node\Expr\PreInc
+        needs: no PHP navigation for node.var (kind expr) on a PreInc node
+        needs: no node predicate for instanceof PhpParser\Node\Expr\PreInc on a hook-node
 REFUSE  OperandInArithmeticUnaryMinusRule
         no hook mapping for node type PhpParser\Node\Expr\UnaryMinus
+        needs: no PHP navigation for node.expr (kind expr) on a UnaryMinus node
 REFUSE  OperandInArithmeticUnaryPlusRule
         no hook mapping for node type PhpParser\Node\Expr\UnaryPlus
+        needs: no PHP navigation for node.expr (kind expr) on a UnaryPlus node
 REFUSE  OperandsInArithmeticAdditionRule
         if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard
+        needs: access path outside the vocabulary: ->getArrays()
 REFUSE  OperandsInArithmeticDivisionRule
         if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard
 REFUSE  OperandsInArithmeticExponentiationRule
         if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard
 REFUSE  OperandsInArithmeticModuloRule
         if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard
 REFUSE  OperandsInArithmeticMultiplicationRule
         if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard
 REFUSE  OperandsInArithmeticSubtractionRule
         if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard
 REFUSE  OverwriteVariablesWithForLoopInitRule
         no hook mapping for node type PhpParser\Node\Stmt\For_
+        needs: no iteration mapped for ->init, which resolved to a expr
 REFUSE  OverwriteVariablesWithForeachRule
         no mapping for ->keyVar on a hook-node
+        needs: no PHP navigation for node.keyVar (kind expr) on a Foreach node
+        needs: no PHP navigation for node.valueVar (kind expr) on a Foreach node
 REFUSE  RequireParentConstructCallRule
         guard body is neither `return []` nor `continue`, but Stmt_Expression
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
+        needs: method call outside the vocabulary ->isInTrait()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
+        needs: function call outside the vocabulary property_exists()
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  StrictFunctionCallsRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ArgumentsNormalizer::reorderFuncArguments()
+        needs: null comparison against Expr_Variable, which resolved to a hook-node
+        needs: assignment value outside the vocabulary: unknown local $function
+        needs: function call outside the vocabulary array_key_exists()
+        needs: assignment value outside the vocabulary: unknown local $this
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
 REFUSE  UselessCastRule
         no hook mapping for node type PhpParser\Node\Expr\Cast
+        needs: no node predicate for instanceof PhpParser\Node\Expr\Cast\Void_ on a hook-node
+        needs: the inferred type of a hook-node
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->generalize()
+        needs: if statement that is not a single-statement guard
 REFUSE  VariableMethodCallRule
         a type rendered as text, which nothing here renders yet. Mago's Type::__toString() agrees with describe(VerbosityLevel::typeOnly()) on 15 of 20 measured shapes: an intersection renders only its first member, a literal true renders as bool, a generic renders without its parameters, and a nullable scalar reverses its members. None of that is missing from the model — Type::$atomicTypes is public, and each of those four facts is measured to still be on it — so a renderer over the atomics is buildable and is what this refusal is waiting for. A rule interpolating a type cannot refuse mid-analysis, so shipping the rendering as it stands would be right on 15 shapes and wrong on 5. DescribesTypesLikePhpstanTest holds both columns
+        needs: a type rendered as text, which nothing here renders yet
 REFUSE  VariableMethodCallableRule
         no hook mapping for node type PHPStan\Node\MethodCallableNode
+        needs: access path outside the vocabulary: ->getName()
+        needs: a type rendered as text, which nothing here renders yet
 REFUSE  VariablePropertyFetchRule
         no hook mapping for node type PhpParser\Node\Expr\PropertyFetch
+        needs: no node predicate for instanceof PhpParser\Node\Identifier on a expr
+        needs: trinary tail on an unsupported query ->isLiteralString()
+        needs: no PHP navigation for node.var (kind expr) on a PropertyFetch node
+        needs: a type rendered as text, which nothing here renders yet
 REFUSE  VariableStaticMethodCallRule
         if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard
 REFUSE  VariableStaticMethodCallableRule
         no hook mapping for node type PHPStan\Node\StaticMethodCallableNode
+        needs: access path outside the vocabulary: ->getName()
+        needs: if statement that is not a single-statement guard
 REFUSE  VariableStaticPropertyFetchRule
         no hook mapping for node type PhpParser\Node\Expr\StaticPropertyFetch
+        needs: no node predicate for instanceof PhpParser\Node\Identifier on a expr
+        needs: if statement that is not a single-statement guard
 EMIT    VariableVariablesRule
 REFUSE  WrongCaseOfInheritedMethodRule
         no hook mapping for node type PHPStan\Node\InClassMethodNode
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getMethodReflection()
+        needs: assignment value outside the vocabulary: unknown local $methodReflection
+        needs: if statement that is not a single-statement guard
+        needs: access path outside the vocabulary: ->getInterfaces()
 
 ## phpstan/phpstan-phpunit — 0 of 14 the package registers emit, 0 covered by the engine, 14 refuse, 0 it registers nowhere
 
 REFUSE  AssertEqualsIsDiscouragedRule
         statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+        needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
+        needs: if statement that is not a single-statement guard
 REFUSE  AssertSameBooleanExpectedRule
         statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+        needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  AssertSameNullExpectedRule
         statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+        needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  AssertSameWithCountRule
         statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+        needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  AttributeRequiresPhpVersionRule
         no hook mapping for node type PHPStan\Node\InClassMethodNode
+        needs: null comparison against Expr_Variable, which resolved to a class-reflection
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getTestMethodReflection()
 REFUSE  ClassAttributeRequiresPhpVersionRule
         could not find the reported message
 REFUSE  ClassCoversExistsRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
+        needs: assignment to something other than a simple local
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: array_shift()
+        needs: if statement that is not a single-statement guard
 REFUSE  ClassMethodCoversExistsRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
+        needs: assignment to something other than a simple local
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: array_map()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
 REFUSE  DataProviderDataRule
         this rule reports nothing: its whole output is $scope->invokeNodeCallback(), which synthesises a node with inferred argument types and hands it back to PHPStan's own analysis so that *other* rules fire on it. An analyzer plugin's only output is report(), and there is no equivalent of feeding a node back into Mago, so no node hook and no vocabulary entry can make this one portable
 REFUSE  DataProviderDeclarationRule
         foreach with a key
+        needs: foreach with a key
 REFUSE  MockMethodCallRule
         access path outside the vocabulary: Scalar_Int
+        needs: access path outside the vocabulary: Scalar_Int
 REFUSE  NoMissingSpaceInClassAnnotationRule
         could not find the reported message
 REFUSE  NoMissingSpaceInMethodAnnotationRule
         no hook mapping for node type PHPStan\Node\InClassMethodNode
+        needs: null comparison against Expr_Variable, which resolved to a class-reflection
 REFUSE  ShouldCallParentMethodsRule
         no hook mapping for node type PHPStan\Node\InClassMethodNode
+        needs: assignment value outside the vocabulary: no PHP navigation for node.name (kind expr) on a InClassMethodNode node
+        needs: null comparison against ->getClassReflection(), which resolved to a class-reflection
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
+        needs: method call outside the vocabulary ->hasNativeMethod()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeMethod()
+        needs: access path outside the vocabulary: ->getStmts()
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 
 ## phpstan/phpstan-deprecation-rules — 0 of 2 the package registers emit, 0 covered by the engine, 2 refuse, 0 it registers nowhere
 
 REFUSE  CallWithDeprecatedIniOptionRule
         unknown local $this
+        needs: statement outside the vocabulary: Stmt_TryCatch
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getVersionId()
+        needs: access path outside the vocabulary: Scalar_Int
 REFUSE  FetchingDeprecatedConstRule
         no hook mapping for node type PhpParser\Node\Expr\ConstFetch
+        needs: $reflectionProvider holds the PHPStan service reflectionProvider, so ->hasConstant() has to be translated onto Mago's codebase instead
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getConstant()
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
