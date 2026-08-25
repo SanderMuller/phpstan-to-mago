@@ -15,6 +15,39 @@ One rule is gated elsewhere and says so. `ParamTypeCoverageRule` is an aggregate
 per-file pair is the wrong instrument for it. `AggregatesTypeCoverageTest` runs the real rule under real
 PHPStan against the transpiler's own emission under real mago and compares by file, line, message and count.
 
+## Sizing the type renderer
+
+27 rule classes across the installed packages interpolate a rendered type into their message, and Mago's
+`Type::__toString()` disagrees with PHPStan's `describe(VerbosityLevel::typeOnly())` on four measured shapes.
+Before building a renderer over `Type::$atomicTypes`, the question is how much the difference is worth and
+how many atomic kinds one would have to know. `tests/Support/run-render-census.php` answers both by counting,
+over a real corpus, every type those rules read from — conditions, arithmetic operands, receivers.
+
+On Shopware's 9199 files:
+
+| | |
+|:--|--:|
+| types observed | 243822 |
+| rendered differently by `Type::__toString()` | **22868 (9.38 %)** |
+| — a generic, rendered without its parameters | 14003 |
+| — an intersection, rendered as its first member only | 6395 |
+| — a nullable scalar, members reversed | 2595 |
+| — a literal `true`, rendered as `bool` | **0** |
+| distinct atomic kinds reached | **24** |
+
+Three things that decide the design. The error rate is **one type in eleven**, not a rounding error, so
+shipping `__toString()` would be visibly wrong across those 27 rules. The kind count is 24 rather than the
+fifty-odd the SDK declares, and six of them cover 97 % — `NamedObjectType` alone is 174405 — so a fallback
+for the unmapped tail is a footnote rather than the main path. And the literal-bool divergence, one of the
+four, **never occurs** at these positions.
+
+The intersections are not exotic either: 4561 of the 6415 are `Foo&PHPUnit\Framework\MockObject\MockObject`
+from `createMock()`, which is what a test suite looks like.
+
+A fatal in the probe worker is worth knowing about, because it does not look like one. An early version read
+a property some atomic class does not have, the worker died after 23 calls, and the output read as "the hook
+barely fires" — 23 calls where a later run counted 223571. The runner refuses an empty result for that reason.
+
 ## Corpus differentials
 
 
