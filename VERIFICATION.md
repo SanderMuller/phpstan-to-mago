@@ -157,6 +157,30 @@ One thing the first fix nearly lost. Pint's `array_syntax` rewrote the new `arra
 example pair into `[..]`, and the suite stayed green — the case simply stopped being exercised. The file is
 in pint's `notPath` now.
 
+#### And a third, in the walk rather than in a rule
+
+`phpat/phpat` is installed in that application and contributed **nothing** — not a refusal, not a zero, no
+line at all. Three readings were wrong, each hiding the next.
+
+Its rules are two lines: `extends ShouldNotDepend implements Rule`, plus a `use` for an extractor, declaring
+neither of the methods a rule needs. `RulePaths` walked a directory looking for a class that *declares*
+`getNodeType()`, so it found none of the 61 candidates. It accepts a concrete class implementing PHPStan's
+`Rule` now, resolved through the file's imports rather than matched on the short name — which is what
+separates the **59 real rules** from the two implementing phpat's own `PHPat\Test\Rule`. Sixty-one was the
+naive count.
+
+Behind that, both required methods were read off the rule's own class alone, so every one refused as though
+it had no node type. They resolve through the hierarchy walker now — which the `findNodeType()` docblock
+already claimed and did not do.
+
+Behind *that*, the import map. A name in an inherited body resolves through the base's imports, not the
+rule's, and reading it the other way is silent: a fixture's `instanceof Identifier` resolved to a class in
+the rule's own namespace that exists nowhere, and the refusal blamed the member selector instead.
+
+The 59 now refuse inside their own bodies, on `array_filter()`, `namesToClassStrings()` and
+`->ignoreDocComments()` — phpat's assertion engine, which is the real obstacle. Nothing emits, and that is
+not the point: a package installed and never read is not a measurement.
+
 Two more corpora were run for the `rector.*` identifiers, which stay silent even on Rector's own `src`
 because its `AbstractRector` subclasses live under `rules/`. That directory — 801 files — is **260 agreeing,
 0 original-only, 269 port-only**, and 200 files of third-party Rector rules (`driftingly/rector-laravel` and
