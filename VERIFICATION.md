@@ -123,6 +123,11 @@ A Symfony 7.3 application, 9199 files, carrying `symplify/phpstan-rules`, `phpst
 nothing to discount, because it does not install the cognitive-complexity package that produces the
 threshold difference everywhere else.
 
+Since re-measured at **1901 agreeing, 0 original-only, 0 port-only**, after hooking the three constructs
+strict-rules forbids outright: `empty.notAllowed` alone agrees on 1006 sites, exactly. `backtick.notAllowed`
+and `variable.dynamicName` emit and report nothing here, which is what a codebase that already forbids them
+looks like.
+
 Five identifiers fire here for the first time, including the two families that had never produced a finding
 anywhere: `phpunit.noMockObjectAndRealObjectProperty` (648 agreeing), `symplify.multipleClassLikeInFile`
 (140), `symplify.forbiddenStaticClassConstFetch` (54), `symfony.singleArgEventDispatch` (31),
