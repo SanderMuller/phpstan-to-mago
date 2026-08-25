@@ -51,6 +51,9 @@
         "not_operator_with_successor_space": true,
         "whitespace_after_comma_in_array": false
     },
+    "notPath": [
+        "tests/Fixtures/examples/ForbiddenArrayMethodCallRule/BadArrayCallable.php"
+    ],
     "exclude": [
         ".cache",
         ".github",

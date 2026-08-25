@@ -20,6 +20,21 @@ final class BadArrayCallable extends InheritsHandling
     }
 
     /**
+     * The same callable written the long way.
+     *
+     * `[..]` and `array(..)` are one node to php-parser and two kinds to Mago, and the plugin registered only
+     * the first — so a vendored `ClassLoader` writing `array($this, 'loadClass')` twice was missed on
+     * Shopware, in both places, silently.
+     *
+     * The file is in pint's `notPath`, because `array_syntax` rewrites this line to `[..]` and the suite
+     * stays green afterwards: the case simply stops being exercised. It did, once.
+     */
+    public function legacyCallable(): array
+    {
+        return array($this, 'handle');
+    }
+
+    /**
      * The same shape, naming a method this class *inherits* rather than declares.
      *
      * The example had no inherited method in it, and that absence let a real defect through: the port asked

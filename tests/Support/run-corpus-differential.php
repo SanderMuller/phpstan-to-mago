@@ -6,6 +6,7 @@ declare(strict_types=1);
  * The corpus differential, run against a consumer project.
  *
  *   php tests/Support/run-corpus-differential.php <consumer-root> [--threads=N] [--sandbox=DIR]
+ *       [--paths=a,b] [--packages=vendor/one,vendor/two]
  *
  * Prints the emission counts, the corpus size, and per identifier the agree / only-original / only-port
  * split. Writes nothing into the consumer, and nothing into this repository: the sandbox holds the
@@ -23,6 +24,11 @@ $consumer = null;
 $threads = null;
 $sandbox = sys_get_temp_dir() . '/phpstan-to-mago-differential';
 $paths = null;
+// Which rule packages to transpile out of the consumer's own vendor. The default is the four this
+// repository installs; a consumer with others — a Symfony application carrying `phpstan-symfony`,
+// `phpstan-phpunit` and `phpstan-strict-rules` — names them instead, because a package that is not read
+// contributes a silent zero rather than a measurement.
+$packages = null;
 foreach ($arguments as $argument) {
     if (str_starts_with($argument, '--paths=')) {
         $paths = explode(',', substr($argument, 8));
@@ -30,6 +36,8 @@ foreach ($arguments as $argument) {
         $threads = (int) substr($argument, 10);
     } elseif (str_starts_with($argument, '--sandbox=')) {
         $sandbox = substr($argument, 10);
+    } elseif (str_starts_with($argument, '--packages=')) {
+        $packages = explode(',', substr($argument, 11));
     } else {
         $consumer = rtrim($argument, '/');
     }
@@ -90,7 +98,7 @@ $differential = new CorpusDifferential(
     repositoryRoot: dirname(__DIR__, 2),
     consumerRoot: $consumer,
     sandbox: $sandbox,
-    packages: [
+    packages: $packages ?? [
         'symplify/phpstan-rules',
         'hihaho/phpstan-rules',
         'tomasvotruba/type-coverage',

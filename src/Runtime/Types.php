@@ -99,7 +99,26 @@ final class Types
     /** Whether the inferred type is a single named object rather than a union, scalar or mixed. */
     public static function typeIsNamedObject(?Type $type): bool
     {
-        return self::namedObjectName($type, false) !== null;
+        if (self::namedObjectName($type, false) === null) {
+            return false;
+        }
+
+        // `$this` and `static` are named objects to Mago and are *not* `ObjectType` to PHPStan: `ThisType`
+        // extends `StaticType`, and `StaticType implements TypeWithClassName` without extending `ObjectType`.
+        // So a rule guarding `! $callerType instanceof ObjectType` bails on a `$this->` receiver, and a port
+        // that answers yes there is wider than the rule.
+        //
+        // Found on Shopware: `SingleArgEventDispatchRule` reported `$this->dispatch($nested, $name)` inside a
+        // class that implements `EventDispatcherInterface`, where PHPStan is silent. Mago marks both cases on
+        // the atomic — measured, `$this` comes back `isThis: true, static: true` and an ordinary receiver
+        // false for both — so the distinction is readable rather than lost.
+        foreach ($type instanceof Type ? $type->atomicTypes : [] as $atomic) {
+            if ($atomic instanceof NamedObjectType && ($atomic->isThis || $atomic->static)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

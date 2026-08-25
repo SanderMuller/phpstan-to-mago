@@ -606,6 +606,14 @@ final class Vocabulary
         // type, and letting a rule's own `instanceof` decide the registration would make the targets depend on
         // the body rather than on what PHPStan would have visited.
         FunctionLike::class => ['Method', 'Function', 'Closure', 'ArrowFunction'],
+        // `[..]` and `array(..)` are one node to php-parser and two kinds to Mago, so registering the first
+        // alone is silent on every array written the long way. Found on Shopware: `ForbiddenArrayMethodCallRule`
+        // missed both `array($this, 'loadClass')` in a vendored `ClassLoader`, and reported neither.
+        //
+        // Probed rather than assumed, because a second kind is only useful if the body reads it the same way:
+        // a `LegacyArray` carries the same `ArrayElement` children, `arrayElements()` returns the same two, and
+        // `isArray()` already answered true for it.
+        Array_::class => ['Array', 'LegacyArray'],
     ];
 
     public const array EXPRESSION_KINDS = [
