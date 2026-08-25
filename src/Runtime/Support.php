@@ -539,9 +539,9 @@ final class Support
     }
 
     /** `$foo` gives `foo`; anything else, including `$$foo`, gives null. */
-    public static function directVariableName(?Part $part): ?string
+    public static function directVariableName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
-        return Names::directVariableName($part);
+        return Names::directVariableName($context, $subject);
     }
 
     public static function isMethodCall(?Part $part): bool

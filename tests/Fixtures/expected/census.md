@@ -228,7 +228,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 1 of 45 the package registers emit, 0 covered by the engine, 44 refuse, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 4 of 45 the package registers emit, 0 covered by the engine, 41 refuse, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
@@ -250,10 +250,8 @@ REFUSE  BooleanInWhileConditionRule
         no hook mapping for node type PhpParser\Node\Stmt\While_
 REFUSE  ClosureUsesThisRule
         no mapping for ->static on a hook-node
-REFUSE  DisallowedBacktickRule
-        no hook mapping for node type PhpParser\Node\Expr\ShellExec
-REFUSE  DisallowedEmptyRule
-        no hook mapping for node type PhpParser\Node\Expr\Empty_
+EMIT    DisallowedBacktickRule
+EMIT    DisallowedEmptyRule
 REFUSE  DisallowedImplicitArrayCreationRule
         statement outside the vocabulary: Stmt_While
 REFUSE  DisallowedLooseComparisonRule
@@ -315,8 +313,7 @@ REFUSE  VariableStaticMethodCallableRule
         no hook mapping for node type PHPStan\Node\StaticMethodCallableNode
 REFUSE  VariableStaticPropertyFetchRule
         no hook mapping for node type PhpParser\Node\Expr\StaticPropertyFetch
-REFUSE  VariableVariablesRule
-        no hook mapping for node type PhpParser\Node\Expr\Variable
+EMIT    VariableVariablesRule
 REFUSE  WrongCaseOfInheritedMethodRule
         no hook mapping for node type PHPStan\Node\InClassMethodNode
 

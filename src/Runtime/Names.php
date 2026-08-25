@@ -156,14 +156,31 @@ final class Names
         return $part instanceof Part && $part->kind === NodeKind::Variable;
     }
 
-    /** `$foo` gives `foo`; anything else, including `$$foo`, gives null. */
-    public static function directVariableName(?Part $part): ?string
+    /**
+     * `$foo` gives `foo`; anything else, including `$$foo` and `${expr}`, gives null.
+     *
+     * Two things measured rather than assumed. Mago has no `Variable` node — it has `DirectVariable`,
+     * `IndirectVariable` and `NestedVariable`, and this compares against the first, which is what "the name is
+     * written" means. And a variable hook hands the analysis a `Node`, not a `Part`: the old signature took
+     * only a `Part` and `VariableVariablesRule` died at analysis time with a `TypeError` the moment it was
+     * registered — a failure no static check sees, because the emitted call is well-typed against the wrong
+     * overload.
+     */
+    public static function directVariableName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
-        if (! $part instanceof Part || $part->kind !== NodeKind::Variable) {
+        $part = $subject instanceof Node ? Tree::part($context, $subject) : $subject;
+
+        if (! $part instanceof Part) {
             return null;
         }
 
-        return str_starts_with($part->text, '$') ? substr($part->text, 1) : null;
+        // The written form, read from the text rather than from the kind. Both are needed and neither is
+        // enough: `NodeKind::Variable` is a category a `Part` may carry where a hook's own node carries the
+        // concrete `DirectVariable`, so a kind test alone answered null for one caller or the other. The text
+        // settles it — `$$name` and `${expr}` do not match, and that is the whole question.
+        return preg_match('/^\$[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*$/', $part->text) === 1
+            ? substr($part->text, 1)
+            : null;
     }
 
     /**

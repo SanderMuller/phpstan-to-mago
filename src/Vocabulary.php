@@ -12,11 +12,13 @@ use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure;
+use PhpParser\Node\Expr\Empty_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\ShellExec;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\StaticPropertyFetch;
 use PhpParser\Node\Expr\Variable;
@@ -118,6 +120,18 @@ final class Vocabulary
         // ones a given rule keeps, for the reason {@see HOOK_KINDS} gives: what a node type covers is a fact
         // about the type, and letting the body decide the registration makes the targets depend on branches.
         CallLike::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'MethodCall', 'phpOnly' => true],
+        // Two constructs a rule forbids outright: the body has no guards at all, so the hook *is* the rule.
+        // Probed rather than assumed — `empty($a)` arrives as `EmptyConstruct` and a backtick as
+        // `ShellExecuteString`, each once, which is what a rule reporting on every one of them needs.
+        //
+        // PHP target only, like the other kinds whose Rust trait nothing in the corpus has pinned down.
+        Empty_::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'EmptyConstruct', 'phpOnly' => true],
+        ShellExec::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'ShellExecuteString', 'phpOnly' => true],
+        // A variable, in the three shapes Mago gives one. `$x` is a `DirectVariable`; `$$n` is a
+        // `NestedVariable` holding one, and `${expr}` an `IndirectVariable` — probed, with `$$n` producing a
+        // `NestedVariable` and then a `DirectVariable` for the inner `$n`. All three registered, because the
+        // rule that reaches here asks which shape it is rather than narrowing before the hook.
+        Variable::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'DirectVariable', 'phpOnly' => true],
         Concat::class => [
             'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
             'gate' => "Support::binaryOperatorIs(\$context, \$node, '.')", 'phpOnly' => true,
@@ -614,6 +628,9 @@ final class Vocabulary
         // a `LegacyArray` carries the same `ArrayElement` children, `arrayElements()` returns the same two, and
         // `isArray()` already answered true for it.
         Array_::class => ['Array', 'LegacyArray'],
+        // The written variable and the two computed ones. A rule asking `is_string($node->name)` is asking
+        // which of these fired, so all three have to arrive or the question has one answer.
+        Variable::class => ['DirectVariable', 'IndirectVariable', 'NestedVariable'],
     ];
 
     public const array EXPRESSION_KINDS = [

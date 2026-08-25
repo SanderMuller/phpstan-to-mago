@@ -7003,7 +7003,7 @@ final readonly class Translator
                 $subject = $this->resolve($target->var, $expr->getStartLine());
 
                 return Transpiler::$target === 'php'
-                    ? $this->context->backend->call('direct_variable_name', [$this->operand($subject)]) . ' !== null'
+                    ? $this->context->backend->call('direct_variable_name', ['$context', $this->operand($subject)]) . ' !== null'
                     : "support::direct_variable_name({$subject['rust']}).is_some()";
             }
 
@@ -7318,7 +7318,7 @@ final readonly class Translator
             $subject = $this->resolve($left->var, $line);
             $literal = $this->stringLiteral($right, $line);
             if (Transpiler::$target === 'php') {
-                return $this->context->backend->call('direct_variable_name', [$this->operand($subject)])
+                return $this->context->backend->call('direct_variable_name', ['$context', $this->operand($subject)])
                     . ' === ' . $this->context->backend->bytes($literal);
             }
 
