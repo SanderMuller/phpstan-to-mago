@@ -227,3 +227,133 @@ REFUSE  ClassDependencyTreeRule
         method call outside the vocabulary ->hasConstructor()
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
+
+## phpstan/phpstan-strict-rules — 1 of 45 the package registers emit, 0 covered by the engine, 44 refuse, 0 it registers nowhere
+
+REFUSE  ArrayFilterStrictRule
+        assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
+REFUSE  BooleanInBooleanAndRule
+        no hook mapping for node type PHPStan\Node\BooleanAndNode
+REFUSE  BooleanInBooleanNotRule
+        no hook mapping for node type PhpParser\Node\Expr\BooleanNot
+REFUSE  BooleanInBooleanOrRule
+        no hook mapping for node type PHPStan\Node\BooleanOrNode
+REFUSE  BooleanInDoWhileConditionRule
+        no hook mapping for node type PhpParser\Node\Stmt\Do_
+REFUSE  BooleanInElseIfConditionRule
+        no hook mapping for node type PhpParser\Node\Stmt\ElseIf_
+REFUSE  BooleanInIfConditionRule
+        no hook mapping for node type PhpParser\Node\Stmt\If_
+REFUSE  BooleanInTernaryOperatorRule
+        no hook mapping for node type PhpParser\Node\Expr\Ternary
+REFUSE  BooleanInWhileConditionRule
+        no hook mapping for node type PhpParser\Node\Stmt\While_
+REFUSE  ClosureUsesThisRule
+        no mapping for ->static on a hook-node
+REFUSE  DisallowedBacktickRule
+        no hook mapping for node type PhpParser\Node\Expr\ShellExec
+REFUSE  DisallowedEmptyRule
+        no hook mapping for node type PhpParser\Node\Expr\Empty_
+REFUSE  DisallowedImplicitArrayCreationRule
+        statement outside the vocabulary: Stmt_While
+REFUSE  DisallowedLooseComparisonRule
+        no hook mapping for node type PhpParser\Node\Expr\BinaryOp
+REFUSE  DisallowedShortTernaryRule
+        no hook mapping for node type PhpParser\Node\Expr\Ternary
+REFUSE  DynamicCallOnStaticMethodsCallableRule
+        no hook mapping for node type PHPStan\Node\MethodCallableNode
+REFUSE  DynamicCallOnStaticMethodsRule
+        assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
+EMIT    IllegalConstructorMethodCallRule
+REFUSE  IllegalConstructorStaticCallRule
+        access path outside the vocabulary: ->getFunction()
+REFUSE  MatchingTypeInSwitchCaseConditionRule
+        no hook mapping for node type PhpParser\Node\Stmt\Switch_
+REFUSE  OperandInArithmeticPostDecrementRule
+        no hook mapping for node type PhpParser\Node\Expr\PostDec
+REFUSE  OperandInArithmeticPostIncrementRule
+        no hook mapping for node type PhpParser\Node\Expr\PostInc
+REFUSE  OperandInArithmeticPreDecrementRule
+        no hook mapping for node type PhpParser\Node\Expr\PreDec
+REFUSE  OperandInArithmeticPreIncrementRule
+        no hook mapping for node type PhpParser\Node\Expr\PreInc
+REFUSE  OperandInArithmeticUnaryMinusRule
+        no hook mapping for node type PhpParser\Node\Expr\UnaryMinus
+REFUSE  OperandInArithmeticUnaryPlusRule
+        no hook mapping for node type PhpParser\Node\Expr\UnaryPlus
+REFUSE  OperandsInArithmeticAdditionRule
+        if statement that is not a single-statement guard
+REFUSE  OperandsInArithmeticDivisionRule
+        if statement that is not a single-statement guard
+REFUSE  OperandsInArithmeticExponentiationRule
+        if statement that is not a single-statement guard
+REFUSE  OperandsInArithmeticModuloRule
+        if statement that is not a single-statement guard
+REFUSE  OperandsInArithmeticMultiplicationRule
+        if statement that is not a single-statement guard
+REFUSE  OperandsInArithmeticSubtractionRule
+        if statement that is not a single-statement guard
+REFUSE  OverwriteVariablesWithForLoopInitRule
+        no hook mapping for node type PhpParser\Node\Stmt\For_
+REFUSE  OverwriteVariablesWithForeachRule
+        no mapping for ->keyVar on a hook-node
+REFUSE  RequireParentConstructCallRule
+        guard body is neither `return []` nor `continue`, but Stmt_Expression
+REFUSE  StrictFunctionCallsRule
+        assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
+REFUSE  UselessCastRule
+        no hook mapping for node type PhpParser\Node\Expr\Cast
+REFUSE  VariableMethodCallRule
+        a type rendered as text, which nothing here renders yet. Mago's Type::__toString() agrees with describe(VerbosityLevel::typeOnly()) on 15 of 20 measured shapes: an intersection renders only its first member, a literal true renders as bool, a generic renders without its parameters, and a nullable scalar reverses its members. None of that is missing from the model — Type::$atomicTypes is public, and each of those four facts is measured to still be on it — so a renderer over the atomics is buildable and is what this refusal is waiting for. A rule interpolating a type cannot refuse mid-analysis, so shipping the rendering as it stands would be right on 15 shapes and wrong on 5. DescribesTypesLikePhpstanTest holds both columns
+REFUSE  VariableMethodCallableRule
+        no hook mapping for node type PHPStan\Node\MethodCallableNode
+REFUSE  VariablePropertyFetchRule
+        no hook mapping for node type PhpParser\Node\Expr\PropertyFetch
+REFUSE  VariableStaticMethodCallRule
+        if statement that is not a single-statement guard
+REFUSE  VariableStaticMethodCallableRule
+        no hook mapping for node type PHPStan\Node\StaticMethodCallableNode
+REFUSE  VariableStaticPropertyFetchRule
+        no hook mapping for node type PhpParser\Node\Expr\StaticPropertyFetch
+REFUSE  VariableVariablesRule
+        no hook mapping for node type PhpParser\Node\Expr\Variable
+REFUSE  WrongCaseOfInheritedMethodRule
+        no hook mapping for node type PHPStan\Node\InClassMethodNode
+
+## phpstan/phpstan-phpunit — 0 of 14 the package registers emit, 0 covered by the engine, 14 refuse, 0 it registers nowhere
+
+REFUSE  AssertEqualsIsDiscouragedRule
+        statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+REFUSE  AssertSameBooleanExpectedRule
+        statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+REFUSE  AssertSameNullExpectedRule
+        statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+REFUSE  AssertSameWithCountRule
+        statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+REFUSE  AttributeRequiresPhpVersionRule
+        no hook mapping for node type PHPStan\Node\InClassMethodNode
+REFUSE  ClassAttributeRequiresPhpVersionRule
+        could not find the reported message
+REFUSE  ClassCoversExistsRule
+        assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
+REFUSE  ClassMethodCoversExistsRule
+        assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
+REFUSE  DataProviderDataRule
+        this rule reports nothing: its whole output is $scope->invokeNodeCallback(), which synthesises a node with inferred argument types and hands it back to PHPStan's own analysis so that *other* rules fire on it. An analyzer plugin's only output is report(), and there is no equivalent of feeding a node back into Mago, so no node hook and no vocabulary entry can make this one portable
+REFUSE  DataProviderDeclarationRule
+        foreach with a key
+REFUSE  MockMethodCallRule
+        access path outside the vocabulary: Scalar_Int
+REFUSE  NoMissingSpaceInClassAnnotationRule
+        could not find the reported message
+REFUSE  NoMissingSpaceInMethodAnnotationRule
+        no hook mapping for node type PHPStan\Node\InClassMethodNode
+REFUSE  ShouldCallParentMethodsRule
+        no hook mapping for node type PHPStan\Node\InClassMethodNode
+
+## phpstan/phpstan-deprecation-rules — 0 of 2 the package registers emit, 0 covered by the engine, 2 refuse, 0 it registers nowhere
+
+REFUSE  CallWithDeprecatedIniOptionRule
+        unknown local $this
+REFUSE  FetchingDeprecatedConstRule
+        no hook mapping for node type PhpParser\Node\Expr\ConstFetch

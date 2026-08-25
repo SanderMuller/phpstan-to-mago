@@ -41,6 +41,10 @@ final class EmittedRuleFiresTest extends TestCase
         // Added when its first rule emitted. An emitted rule outside these corpora is the silence this gate
         // exists to remove: the census counts it and nothing ever runs it.
         __DIR__ . '/../../vendor/tomasvotruba/cognitive-complexity/src',
+        // Added for the same reason, and late: the package was a dev dependency for three months while the
+        // census spoke for four packages and this gate for three, so its one emitting rule was counted and
+        // never run.
+        __DIR__ . '/../../vendor/phpstan/phpstan-strict-rules/src',
         // `tomasvotruba/type-coverage` is deliberately absent, and this is the one exclusion. Its emitting rule
         // is `ParamTypeCoverageRule`, an aggregate: PHPStan reduces a *collection* rather than deciding per
         // node, so registering it here would need a collector service this gate cannot add and a threshold, and
@@ -319,7 +323,11 @@ final class EmittedRuleFiresTest extends TestCase
         $target = Transpiler::$target;
         $survey = Transpiler::$survey;
         Transpiler::$target = 'php';
-        Transpiler::$survey = true;
+        // Emit mode, not survey. Survey assumes a hook exists so it can report what a body would need behind
+        // one, which means a rule with no hook mapping comes back *emitted* — and this set is what decides
+        // which rules owe the gate an example pair. Adding `phpstan-strict-rules` demanded pairs for three
+        // rules that cannot run at all: `Empty_`, `ShellExec` and `Variable` have no hook.
+        Transpiler::$survey = false;
 
         /** @var array<string, array{string, string}> $rules */
         $rules = [];

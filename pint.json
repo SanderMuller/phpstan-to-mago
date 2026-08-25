@@ -52,7 +52,8 @@
         "whitespace_after_comma_in_array": false
     },
     "notPath": [
-        "tests/Fixtures/examples/ForbiddenArrayMethodCallRule/BadArrayCallable.php"
+        "tests/Fixtures/examples/ForbiddenArrayMethodCallRule/BadArrayCallable.php",
+        "tests/Fixtures/examples/IllegalConstructorMethodCallRule/Bad.php"
     ],
     "exclude": [
         ".cache",

@@ -54,6 +54,12 @@ final class TracksUpstreamDriftTest extends TestCase
      * *read* rather than run: `composer.json` tells the extension installer to ignore it, because registering
      * its rules against this repository's own source is not what a corpus is for.
      *
+     * The list said four for a long time while `composer.json` required seven, so the sentence above was
+     * false about its own repository: `phpstan/phpstan-strict-rules`, `phpstan/phpstan-phpunit` and
+     * `phpstan/phpstan-deprecation-rules` ship 58 rules between them and the census spoke for none of them.
+     * They are here now, which is what makes the denominator the number of rules installed rather than the
+     * number someone remembered to list.
+     *
      * @var list<string>
      */
     private const array PACKAGES = [
@@ -61,6 +67,9 @@ final class TracksUpstreamDriftTest extends TestCase
         'hihaho/phpstan-rules',
         'tomasvotruba/type-coverage',
         'tomasvotruba/cognitive-complexity',
+        'phpstan/phpstan-strict-rules',
+        'phpstan/phpstan-phpunit',
+        'phpstan/phpstan-deprecation-rules',
     ];
 
     /**

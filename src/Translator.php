@@ -7300,13 +7300,18 @@ final readonly class Translator
             return $this->nameEquals($this->resolve($left->var, $line), $this->stringLiteral($right, $line), $line);
         }
 
-        // `->toLowerString() === 'null'` is the same comparison with the case folded, and the name helpers already
-        // fold case — so the fold is what the rule wrote, not something extra to emit.
+        // `->toLowerString() === 'null'` is the same comparison with the case folded, and the fold is what the
+        // rule wrote rather than something extra to emit — but only where the helper it lands on folds too.
+        // Most do. A *member selector* does not, deliberately: `selectorIs()` compares method names as written.
+        // So the fold has to travel, and it did not: `IllegalConstructorMethodCallRule` writes
+        // `->toLowerString() !== '__construct'`, the port emitted the case-sensitive comparison, and it was
+        // silent on `$subject->__CONSTRUCT()` where PHPStan reports. The comment here used to claim the helpers
+        // already folded, which was true of every arm but the one that mattered.
         if ($left instanceof MethodCall
             && $left->name instanceof Identifier
             && $left->name->toString() === 'toLowerString'
         ) {
-            return $this->nameEquals($this->resolve($left->var, $line), $this->stringLiteral($right, $line), $line);
+            return $this->nameEquals($this->resolve($left->var, $line), $this->stringLiteral($right, $line), $line, true);
         }
 
         if ($left instanceof PropertyFetch && (string) $left->name === 'name') {
@@ -7411,9 +7416,21 @@ final readonly class Translator
 
     /**
      * @param Descriptor $subject
+     * @param bool $foldingCase whether the rule folded case itself, which only a selector comparison needs told
      */
-    private function nameEquals(array $subject, string $literal, int $line): string
+    private function nameEquals(array $subject, string $literal, int $line, bool $foldingCase = false): string
     {
+        // The one arm that compares as written. `nameIs()` over the selector's text is the same comparison the
+        // other arms make, so a rule that wrote the fold gets it.
+        if ($foldingCase && $subject['kind'] === 'name-selector') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a case-folded selector comparison, which only the PHP target carries', $line);
+            }
+
+            return 'Support::nameIs(Support::textOf(' . $this->operand($subject) . '), '
+                . $this->context->backend->bytes($literal) . ')';
+        }
+
         return match ($subject['kind']) {
             // A declaration's own name. The descriptor carries a PHP rendering — `Vocabulary::FIELDS` maps
             // `->name` on a declaration to `Support::declarationName()` — and this arm emitted Rust regardless,
