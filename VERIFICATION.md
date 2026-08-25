@@ -181,6 +181,25 @@ The 59 now refuse inside their own bodies, on `array_filter()`, `namesToClassStr
 `->ignoreDocComments()` — phpat's assertion engine, which is the real obstacle. Nothing emits, and that is
 not the point: a package installed and never read is not a measurement.
 
+#### And the same shape at home
+
+Chasing that one exposed it in this repository. The census said it spoke for "the rule packages this
+repository installs" and named four, while `composer.json` required seven:
+`phpstan/phpstan-strict-rules`, `phpstan/phpstan-phpunit` and `phpstan/phpstan-deprecation-rules` ship 58
+rules between them and it spoke for none. The denominator was the number someone remembered to list. All
+seven are in it now — **43 of 171** — and the fires-gate, whose own comment says an emitted rule outside its
+corpora is the silence it exists to remove, gained the one strict-rules rule that emits.
+
+Adding it showed the gate built its rule list in *survey* mode, which assumes a hook exists, so three rules
+that cannot run at all came back "emitted" and were asked for example pairs. Emit mode now, which is what
+its docblock already claimed.
+
+The new pair then found a defect on its first run. `IllegalConstructorMethodCallRule` writes
+`->toLowerString() !== '__construct'` and the port was silent on `$subject->__CONSTRUCT()`. Every arm of
+`nameEquals()` folds case except the one that mattered — `selectorIs()` compares a member selector as
+written, deliberately — and the comment above the call claimed the helpers already folded. A folded
+comparison against a selector goes through `nameIs()` over its text now.
+
 Two more corpora were run for the `rector.*` identifiers, which stay silent even on Rector's own `src`
 because its `AbstractRector` subclasses live under `rules/`. That directory — 801 files — is **260 agreeing,
 0 original-only, 269 port-only**, and 200 files of third-party Rector rules (`driftingly/rector-laravel` and
