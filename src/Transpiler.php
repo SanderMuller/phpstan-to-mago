@@ -189,7 +189,7 @@ final class Transpiler
 
             $hook = ['trait' => 'SurveyHook', 'method' => 'survey', 'node' => $short, 'kind' => $short];
             $this->context->nodeKind = $short;
-            $processNode = $this->translator->findMethod($class, 'processNode');
+            $processNode = $this->inheritedRuleMethod($class, 'processNode');
             $this->translator->assume("a hook for {$nodeType}");
             foreach ($processNode->stmts ?? [] as $stmt) {
                 $this->translator->translateStatement($stmt);
@@ -226,7 +226,7 @@ final class Transpiler
             $this->context->hookKinds = [];
         }
 
-        $processNode = $this->translator->findMethod($class, 'processNode');
+        $processNode = $this->inheritedRuleMethod($class, 'processNode');
         $this->context->checkMode = self::$target === 'php' && $this->independentChecks($processNode) >= 2;
         foreach ($processNode->stmts ?? [] as $stmt) {
             $this->translator->translateStatement($stmt);
@@ -1203,12 +1203,19 @@ PHP;
     }
 
     /**
-     * The hierarchy walker, sharing this transpiler's cross-file lookup so a trait or base class resolves
-     * exactly the way a static helper reference already does.
+     * The node type a rule registers for, from the rule itself or from what it inherits.
+     *
+     * The inherited half is not decoration. `phpat/phpat` writes all 59 of its rules as a two-line class —
+     * `extends ShouldNotDepend implements Rule`, plus a `use` for an extractor — and declares `getNodeType()`
+     * in none of them. Read from the rule's own methods alone, every one of them refused as though it had no
+     * node type at all, which is a refusal that names the wrong thing about the rule.
+     *
+     * `Hierarchy::declaring()` is the same walker a static helper reference already resolves through, so a
+     * base class or a trait is found the way one is anywhere else.
      */
     private function findNodeType(Class_ $class): string
     {
-        $method = $this->translator->findMethod($class, 'getNodeType');
+        $method = $this->inheritedRuleMethod($class, 'getNodeType');
         foreach ($method->stmts ?? [] as $stmt) {
             if ($stmt instanceof Return_
                 && $stmt->expr instanceof ClassConstFetch
@@ -1219,6 +1226,36 @@ PHP;
         }
 
         throw new Refusal('getNodeType() is not a simple `return X::class`');
+    }
+
+    /**
+     * One of the rule's two required methods, as it declares it or as it inherits it.
+     *
+     * The rule's own class first, because that is where all but one package writes both. The hierarchy after,
+     * through the walker a static helper reference already resolves by — and only then, so a rule declaring
+     * the method keeps behaving exactly as it did.
+     *
+     * **The import map moves with the method.** A name in an inherited body resolves through the *base's*
+     * imports, not the rule's, and reading it the other way is silent rather than loud: the fixture's
+     * `instanceof Identifier` resolved to a class in the rule's own namespace, which exists nowhere, and the
+     * refusal blamed the member selector. {@see Uses} records the same trap from the helper-inlining side.
+     */
+    private function inheritedRuleMethod(Class_ $class, string $name): ClassMethod
+    {
+        try {
+            return $this->translator->findMethod($class, $name);
+        } catch (Refusal $refusal) {
+            $declaring = $this->translator->declaringOf($name);
+            if ($declaring === null) {
+                throw $refusal;
+            }
+
+            $this->context->useMap = $declaring['uses'];
+            $this->context->ruleNamespace = $declaring['namespace'];
+            $this->context->currentClass = $declaring['class'];
+
+            return $this->translator->findMethod($declaring['class'], $name);
+        }
     }
 
     // -----------------------------------------------------------------------

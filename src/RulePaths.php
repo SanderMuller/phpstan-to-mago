@@ -76,12 +76,39 @@ final class RulePaths
             return false;
         }
 
+        $uses = Uses::collect($ast);
+
         foreach ((new NodeFinder())->findInstanceOf($ast, Class_::class) as $class) {
             if ($class->isAbstract()) {
                 continue;
             }
 
-            if (self::declaresNodeType($class)) {
+            if (self::declaresNodeType($class) || self::implementsRule($class, $uses)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a concrete class implements PHPStan's `Rule` without declaring `getNodeType()` itself.
+     *
+     * A rule may inherit that method from an abstract base and get the rest of its behaviour from a trait.
+     * `phpat/phpat` writes every one of its 61 rules that way — a two-line class, `extends ShouldNotDepend
+     * implements Rule`, with a `use` for the extractor — and the walk found none of them. A package that is
+     * installed and never read contributes a silent zero, which is the shape this whole tool exists to refuse.
+     *
+     * Resolved through the file's imports rather than matched on the short name: `Rule` is a common enough
+     * interface name that a package implementing its own would otherwise be walked as a rule package.
+     *
+     * @param array<string, string> $uses
+     */
+    private static function implementsRule(Class_ $class, array $uses): bool
+    {
+        foreach ($class->implements as $interface) {
+            $written = $interface->toString();
+            if (($uses[$interface->getFirst()] ?? $written) === 'PHPStan\\Rules\\Rule') {
                 return true;
             }
         }
