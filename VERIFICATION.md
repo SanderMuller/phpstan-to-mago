@@ -115,6 +115,48 @@ any of them have produced against code nobody wrote for them.
 
 Across all four corpora **17 identifiers have now fired**, against 7 before.
 
+### Shopware, and the two families that had never fired at all
+
+A Symfony 7.3 application, 9199 files, carrying `symplify/phpstan-rules`, `phpstan/phpstan-strict-rules`,
+`phpstan/phpstan-symfony`, `phpstan/phpstan-phpunit`, `phpstan/phpstan-deprecation-rules` and
+`rector/type-perfect`. It is **895 agreeing, 0 original-only, 0 port-only** — exact agreement, and with almost
+nothing to discount, because it does not install the cognitive-complexity package that produces the
+threshold difference everywhere else.
+
+Five identifiers fire here for the first time, including the two families that had never produced a finding
+anywhere: `phpunit.noMockObjectAndRealObjectProperty` (648 agreeing), `symplify.multipleClassLikeInFile`
+(140), `symplify.forbiddenStaticClassConstFetch` (54), `symfony.singleArgEventDispatch` (31),
+`symfony.noFindTaggedServiceIdsCall` (16), `symplify.foreachCeption` (3) and `constructor.call` (1). That
+takes the identifiers that have ever fired to **22**.
+
+The run arrived at **893 / 2 / 1**, and both disagreements were real defects rather than imprecision. The
+fixes are described where the runs found them, and the numbers above are the re-run afterwards.
+
+*This corpus is on the author's machine and not one a reader can obtain.* It is quoted for the one thing the
+public corpora cannot answer — whether the Symfony- and PHPUnit-shaped rules fire at all — and the earlier
+figures were re-run alongside it to show nothing else moved: `rector/rector/src` stays at 159 / 0 / 81 and
+`nikic/php-parser` at 1086 / 1 / 34.
+
+#### The two defects it found
+
+**Silent.** `symplify.forbiddenArrayMethodCall` missed both `array($this, 'loadClass')` in a vendored
+`ClassLoader`. `[..]` and `array(..)` are one node to php-parser and two kinds to Mago, and the plugin for
+`Array_` registered `NodeKind::Array` alone. It registers `LegacyArray` too now — probed first, because a
+second kind only helps if the body reads it the same way: a `LegacyArray` carries the same `ArrayElement`
+children, and `isArray()` already answered true for it. The identifier goes from 0 agreeing to 2.
+
+**Too loud.** `symfony.singleArgEventDispatch` reported `$this->dispatch($nested, $name)` in a class
+implementing `EventDispatcherInterface`, where PHPStan is silent. The rule guards with
+`! $callerType instanceof ObjectType`, and `$this` is a `ThisType` — read in `phpstan-src` rather than
+assumed: `ThisType extends StaticType`, and `StaticType implements TypeWithClassName` without extending
+`ObjectType`. Mago marks the distinction on the atomic, measured as `isThis: true, static: true` for `$this`
+and false for an ordinary receiver, so `typeIsNamedObject()` reads it. Nine rules across the packages carry
+that guard and every one of them was wider than its original on a `$this->` receiver.
+
+One thing the first fix nearly lost. Pint's `array_syntax` rewrote the new `array($this, 'handle')` in the
+example pair into `[..]`, and the suite stayed green — the case simply stopped being exercised. The file is
+in pint's `notPath` now.
+
 Two more corpora were run for the `rector.*` identifiers, which stay silent even on Rector's own `src`
 because its `AbstractRector` subclasses live under `rules/`. That directory — 801 files — is **260 agreeing,
 0 original-only, 269 port-only**, and 200 files of third-party Rector rules (`driftingly/rector-laravel` and

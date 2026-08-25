@@ -198,8 +198,9 @@ registering only that rule and compares its findings against PHPStan running the
 files, on line and message text. A rule that emits and reports nothing fails.
 
 Corpus-scale agreement is not proven, and no number here claims it. [VERIFICATION.md](VERIFICATION.md) has
-the differential runs over seven corpora, the known gaps and the causes traced for them, the two real defects
-those runs found, and the one corpus that had to be discarded.
+the differential runs over eight corpora, the known gaps and the causes traced for them, the four real defects
+those runs found, and the one corpus that had to be discarded. The largest is a 9199-file Symfony application
+at **895 agreeing, 0 original-only, 0 port-only**.
 
 ## Performance
 
