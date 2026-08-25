@@ -8929,9 +8929,14 @@ final readonly class Translator
         }
 
         // Named rather than left to the generic refusal below, because the generic one reads as a missing table
-        // row and this is measured. 28 rules across the installed packages render a type into their message;
-        // one reaches this refusal today and the rest have it waiting behind whatever stops them first, so the
-        // count is what the work would be worth rather than what it currently blocks.
+        // row and this is measured. **27 rule classes across the seven installed packages render a type into
+        // their message** — 26 with `typeOnly()`, one with `value()` — and 26 of them are in the census.
+        //
+        // One reaches this refusal today. The rest stop earlier and would reach it after, which is why the
+        // number to read here is not the number of rules currently refused by it: sizing the renderer from
+        // first obstacles gives one and is wrong by a factor of twenty-seven. Five of those rules are the
+        // boolean-condition family — `if`, `elseif`, `while`, `do-while`, `switch` — which need a `->cond`
+        // navigation *and* this, and neither alone.
         if ($expr instanceof MethodCall && $this->memberName($expr->name, $line) === 'describe') {
             throw new Refusal(
                 'a type rendered as text, which nothing here renders yet. '
