@@ -15,6 +15,7 @@ use Mago\Sdk\Analyzer\Type\ListType;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
 use Mago\Sdk\Analyzer\Type\ScalarType;
 use Mago\Sdk\Syntax\NodeKind;
+use Sandermuller\PhpstanToMago\Runtime\Describe;
 use Sandermuller\PhpstanToMago\Runtime\Support;
 
 /**
@@ -101,7 +102,10 @@ final class MagoTypeProbe implements NodeAnalysisHook, Plugin
         file_put_contents(
             (string) getenv('PROBE_OUT'),
             $callee . "\t" . ($type === null ? '<no type>' : (string) $type)
-                . "\t" . ($type === null ? '-' : self::recoverable($type)) . "\n",
+                . "\t" . ($type === null ? '-' : self::recoverable($type))
+                // The fourth column is the renderer under test: what `Describe` makes of the same atomics the
+                // third column says are still there. The comparison that matters is this against PHPStan's.
+                . "\t" . (Describe::type($type) ?? '<no type>') . "\n",
             FILE_APPEND,
         );
     }

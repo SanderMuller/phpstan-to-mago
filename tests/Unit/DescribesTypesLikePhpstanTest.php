@@ -51,7 +51,7 @@ use Sandermuller\PhpstanToMago\Tests\Support\TypeDescriptions;
  */
 final class DescribesTypesLikePhpstanTest extends TestCase
 {
-    /** @var array<string, array{string, string, string}>|null */
+    /** @var array<string, array{string, string, string, string}>|null */
     private static ?array $rendered = null;
 
     /**
@@ -115,6 +115,14 @@ final class DescribesTypesLikePhpstanTest extends TestCase
         // missing model. A row losing a fact here would make the renderer unbuildable for that shape, which is
         // a different and much worse finding than the rendering changing.
         $this->assertSame($recoverable, $rendered[$callee][2], "Mago's atomics no longer carry what its rendering of {$callee} drops.");
+
+        // And the column that ships. Every shape, not only the five `Type::__toString()` gets wrong: a
+        // renderer that has to be total is only worth having if it is right on the fifteen too.
+        $this->assertSame(
+            $phpstan,
+            $rendered[$callee][3],
+            "Describe::type() renders {$callee} as {$rendered[$callee][3]} where PHPStan writes {$phpstan}.",
+        );
     }
 
     /**
@@ -135,7 +143,7 @@ final class DescribesTypesLikePhpstanTest extends TestCase
     }
 
     /**
-     * @return array<string, array{string, string, string}>
+     * @return array<string, array{string, string, string, string}>
      */
     private function rendered(): array
     {

@@ -4328,6 +4328,23 @@ final readonly class Translator
         return new Hierarchy(fn (string $shortName): ?array => $this->findClassByName($shortName));
     }
 
+    /**
+     * The verbosity a `describe()` call names, or `unknown` when it is not a `VerbosityLevel::x()` call.
+     *
+     * Named rather than assumed: the levels render differently, and translating one as another would be right
+     * on most types and wrong on literals — the shape of mistake this vocabulary refuses by default.
+     */
+    private function verbosityLevel(MethodCall $expr): string
+    {
+        $argument = $expr->getArgs()[0]->value ?? null;
+
+        return $argument instanceof StaticCall
+            && $argument->class instanceof Name
+            && $argument->class->getLast() === 'VerbosityLevel'
+                ? $this->memberName($argument->name, $argument->getStartLine())
+                : 'unknown';
+    }
+
     /** A `self::CONST` / `static::CONST` string constant declared by this rule. */
     private function selfConstant(ClassConstFetch $expr): string
     {
@@ -8928,28 +8945,34 @@ final readonly class Translator
             return $this->resolveConfiguredDefault($expr, $line);
         }
 
-        // Named rather than left to the generic refusal below, because the generic one reads as a missing table
-        // row and this is measured. **27 rule classes across the seven installed packages render a type into
-        // their message** — 26 with `typeOnly()`, one with `value()` — and 26 of them are in the census.
+        // `$type->describe(VerbosityLevel::typeOnly())` — the rendering 27 rule classes interpolate into a
+        // message. Rendered from the atomics rather than from `Type::__toString()`, and the difference is
+        // measured rather than argued: over 243822 types at the positions those rules read from, 9.38 % come
+        // out differently — a generic without its parameters, an intersection collapsed to its first member,
+        // a nullable scalar reversed. {@see Describe} carries the counts and the fallback.
         //
-        // One reaches this refusal today. The rest stop earlier and would reach it after, which is why the
-        // number to read here is not the number of rules currently refused by it: sizing the renderer from
-        // first obstacles gives one and is wrong by a factor of twenty-seven. Five of those rules are the
-        // boolean-condition family — `if`, `elseif`, `while`, `do-while`, `switch` — which need a `->cond`
-        // navigation *and* this, and neither alone.
+        // Only `typeOnly()`. `value()` prints literals the shorter form collapses, and one rule asks for it;
+        // refused by the verbosity it named rather than translated into the wrong one.
         if ($expr instanceof MethodCall && $this->memberName($expr->name, $line) === 'describe') {
-            throw new Refusal(
-                'a type rendered as text, which nothing here renders yet. '
-                . "Mago's Type::__toString() agrees with describe(VerbosityLevel::typeOnly()) on 15 of 20 "
-                . 'measured shapes: an intersection renders only its first member, a literal true renders as '
-                . 'bool, a generic renders without its parameters, and a nullable scalar reverses its members. '
-                . 'None of that is missing from the model — Type::$atomicTypes is public, and each of those four '
-                . 'facts is measured to still be on it — so a renderer over the atomics is buildable and is what '
-                . 'this refusal is waiting for. A rule interpolating a type cannot refuse mid-analysis, so '
-                . 'shipping the rendering as it stands would be right on 15 shapes and wrong on 5. '
-                . 'DescribesTypesLikePhpstanTest holds both columns',
-                $line,
-            );
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a rendered type, which only the PHP target carries', $line);
+            }
+
+            $verbosity = $this->verbosityLevel($expr);
+            if ($verbosity !== 'typeOnly') {
+                throw new Refusal("describe(VerbosityLevel::{$verbosity}()), where only typeOnly() is rendered", $line);
+            }
+
+            $of = $this->resolve($expr->var, $line);
+            if (! in_array($of['kind'], ['type', 'type-without-null'], true)) {
+                throw new Refusal("describe() of a {$of['kind']} rather than of a type", $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'bytes',
+                'php' => 'Support::describeType(' . $this->operand($of) . ')',
+            ];
         }
 
         throw new Refusal('access path outside the vocabulary: ' . $this->describe($expr), $line);

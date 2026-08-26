@@ -26,7 +26,9 @@ final readonly class TypeDescriptions
      * The third column is what Mago's atomics still hold of whatever its rendering dropped, and it is empty on
      * the PHPStan side because PHPStan's rendering drops nothing being measured here.
      *
-     * @return array<string, array{string, string, string}>
+     * The fourth is what {@see Describe} renders from those atomics, which is the column the port ships.
+     *
+     * @return array<string, array{string, string, string, string}>
      */
     public function rendered(): array
     {
@@ -44,13 +46,13 @@ final readonly class TypeDescriptions
 
         $pairs = [];
         foreach ($phpstan as $callee => $described) {
-            [$rendered, $recoverable] = array_pad(explode("\t", $mago[$callee] ?? '<not reached>', 2), 2, '');
-            $pairs[$callee] = [$described, $rendered, $recoverable];
+            [$rendered, $recoverable, $describe] = array_pad(explode("\t", $mago[$callee] ?? '<not reached>', 3), 3, '');
+            $pairs[$callee] = [$described, $rendered, $recoverable, $describe];
         }
 
         foreach (array_diff_key($mago, $phpstan) as $callee => $row) {
-            [$rendered, $recoverable] = array_pad(explode("\t", $row, 2), 2, '');
-            $pairs[$callee] = ['<not reached>', $rendered, $recoverable];
+            [$rendered, $recoverable, $describe] = array_pad(explode("\t", $row, 3), 3, '');
+            $pairs[$callee] = ['<not reached>', $rendered, $recoverable, $describe];
         }
 
         ksort($pairs);

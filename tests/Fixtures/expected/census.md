@@ -376,7 +376,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 4 of 45 the package registers emit, 0 covered by the engine, 41 refuse, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 5 of 45 the package registers emit, 0 covered by the engine, 40 refuse, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
@@ -394,7 +394,6 @@ REFUSE  BooleanInBooleanAndRule
 REFUSE  BooleanInBooleanNotRule
         no hook mapping for node type PhpParser\Node\Expr\BooleanNot
         needs: no PHP navigation for node.expr (kind expr) on a BooleanNot node
-        needs: a type rendered as text, which nothing here renders yet
 REFUSE  BooleanInBooleanOrRule
         no hook mapping for node type PHPStan\Node\BooleanOrNode
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getOperatorSigil()
@@ -404,24 +403,19 @@ REFUSE  BooleanInBooleanOrRule
 REFUSE  BooleanInDoWhileConditionRule
         no hook mapping for node type PhpParser\Node\Stmt\Do_
         needs: no PHP navigation for node.cond (kind expr) on a Do_ node
-        needs: a type rendered as text, which nothing here renders yet
 REFUSE  BooleanInElseIfConditionRule
         no hook mapping for node type PhpParser\Node\Stmt\ElseIf_
         needs: no PHP navigation for node.cond (kind expr) on a ElseIf_ node
-        needs: a type rendered as text, which nothing here renders yet
 REFUSE  BooleanInIfConditionRule
         no hook mapping for node type PhpParser\Node\Stmt\If_
         needs: no PHP navigation for node.cond (kind expr) on a If_ node
-        needs: a type rendered as text, which nothing here renders yet
 REFUSE  BooleanInTernaryOperatorRule
         no hook mapping for node type PhpParser\Node\Expr\Ternary
         needs: if statement that is not a single-statement guard
         needs: no PHP navigation for node.cond (kind expr) on a Ternary node
-        needs: a type rendered as text, which nothing here renders yet
 REFUSE  BooleanInWhileConditionRule
         no hook mapping for node type PhpParser\Node\Stmt\While_
         needs: no PHP navigation for node.cond (kind expr) on a While_ node
-        needs: a type rendered as text, which nothing here renders yet
 REFUSE  ClosureUsesThisRule
         no mapping for ->static on a hook-node
         needs: condition outside the vocabulary: ->static
@@ -437,7 +431,8 @@ REFUSE  DisallowedImplicitArrayCreationRule
 REFUSE  DisallowedLooseComparisonRule
         no hook mapping for node type PhpParser\Node\Expr\BinaryOp
         needs: no node predicate for instanceof PhpParser\Node\Expr\BinaryOp\Equal on a hook-node
-        needs: assignment value outside the vocabulary: a type rendered as text, which nothing here renders yet
+        needs: assignment value outside the vocabulary: no PHP navigation for node.left (kind expr) on a BinaryOp node
+        needs: assignment value outside the vocabulary: no PHP navigation for node.right (kind expr) on a BinaryOp node
         needs: guard body is neither `return []` nor `continue`, but Stmt_Return
         needs: message expression outside the vocabulary: Expr_Ternary
 REFUSE  DisallowedShortTernaryRule
@@ -535,19 +530,16 @@ REFUSE  UselessCastRule
         needs: the inferred type of a hook-node
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->generalize()
         needs: if statement that is not a single-statement guard
-REFUSE  VariableMethodCallRule
-        a type rendered as text, which nothing here renders yet. Mago's Type::__toString() agrees with describe(VerbosityLevel::typeOnly()) on 15 of 20 measured shapes: an intersection renders only its first member, a literal true renders as bool, a generic renders without its parameters, and a nullable scalar reverses its members. None of that is missing from the model — Type::$atomicTypes is public, and each of those four facts is measured to still be on it — so a renderer over the atomics is buildable and is what this refusal is waiting for. A rule interpolating a type cannot refuse mid-analysis, so shipping the rendering as it stands would be right on 15 shapes and wrong on 5. DescribesTypesLikePhpstanTest holds both columns
-        needs: a type rendered as text, which nothing here renders yet
+EMIT    VariableMethodCallRule
 REFUSE  VariableMethodCallableRule
         no hook mapping for node type PHPStan\Node\MethodCallableNode
         needs: access path outside the vocabulary: ->getName()
-        needs: a type rendered as text, which nothing here renders yet
+        needs: access path outside the vocabulary: ->getVar()
 REFUSE  VariablePropertyFetchRule
         no hook mapping for node type PhpParser\Node\Expr\PropertyFetch
         needs: no node predicate for instanceof PhpParser\Node\Identifier on a expr
         needs: trinary tail on an unsupported query ->isLiteralString()
         needs: no PHP navigation for node.var (kind expr) on a PropertyFetch node
-        needs: a type rendered as text, which nothing here renders yet
 REFUSE  VariableStaticMethodCallRule
         if statement that is not a single-statement guard
         needs: if statement that is not a single-statement guard

@@ -938,6 +938,17 @@ final class Support
     }
 
     /**
+     * An inferred type as PHPStan's `describe(VerbosityLevel::typeOnly())` writes it.
+     *
+     * {@see Describe} for why this renders from the atomics rather than from `Type::__toString()`, and for the
+     * measurement that decided it: 9.38 % of the types at these positions render differently.
+     */
+    public static function describeType(?Type $type): ?string
+    {
+        return Describe::type($type);
+    }
+
+    /**
      * Whether a pattern matches, which is `Strings::match(..) !== null` and `preg_match(..) === 1`.
      *
      * Nette's helper hands back the capture array or null; with two arguments and its defaults that is
