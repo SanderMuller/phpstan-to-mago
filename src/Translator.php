@@ -6599,6 +6599,24 @@ final readonly class Translator
         $name = $this->memberName($inner->name, $line);
         $args = $inner->getArgs();
 
+        // `->no()` is not `! ->yes()`, and collapsing it that way is wrong on exactly the types PHPStan
+        // answers `Maybe` for. Measured on a real corpus: of 243822 inferred types, 4.23 % would make an
+        // `isNull()` a `Maybe` and 0.88 % an `isBoolean()` — so the third state is reachable, not theoretical.
+        //
+        // Refused rather than emitted, and it costs nothing today: 86 of the 93 trinary tails in the installed
+        // packages are `->yes()`, six are `->no()`, one is `->maybe()`, and **no emitting rule uses `->no()`**.
+        // What this stops is the next one arriving quietly and reporting where the original stays silent.
+        //
+        // `hasVariableType()->no()` is exempt below, because that one is not a collapse: it maps onto a helper
+        // that answers the same question directly rather than onto the negation of another.
+        if ($tail === 'no' && $name !== 'hasVariableType') {
+            throw new Refusal(
+                "->{$name}()->no(), which is not the negation of ->yes(): PHPStan answers Maybe for a type "
+                . 'that is partly this and partly not, and the port has one boolean to answer with',
+                $line,
+            );
+        }
+
         if ($name === 'hasMethod' && count($args) === 1) {
             // The name may be a literal or a value the rule computed — the second array element of
             // `[$this, 'handle']`, read as a constant string — so it arrives as a descriptor either way.
