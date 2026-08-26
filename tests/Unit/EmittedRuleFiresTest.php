@@ -65,10 +65,15 @@ final class EmittedRuleFiresTest extends TestCase
         Transpiler::$target = 'php';
         Transpiler::$survey = false;
 
+        // Keyed by process, because the sandbox holds one directory per rule and two suites running at once
+        // wrote into the same ones. That is not a hypothetical: two concurrent runs produced a report where
+        // `SingleArgEventDispatchRule` disagreed with PHPStan in one case while PHPStan reported it correctly
+        // in another case of the *same* run — internally contradictory, which is what said interference rather
+        // than regression. A shared path makes a green suite and a red one equally meaningless.
         $this->gate = new FiresGate(
             dirname(__DIR__, 2),
             self::EXAMPLES,
-            sys_get_temp_dir() . '/phpstan-to-mago-gate',
+            sys_get_temp_dir() . '/phpstan-to-mago-gate-' . getmypid(),
         );
     }
 

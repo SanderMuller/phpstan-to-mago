@@ -64,7 +64,7 @@ final class ParsesTheTargetTest extends TestCase
     private function cli(array $argv, int $expected = 0): string
     {
         ob_start();
-        $status = Cli::run($argv, sys_get_temp_dir() . '/phpstan-to-mago-target-test');
+        $status = Cli::run($argv, sys_get_temp_dir() . '/phpstan-to-mago-target-test-' . getmypid());
         $output = (string) ob_get_clean();
 
         $this->assertSame($expected, $status, $output);

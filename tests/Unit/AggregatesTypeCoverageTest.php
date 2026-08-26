@@ -49,7 +49,7 @@ final class AggregatesTypeCoverageTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->sandbox = sys_get_temp_dir() . '/phpstan-to-mago-aggregate';
+        $this->sandbox = sys_get_temp_dir() . '/phpstan-to-mago-aggregate-' . getmypid();
         if (! is_dir($this->sandbox . '/src')) {
             mkdir($this->sandbox . '/src', 0o777, true);
         }

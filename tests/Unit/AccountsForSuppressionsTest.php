@@ -25,7 +25,7 @@ final class AccountsForSuppressionsTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->root = sys_get_temp_dir() . '/phpstan-to-mago-suppressions';
+        $this->root = sys_get_temp_dir() . '/phpstan-to-mago-suppressions-' . getmypid();
         if (! is_dir($this->root)) {
             mkdir($this->root, 0o777, true);
         }

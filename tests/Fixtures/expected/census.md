@@ -193,7 +193,7 @@ REFUSE  NoSetClassServiceDuplicationRule
         needs: expected a string literal
         needs: no argument list on a expr node
         needs: access path outside the vocabulary: ->prettyPrintExpr()
-        needs: if statement that is not a single-statement guard
+        needs: access path outside the vocabulary: Strings::after()
         needs: $errorMessage is not a message built in this rule
 REFUSE  NoStringInGetSubscribedEventsRule
         assignment value outside the vocabulary: no searchable node kind mapped for PhpParser\Node\ArrayItem
@@ -385,6 +385,7 @@ REFUSE  ArrayFilterStrictRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ArgumentsNormalizer::reorderFuncArguments()
         needs: if statement that is not a single-statement guard
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeType()
+        needs: access path outside the vocabulary: Scalar_Int
 REFUSE  BooleanInBooleanAndRule
         no hook mapping for node type PHPStan\Node\BooleanAndNode
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getOperatorSigil()
@@ -528,6 +529,7 @@ REFUSE  UselessCastRule
         needs: no node predicate for instanceof PhpParser\Node\Expr\Cast\Void_ on a hook-node
         needs: the inferred type of a hook-node
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->generalize()
+        needs: no PHP navigation for node.expr (kind expr) on a Cast node
         needs: if statement that is not a single-statement guard
 EMIT    VariableMethodCallRule
 REFUSE  VariableMethodCallableRule
@@ -540,16 +542,16 @@ REFUSE  VariablePropertyFetchRule
         needs: trinary tail on an unsupported query ->isLiteralString()
         needs: no PHP navigation for node.var (kind expr) on a PropertyFetch node
 REFUSE  VariableStaticMethodCallRule
-        if statement that is not a single-statement guard
-        needs: if statement that is not a single-statement guard
+        the inferred type of a name-expr
+        needs: the inferred type of a name-expr
 REFUSE  VariableStaticMethodCallableRule
         no hook mapping for node type PHPStan\Node\StaticMethodCallableNode
         needs: access path outside the vocabulary: ->getName()
-        needs: if statement that is not a single-statement guard
+        needs: access path outside the vocabulary: ->getClass()
 REFUSE  VariableStaticPropertyFetchRule
         no hook mapping for node type PhpParser\Node\Expr\StaticPropertyFetch
         needs: no node predicate for instanceof PhpParser\Node\Identifier on a expr
-        needs: if statement that is not a single-statement guard
+        needs: resolveName() over something other than a written name
 EMIT    VariableVariablesRule
 REFUSE  WrongCaseOfInheritedMethodRule
         no hook mapping for node type PHPStan\Node\InClassMethodNode

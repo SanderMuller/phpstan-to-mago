@@ -110,7 +110,7 @@ final readonly class TypeDescriptions
     /** Lays out a sandbox: the shapes, a worker and a plugin for mago, a rule and a config for PHPStan. */
     private function prepare(): string
     {
-        $sandbox = sys_get_temp_dir() . '/phpstan-to-mago-types';
+        $sandbox = sys_get_temp_dir() . '/phpstan-to-mago-types-' . getmypid();
         if (! is_dir($sandbox . '/src') && ! mkdir($sandbox . '/src', 0o777, true)) {
             throw new RuntimeException('Could not create ' . $sandbox);
         }

@@ -69,7 +69,7 @@ final readonly class HierarchyKnowledge
 
     private function prepare(): string
     {
-        $sandbox = sys_get_temp_dir() . '/phpstan-to-mago-hierarchy';
+        $sandbox = sys_get_temp_dir() . '/phpstan-to-mago-hierarchy-' . getmypid();
         if (! is_dir($sandbox . '/src') && ! mkdir($sandbox . '/src', 0o777, true)) {
             throw new RuntimeException('Could not create ' . $sandbox);
         }

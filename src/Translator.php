@@ -2668,6 +2668,11 @@ final readonly class Translator
             return;
         }
 
+        // `if (COND) { $x = A; } else { $x = B; }` — one name bound two ways, which is a ternary written long.
+        if ($this->bindConditionalValue($stmt)) {
+            return;
+        }
+
         if ($stmt->elseifs !== [] || count($stmt->stmts) !== 1
             || ($stmt->else instanceof Else_ && ! $this->isFlagAssignment($stmt->stmts[0]))
         ) {
@@ -5053,6 +5058,70 @@ final readonly class Translator
         return $only instanceof Return_
             && $only->expr instanceof Array_
             && $only->expr->items === [];
+    }
+
+    /**
+     * `if (COND) { $x = A; } else { $x = B; }` bound as one name, or false when it is not that shape.
+     *
+     * A ternary written long, and three corpus rules write it: a static call's receiver is a resolved name
+     * when the class is written and a rendered type when it is not, and the message quotes whichever it was.
+     * Nothing is emitted — the name is bound to a conditional expression, the same way every other local is
+     * bound to whatever it stands for.
+     *
+     * Both branches have to assign the *same* name, and both values have to be text. A name bound to two
+     * different kinds would be a descriptor whose kind depends on a runtime branch, which is not a thing the
+     * rest of the translation can read.
+     */
+    private function bindConditionalValue(If_ $stmt): bool
+    {
+        $else = $stmt->else;
+        if ($stmt->elseifs !== [] || ! $else instanceof Else_ || count($stmt->stmts) !== 1 || count($else->stmts) !== 1) {
+            return false;
+        }
+
+        $then = $this->assignedName($stmt->stmts[0]);
+        $otherwise = $this->assignedName($else->stmts[0]);
+        if ($then === null || $then !== $otherwise) {
+            return false;
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a value bound by a branch, which only the PHP target carries', $stmt->getStartLine());
+        }
+
+        $line = $stmt->getStartLine();
+        /** @var Expression $thenStatement */
+        $thenStatement = $stmt->stmts[0];
+        /** @var Expression $elseStatement */
+        $elseStatement = $else->stmts[0];
+        /** @var Assign $thenAssign */
+        $thenAssign = $thenStatement->expr;
+        /** @var Assign $elseAssign */
+        $elseAssign = $elseStatement->expr;
+
+        // Both sides read as text, through the same reduction a name-taking helper argument goes through: a
+        // written name and a rendered type are both strings by the time the message quotes one.
+        $first = $this->nameText($this->resolve($thenAssign->expr, $line), $line);
+        $second = $this->nameText($this->resolve($elseAssign->expr, $line), $line);
+
+        $this->context->locals[$then] = [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'bytes',
+            'php' => '(' . $this->translateCondition($stmt->cond) . ' ? ' . $first . ' : ' . $second . ')',
+        ];
+
+        return true;
+    }
+
+    /** The variable a statement assigns, when it is a plain assignment to a simple name. */
+    private function assignedName(Stmt $stmt): ?string
+    {
+        return $stmt instanceof Expression
+            && $stmt->expr instanceof Assign
+            && $stmt->expr->var instanceof Variable
+            && is_string($stmt->expr->var->name)
+                ? $stmt->expr->var->name
+                : null;
     }
 
     private function isFlagAssignment(Stmt $stmt): bool

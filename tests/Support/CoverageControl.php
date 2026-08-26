@@ -38,7 +38,7 @@ final readonly class CoverageControl
     private function prepare(): string
     {
         $root = dirname(__DIR__, 2);
-        $sandbox = sys_get_temp_dir() . '/phpstan-to-mago-control-' . basename($this->project);
+        $sandbox = sys_get_temp_dir() . '/phpstan-to-mago-control-' . getmypid() . '-' . basename($this->project);
         // Cleared rather than merged into: a rename during development left both the old and the new copy
         // of a source file in a sandbox once, and the run that produced was reported as a disagreement.
         $stale = glob($sandbox . '/src/*.php');
