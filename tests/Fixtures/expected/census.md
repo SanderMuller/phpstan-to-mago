@@ -262,7 +262,6 @@ EMIT    RequiredOnlyInAbstractRule
 REFUSE  SeeAnnotationToTestRule
         not a resolvable list of strings
         needs: not a resolvable list of strings
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolve()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getDeprecatedTag()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->find()
@@ -428,13 +427,13 @@ REFUSE  DisallowedImplicitArrayCreationRule
         statement outside the vocabulary: Stmt_While
         needs: statement outside the vocabulary: Stmt_While
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->hasVariableType()
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
+        needs: method call outside the vocabulary ->no()
+        needs: method call outside the vocabulary ->maybe()
 REFUSE  DisallowedLooseComparisonRule
         no hook mapping for node type PhpParser\Node\Expr\BinaryOp
         needs: no node predicate for instanceof PhpParser\Node\Expr\BinaryOp\Equal on a hook-node
         needs: assignment value outside the vocabulary: no PHP navigation for node.left (kind expr) on a BinaryOp node
         needs: assignment value outside the vocabulary: no PHP navigation for node.right (kind expr) on a BinaryOp node
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
         needs: message expression outside the vocabulary: Expr_Ternary
 REFUSE  DisallowedShortTernaryRule
         no mapping for ->if on a hook-node
@@ -445,7 +444,6 @@ REFUSE  DynamicCallOnStaticMethodsCallableRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getName()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
         needs: assignment value outside the vocabulary: unknown local $type
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  DynamicCallOnStaticMethodsRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
@@ -512,7 +510,6 @@ REFUSE  RequireParentConstructCallRule
         needs: method call outside the vocabulary ->isInTrait()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
         needs: function call outside the vocabulary property_exists()
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  StrictFunctionCallsRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
@@ -522,8 +519,8 @@ REFUSE  StrictFunctionCallsRule
         needs: assignment value outside the vocabulary: unknown local $function
         needs: function call outside the vocabulary array_key_exists()
         needs: assignment value outside the vocabulary: unknown local $this
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
+        needs: trinary tail on an unsupported query ->isSuperTypeOf()
 REFUSE  UselessCastRule
         no hook mapping for node type PhpParser\Node\Expr\Cast
         needs: no node predicate for instanceof PhpParser\Node\Expr\Cast\Void_ on a hook-node
@@ -567,19 +564,19 @@ REFUSE  AssertEqualsIsDiscouragedRule
         needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
-        needs: if statement that is not a single-statement guard
+        needs: trinary tail on an unsupported query ->isScalar()
 REFUSE  AssertSameBooleanExpectedRule
         statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
         needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
+        needs: a second identifier before the first was reported
 REFUSE  AssertSameNullExpectedRule
         statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
         needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  AssertSameWithCountRule
         statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
         needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
+        needs: no argument list on a expr node
+        needs: no node predicate for instanceof PhpParser\Node\Identifier on a bytes
 REFUSE  AttributeRequiresPhpVersionRule
         no hook mapping for node type PHPStan\Node\InClassMethodNode
         needs: null comparison against Expr_Variable, which resolved to a class-reflection
@@ -590,7 +587,6 @@ REFUSE  ClassCoversExistsRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
         needs: assignment to something other than a simple local
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
         needs: assignment value outside the vocabulary: access path outside the vocabulary: array_shift()
         needs: if statement that is not a single-statement guard
 REFUSE  ClassMethodCoversExistsRule
@@ -620,7 +616,7 @@ REFUSE  ShouldCallParentMethodsRule
         needs: method call outside the vocabulary ->hasNativeMethod()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeMethod()
         needs: access path outside the vocabulary: ->getStmts()
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
+        needs: condition outside the vocabulary: Expr_Variable
 
 ## phpstan/phpstan-deprecation-rules — 0 of 2 the package registers emit, 0 covered by the engine, 2 refuse, 0 it registers nowhere
 
@@ -633,4 +629,4 @@ REFUSE  FetchingDeprecatedConstRule
         no hook mapping for node type PhpParser\Node\Expr\ConstFetch
         needs: $reflectionProvider holds the PHPStan service reflectionProvider, so ->hasConstant() has to be translated onto Mago's codebase instead
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getConstant()
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
+        needs: trinary tail on an unsupported query ->isDeprecated()

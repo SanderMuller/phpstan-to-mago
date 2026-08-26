@@ -264,6 +264,15 @@ final class TranslationContext
     public array $finders = [];
 
     /** True while translating a loop body, so `continue` and inline reports are legal. */
+    /**
+     * Whether translation is inside an `if` that reports, which changes *where* the report is emitted.
+     *
+     * The same reason `$inLoop` exists. A trailing report runs after the block, so a `return [<error>]` inside
+     * one would report unconditionally — the emitted plugin came out with an empty `if` and a report after it,
+     * which is a rule that fires on everything and parses perfectly.
+     */
+    public bool $inConditionalReport = false;
+
     public bool $inLoop = false;
 
     /**

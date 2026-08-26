@@ -7,6 +7,7 @@ namespace Sandermuller\PhpstanToMago;
 use PhpParser\Comment\Doc;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
@@ -2807,11 +2808,20 @@ final readonly class Translator
         }
 
         foreach ($statements as $index => $statement) {
+            $last = $index === count($statements) - 1;
+
+            // The other way a block ends in one finding: `return [<error>];` rather than `$errors[] = <error>`.
+            // A rule that reports at most one thing writes the first; one that collects several writes the
+            // second. Nineteen rules across the installed packages write the first, and it was refused as a
+            // guard body that is not `return []` — which named the statement rather than what it does.
+            if ($last && $this->isSingleErrorReturn($statement)) {
+                return true;
+            }
+
             if (! $statement instanceof Expression || ! $statement->expr instanceof Assign) {
                 return false;
             }
 
-            $last = $index === count($statements) - 1;
             $appends = $statement->expr->var instanceof ArrayDimFetch
                 && ! $statement->expr->var->dim instanceof Expr
                 && $this->isRuleErrorBuilder($statement->expr->expr);
@@ -2822,6 +2832,18 @@ final readonly class Translator
         }
 
         return true;
+    }
+
+    /** `return [<one built error>];` — a block that reports and exits rather than collecting. */
+    private function isSingleErrorReturn(Stmt $statement): bool
+    {
+        if (! $statement instanceof Return_ || ! $statement->expr instanceof Array_ || count($statement->expr->items) !== 1) {
+            return false;
+        }
+
+        $only = $statement->expr->items[0];
+
+        return $only instanceof ArrayItem && $this->isRuleErrorBuilder($only->value);
     }
 
     /** Emits `if (COND) { report(..); }`, with the block's own statements inside it. */
@@ -2835,12 +2857,16 @@ final readonly class Translator
         $this->context->lines[] = new Stm('if-open', ['condition' => $condition], $this->context->indent);
         $this->context->indent += 4;
 
+        $inConditionalReport = $this->context->inConditionalReport;
+        $this->context->inConditionalReport = true;
+
         try {
             foreach ($stmt->stmts as $statement) {
                 $this->translateStatement($statement);
             }
         } finally {
             $this->context->indent -= 4;
+            $this->context->inConditionalReport = $inConditionalReport;
         }
 
         $this->context->lines[] = new Stm('block-close', [], $this->context->indent);
@@ -4661,7 +4687,7 @@ final readonly class Translator
             // `return [$error];` inside the loop that built it: report here and stop, which is what the original
             // does. Emitted at the return rather than at the assignment, because only the return distinguishes
             // "report the first one and stop" from "collect them all".
-            if ($this->context->inLoop
+            if (($this->context->inLoop || $this->context->inConditionalReport)
                 && $this->context->pendingReport !== null
                 && $stmt->expr instanceof Array_
                 && count($stmt->expr->items) === 1
@@ -4681,7 +4707,7 @@ final readonly class Translator
                 foreach ($stmt->expr->items as $item) {
                     if ($item !== null && $this->isRuleErrorBuilder($item->value)) {
                         $this->takeMessage($item->value);
-                        if ($this->context->inLoop) {
+                        if ($this->context->inLoop || $this->context->inConditionalReport) {
                             // Reporting from inside the loop and returning: emit it here, because
                             // the trailing report would run after the loop has finished.
                             $this->context->lines[] = $this->reportNode();
