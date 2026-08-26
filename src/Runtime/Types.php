@@ -96,6 +96,28 @@ final class Types
         return $names;
     }
 
+    /**
+     * Whether every part of a type is a boolean, which is `Type::isBoolean()->yes()`.
+     *
+     * Every atomic, not any: PHPStan answers `yes` only when the whole type is boolean, so `bool|null` is not
+     * one. A literal `true` is — its atomic is a boolean scalar carrying a refinement, and the refinement is
+     * what makes it literal rather than what makes it a different kind.
+     */
+    public static function typeIsBoolean(?Type $type): bool
+    {
+        if (! $type instanceof Type || $type->atomicTypes === []) {
+            return false;
+        }
+
+        foreach ($type->atomicTypes as $atomic) {
+            if (! $atomic instanceof ScalarType || $atomic->kind !== ScalarTypeKind::Boolean) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /** Whether the inferred type is a single named object rather than a union, scalar or mixed. */
     public static function typeIsNamedObject(?Type $type): bool
     {

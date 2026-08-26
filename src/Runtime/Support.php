@@ -458,6 +458,12 @@ final class Support
         return Inheritance::extendsText($context, $subject);
     }
 
+    /** Whether a unary prefix expression's operator is the one written. {@see Calls::unaryOperatorIs} */
+    public static function unaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
+    {
+        return Calls::unaryOperatorIs($context, $subject, $operator);
+    }
+
     /** Whether a binary expression's operator is the one written, which Mago keeps in a child node. */
     public static function binaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
     {
@@ -983,6 +989,12 @@ final class Support
     public static function selectorIsOneOf(?Part $part, array $names): bool
     {
         return Names::selectorIsOneOf($part, $names);
+    }
+
+    /** Whether every part of a type is a boolean, which is `Type::isBoolean()->yes()`. {@see Types::typeIsBoolean} */
+    public static function typeIsBoolean(?Type $type): bool
+    {
+        return Types::typeIsBoolean($type);
     }
 
     /** Whether the inferred type is a single named object rather than a union, scalar or mixed. */

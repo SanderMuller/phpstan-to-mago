@@ -6544,6 +6544,19 @@ final readonly class Translator
             );
         }
 
+        // `$type->isBoolean()->yes()` — whether the whole type is boolean. Every atomic has to be one, which
+        // is what PHPStan's `yes` means: `bool|null` is a `maybe` there and is not one here either.
+        if ($name === 'isBoolean' && $args === []) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a boolean-type test, which only the PHP target carries', $line);
+            }
+
+            return $this->negateUnless(
+                $tail === 'yes',
+                $this->context->backend->call('type_is_boolean', [$this->operand($this->resolve($inner->var, $line))]),
+            );
+        }
+
         if ($name === 'isInstanceOf' && count($args) === 1) {
             $literal = $this->classLiteral($args[0]->value, $line);
 

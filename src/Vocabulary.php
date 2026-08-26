@@ -9,6 +9,7 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\BinaryOp\Concat;
+use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure;
@@ -21,6 +22,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\ShellExec;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\StaticPropertyFetch;
+use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Name;
@@ -32,11 +34,16 @@ use PhpParser\Node\Stmt\ClassConst;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Const_;
+use PhpParser\Node\Stmt\Do_;
+use PhpParser\Node\Stmt\ElseIf_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Function_;
+use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Property;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\Trait_;
+use PhpParser\Node\Stmt\While_;
 use PHPStan\Node\CollectedDataNode;
 use PHPStan\Node\FileNode;
 use PHPStan\Node\InClassNode;
@@ -127,6 +134,20 @@ final class Vocabulary
         // PHP target only, like the other kinds whose Rust trait nothing in the corpus has pinned down.
         Empty_::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'EmptyConstruct', 'phpOnly' => true],
         ShellExec::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'ShellExecuteString', 'phpOnly' => true],
+        // The five statements and two expressions whose *condition* a rule asks about. Child positions probed
+        // rather than counted from php-parser: `do { } while ($c);` puts its condition fourth among the
+        // children and first among the `Expression` ones, which is the index {@see Support::nthExpression}
+        // uses, and a `?:` puts its condition first of three.
+        //
+        // php-parser's `ElseIf_` is Mago's `IfStatementBodyElseIfClause`, and the colon-delimited spelling is
+        // its own kind — both registered, because `if (..): elseif (..): endif;` is the same rule's business.
+        If_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'If', 'phpOnly' => true],
+        ElseIf_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'IfStatementBodyElseIfClause', 'phpOnly' => true],
+        While_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'While', 'phpOnly' => true],
+        Do_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'DoWhile', 'phpOnly' => true],
+        Switch_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'Switch', 'phpOnly' => true],
+        Ternary::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'Conditional', 'phpOnly' => true],
+        BooleanNot::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '!')", 'phpOnly' => true],
         // A variable, in the three shapes Mago gives one. `$x` is a `DirectVariable`; `$$n` is a
         // `NestedVariable` holding one, and `${expr}` an `IndirectVariable` — probed, with `$$n` producing a
         // `NestedVariable` and then a `DirectVariable` for the inner `$n`. All three registered, because the
@@ -189,6 +210,13 @@ final class Vocabulary
      * @var array<string, array<string, array{0: string, 1: string, 2?: string}>>
      */
     public const array FIELDS = [
+        'If' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        'IfStatementBodyElseIfClause' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        'While' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        'DoWhile' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        'Switch' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        'Conditional' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        'UnaryPrefix' => ['expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
         'MethodCall' => [
             'var' => ['node.object', 'expr', 'Support::nthExpression($context, $node, 0)'],
             'name' => ['&node.method', 'name-selector', 'Support::selector($context, {base})'],

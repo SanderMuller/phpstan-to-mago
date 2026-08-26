@@ -392,8 +392,8 @@ REFUSE  BooleanInBooleanAndRule
         needs: no PHP navigation for node.left (kind expr) on a BooleanAndNode node
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getRightScope()
 REFUSE  BooleanInBooleanNotRule
-        no hook mapping for node type PhpParser\Node\Expr\BooleanNot
-        needs: no PHP navigation for node.expr (kind expr) on a BooleanNot node
+        early return from a helper that is not a boolean literal
+        needs: early return from a helper that is not a boolean literal
 REFUSE  BooleanInBooleanOrRule
         no hook mapping for node type PHPStan\Node\BooleanOrNode
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getOperatorSigil()
@@ -401,21 +401,21 @@ REFUSE  BooleanInBooleanOrRule
         needs: no PHP navigation for node.left (kind expr) on a BooleanOrNode node
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getRightScope()
 REFUSE  BooleanInDoWhileConditionRule
-        no hook mapping for node type PhpParser\Node\Stmt\Do_
-        needs: no PHP navigation for node.cond (kind expr) on a Do_ node
+        early return from a helper that is not a boolean literal
+        needs: early return from a helper that is not a boolean literal
 REFUSE  BooleanInElseIfConditionRule
-        no hook mapping for node type PhpParser\Node\Stmt\ElseIf_
-        needs: no PHP navigation for node.cond (kind expr) on a ElseIf_ node
+        early return from a helper that is not a boolean literal
+        needs: early return from a helper that is not a boolean literal
 REFUSE  BooleanInIfConditionRule
-        no hook mapping for node type PhpParser\Node\Stmt\If_
-        needs: no PHP navigation for node.cond (kind expr) on a If_ node
+        early return from a helper that is not a boolean literal
+        needs: early return from a helper that is not a boolean literal
 REFUSE  BooleanInTernaryOperatorRule
-        no hook mapping for node type PhpParser\Node\Expr\Ternary
+        if statement that is not a single-statement guard
         needs: if statement that is not a single-statement guard
-        needs: no PHP navigation for node.cond (kind expr) on a Ternary node
+        needs: early return from a helper that is not a boolean literal
 REFUSE  BooleanInWhileConditionRule
-        no hook mapping for node type PhpParser\Node\Stmt\While_
-        needs: no PHP navigation for node.cond (kind expr) on a While_ node
+        early return from a helper that is not a boolean literal
+        needs: early return from a helper that is not a boolean literal
 REFUSE  ClosureUsesThisRule
         no mapping for ->static on a hook-node
         needs: condition outside the vocabulary: ->static
@@ -436,7 +436,7 @@ REFUSE  DisallowedLooseComparisonRule
         needs: guard body is neither `return []` nor `continue`, but Stmt_Return
         needs: message expression outside the vocabulary: Expr_Ternary
 REFUSE  DisallowedShortTernaryRule
-        no hook mapping for node type PhpParser\Node\Expr\Ternary
+        no mapping for ->if on a hook-node
         needs: null comparison against ->if, which resolved to a expr
 REFUSE  DynamicCallOnStaticMethodsCallableRule
         no hook mapping for node type PHPStan\Node\MethodCallableNode
@@ -455,8 +455,7 @@ REFUSE  IllegalConstructorStaticCallRule
         access path outside the vocabulary: ->getFunction()
         needs: access path outside the vocabulary: ->getFunction()
 REFUSE  MatchingTypeInSwitchCaseConditionRule
-        no hook mapping for node type PhpParser\Node\Stmt\Switch_
-        needs: no PHP navigation for node.cond (kind expr) on a Switch_ node
+        no mapping for ->cases on a hook-node
         needs: no iteration mapped for ->cases, which resolved to a expr
 REFUSE  OperandInArithmeticPostDecrementRule
         no hook mapping for node type PhpParser\Node\Expr\PostDec
