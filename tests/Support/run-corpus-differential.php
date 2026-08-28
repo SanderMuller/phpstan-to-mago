@@ -6,7 +6,7 @@ declare(strict_types=1);
  * The corpus differential, run against a consumer project.
  *
  *   php tests/Support/run-corpus-differential.php <consumer-root> [--threads=N] [--sandbox=DIR]
- *       [--paths=a,b] [--packages=vendor/one,vendor/two]
+ *       [--paths=a,b] [--packages=vendor/one,vendor/two] [--parameter=name=true]
  *
  * Prints the emission counts, the corpus size, and per identifier the agree / only-original / only-port
  * split. Writes nothing into the consumer, and nothing into this repository: the sandbox holds the
@@ -29,6 +29,11 @@ $paths = null;
 // `phpstan-phpunit` and `phpstan-strict-rules` — names them instead, because a package that is not read
 // contributes a silent zero rather than a measurement.
 $packages = null;
+// A container parameter forced to a value on *both* sides, for asking what a corpus would report at a
+// configuration it does not run. Two corpora that differ in a flag cannot answer whether that flag or
+// something else drives a difference between them; one corpus run twice can.
+/** @var array<string, bool> $overrides */
+$overrides = [];
 foreach ($arguments as $argument) {
     if (str_starts_with($argument, '--paths=')) {
         $paths = explode(',', substr($argument, 8));
@@ -38,6 +43,9 @@ foreach ($arguments as $argument) {
         $sandbox = substr($argument, 10);
     } elseif (str_starts_with($argument, '--packages=')) {
         $packages = explode(',', substr($argument, 11));
+    } elseif (str_starts_with($argument, '--parameter=')) {
+        [$name, $value] = array_pad(explode('=', substr($argument, 12), 2), 2, 'true');
+        $overrides[$name] = $value === 'true';
     } else {
         $consumer = rtrim($argument, '/');
     }
@@ -106,6 +114,7 @@ $differential = new CorpusDifferential(
     ],
     paths: $paths,
     excludes: $excludes,
+    overrides: $overrides,
 );
 
 $counts = $differential->emit();

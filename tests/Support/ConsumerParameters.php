@@ -46,6 +46,8 @@ final class ConsumerParameters
         private readonly string $consumerRoot,
         private readonly string $sandbox,
         private readonly Closure $capture,
+        /** @var array<string, bool> forced values, which win over what the consumer's own config resolves to */
+        private readonly array $overrides = [],
     ) {}
 
     /**
@@ -65,6 +67,12 @@ final class ConsumerParameters
         $dump = $this->dump();
         $arguments = [];
         foreach ($matches[1] as $parameter) {
+            if (array_key_exists($parameter, $this->overrides)) {
+                $arguments[] = $parameter . ': ' . ($this->overrides[$parameter] ? 'true' : 'false');
+
+                continue;
+            }
+
             // Anchored to the dump's own two-column indent so a key of the same name nested inside another
             // structure cannot answer for the top-level parameter the plugin actually reads.
             if (preg_match('/^    "' . preg_quote($parameter, '/') . '": (true|false),?$/m', $dump, $found) === 1) {

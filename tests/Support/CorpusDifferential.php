@@ -90,6 +90,13 @@ final class CorpusDifferential
         private readonly array $packages,
         private readonly array $paths,
         private readonly array $excludes = [],
+        /**
+         * Container parameters forced to a value on both sides, for asking what a corpus would report at a
+         * configuration it does not run.
+         *
+         * @var array<string, bool>
+         */
+        private readonly array $overrides = [],
     ) {}
 
     /**
@@ -391,6 +398,17 @@ final class CorpusDifferential
             // lists — 30 of 1160 — and the cap reads as a clean original. `!` overwrites the included value
             // rather than merging with it, the same way the two keys above do.
             '    errorFormat: json',
+            // The same forced values the plugins are constructed with, so an override changes both sides at
+            // once. Changing one alone would measure the port against a configuration the original is not
+            // running, which is the mistake the whole override exists to correct for.
+            ...array_map(
+                // No `!` on these, unlike the keys above: neon's replacing operator applies to arrays only,
+                // and on a scalar it fails the run with "Replacing operator is available only for arrays".
+                // A plain scalar assignment in the including file already wins over the included one.
+                static fn (string $name, bool $value): string => '    ' . $name . ': ' . ($value ? 'true' : 'false'),
+                array_keys($this->overrides),
+                array_values($this->overrides),
+            ),
             '    paths!:',
             ...$paths,
             '',
@@ -530,7 +548,7 @@ final class CorpusDifferential
 
     private function writeWorker(): void
     {
-        $consumer = new ConsumerParameters($this->consumerRoot, $this->sandbox, fn (array $command): string => $this->run($command, $this->consumerRoot));
+        $consumer = new ConsumerParameters($this->consumerRoot, $this->sandbox, fn (array $command): string => $this->run($command, $this->consumerRoot), $this->overrides);
         $plugins = [];
         foreach ($this->emitted as $rule) {
             $plugins[] = 'new \\Transpiled\\' . $rule['name'] . '(' . $consumer->argumentsFor($rule['name']) . ')';
