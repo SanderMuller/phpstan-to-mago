@@ -525,12 +525,18 @@ final class CorpusDifferential
         ];
     }
 
+    /** Why the consumer's parameter values could not be read, so a run says so instead of looking normal. */
+    public ?string $parameterFailure = null;
+
     private function writeWorker(): void
     {
+        $consumer = new ConsumerParameters($this->consumerRoot, $this->sandbox, fn (array $command): string => $this->run($command, $this->consumerRoot));
         $plugins = [];
         foreach ($this->emitted as $rule) {
-            $plugins[] = 'new \\Transpiled\\' . $rule['name'] . '()';
+            $plugins[] = 'new \\Transpiled\\' . $rule['name'] . '(' . $consumer->argumentsFor($rule['name']) . ')';
         }
+
+        $this->parameterFailure = $consumer->failure;
 
         file_put_contents($this->sandbox . '/worker.php', strtr(self::WORKER, [
             '{autoload}' => $this->repositoryRoot . '/vendor/autoload.php',

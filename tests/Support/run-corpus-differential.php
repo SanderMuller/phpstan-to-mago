@@ -117,6 +117,12 @@ echo "emitted: {$counts['emitted']}, refused: {$counts['refused']} (target: php)
 echo 'corpus: ', count($files), " files\n";
 echo 'identifiers under test: ', count($differential->identifiers()), "\n";
 
+if ($differential->parameterFailure !== null) {
+    echo 'WARNING: ', $differential->parameterFailure, "\n";
+    echo "  The plugins run at package defaults rather than this consumer's values, so a flag-sensitive\n";
+    echo "  rule is measured against a configuration the consumer does not run.\n";
+}
+
 $absent = $differential->packagesNotInstalled();
 if ($absent !== []) {
     echo 'rule packages this consumer does not install, so nothing from them was measured: ',
