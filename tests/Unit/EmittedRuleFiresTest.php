@@ -252,7 +252,18 @@ final class EmittedRuleFiresTest extends TestCase
         // both refuse on `flagRecord()` being assigned inside a loop, and their pairs have been running
         // nothing since. Kept rather than deleted — they are the proof material for the day that refusal
         // closes.
-        $expected = ['CombinedMethodCallRule', 'PositionalFlagArgumentNullsafeMethodCallRule'];
+        //
+        // The other two are orphaned on purpose and were written before the rule that would use them. Both
+        // families route through `RuleLevelHelper::findTypeToCheck()`, which is being ported into the
+        // runtime; a pair validated against real PHPStan first is what stops the port from being measured
+        // against material written to agree with it. They leave this list by emitting, not by being
+        // removed.
+        $expected = [
+            'BooleanInIfConditionRule',
+            'CombinedMethodCallRule',
+            'OperandsInArithmeticDivisionRule',
+            'PositionalFlagArgumentNullsafeMethodCallRule',
+        ];
         sort($orphaned);
 
         $this->assertSame(
