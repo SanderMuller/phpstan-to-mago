@@ -280,7 +280,8 @@ because it is one you would trust.
 a survey that counts a rule the emitting run refuses is the disagreement the target banner exists to
 prevent. The check runs *after* translating, not before: checking first was tried and buried 55 of phpat's
 61 refusals behind a collision none of them would have reached, throwing away the one thing a survey
-produces. Renaming on collision was the other option and was rejected: it would make a rule's output name
+produces — a guard that masks the diagnosis is its own silent zero, and it is the harder kind to see,
+because the output looks like a refusal rather than like nothing. Renaming on collision was the other option and was rejected: it would make a rule's output name
 depend on which siblings it was emitted beside. Mutation-checked, and the mutant prints the bug itself —
 `EMIT NamedConstantRule` twice, `emitted: 2`, one file on disk.
 
