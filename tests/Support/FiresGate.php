@@ -173,12 +173,41 @@ final readonly class FiresGate
      * @var array<string, array<string, mixed>>
      */
     private const array PARAMETERS = [
+        // `checkThisOnly` defaults true and turns off at level 2, so at this gate's level 0 the original
+        // reports nothing for any subject that is not `$this` -- the whole boolean-condition family. The
+        // emitted plugin carries the same flag as a constructor parameter at the same default, so both sides
+        // are set here rather than one of them being left to a default that differs.
+        //
+        'BooleanInIfConditionRule' => ['checkThisOnly' => false],
+        'BooleanInElseIfConditionRule' => ['checkThisOnly' => false],
+        'BooleanInBooleanNotRule' => ['checkThisOnly' => false],
+        'BooleanInWhileConditionRule' => ['checkThisOnly' => false],
+        'BooleanInDoWhileConditionRule' => ['checkThisOnly' => false],
         'ClassLikeCognitiveComplexityRule' => [
             'cognitive_complexity' => ['class' => 3],
         ],
         'FunctionLikeCognitiveComplexityRule' => [
             'cognitive_complexity' => ['function' => 2],
         ],
+    ];
+
+    /**
+     * Neon parameters that decide whether PHPStan *registers* a rule, per rule.
+     *
+     * Kept apart from {@see PARAMETERS} because those reach the plugin too -- a value configured on one side
+     * only is not a comparison, so that map deliberately feeds both. These reach neither: they are the
+     * package's own registration switches, and the plugin has no property to put them in. Passing them
+     * through the same path handed the generated constructor an argument it does not declare.
+     *
+     * `booleansInLoopConditions` is tagged `[%strictRules.allRules%, %featureToggles.bleedingEdge%]`, so the
+     * two loop rules are not registered at all without bleeding edge, unlike their five siblings. Named per
+     * rule rather than toggling bleeding edge globally, which would quietly change every other rule here.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    private const array REGISTRATION = [
+        'BooleanInWhileConditionRule' => ['strictRules' => ['booleansInLoopConditions' => true]],
+        'BooleanInDoWhileConditionRule' => ['strictRules' => ['booleansInLoopConditions' => true]],
     ];
 
     private const array SERVICES = [
@@ -368,13 +397,24 @@ final readonly class FiresGate
      */
     private function parameters(string $ruleFile): string
     {
-        $parameters = self::PARAMETERS[basename($ruleFile, '.php')] ?? [];
+        $parameters = (self::PARAMETERS[basename($ruleFile, '.php')] ?? [])
+            + (self::REGISTRATION[basename($ruleFile, '.php')] ?? []);
         if ($parameters === []) {
             return '';
         }
 
         $lines = [];
         foreach ($parameters as $root => $values) {
+            // A scalar is a top-level parameter rather than a tree. `checkThisOnly` is one, and it has to be
+            // settable: it defaults *true* and turns off at level 2, so at the level 0 this gate runs, PHPStan
+            // silences every rule reading `RuleLevelHelper` for a subject that is not `$this`. Both sides
+            // would then report nothing, which is the agreement-on-zero this gate exists to refuse.
+            if (! is_array($values)) {
+                $lines[] = '    ' . $root . ': ' . json_encode($values, JSON_THROW_ON_ERROR);
+
+                continue;
+            }
+
             $lines[] = '    ' . $root . ':';
             foreach ($values as $key => $value) {
                 $lines[] = '        ' . $key . ': ' . json_encode($value, JSON_THROW_ON_ERROR);
@@ -404,6 +444,7 @@ final readonly class FiresGate
         // naming a parameter override suppresses the argument list here — the plugin still gets it, because
         // that is the shape the transpiler gave it.
         $arguments = isset(self::PARAMETERS[basename($ruleFile, '.php')])
+            || isset(self::REGISTRATION[basename($ruleFile, '.php')])
             ? []
             : $this->configuredValues($ruleFile);
         $services = self::SERVICES[basename($ruleFile, '.php')] ?? [];
@@ -465,7 +506,14 @@ final readonly class FiresGate
         // — the alternative was a second map to keep in step, and a threshold configured on one side only is
         // exactly how this pair first failed, with the plugin still carrying the package default of 40.
         $supplied = self::CONFIGURED[basename($ruleFile, '.php')] ?? [];
-        foreach (self::PARAMETERS[basename($ruleFile, '.php')] ?? [] as $values) {
+        foreach (self::PARAMETERS[basename($ruleFile, '.php')] ?? [] as $root => $values) {
+            // A top-level scalar names the property itself; a tree names it in its last segment.
+            if (! is_array($values)) {
+                $supplied[$root] = $values;
+
+                continue;
+            }
+
             foreach ($values as $key => $value) {
                 $supplied[lcfirst(str_replace(' ', '', ucwords(str_replace('_', ' ', $key))))] = $value;
             }

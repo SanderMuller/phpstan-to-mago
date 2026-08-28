@@ -149,7 +149,7 @@ final class TracksUpstreamDriftTest extends TestCase
             'statement does not; a rule blocked early shows less than it needs.',
             '',
             'It is also a lower bound on **translation**, which is a different denominator from **feasibility**.',
-            'A refusal says this rule\'s body cannot be translated statement by statement. It does not say the',
+            "A refusal says this rule's body cannot be translated statement by statement. It does not say the",
             'rule cannot run on mago: a PHPStan helper ported into the runtime, or a rule expressed through a',
             'question mago answers directly, moves a rule without changing a line of its body. Both denominators',
             'have already been quoted as the other one here — a synthesised-node call was read as a permanent',

@@ -2057,21 +2057,53 @@ final readonly class Translator
             return null;
         }
 
-        $arguments = [$entry['takes'] === 'context' ? '$context' : '$context->source'];
+        $arguments = match ($entry['takes']) {
+            'context' => ['$context'],
+            'none' => [],
+            default => ['$context->source'],
+        };
         $args = $expr->getArgs();
         foreach ($entry['arguments'] as $position) {
-            $argument = $args[$position] ?? null;
-            if (! $argument instanceof Arg) {
-                throw new Refusal("{$method}() has no argument {$position} for its runtime helper", $line);
-            }
+            $arguments[] = $this->operand($this->resolve($this->collaboratorArgument($args, $position, $method, $line), $line));
+        }
 
-            $arguments[] = $this->operand($this->resolve($argument->value, $line));
+        // An argument the helper reads as a *type* rather than as the expression itself. Asked for by node
+        // through `ExpressionTypes`, the same route `$scope->getType(<expr>)` takes, so the two cannot drift.
+        foreach ($entry['types'] ?? [] as $position) {
+            $this->context->usesExpressionTypes = true;
+            $of = $this->resolve($this->collaboratorArgument($args, $position, $method, $line), $line);
+            $arguments[] = 'Support::expressionType($context, ' . $this->operand($of) . ')';
+            $this->context->runtimeHelpers['Support'] = true;
+        }
+
+        // A container parameter the ported helper's answer depends on. Declared as a configured value so the
+        // emitted plugin takes it in its constructor at PHPStan's own default, which is what lets a consumer
+        // pass the value its own project runs rather than inherit whichever corpus was measured last.
+        foreach ($entry['flags'] ?? [] as $flag) {
+            $this->context->configured[$flag] = ['parameter' => $flag, 'kind' => 'config-bool', 'default' => false];
+            $this->context->usesConfiguration = true;
+            $arguments[] = '$this->' . $flag;
         }
 
         $call = $entry['helper'] . '(' . implode(', ', $arguments) . ')';
         $this->context->runtimeHelpers[explode('::', $entry['helper'])[0]] = true;
 
         return ['rust' => self::PHP_ONLY, 'kind' => $entry['kind'], 'php' => $call];
+    }
+
+    /**
+     * One argument of a collaborator call, refused by position rather than resolved to something else.
+     *
+     * @param array<Arg> $args
+     */
+    private function collaboratorArgument(array $args, int $position, string $method, int $line): Expr
+    {
+        $argument = $args[$position] ?? null;
+        if (! $argument instanceof Arg) {
+            throw new Refusal("{$method}() has no argument {$position} for its runtime helper", $line);
+        }
+
+        return $argument->value;
     }
 
     /** Whether an expression is the bare `$this`. */
@@ -7038,6 +7070,15 @@ final readonly class Translator
         $configured = $this->resolveValueObjectGetter($expr, $method, $expr->getStartLine());
         if ($configured !== null) {
             return $this->operand($configured);
+        }
+
+        // A collaborator call the runtime answers, asked before inlining rather than after. A helper the
+        // vocabulary has ported is not one to inline: `passesAsBoolean()` reads as a condition, so it arrives
+        // here rather than through the value path, and inlining it refused inside the helper's own body on
+        // the early return this port exists to remove.
+        $ported = $this->resolveCollaboratorCall($expr, $expr->getStartLine());
+        if ($ported !== null) {
+            return $this->operand($ported);
         }
 
         // A collaborator that does not declare this method is not a collaborator for this call, and saying so

@@ -458,9 +458,14 @@ final class Vocabulary
      * `context` for one that also asks the analysis something. `arguments` are the call-site positions to
      * forward, because a helper needs what the original's method needed *of the tree* and not its `Scope` —
      * forwarding all of them refused on `unknown local $scope`, which is the analysis object the helper exists
-     * to avoid needing.
+     * to avoid needing. `none` is for a helper whose first argument is a call-site one.
      *
-     * @var array<string, array{helper: string, kind: string, takes: string, arguments: list<int>}>
+     * `types` are call-site positions forwarded as the *inferred type* of the expression rather than the
+     * expression itself, and `flags` are container parameters the helper's answer depends on, which become
+     * constructor parameters on the emitted plugin.
+     *
+     * @var array<string, array{helper: string, kind: string, takes: string, arguments: list<int>,
+     *      types?: list<int>, flags?: list<string>}>
      */
     public const array COLLABORATOR_CALLS = [
         'TomasVotruba\CognitiveComplexity\AstCognitiveComplexityAnalyzer::analyzeFunctionLike' => [
@@ -480,6 +485,24 @@ final class Vocabulary
             'kind' => 'bytes',
             'takes' => 'context',
             'arguments' => [0],
+        ],
+
+        // PHPStan's own rule-level machinery, ported into the runtime rather than translated: the call this
+        // stands in for reaches `RuleLevelHelper::findTypeToCheck()`, which takes a criteria *closure*, and a
+        // closure over PHPStan `Type` objects is not something this vocabulary can carry. `BooleanRuleHelper`
+        // is one level out and hardcodes its callback, which is what makes it the smallest portable unit.
+        //
+        // `types` names argument positions passed as the *inferred type* of the expression rather than the
+        // expression, since that is what the ported helper reads. `flags` names container parameters whose
+        // value changes the answer: they become constructor parameters on the emitted plugin, never baked,
+        // because hihaho runs `checkNullables: false` and Shopware `true` and one set cannot serve both.
+        'PHPStan\Rules\BooleansInConditions\BooleanRuleHelper::passesAsBoolean' => [
+            'helper' => 'RuleLevel::passesAsBoolean',
+            'kind' => 'bool',
+            'takes' => 'none',
+            'arguments' => [],
+            'types' => [1],
+            'flags' => ['checkNullables', 'checkUnionTypes', 'checkThisOnly'],
         ],
     ];
 

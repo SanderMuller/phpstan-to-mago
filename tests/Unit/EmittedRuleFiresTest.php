@@ -253,13 +253,11 @@ final class EmittedRuleFiresTest extends TestCase
         // nothing since. Kept rather than deleted — they are the proof material for the day that refusal
         // closes.
         //
-        // The other two are orphaned on purpose and were written before the rule that would use them. Both
-        // families route through `RuleLevelHelper::findTypeToCheck()`, which is being ported into the
-        // runtime; a pair validated against real PHPStan first is what stops the port from being measured
-        // against material written to agree with it. They leave this list by emitting, not by being
-        // removed.
+        // The third was written before the rule that would use it, and is still waiting: the arithmetic
+        // family needs the operand-binding shape as well as the ported helper. Its sibling
+        // `BooleanInIfConditionRule` was in this list one commit ago and left it the way the comment above
+        // promised -- by emitting.
         $expected = [
-            'BooleanInIfConditionRule',
             'CombinedMethodCallRule',
             'OperandsInArithmeticDivisionRule',
             'PositionalFlagArgumentNullsafeMethodCallRule',

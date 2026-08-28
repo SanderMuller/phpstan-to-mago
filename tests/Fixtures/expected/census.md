@@ -383,7 +383,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 5 of 45 the package registers emit, 0 covered by the engine, 40 refuse, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 10 of 45 the package registers emit, 0 covered by the engine, 35 refuse, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
@@ -399,31 +399,22 @@ REFUSE  BooleanInBooleanAndRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
         needs: no PHP navigation for node.left (kind expr) on a BooleanAndNode node
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getRightScope()
-REFUSE  BooleanInBooleanNotRule
-        early return from a helper that is not a boolean literal
-        needs: early return from a helper that is not a boolean literal
+        needs: no PHP navigation for node.right (kind expr) on a BooleanAndNode node
+EMIT    BooleanInBooleanNotRule
 REFUSE  BooleanInBooleanOrRule
         no hook mapping for node type PHPStan\Node\BooleanOrNode
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getOperatorSigil()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
         needs: no PHP navigation for node.left (kind expr) on a BooleanOrNode node
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getRightScope()
-REFUSE  BooleanInDoWhileConditionRule
-        early return from a helper that is not a boolean literal
-        needs: early return from a helper that is not a boolean literal
-REFUSE  BooleanInElseIfConditionRule
-        early return from a helper that is not a boolean literal
-        needs: early return from a helper that is not a boolean literal
-REFUSE  BooleanInIfConditionRule
-        early return from a helper that is not a boolean literal
-        needs: early return from a helper that is not a boolean literal
+        needs: no PHP navigation for node.right (kind expr) on a BooleanOrNode node
+EMIT    BooleanInDoWhileConditionRule
+EMIT    BooleanInElseIfConditionRule
+EMIT    BooleanInIfConditionRule
 REFUSE  BooleanInTernaryOperatorRule
         if statement that is not a single-statement guard
         needs: if statement that is not a single-statement guard
-        needs: early return from a helper that is not a boolean literal
-REFUSE  BooleanInWhileConditionRule
-        early return from a helper that is not a boolean literal
-        needs: early return from a helper that is not a boolean literal
+EMIT    BooleanInWhileConditionRule
 REFUSE  ClosureUsesThisRule
         no mapping for ->static on a hook-node
         needs: condition outside the vocabulary: ->static
