@@ -16,6 +16,14 @@ The list is a **lower bound**. A statement that refuses is stepped over and the 
 translated, so obstacles in different statements all appear and a second one inside a single
 statement does not; a rule blocked early shows less than it needs.
 
+It is also a lower bound on **translation**, which is a different denominator from **feasibility**.
+A refusal says this rule's body cannot be translated statement by statement. It does not say the
+rule cannot run on mago: a PHPStan helper ported into the runtime, or a rule expressed through a
+question mago answers directly, moves a rule without changing a line of its body. Both denominators
+have already been quoted as the other one here — a synthesised-node call was read as a permanent
+ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
+say which one a number is.
+
 ## symplify/phpstan-rules — 35 of 88 the package registers emit, 1 covered by the engine, 52 refuse, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
