@@ -285,6 +285,62 @@ because the output looks like a refusal rather than like nothing. Renaming on co
 depend on which siblings it was emitted beside. Mutation-checked, and the mutant prints the bug itself —
 `EMIT NamedConstantRule` twice, `emitted: 2`, one file on disk.
 
+#### A zero that came from measuring the wrong configuration
+
+The boolean-condition family was the first thing to reach a corpus through a *ported* PHPStan helper rather
+than a translated one, and its first two differential runs both reported **only-port 0**. Both were wrong.
+
+An emitted plugin carries a container parameter as a constructor parameter at the package default, and the
+differential constructed every plugin with no arguments. So the port ran at PHPStan's defaults against
+projects that do not use them — hihaho at `checkUnionTypes: false` against a level-7 project where it is
+true. That makes the port *over-silent*, and an over-silent port cannot produce a false positive. The zero
+was structural.
+
+With the consumer's own values the same corpus reads **agree 488, only-original 122, only-port 42**.
+
+Two things about how that was found are worth more than the number. The first fix pointed the parameter
+read at the differential's sandbox config, which does not exist yet when the worker is written; it failed,
+fell back to package defaults, and the run reported figures *identical to the previous run*. Identical
+figures were the only reason it was caught — a silent fallback and a flag that changes nothing look exactly
+alike. A run now prints why it fell back, and immediately earned it by naming a consumer whose own config
+includes a neon file missing from its vendor directory.
+
+The second is that `dump-parameters --json` emits the whole container, including the process environment,
+and on a real project that document does not decode: braces balance, the bytes are valid UTF-8, there are
+no control characters, and `json_decode` still answers `Syntax error`. Six named booleans do not need the
+other 90kB to parse, so they are read by name from the text.
+
+#### Where a faithful port and a real engine still disagree
+
+The 42 are not a translation defect, and the difference between saying so and proving it is a control.
+
+Read from mago's own output at one site rather than inferred from the totals: `! app()->environment('testing',
+'local')` is `bool|string` to mago and `bool` to PHPStan, which carries the framework extension that types
+that method by argument count. The port reports a union that is genuinely not a boolean; the two engines
+disagree about the type, not about the rule.
+
+The control is a corpus without those stubs. On Shopware — Symfony rather than Laravel, 9199 files, three
+times the size and five times the findings — the same five rules read **agree 2671, only-original 441,
+only-port 15**. That is 0.56% against hihaho's 7.9%, and the surviving 15 are the same shape one framework
+along: `$container->getParameter()` is a six-member union that `phpstan-symfony` narrows from the compiled
+container and mago does not.
+
+A cheaper control was tried first and was worthless: `package-boost-php` has the rule package installed but
+is nine files, and neither side reported anything. Agreement on nothing proves nothing, which is why the
+run that mattered was the large one.
+
+#### The guess that measurement rejected
+
+Between those two runs, `never` looked like mago's answer where PHPStan says `ErrorType`, so passing on it
+should have removed the false positives. It removed none of them, and turned two agreements into
+under-reports. The inference came from two message mismatches rather than from the failing sites; the sites
+it silenced were not the sites it was aimed at. Reverted.
+
+Four conclusions from this one instrument were wrong on first pass — the zero, "the flags change nothing",
+`never`, and the nine-file control. Each was corrected by running one more command rather than by thinking
+harder about the last output. The one inference that survived came from pointing the tool at a single site
+and reading what it said there.
+
 #### And the same shape at home
 
 Chasing that one exposed it in this repository. The census said it spoke for "the rule packages this
