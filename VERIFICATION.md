@@ -319,15 +319,41 @@ Read from mago's own output at one site rather than inferred from the totals: `!
 that method by argument count. The port reports a union that is genuinely not a boolean; the two engines
 disagree about the type, not about the rule.
 
-The control is a corpus without those stubs. On Shopware — Symfony rather than Laravel, 9199 files, three
-times the size and five times the findings — the same five rules read **agree 2671, only-original 441,
-only-port 15**. That is 0.56% against hihaho's 7.9%, and the surviving 15 are the same shape one framework
-along: `$container->getParameter()` is a six-member union that `phpstan-symfony` narrows from the compiled
-container and mago does not.
+The first control was a corpus without those stubs: Shopware, Symfony rather than Laravel, 9199 files,
+reading **agree 2671, only-original 441, only-port 15** — 0.56% against hihaho's 7.9%. That comparison is
+**confounded and does not support the conclusion**, which a peer session caught. hihaho runs level 7 and
+Shopware level 8, so the two corpora differ in `checkNullables` as well as in framework, and nullable
+shapes are the dominant condition type on hihaho: of 273 non-boolean conditions, `bool|null` is the largest
+bucket and around 79 are `SomeModel|null`. At level 7 PHPStan strips null and stays silent; at level 8 it
+reports those itself. The gap could have been either cause.
 
-A cheaper control was tried first and was worthless: `package-boost-php` has the rule package installed but
-is nine files, and neither side reported anything. Agreement on nothing proves nothing, which is why the
-run that mattered was the large one.
+The experiment that separates them varies one thing: the same corpus, the same code, `checkNullables`
+forced true on **both** sides. That needed a `--parameter=` override, because changing one side alone
+measures the port against a configuration the original is not running.
+
+    hihaho, checkNullables false -> true
+    agree 488 -> 622    only-original 122 -> 138    only-port 42 -> 42
+
+The flag moves agreements and under-reports and does not touch the false positives. Nullability is not the
+driver.
+
+What the 42 are was then read off mago's own output at every one of them rather than sampled: **33 are
+`bool|string` and 9 are `bool|int|float|string|array|null`**. Two shapes, 42 of 42, both Laravel accessors
+whose declared union PHPStan narrows through a larastan extension and mago takes at face value. The peer's
+count of five `environment()` calls in conditions was right and bounded the wrong thing — the mechanism is
+the class of extension-narrowed accessor, not that one method.
+
+Corroborated from the other side, after the peer session's own count was corrected: a grep for these
+accessors inside a condition had read `5`, because `[^)]*` stops at the first `)` and every real instance
+of the idiom has a nested call before the accessor — `! app()->environment('production', 'local')` cannot
+match it. Allowing nested parentheses gives 15 `environment(` and 19 `config(`, the same order as the 42
+enumerated here and the same two shapes. The counts are line-based and overlap where one condition uses
+both, so they corroborate rather than reconcile.
+
+Two cheaper controls were tried first and neither settled anything. `package-boost-php` has the rule
+package installed but is nine files, and neither side reported anything; agreement on nothing proves
+nothing. And `rector-src` does not ship the package at all, which the differential refused rather than
+comparing an empty set.
 
 #### The guess that measurement rejected
 
