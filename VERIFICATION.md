@@ -48,6 +48,30 @@ A fatal in the probe worker is worth knowing about, because it does not look lik
 a property some atomic class does not have, the worker died after 23 calls, and the output read as "the hook
 barely fires" — 23 calls where a later run counted 223571. The runner refuses an empty result for that reason.
 
+## Sizing the trinary
+
+PHPStan's type queries answer three ways — yes, no, maybe — and the port has one boolean. Whether that
+matters is two separate questions, and both are measurable from the render census's 243822 inferred types.
+
+**`->no()` collapsed to `! ->yes()` is wrong, and `Maybe` is reachable.** 4.23 % of those types would make an
+`isNull()` a `Maybe` and 0.88 % an `isBoolean()` — partly this and partly not, where PHPStan answers neither
+yes nor no. So `->no()` is refused by name rather than emitted. It costs nothing today: of the 93 trinary
+tails in the seven installed packages **86 are `->yes()`, six `->no()`, one `->maybe()`**, and no *emitting*
+rule uses a `->no()`. The exposure is entirely latent, which is the point of refusing it.
+
+**`->yes()` is narrower than PHPStan, and rarely.** The port answers a type query through
+`soleObjectClass()`, which will not reduce a union — so `isInstanceOf(..)->yes()` on a union of two
+subclasses is `yes` in PHPStan and false here. Narrower rather than wider, which is the safe direction, and
+the frequency is **0.31 %**: 750 of the 243822 types are a union of two or more named objects. 69.3 % are a
+single named object, which reduces, and a further 1.47 % are one object plus `null`.
+
+That 0.31 % is corroborated by the one original-only finding on `league/commonmark`, which is exactly this
+shape — `UniqueSlugNormalizer|UniqueSlugNormalizerInterface` — and is one site in a 302-file corpus.
+
+Modelling the trinary properly is therefore a correctness guard rather than a coverage unlock. It blocks
+nothing today, and the two divergences it would close are one that is refused and one that is 0.31 % and in
+the safe direction.
+
 ## Corpus differentials
 
 
