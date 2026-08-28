@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Runtime;
 
 use Mago\Sdk\Analyzer\Type;
+use Mago\Sdk\Analyzer\Type\AnyObjectType;
 use Mago\Sdk\Analyzer\Type\MixedType;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
 use Mago\Sdk\Analyzer\Type\ScalarType;
@@ -43,9 +44,6 @@ use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
  *   position. Dead by measurement, so re-measure it when the corpus changes.
  * - **The explicit- and implicit-mixed branches inside `findTypeToCheck`.** Reachable only at levels 9 and
  *   10. Dead by configuration.
- * - **The object-with-no-class-names branch.** Reachable only where `checkUnionTypes` is false, which is
- *   levels 6 and below. Dead by configuration -- and *not* dead in general: `phpstan-strict-rules`
- *   registers through its own config, so a consumer can run these families at level 5.
  *
  * ## Two divergences, both stated rather than discovered
  *
@@ -92,9 +90,16 @@ final class RuleLevel
             return true;
         }
 
+        // `ErrorType` is a *pass*, not a failure: `passesAsBoolean` returns true on it, so every branch that
+        // answers it has to silence the rule rather than report. Returning false here instead was an
+        // inversion that no test caught until a bare `object` reached one of those branches, because the
+        // others were shadowed -- mixed by the check above, and an all-null subject by being rare.
         $found = self::findTypeToCheck($type, $checkNullables, $checkUnionTypes);
+        if (! $found instanceof Type) {
+            return true;
+        }
 
-        return $found instanceof Type && Types::typeIsBoolean($found);
+        return Types::typeIsBoolean($found);
     }
 
     /**
@@ -104,14 +109,24 @@ final class RuleLevel
      */
     private static function findTypeToCheck(Type $type, bool $checkNullables, bool $checkUnionTypes): ?Type
     {
-        if (! $checkNullables) {
+        // `!$type->isNull()->yes()` guards PHPStan's own removal, so a subject that *is* null keeps its type
+        // and reports. Stripping unconditionally silenced it instead -- an under-report measured against a
+        // real run, where PHPStan reports `null given` at level 7.
+        if (! $checkNullables && ! self::isNullOnly($type)) {
             $type = self::withoutNull($type);
-            if (! $type instanceof Type) {
-                return null;
-            }
         }
 
         if (self::isMixed($type)) {
+            return null;
+        }
+
+        // A bare `object` with no class name behind it. PHPStan answers `ErrorType` here, so it stays silent
+        // below level 7 and reports from 7 up -- measured on a real run at every level from 0 to 10, because
+        // this branch had been written down as dead-by-configuration and it is not. Without it the port
+        // reports where PHPStan is quiet, which is the direction that ships a finding nobody can act on, and
+        // `phpstan-strict-rules` registers through its own config so a consumer can run these families at
+        // level 5.
+        if (! $checkUnionTypes && self::isBareObject($type)) {
             return null;
         }
 
@@ -142,8 +157,20 @@ final class RuleLevel
         return $kept === [] ? $type : Type::fromAtomics(...$kept);
     }
 
-    /** The type with its null member removed, or null where null was all of it. */
-    private static function withoutNull(Type $type): ?Type
+    /** Whether null is the whole type, which is what stops PHPStan removing it. */
+    private static function isNullOnly(Type $type): bool
+    {
+        foreach ($type->atomicTypes as $atomic) {
+            if (! $atomic instanceof SimpleAtomicType || $atomic->kind !== SimpleAtomicTypeKind::Null) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** The type with its null member removed. Never called where null is all of it. */
+    private static function withoutNull(Type $type): Type
     {
         $kept = [];
         foreach ($type->atomicTypes as $atomic) {
@@ -154,7 +181,19 @@ final class RuleLevel
             $kept[] = $atomic;
         }
 
-        return $kept === [] ? null : Type::fromAtomics(...$kept);
+        return Type::fromAtomics(...$kept);
+    }
+
+    /** Every member an object, and none of them named -- PHPStan's `isObject()->yes()` with no class names. */
+    private static function isBareObject(Type $type): bool
+    {
+        foreach ($type->atomicTypes as $atomic) {
+            if (! $atomic instanceof AnyObjectType) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static function isThis(Type $type): bool

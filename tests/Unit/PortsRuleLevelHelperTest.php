@@ -92,6 +92,31 @@ final class PortsRuleLevelHelperTest extends TestCase
         $this->assertFalse(RuleLevel::passesAsBoolean(Type::string(), true, true, false), 'levels 2+');
     }
 
+    /**
+     * A bare `object` is silent below level 7 and reports from 7 up.
+     *
+     * Measured on a real PHPStan run at every level from 0 to 10, because this branch had been written down
+     * as dead-by-configuration on the same reasoning that was wrong about `checkThisOnly`. Without it the
+     * port reports where PHPStan is quiet, and `phpstan-strict-rules` registers through its own config, so
+     * a consumer can reach that configuration at level 5.
+     */
+    public function test_a_bare_object_follows_check_union_types(): void
+    {
+        $this->assertTrue(RuleLevel::passesAsBoolean(Type::object(), false, false, false), 'levels 0-6');
+        $this->assertFalse(RuleLevel::passesAsBoolean(Type::object(), false, true, false), 'levels 7+');
+    }
+
+    /**
+     * A subject that *is* null keeps its type and reports.
+     *
+     * PHPStan guards its own null removal with `!$type->isNull()->yes()`, so the strip does not apply here.
+     * Stripping unconditionally silenced the case; measured against a real run, which reports `null given`.
+     */
+    public function test_an_all_null_subject_still_reports(): void
+    {
+        $this->assertFalse(RuleLevel::passesAsBoolean(Type::null(), false, true, false));
+    }
+
     public function test_an_absent_type_says_nothing(): void
     {
         $this->assertTrue(RuleLevel::passesAsBoolean(null, true, true, false));
