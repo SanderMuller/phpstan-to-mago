@@ -41,6 +41,36 @@ final class AccountsForSuppressionsTest extends TestCase
         $this->assertTrue($this->suppressions()->silences($site, 'hihaho.validation.noUnsafeRequestData'));
     }
 
+    /**
+     * The `-line` form, which names no identifier and silences the line it sits on.
+     *
+     * Found on Shopware: three `method.dynamicName` sites read as port-only, where PHPStan reports them too
+     * and the consumer had written the annotation in a trailing block comment after the call. A false
+     * only-port entry says the port is too wide when the two engines agreed, and buries the narrower
+     * direction this differential exists to catch.
+     */
+    public function test_a_trailing_line_annotation_naming_nothing_silences_the_line(): void
+    {
+        $site = $this->write([
+            '<?php',
+            '$x = $object->$getter(); /* ' . $this->annotation() . '-line */',
+        ], 2);
+
+        $this->assertTrue($this->suppressions()->silences($site, 'method.dynamicName'));
+    }
+
+    /** And it silences only its own line, so the one below is still a real disagreement. */
+    public function test_a_trailing_line_annotation_does_not_reach_the_next_line(): void
+    {
+        $site = $this->write([
+            '<?php',
+            '$a = $object->$getter(); /* ' . $this->annotation() . '-line */',
+            '$b = $object->$setter();',
+        ], 3);
+
+        $this->assertFalse($this->suppressions()->silences($site, 'method.dynamicName'));
+    }
+
     public function test_a_docblock_annotation_above_the_line_silences_it(): void
     {
         $site = $this->write([

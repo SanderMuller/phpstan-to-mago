@@ -68,6 +68,18 @@ final readonly class Suppressions
         $lines = $this->linesAbove($site);
 
         foreach ($lines as $offset => $text) {
+            // The `-line` form names nothing and silences the line it sits on, which is what the suffix means.
+            // Missing it read three sites on Shopware as port-only where PHPStan reports them too and the
+            // consumer had written the annotation in a trailing block comment after the call — the
+            // identifier-matching branch below cannot see those, because there is no identifier to match.
+            //
+            // Spelled through {@see annotation()} here as everywhere else in this file: writing it out made
+            // PHPStan read this comment as a real annotation on this line, and the run failed with
+            // `ignore.unmatchedLine` — inside the code that exists to understand those annotations.
+            if ($offset === 0 && str_contains($text, $this->annotation() . '-line')) {
+                return true;
+            }
+
             if ($offset > 0 && $this->isBareNextLine($text)) {
                 return true;
             }
