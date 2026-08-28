@@ -1230,9 +1230,9 @@ PHP;
     /**
      * The node type a rule registers for, from the rule itself or from what it inherits.
      *
-     * The inherited half is not decoration. `phpat/phpat` writes all 59 of its rules as a two-line class —
+     * The inherited half is not decoration. `phpat/phpat` writes 57 of its 59 rules as a two-line class —
      * `extends ShouldNotDepend implements Rule`, plus a `use` for an extractor — and declares `getNodeType()`
-     * in none of them. Read from the rule's own methods alone, every one of them refused as though it had no
+     * in none of them. The other two state even less: no `implements` clause either. Read from the rule's own methods alone, every one of them refused as though it had no
      * node type at all, which is a refusal that names the wrong thing about the rule.
      *
      * `Hierarchy::declaring()` is the same walker a static helper reference already resolves through, so a

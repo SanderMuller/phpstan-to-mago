@@ -83,7 +83,7 @@ final class RulePaths
                 continue;
             }
 
-            if (self::declaresNodeType($class) || self::implementsRule($class, $uses)) {
+            if (self::declaresNodeType($class) || self::implementsRule($class, $uses) || self::inheritsNodeType($class, $uses, $file)) {
                 return true;
             }
         }
@@ -95,9 +95,11 @@ final class RulePaths
      * Whether a concrete class implements PHPStan's `Rule` without declaring `getNodeType()` itself.
      *
      * A rule may inherit that method from an abstract base and get the rest of its behaviour from a trait.
-     * `phpat/phpat` writes every one of its 61 rules that way — a two-line class, `extends ShouldNotDepend
+     * `phpat/phpat` writes 57 of its 59 rules that way — a two-line class, `extends ShouldNotDepend
      * implements Rule`, with a `use` for the extractor — and the walk found none of them. A package that is
      * installed and never read contributes a silent zero, which is the shape this whole tool exists to refuse.
+     *
+     * The other two carry no `implements` clause at all; {@see inheritsNodeType()} is what reaches those.
      *
      * Resolved through the file's imports rather than matched on the short name: `Rule` is a common enough
      * interface name that a package implementing its own would otherwise be walked as a rule package.
@@ -114,6 +116,29 @@ final class RulePaths
         }
 
         return false;
+    }
+
+    /**
+     * Whether something in the hierarchy declares `getNodeType()`, when the class itself says nothing.
+     *
+     * Two of phpat's 59 rules — `HasOnlyOnePublicMethodRule` and `HasOnlyOnePublicMethodNamedRule` — are a
+     * `final class X extends Y { use Z; }` with no `implements` clause. `Y` reaches `PHPStan\Rules\Rule`
+     * through an interface three levels up, and `getNodeType()` is declared in the trait `Z`. Both earlier
+     * tests answer false, so the walk picked 57 and the two were never counted, never refused, and never
+     * visible — the silent-zero shape, one package deeper.
+     *
+     * {@see Hierarchy} resolves in PHP's own order, body then traits then parent, so the trait is what
+     * answers here. An unresolvable chain answers false: a directory carries no claim that a file is a rule,
+     * so a name this cannot follow is skipped rather than reported.
+     *
+     * @param array<string, string> $uses
+     */
+    private static function inheritsNodeType(Class_ $class, array $uses, string $file): bool
+    {
+        $index = new SourceIndex();
+        $hierarchy = new Hierarchy(fn (string $shortName): ?array => $index->find($shortName, $file));
+
+        return $hierarchy->declaring($class, 'getNodeType', $uses) !== null;
     }
 
     private static function declaresNodeType(Class_ $class): bool

@@ -226,10 +226,22 @@ line at all. Three readings were wrong, each hiding the next.
 
 Its rules are two lines: `extends ShouldNotDepend implements Rule`, plus a `use` for an extractor, declaring
 neither of the methods a rule needs. `RulePaths` walked a directory looking for a class that *declares*
-`getNodeType()`, so it found none of the 61 candidates. It accepts a concrete class implementing PHPStan's
-`Rule` now, resolved through the file's imports rather than matched on the short name — which is what
-separates the **59 real rules** from the two implementing phpat's own `PHPat\Test\Rule`. Sixty-one was the
-naive count.
+`getNodeType()`, so it found none of them. It accepts a concrete class implementing PHPStan's `Rule` now,
+resolved through the file's imports rather than matched on the short name.
+
+The count that walk should reach is **59**, and getting there took two passes. Sixty-four files in phpat's
+`src` are named `*Rule.php`; five are the test DSL rather than rules — the interfaces `PHPat\Test\Rule` and
+`PHPat\Test\Builder\Rule`, the attribute `PHPat\Test\Attributes\TestRule`, and `DeclarationRule` and
+`RelationRule`, which implement phpat's own `Rule` and not PHPStan's. The import-resolved test excludes those
+last two by name, and the other three are not concrete classes at all.
+
+That left 57, not 59, and the gap was invisible until a peer session tested the claim instead of reading it.
+`HasOnlyOnePublicMethodRule` and `HasOnlyOnePublicMethodNamedRule` name PHPStan nowhere in their own files:
+no `implements` clause, no `getNodeType()`. The interface arrives through `Assertion`, three levels up, which
+`extends PHPStan\Rules\Rule`; the node type is declared in the extractor trait the class `use`s. Both tests
+answered false and the two produced no line at all — the same silent zero, one package deeper. `RulePaths`
+now asks `Hierarchy` whether anything in the hierarchy declares `getNodeType()`, in PHP's own order, and the
+walk picks 59.
 
 Behind that, both required methods were read off the rule's own class alone, so every one refused as though
 it had no node type. They resolve through the hierarchy walker now — which the `findNodeType()` docblock

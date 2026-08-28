@@ -20,7 +20,32 @@ final class ExpandsRulePathsTest extends TestCase
     {
         $files = RulePaths::expand([self::PACKAGE]);
 
-        $this->assertSame(['ConcreteRule.php'], array_map(basename(...), $files));
+        $this->assertSame(['ConcreteRule.php', 'InheritedNodeTypeRule.php'], array_map(basename(...), $files));
+    }
+
+    /**
+     * A rule that names PHPStan nowhere in its own file is still a rule.
+     *
+     * `InheritedNodeTypeRule` has no `implements` clause and no `getNodeType()`: the interface comes from its
+     * base and the node type from a trait. Two of `phpat`'s 59 rules are written that way, and the walk
+     * picked 57 of them — the missing two produced no refusal and no line, which is the silent zero this
+     * whole tool exists to refuse.
+     */
+    public function test_walks_to_a_rule_that_declares_neither_half_itself(): void
+    {
+        $files = array_map(basename(...), RulePaths::expand([self::PACKAGE]));
+
+        $this->assertContains('InheritedNodeTypeRule.php', $files);
+    }
+
+    /**
+     * And the base it inherits from is not one, because it can never be instantiated.
+     */
+    public function test_leaves_the_abstract_base_that_carries_the_interface_out(): void
+    {
+        $files = array_map(basename(...), RulePaths::expand([self::PACKAGE]));
+
+        $this->assertNotContains('AbstractAssertionRule.php', $files);
     }
 
     public function test_takes_a_named_file_as_given_even_when_it_is_not_a_rule(): void
