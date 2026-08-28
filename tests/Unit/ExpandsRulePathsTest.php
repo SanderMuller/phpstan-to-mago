@@ -27,9 +27,9 @@ final class ExpandsRulePathsTest extends TestCase
      * A rule that names PHPStan nowhere in its own file is still a rule.
      *
      * `InheritedNodeTypeRule` has no `implements` clause and no `getNodeType()`: the interface comes from its
-     * base and the node type from a trait. Two of `phpat`'s 59 rules are written that way, and the walk
-     * picked 57 of them — the missing two produced no refusal and no line, which is the silent zero this
-     * whole tool exists to refuse.
+     * base and the node type from a trait. Two of `phpat`'s rules are written that way, and the walk came
+     * back two short on every version — the missing pair produced no refusal and no line, which is the
+     * silent zero this whole tool exists to refuse.
      */
     public function test_walks_to_a_rule_that_declares_neither_half_itself(): void
     {

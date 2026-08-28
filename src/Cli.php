@@ -52,10 +52,13 @@ final class Cli
 
         $rules = [];
         $refused = [];
+        $collisions = self::collidingNames($files);
         foreach ($files as $file) {
             $name = basename($file, '.php');
             try {
                 $rule = (new Transpiler($file))->transpile();
+                self::refuseACollision($name, $collisions);
+
                 if (! Transpiler::$survey) {
                     $fileName = Transpiler::$target === 'linter' ? $rule['module'] : $name;
                     $extension = Transpiler::$target === 'php' ? '.php' : '.rs';
@@ -140,6 +143,64 @@ final class Cli
      * suppressed diagnostic is invisible on a clean checkout and fatal on a second run into the same
      * directory. Reading the state first says the same thing without one.
      */
+    /**
+     * @param array<string, list<string>> $collisions
+     *
+     * @throws Refusal when another input file claims the same output name
+     */
+    private static function refuseACollision(string $name, array $collisions): void
+    {
+        if (! isset($collisions[$name])) {
+            return;
+        }
+
+        throw new Refusal(sprintf(
+            'two rules would be written to %s%s: %s -- an output name is the class short name, and these '
+            . 'share it across namespaces',
+            $name,
+            Transpiler::$target === 'php' ? '.php' : '.rs',
+            implode(', ', $collisions[$name]),
+        ));
+    }
+
+    /**
+     * The output names more than one input file would claim, mapped to the files claiming them.
+     *
+     * An output file is named for the rule's class short name, and the manifest and the linter's module are
+     * keyed the same way. A package that names one class per namespace therefore writes several rules into
+     * one file, keeping whichever landed last -- silently, since every write succeeds. `phpat/phpat` 0.12.0
+     * is that package: 25 names claimed by 55 of its 61 rules, `ParentClassRule` and `IncludedTraitsRule`
+     * four times each. Nothing has ever been overwritten, because all 61 refuse before emission, and the
+     * seven packages this repository installs collide zero times. It is misattribution in waiting rather
+     * than damage done -- and the artefact it would corrupt is the manifest the corpus differential reads,
+     * which would credit a finding to whichever rule sorted last.
+     *
+     * Refusing is what this repository does with a construct it cannot render honestly, and the same answer
+     * fits here: renaming on collision would make a rule's output name depend on which siblings it was
+     * emitted beside, and qualifying every name would rewrite every reviewed snapshot to fix a case none of
+     * them contains. Both files are named, because the collision belongs to the pair.
+     *
+     * Checked after translating rather than before, so a rule the vocabulary refuses still reports what it
+     * refused on. Checking first was tried and buried 55 of phpat's 61 refusals behind a collision none of
+     * them would have reached, which throws away the survey's whole output -- the obstacle each rule names.
+     *
+     * Checked in survey mode too. A survey that counts a rule the emitting run refuses is the disagreement
+     * the target banner above exists to prevent.
+     *
+     * @param list<string> $files
+     *
+     * @return array<string, list<string>>
+     */
+    private static function collidingNames(array $files): array
+    {
+        $claimed = [];
+        foreach ($files as $file) {
+            $claimed[basename($file, '.php')][] = $file;
+        }
+
+        return array_filter($claimed, static fn (array $paths): bool => count($paths) > 1);
+    }
+
     private static function ensureDirectory(string $path): void
     {
         if (! is_dir($path)) {

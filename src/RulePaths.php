@@ -95,7 +95,7 @@ final class RulePaths
      * Whether a concrete class implements PHPStan's `Rule` without declaring `getNodeType()` itself.
      *
      * A rule may inherit that method from an abstract base and get the rest of its behaviour from a trait.
-     * `phpat/phpat` writes 57 of its 59 rules that way — a two-line class, `extends ShouldNotDepend
+     * `phpat/phpat` writes all but two of its rules that way — a two-line class, `extends ShouldNotDepend
      * implements Rule`, with a `use` for the extractor — and the walk found none of them. A package that is
      * installed and never read contributes a silent zero, which is the shape this whole tool exists to refuse.
      *
@@ -121,10 +121,10 @@ final class RulePaths
     /**
      * Whether something in the hierarchy declares `getNodeType()`, when the class itself says nothing.
      *
-     * Two of phpat's 59 rules — `HasOnlyOnePublicMethodRule` and `HasOnlyOnePublicMethodNamedRule` — are a
+     * Two of phpat's rules — `HasOnlyOnePublicMethodRule` and `HasOnlyOnePublicMethodNamedRule` — are a
      * `final class X extends Y { use Z; }` with no `implements` clause. `Y` reaches `PHPStan\Rules\Rule`
      * through an interface three levels up, and `getNodeType()` is declared in the trait `Z`. Both earlier
-     * tests answer false, so the walk picked 57 and the two were never counted, never refused, and never
+     * tests answer false, so the walk was two short and the two were never counted, never refused, and never
      * visible — the silent-zero shape, one package deeper.
      *
      * {@see Hierarchy} resolves in PHP's own order, body then traits then parent, so the trait is what

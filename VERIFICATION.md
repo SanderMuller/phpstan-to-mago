@@ -229,19 +229,24 @@ neither of the methods a rule needs. `RulePaths` walked a directory looking for 
 `getNodeType()`, so it found none of them. It accepts a concrete class implementing PHPStan's `Rule` now,
 resolved through the file's imports rather than matched on the short name.
 
-The count that walk should reach is **59**, and getting there took two passes. Sixty-four files in phpat's
-`src` are named `*Rule.php`; five are the test DSL rather than rules — the interfaces `PHPat\Test\Rule` and
+The count that walk should reach is **all but five**, and getting there took two passes. Five files named
+`*Rule.php` in phpat's `src` are the test DSL rather than rules — the interfaces `PHPat\Test\Rule` and
 `PHPat\Test\Builder\Rule`, the attribute `PHPat\Test\Attributes\TestRule`, and `DeclarationRule` and
 `RelationRule`, which implement phpat's own `Rule` and not PHPStan's. The import-resolved test excludes those
 last two by name, and the other three are not concrete classes at all.
 
-That left 57, not 59, and the gap was invisible until a peer session tested the claim instead of reading it.
+The version has to be named, because it moves: **0.11.10** has 64 such files and 59 rules, **0.12.0** has 66
+and 61. Two sessions quoted 59 and 61 at each other as though one had to be wrong, and both were reading a
+different install. A count belongs to its configuration, and this one had been written down without it.
+
+That left two short on either version, and the gap was invisible until a peer session tested the claim
+instead of reading it.
 `HasOnlyOnePublicMethodRule` and `HasOnlyOnePublicMethodNamedRule` name PHPStan nowhere in their own files:
 no `implements` clause, no `getNodeType()`. The interface arrives through `Assertion`, three levels up, which
 `extends PHPStan\Rules\Rule`; the node type is declared in the extractor trait the class `use`s. Both tests
 answered false and the two produced no line at all — the same silent zero, one package deeper. `RulePaths`
 now asks `Hierarchy` whether anything in the hierarchy declares `getNodeType()`, in PHP's own order, and the
-walk picks 59.
+walk picks 59 on 0.11.10 and 61 on 0.12.0.
 
 Behind that, both required methods were read off the rule's own class alone, so every one refused as though
 it had no node type. They resolve through the hierarchy walker now — which the `findNodeType()` docblock
@@ -251,9 +256,33 @@ Behind *that*, the import map. A name in an inherited body resolves through the 
 rule's, and reading it the other way is silent: a fixture's `instanceof Identifier` resolved to a class in
 the rule's own namespace that exists nowhere, and the refusal blamed the member selector instead.
 
-The 59 now refuse inside their own bodies, on `array_filter()`, `namesToClassStrings()` and
-`->ignoreDocComments()` — phpat's assertion engine, which is the real obstacle. Nothing emits, and that is
-not the point: a package installed and never read is not a measurement.
+They now refuse inside their own bodies. Surveyed on 0.12.0: 46 of the 61 on
+`extractNodeClassNames() is read as a producer but hands back nothing`, and 15 on `array_filter()` —
+phpat's assertion engine, which is the real obstacle. The two that took the longest to reach refuse on
+`array_filter()` with the others. Nothing emits, and that is not the point: a package installed and never
+read is not a measurement.
+
+#### The collision that could not fire, and now cannot
+
+Reading that survey found something else. An output file is named for the rule's class short name, and so
+are the manifest key and the linter's module. phpat names one class per namespace — `ShouldBeAbstract\
+AbstractRule` and `ShouldNotBeAbstract\AbstractRule`, and 23 more pairs — so on 0.12.0, 25 output names are
+claimed by 55 of the 61 rules. Every write would succeed and the last would win. The only visible trace was
+the same name printed twice in a survey.
+
+Nothing has ever been overwritten. The seven packages this repository installs collide zero times, and every
+phpat rule refuses before emission, so the run that would have done the damage never reached a write. That
+is luck rather than design, and the artefact at risk is the manifest the corpus differential reads: a
+finding credited to whichever rule sorted last is a wrong attribution, which is worse than a lost file
+because it is one you would trust.
+
+`Cli` refuses both rules of a colliding pair now, naming both paths, in survey mode as well as emitting —
+a survey that counts a rule the emitting run refuses is the disagreement the target banner exists to
+prevent. The check runs *after* translating, not before: checking first was tried and buried 55 of phpat's
+61 refusals behind a collision none of them would have reached, throwing away the one thing a survey
+produces. Renaming on collision was the other option and was rejected: it would make a rule's output name
+depend on which siblings it was emitted beside. Mutation-checked, and the mutant prints the bug itself —
+`EMIT NamedConstantRule` twice, `emitted: 2`, one file on disk.
 
 #### And the same shape at home
 
