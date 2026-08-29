@@ -343,6 +343,37 @@ whose declared union PHPStan narrows through a larastan extension and mago takes
 count of five `environment()` calls in conditions was right and bounded the wrong thing — the mechanism is
 the class of extension-narrowed accessor, not that one method.
 
+#### And then closed, by giving mago the plugin
+
+The section above proves what the 42 *are*. What it does not settle is whether they are a property of the
+port, and they are not.
+
+`--extension-host=` registers an extra analyzer extension on the mago side, so both engines can carry
+comparable plugins. With a `MethodReturnTypeProvider` for `Application::environment()` -- fifteen lines, the
+same extension point larastan uses, built by a peer session -- one binary difference and nothing else
+changed:
+
+    without the provider   agree 488   only-original 122   only-port 42
+    with the provider      agree 487   only-original 123   only-port  9
+
+Thirty-three of the port's false positives were the missing plugin. The peer predicted "about 9" before the
+run and named the survivors as the `config()` shape it had deliberately not built, which is the strongest
+single result in this file: a number stated in advance and landed on.
+
+So "the port over-reports on framework code" was the wrong reading of a right measurement. The differential
+was comparing PHPStan-with-larastan against mago-with-nothing, and an only-port rate measured across that
+asymmetry describes the ecosystems rather than the translation. The same applies to Shopware and
+`phpstan-symfony`, where **8 of 15** are `$container->getParameter()` -- enumerated, not sampled, after an
+earlier sample of three had put all 15 in that bucket and been wrong.
+
+The other 7 on Shopware are not the plugin gap and are not yet explained. Two are implicit `mixed` to
+PHPStan, which `passesAsBoolean` passes by design, so mago is the more precise of the two and the port
+reports a real violation the original declines -- an only-port finding where the port is right. The
+remaining 5 stay open: the rule runs in the sandbox (751 agreements on the same corpus), the site anchors
+correctly, the consumer's baseline carries no entry for them, and a clean reproduction of the same type
+shape *does* report. Something in that project's configuration changes the answer and this has not isolated
+which, which is why the ledger says five open rather than five explained.
+
 Corroborated from the other side, after the peer session's own count was corrected: a grep for these
 accessors inside a condition had read `5`, because `[^)]*` stops at the first `)` and every real instance
 of the idiom has a nested call before the accessor — `! app()->environment('production', 'local')` cannot
