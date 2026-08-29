@@ -450,6 +450,39 @@ to be "evaluate the rule's class guard once per using class and report once per 
 which class we are in" — and for the seven rules that read the enclosing class, that guard reads class
 metadata, which the index provides.
 
+##### Where the using class goes, priced
+
+PHPStan carries the distinguishing context in the *file* field — `Subjects.php (in context of class X):41` —
+and a plugin cannot set that. So a port reporting N times at one span has to put the class somewhere else or
+emit N identical lines. Three places, and each was measured rather than argued.
+
+`CorpusDifferential::compare()` compares the message text at **every agreeing site**, not only where a site
+disagrees. So message text is free for *agreement* and is not free for `differingMessages`: naming the class
+in the message puts every trait finding into that diagnostic permanently, because PHPStan's copy of the same
+text lives in a field the port cannot write. This corrects a reading recorded here as "costs no agreement",
+which was true and incomplete — a peer session caught it.
+
+The annotation label is a third place. Measured on two reports at one span:
+
+    compact listing   src/One.php:4:19: error[...]: same message      <- twice, identical
+    JSON              message "same message"
+                      annotations[0].message "in context of class Dup\UserOne"
+                                             "in context of class Dup\UserTwo"
+
+So the annotation distinguishes the two findings in JSON and costs nothing in the comparison — and
+`mago analyze`'s compact listing prints the message only, so it buys the human reader nothing in the output
+they actually look at. The differential already reads `annotations[0].span` for the file and line, so the
+label is there for it to use if it ever should.
+
+    identical messages     differingMessages clean, reader sees N identical lines
+    class in the message   reader can tell them apart, differingMessages carries every trait site forever
+    class in the annotation differingMessages clean, distinguishable in JSON, invisible in the listing
+
+The message is still the right place — an output nobody can diagnose is worse than a diagnostic with a known
+pattern in it, and a filter is easier to add than context that was never emitted. But it is a priced choice:
+whatever builds this owes `differingMessages` a filter on the day it ships, not on the day someone notices
+that diagnostic is always full.
+
 #### The arithmetic family, built and then withdrawn
 
 The six `OperandsInArithmetic*` rules were ported far enough to emit and then reverted. The machinery worked;
