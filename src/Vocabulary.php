@@ -703,6 +703,11 @@ final class Vocabulary
         // type, and letting a rule's own `instanceof` decide the registration would make the targets depend on
         // the body rather than on what PHPStan would have visited.
         FunctionLike::class => ['Method', 'Function', 'Closure', 'ArrowFunction'],
+        // All four class-like declarations, for the same reason `FunctionLike` registers all four of its
+        // kinds: what a node type covers is a fact about the type. `ExplicitClassPrefixSuffixRule` narrows to
+        // three of them and returns nothing for an enum, which is the rule declining rather than the plugin
+        // not looking.
+        ClassLike::class => ['Class', 'Interface', 'Trait', 'Enum'],
         // `[..]` and `array(..)` are one node to php-parser and two kinds to Mago, so registering the first
         // alone is silent on every array written the long way. Found on Shopware: `ForbiddenArrayMethodCallRule`
         // missed both `array($this, 'loadClass')` in a vendored `ClassLoader`, and reported neither.

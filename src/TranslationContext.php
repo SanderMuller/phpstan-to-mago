@@ -328,6 +328,20 @@ final class TranslationContext
     public array $reportConditions = [];
 
     /**
+     * Whether the inlined helper also reports on its fall-through, after every condition above it.
+     *
+     * `processInterfaceSuffix()` is the shape: one guard reports the trait message and returns, and the
+     * method's own last statement returns the interface message. The conditions and the fall-through are two
+     * different findings, and without this the fall-through was dropped — the plugin reported the guarded one
+     * and stayed silent where the original reports.
+     *
+     * It also decides whether a reported condition exits. In the original each of those branches `return`s, so
+     * the fall-through is only reached when none of them held; emitted without the exit, a name ending in
+     * `Trait` would report twice.
+     */
+    public bool $helperTrailingReport = false;
+
+    /**
      * Array constants the generated plugin has to declare, because a carried derivation names them.
      *
      * The value expression rather than a resolved list: a lookup table is written `['dump' => true]`, whose

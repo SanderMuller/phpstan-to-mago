@@ -1491,6 +1491,19 @@ final readonly class Translator
                 continue;
             }
 
+            // A parameter the helper declares `bool` takes a condition, not a value, and the two are
+            // translated by different halves of this class: `$node->isAbstract()` answers as a predicate and
+            // refuses as an access path. Gated on the *declared* type rather than on the argument's shape,
+            // because translating speculatively can inline a helper as a side effect and leave its lines
+            // behind when the value turns out not to be a condition — the same reason the assignment path
+            // restricts itself to expressions that can only be conditions.
+            if ($param->type instanceof Identifier && $param->type->toLowerString() === 'bool') {
+                $condition = '(' . $this->translateCondition($argument) . ')';
+                $bound[$param->var->name] = ['rust' => $condition, 'kind' => 'bool', 'php' => $condition];
+
+                continue;
+            }
+
             // `$scope` is the analysis context on both sides, so it needs no descriptor.
             $bound[$param->var->name] = $argument instanceof Variable && $argument->name === 'scope'
                 ? ['rust' => 'context', 'kind' => 'scope']
@@ -2692,6 +2705,17 @@ final readonly class Translator
             return;
         }
 
+        // Inside an error helper the same `if (COND) { return [<error>]; }` is the condition to report *under*,
+        // not a conditional report. A helper's return takes the message and emits nothing — the report comes
+        // after its guards — so translating it as a block leaves an empty `if` and lets the next branch
+        // overwrite the message. Asked before the block shape, and a no-op outside a helper because
+        // {@see takeReportCondition} tests that first.
+        if ($stmt->elseifs === [] && ! $stmt->else instanceof Else_ && count($stmt->stmts) === 1
+            && $this->takeReportCondition($stmt, $stmt->stmts[0])
+        ) {
+            return;
+        }
+
         // if (COND) { $message = ..; $errors[] = RuleErrorBuilder::..; }  — a conditional report rather than a
         // guard. A rule that reports two different things about the same subject writes one of these per
         // finding, and each carries its own message and identifier.
@@ -2922,17 +2946,16 @@ final readonly class Translator
      */
     private function takeReportCondition(If_ $stmt, Stmt $only): bool
     {
-        if (! $this->context->inErrorHelper
-            || ! $only instanceof Return_
-            || ! $only->expr instanceof Expr
-            || ! $this->isRuleErrorBuilder($only->expr)
-        ) {
+        $built = $this->context->inErrorHelper && $only instanceof Return_ && $only->expr instanceof Expr
+            ? $this->returnedRuleError($only->expr)
+            : null;
+        if (! $built instanceof Expr) {
             return false;
         }
 
         // Read after taking the message, so each branch records the message and identifier *it* reports
         // under rather than whichever was taken last.
-        $this->takeMessage($only->expr);
+        $this->takeMessage($built);
         $this->context->reportConditions[] = [
             'condition' => $this->stripOuterParentheses($this->translateCondition($stmt->cond)),
             'message' => $this->reportedMessage(),
@@ -2987,6 +3010,11 @@ final readonly class Translator
             ? [['condition' => implode(' || ', array_column($this->context->reportConditions, 'condition'))] + $this->context->reportConditions[0]]
             : $this->context->reportConditions;
 
+        // Each of these branches `return`s in the original, so the fall-through below is only reached when
+        // none of them held. Without the exit a name ending in `Trait` would report the trait finding here and
+        // the interface finding after it — two findings where the rule gives one.
+        $trailing = $this->context->helperTrailingReport;
+
         foreach ($branches as $branch) {
             $this->context->lines[] = new Stm('if-open', ['condition' => $branch['condition']], $this->context->indent);
             $this->context->indent += 4;
@@ -2995,8 +3023,20 @@ final readonly class Translator
                 'message' => $branch['message'],
                 'code' => $branch['code'],
             ], $this->context->indent);
+
+            if ($trailing) {
+                $this->context->lines[] = new Stm('bail', [], $this->context->indent);
+            }
+
             $this->context->indent -= 4;
             $this->context->lines[] = new Stm('block-close', [], $this->context->indent);
+        }
+
+        // The helper's own last statement reports too, after every condition above it. Dropping it left the
+        // plugin silent exactly where the original reports: `processInterfaceSuffix()` guards the trait
+        // message and falls through to the interface one.
+        if ($trailing) {
+            $this->context->lines[] = $this->reportNode();
         }
 
         $this->context->reportedInline = true;
@@ -3067,7 +3107,15 @@ final readonly class Translator
     /** A branch whose body is a guard chain ending in a built rule error, which is a check. */
     public function isBranchCheck(If_ $statement): bool
     {
-        if ($statement->elseifs !== [] || $statement->else instanceof Else_ || count($statement->stmts) < 2) {
+        if ($statement->elseifs !== [] || $statement->else instanceof Else_) {
+            return false;
+        }
+
+        if ($this->delegatedCheck($statement) instanceof MethodCall) {
+            return true;
+        }
+
+        if (count($statement->stmts) < 2) {
             return false;
         }
 
@@ -3083,6 +3131,39 @@ final readonly class Translator
         return $returned instanceof Variable
             && is_string($returned->name)
             && $this->buildsErrorInto($statement->stmts, $returned->name);
+    }
+
+    /**
+     * The helper call a branch hands its whole case to, or null when the branch is not one.
+     *
+     * `if ($node instanceof Interface_) { return $this->processInterfaceSuffix($node->name); }` — the branch
+     * says which case this is and the helper decides it. That is the same check as a branch that guards and
+     * builds inline; the difference is only where the guards are written, and inlining puts them back.
+     *
+     * The helper has to build a rule error. A branch returning any other call is a value the rule does
+     * something else with, and treating it as a check would report where the rule does not.
+     */
+    private function delegatedCheck(If_ $statement): ?MethodCall
+    {
+        if (count($statement->stmts) !== 1) {
+            return null;
+        }
+
+        $only = $statement->stmts[0];
+        if (! $only instanceof Return_
+            || ! $only->expr instanceof MethodCall
+            || ! $this->isOwnMethodCall($only->expr)
+            || ! $only->expr->name instanceof Identifier
+        ) {
+            return null;
+        }
+
+        $declaring = $this->declaringOf($only->expr->name->toString());
+
+        return $declaring !== null
+            && $this->buildsRuleError($this->findMethod($declaring['class'], $only->expr->name->toString()))
+            ? $only->expr
+            : null;
     }
 
     /**
@@ -3115,6 +3196,23 @@ final readonly class Translator
      */
     private function translateBranchCheck(If_ $statement): void
     {
+        // A branch that hands its whole case to a helper. The helper's own guards and its built error are what
+        // this check is made of, so inlining it *is* the translation — {@see inlineErrorHelper} already turns
+        // a helper's guards into the rule's guards and its returned error into the report, and it names the
+        // check after the helper, which reads better than a branch number.
+        $delegated = $this->delegatedCheck($statement);
+        if ($delegated instanceof MethodCall && $delegated->name instanceof Identifier) {
+            $this->inlineErrorHelper(
+                $delegated->name->toString(),
+                $delegated->getArgs(),
+                $statement->getStartLine(),
+                null,
+                '!(' . $this->stripOuterParentheses($this->translateCondition($statement->cond)) . ')',
+            );
+
+            return;
+        }
+
         $checkStart = count($this->context->lines);
 
         $this->context->lines[] = new Stm('guard', [
@@ -3276,8 +3374,12 @@ final readonly class Translator
 
     private function translateErrorHelperReturn(Return_ $stmt): void
     {
-        if ($stmt->expr instanceof Expr && $this->isRuleErrorBuilder($stmt->expr)) {
-            $this->takeMessage($stmt->expr);
+        // Wrapped or bare. A helper typed `list<IdentifierRuleError>` returns the one it built inside an
+        // array, and reading only the bare spelling made that look like a helper returning something else.
+        $built = $stmt->expr instanceof Expr ? $this->returnedRuleError($stmt->expr) : null;
+        if ($built instanceof Expr) {
+            $this->takeMessage($built);
+            $this->context->helperTrailingReport = true;
 
             return;
         }
@@ -3310,7 +3412,11 @@ final readonly class Translator
         // A trailing `return null` is "no finding". When guards have already collected the conditions
         // under which the helper *does* report, it is the fall-through of those, and emitting a bail
         // here would put an unconditional exit in front of the report.
-        if (! $this->isReturnNull([$stmt])) {
+        //
+        // `return []` says the same thing in a helper typed `list<IdentifierRuleError>`, which is the
+        // spelling PHPStan's own signature forces. Reading only `null` made the empty list look like a
+        // helper returning something else.
+        if (! $this->isReturnNull([$stmt]) && ! $this->isReturnEmptyArray([$stmt])) {
             throw new Refusal('an error helper returns something other than null or a built rule error', $stmt->getStartLine());
         }
 
@@ -3437,7 +3543,7 @@ final readonly class Translator
      *
      * @param array<Arg> $args
      */
-    private function inlineErrorHelper(string $method, array $args, int $line, ?Expr $target = null): void
+    private function inlineErrorHelper(string $method, array $args, int $line, ?Expr $target = null, ?string $branchGuard = null): void
     {
         // Remembered so the bookkeeping the original does with the returned error can be dropped: by the time
         // this returns, whatever the helper decided has already been reported.
@@ -3446,10 +3552,29 @@ final readonly class Translator
         }
 
         if ($this->takeCrossFileCheck($method, $args, $line)) {
+            if ($branchGuard !== null) {
+                throw new Refusal(
+                    "{$method}() is a cross-file check reached from a branch, so the branch's own condition "
+                    . 'would have nowhere to go: a cross-file check runs after every file and the condition '
+                    . 'names the node this one fired for',
+                    $line,
+                );
+            }
+
             return;
         }
 
         $checkStart = $this->openCheck($line);
+
+        // A branch delegating its whole case: the condition that says which case this is becomes the check's
+        // first guard. Pushed after `openCheck` so it lands inside the check method rather than in the rule
+        // body, which is what makes `return []` in the helper decline this branch rather than the whole node.
+        if ($branchGuard !== null) {
+            $this->context->lines[] = new Stm('guard', [
+                'condition' => $branchGuard,
+                'exit' => $this->context->backend->bail(),
+            ], $this->context->indent);
+        }
 
         $declaring = $this->context->currentClass instanceof ClassLike
             ? $this->declaringOf($method)
@@ -3553,6 +3678,7 @@ final readonly class Translator
         $savedUses = $this->context->useMap;
         $savedInHelper = $this->context->inErrorHelper;
         $savedConditions = $this->context->reportConditions;
+        $savedTrailing = $this->context->helperTrailingReport;
 
         $this->context->locals = $this->bindParameters($helper, $args, $method, $line);
         $this->context->constants = [];
@@ -3562,6 +3688,7 @@ final readonly class Translator
         $this->context->useMap = $declaring['uses'];
         $this->context->inErrorHelper = true;
         $this->context->reportConditions = [];
+        $this->context->helperTrailingReport = false;
         $this->collectConstants($declaring['class']);
         $this->enterInline($method, 'inlining', $line);
 
@@ -3580,6 +3707,7 @@ final readonly class Translator
         } finally {
             $this->leaveInline();
             $this->context->reportConditions = $savedConditions;
+            $this->context->helperTrailingReport = $savedTrailing;
             $this->context->inErrorHelper = $savedInHelper;
             $this->context->locals = $savedLocals;
             $this->context->literals = $savedLiterals;
@@ -4341,7 +4469,7 @@ final readonly class Translator
     public function buildsRuleError(ClassMethod $method): bool
     {
         foreach ((new NodeFinder())->findInstanceOf($method->stmts ?? [], Return_::class) as $return) {
-            if ($return->expr instanceof Expr && $this->isRuleErrorBuilder($return->expr)) {
+            if ($return->expr instanceof Expr && $this->returnedRuleError($return->expr) instanceof Expr) {
                 return true;
             }
         }
@@ -5627,6 +5755,33 @@ final readonly class Translator
         $this->context->reportTaken = false;
     }
 
+    /**
+     * The builder chain a `return` hands back, unwrapped from the list a rule error is usually wrapped in.
+     *
+     * PHPStan's own signature is `list<IdentifierRuleError>`, so a helper that builds one finding writes
+     * `return [RuleErrorBuilder::message(..)->build()];`. Every place that recognises a returned finding was
+     * written against the other spelling — a bare `?RuleError`, which is what a helper called for its value
+     * returns — and answered no to the wrapped one. That is why `ExplicitClassPrefixSuffixRule` refused with
+     * `guard body is neither return [] nor continue`: the guard bodies inside its three helpers each return
+     * one built error inside a one-element array.
+     *
+     * Only a single-element literal unwraps. Two findings in one return is a different question, and a
+     * variable holding the list is not a literal to look inside.
+     */
+    private function returnedRuleError(Expr $expr): ?Expr
+    {
+        if ($expr instanceof Array_ && count($expr->items) === 1) {
+            $inner = $expr->items[0]->value ?? null;
+            if ($inner instanceof Expr && $this->isRuleErrorBuilder($inner)) {
+                return $inner;
+            }
+
+            return null;
+        }
+
+        return $this->isRuleErrorBuilder($expr) ? $expr : null;
+    }
+
     private function isRuleErrorBuilder(Node $expr): bool
     {
         while ($expr instanceof MethodCall) {
@@ -6599,6 +6754,20 @@ final readonly class Translator
                 . 'null only for an anonymous class, and Mago gives those their own node kind, which this hook '
                 . 'does not register',
             );
+        }
+
+        // `$node instanceof Interface_` inside a class-like hook that registers several kinds. The rule is
+        // asking which of its targets fired, and the node's own kind answers it — `Support::declarationKindIs`
+        // was already there for the reflection spelling of the same question, so nothing new runs.
+        //
+        // Against the node's kind rather than the rule's `instanceof` class, because the two disagree on the
+        // one that matters: php-parser's `Class_` is the base of `Interface_` and `Trait_` in name only, and
+        // Mago gives each declaration its own kind.
+        if ($subject['kind'] === 'hook-node'
+            && in_array($this->context->nodeKind, self::CLASS_LIKE_HOOK_KINDS, true)
+            && isset(self::DECLARATION_KINDS[$wanted])
+        ) {
+            return $this->declarationKindIs(self::DECLARATION_KINDS[$wanted], self::DECLARATION_KINDS[$wanted]);
         }
 
         if ($subject['kind'] === 'extends') {
@@ -9334,6 +9503,21 @@ final readonly class Translator
 
     /** Hook kinds that are a class-like declaration, where the node under analysis is always named. */
     private const array CLASS_LIKE_HOOK_KINDS = ['Class', 'Interface', 'Trait', 'Enum'];
+
+    /**
+     * The Mago node kind each php-parser class-like declaration stands for.
+     *
+     * The values are `NodeKind`'s own, read from the enum: `Class_` is spelled `Class` there because `::class`
+     * would otherwise yield the class-name string, and the other three are declared bare.
+     *
+     * @var array<class-string, string>
+     */
+    private const array DECLARATION_KINDS = [
+        \PhpParser\Node\Stmt\Class_::class => 'Class',
+        \PhpParser\Node\Stmt\Interface_::class => 'Interface',
+        \PhpParser\Node\Stmt\Trait_::class => 'Trait',
+        \PhpParser\Node\Stmt\Enum_::class => 'Enum',
+    ];
 
     /**
      * Hook kinds whose scope always carries a class reflection, so `=== null` on one cannot hold.
