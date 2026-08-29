@@ -18,7 +18,6 @@ use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\NodeFinder;
-use PhpParser\ParserFactory;
 
 /**
  * A rule package's configuration value object, reduced to the parameter each getter reads.
@@ -62,7 +61,7 @@ final readonly class ConfigurationObject
             return null;
         }
 
-        $ast = (new ParserFactory())->createForNewestSupportedVersion()->parse((string) file_get_contents($file));
+        $ast = SourceIndex::parse((string) file_get_contents($file));
         if ($ast === null) {
             return null;
         }

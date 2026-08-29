@@ -411,8 +411,8 @@ EMIT    BooleanInDoWhileConditionRule
 EMIT    BooleanInElseIfConditionRule
 EMIT    BooleanInIfConditionRule
 REFUSE  BooleanInTernaryOperatorRule
-        if statement that is not a single-statement guard
-        needs: if statement that is not a single-statement guard
+        no mapping for ->if on a hook-node
+        needs: null comparison against ->if, which resolved to a expr
 EMIT    BooleanInWhileConditionRule
 REFUSE  ClosureUsesThisRule
         no mapping for ->static on a hook-node

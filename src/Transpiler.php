@@ -33,7 +33,6 @@ use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\NodeFinder;
-use PhpParser\ParserFactory;
 use PHPStan\Collectors\Collector;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 
@@ -163,7 +162,7 @@ final class Transpiler
     private function translate(): array
     {
         $code = (string) file_get_contents($this->file);
-        $ast = (new ParserFactory())->createForNewestSupportedVersion()->parse($code);
+        $ast = SourceIndex::parse($code);
         if ($ast === null) {
             throw new Refusal('could not parse');
         }
@@ -1148,7 +1147,7 @@ PHP;
         }
 
         $namespace = SourceIndex::namespaceOf(
-            (new ParserFactory())->createForNewestSupportedVersion()->parse((string) file_get_contents($candidate)) ?? [],
+            SourceIndex::parse((string) file_get_contents($candidate)) ?? [],
             $param->type->getLast(),
         );
         if ($namespace === null) {

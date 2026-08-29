@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago;
 
 use FilesystemIterator;
+use PhpParser\Node;
 use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\Nop;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Namespace_;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor;
+use PhpParser\NodeVisitorAbstract;
 use PhpParser\ParserFactory;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -52,7 +57,7 @@ final class SourceIndex
         }
 
         foreach ($this->paths($shortName, $ruleFile) as $path) {
-            $ast = (new ParserFactory())->createForNewestSupportedVersion()->parse((string) file_get_contents($path));
+            $ast = self::parse((string) file_get_contents($path));
             if ($ast === null) {
                 continue;
             }
@@ -137,6 +142,47 @@ final class SourceIndex
         }
 
         return null;
+    }
+
+    /**
+     * Parses PHP source into statements, with the comment placeholders removed.
+     *
+     * php-parser turns a comment that ends a block into a `Nop` statement, so
+     * `if ($node->if === null) { return []; // elvis ?: }` has a body of *two* statements. Every shape test
+     * here counts statements, so `BooleanInTernaryOperatorRule` was refused as an `if` that is not a
+     * single-statement guard — which is what its body is, and which sent a reader looking at the wrong thing.
+     *
+     * Removed once, at the parse, rather than skipped at each of the places that count: a comment carries
+     * nothing any of them read, and the ones that would have to skip it are not enumerable in advance. A
+     * docblock is unaffected — php-parser attaches those to the node that follows, not to a `Nop`.
+     *
+     * @return list<Stmt>|null
+     */
+    public static function parse(string $code): ?array
+    {
+        $ast = (new ParserFactory())->createForNewestSupportedVersion()->parse($code);
+        if ($ast === null) {
+            return null;
+        }
+
+        $traverser = new NodeTraverser();
+        $traverser->addVisitor(new class extends NodeVisitorAbstract {
+            public function leaveNode(Node $node): ?int
+            {
+                return $node instanceof Nop ? NodeVisitor::REMOVE_NODE : null;
+            }
+        });
+
+        // Narrowed by asking rather than by asserting: `traverse()` is typed for any node because a visitor
+        // may replace one, and every top-level node a parse yields is a statement.
+        $statements = [];
+        foreach ($traverser->traverse($ast) as $node) {
+            if ($node instanceof Stmt) {
+                $statements[] = $node;
+            }
+        }
+
+        return $statements;
     }
 
     /**

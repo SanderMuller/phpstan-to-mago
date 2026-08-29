@@ -7,7 +7,6 @@ namespace Sandermuller\PhpstanToMago;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\NodeFinder;
-use PhpParser\ParserFactory;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
@@ -71,7 +70,7 @@ final class RulePaths
      */
     private static function isRule(string $file): bool
     {
-        $ast = (new ParserFactory())->createForNewestSupportedVersion()->parse((string) file_get_contents($file));
+        $ast = SourceIndex::parse((string) file_get_contents($file));
         if ($ast === null) {
             return false;
         }
