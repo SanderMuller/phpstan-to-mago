@@ -39,13 +39,13 @@ EMIT    AvoidAnyExpectsRule
 REFUSE  AvoidFeatureSetAttributeInRectorRule
         unknown local $ruleError
 REFUSE  CheckRequiredInterfaceInContractNamespaceRule
-        no hook mapping for node type PhpParser\Node\Stmt\Interface_
+        unknown static helper Strings::match()
         needs: unknown static helper Strings::match()
 REFUSE  ClassNameRespectsParentSuffixRule
         the rule returns whatever processClassNameAndShort() decides, and that helper builds the findings rather than answering a question — so there is nothing here to translate into guards
         needs: the rule returns whatever processClassNameAndShort() decides, and that helper builds the findings rather than answering a question — so there is nothing here to translate into guards
 REFUSE  ExplicitClassPrefixSuffixRule
-        PhpParser\Node\Stmt\ClassLike covers several node kinds, and this rule narrows to 3 of them with `instanceof`: Interface_, Trait_, Class_. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
+        guard body is neither `return []` nor `continue`, but Stmt_Return
         needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 EMIT    ExplicitExpectsMockMethodRule
 REFUSE  FileNameMatchesExtensionRule

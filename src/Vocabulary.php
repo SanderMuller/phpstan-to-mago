@@ -40,6 +40,7 @@ use PhpParser\Node\Stmt\ElseIf_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Function_;
 use PhpParser\Node\Stmt\If_;
+use PhpParser\Node\Stmt\Interface_;
 use PhpParser\Node\Stmt\Property;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
@@ -98,7 +99,19 @@ final class Vocabulary
         // A trait declaration. Separate from the class hook because Mago makes it a separate node kind, and
         // because a rule that targets `Trait_` means traits only — `NoRequiredOutsideClassRule` exists to say
         // that a `#[Required]` setter belongs in a class, not in a trait.
-        Trait_::class => ['trait' => 'TraitDeclarationHook', 'method' => 'on_enter_trait', 'node' => 'Trait', 'kind' => 'Trait', 'phpOnly' => true],
+        //
+        // This carried `phpOnly` until the analyzer registry was read rather than assumed: `register_trait_hook`
+        // and `TraitDeclarationHook::on_enter_trait` are both there at the pinned 1.47.2, taking the same
+        // `&ClassLikeMetadata` the class hook takes, which is why the signature now says so.
+        Trait_::class => ['trait' => 'TraitDeclarationHook', 'method' => 'on_enter_trait', 'node' => 'Trait', 'kind' => 'Trait', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata'],
+        // An interface declaration. `CheckRequiredInterfaceInContractNamespaceRule` is the one in the corpus,
+        // and it refused on all three targets for want of this row rather than for anything in its body.
+        // The php-parser base of all four class-like declarations. `HOOK_KINDS` says which kinds it covers and
+        // the PHP target registers a plugin for each, so this row needs no machinery beyond itself. PHP target
+        // only, like every other multi-kind row: one Rust hook trait registers one kind, and registering just
+        // the class hook would silently miss the interfaces and traits the rule exists to check.
+        ClassLike::class => ['trait' => 'ClassDeclarationHook', 'method' => 'on_enter_class', 'node' => 'Class', 'kind' => 'Class', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata', 'phpOnly' => true],
+        Interface_::class => ['trait' => 'InterfaceDeclarationHook', 'method' => 'on_enter_interface', 'node' => 'Interface', 'kind' => 'Interface', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata'],
         // A `foreach` statement. Probed: the hook fires for a nested one too, which is what PHPStan does — a rule
         // registered for `Foreach_` runs on every one of them, so agreement depends on that matching.
         Foreach_::class => ['trait' => 'ForeachHook', 'method' => 'after_foreach', 'node' => 'Foreach', 'kind' => 'Foreach', 'phpOnly' => true],

@@ -36,6 +36,8 @@ final class ModuleEmitter
                 'ExpressionHook' => 'register_expression_hook',
                 'StatementHook' => 'register_statement_hook',
                 'ClassDeclarationHook' => 'register_class_hook',
+                'InterfaceDeclarationHook' => 'register_interface_hook',
+                'TraitDeclarationHook' => 'register_trait_hook',
                 'ClassLikeMemberHook' => 'register_class_like_member_hook',
                 'AnalysisHook' => 'register_analysis_hook',
                 default => throw new RuntimeException("no registration for {$rule['trait']}"),
@@ -58,9 +60,10 @@ final class ModuleEmitter
             $nodeImports[] = "use mago_syntax::cst::{$node};";
         }
 
-        // Both the class-declaration and the class-like-member hooks take the enclosing metadata.
+        // Every class-like declaration hook and the class-like-member hook take the enclosing metadata: the
+        // interface and trait hooks are handed a `&ClassLikeMetadata` too, not a kind of their own.
         $traits = array_column($rules, 'trait');
-        if (array_intersect(['ClassDeclarationHook', 'ClassLikeMemberHook'], $traits) !== []) {
+        if (array_intersect(['ClassDeclarationHook', 'InterfaceDeclarationHook', 'TraitDeclarationHook', 'ClassLikeMemberHook'], $traits) !== []) {
             $nodeImports[] = 'use mago_codex::metadata::class_like::ClassLikeMetadata;';
         }
 
