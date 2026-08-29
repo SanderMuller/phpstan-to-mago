@@ -1382,12 +1382,18 @@ PHP;
      * A rule returning one of these from `getNodeType()` is asking PHPStan for every node beneath it. Listed so
      * the refusal can say that, instead of reporting a missing hook mapping for something no single hook covers.
      *
+     * `ClassLike` is here for the same reason as the three roots, and was missed because it is not one: it is
+     * the base of `Class_`, `Interface_`, `Trait_` and `Enum_`, and the vocabulary maps two of those. Without
+     * it `ExplicitClassPrefixSuffixRule` refused with `no hook mapping for node type ...\ClassLike`, which
+     * reads as one absent row when the rule in fact dispatches on three kinds.
+     *
      * @var list<class-string>
      */
     private const array MULTI_KIND_NODE_TYPES = [
         'PhpParser\Node\Expr',
         'PhpParser\Node',
         'PhpParser\Node\Stmt',
+        'PhpParser\Node\Stmt\ClassLike',
     ];
 
     // -----------------------------------------------------------------------
