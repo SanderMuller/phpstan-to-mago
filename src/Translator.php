@@ -6263,6 +6263,16 @@ final readonly class Translator
         $method = $this->memberName($expr->name, $expr->getStartLine());
         $args = $expr->getArgs();
 
+        // `Strings::match($subject, $pattern)` as a bare condition rather than through `=== null`. The truthy
+        // and the non-null answers are the same one: Nette returns the capture array or null, and a match of
+        // the empty string still gives `['']`, which is a non-empty array. So this reduces to the test
+        // {@see patternTest()} already emits, and reaching it from here is the whole of the change — the
+        // helper, its semantics and its `bytesValue()` handling of a pattern's backslashes were already there.
+        $match = $this->patternTest($expr, $expr->getStartLine());
+        if ($match !== null) {
+            return $match;
+        }
+
         if ($helper === 'NamingHelper' && $method === 'isName' && count($args) === 2) {
             $literal = $this->stringLiteral($args[1]->value, $expr->getStartLine());
 

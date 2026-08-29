@@ -30,7 +30,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 36 of 88 the package registers emit, 1 covered by the engine, 51 refuse, 8 it registers nowhere
+## symplify/phpstan-rules — 37 of 88 the package registers emit, 1 covered by the engine, 50 refuse, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -38,9 +38,7 @@ REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
 EMIT    AvoidAnyExpectsRule
 REFUSE  AvoidFeatureSetAttributeInRectorRule
         unknown local $ruleError
-REFUSE  CheckRequiredInterfaceInContractNamespaceRule
-        unknown static helper Strings::match()
-        needs: unknown static helper Strings::match()
+EMIT    CheckRequiredInterfaceInContractNamespaceRule
 REFUSE  ClassNameRespectsParentSuffixRule
         the rule returns whatever processClassNameAndShort() decides, and that helper builds the findings rather than answering a question — so there is nothing here to translate into guards
         needs: the rule returns whatever processClassNameAndShort() decides, and that helper builds the findings rather than answering a question — so there is nothing here to translate into guards
@@ -190,7 +188,6 @@ EMIT    NoRequiredOutsideClassRule
 REFUSE  NoReturnSetterMethodRule
         comparison outside the vocabulary: Expr_Variable against Scalar_String
         needs: comparison outside the vocabulary: Expr_Variable against Scalar_String
-        needs: unknown static helper Strings::match()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
 EMIT    NoRouteTrailingSlashPathRule
 REFUSE  NoRoutingPrefixRule
