@@ -343,6 +343,72 @@ whose declared union PHPStan narrows through a larastan extension and mago takes
 count of five `environment()` calls in conditions was right and bounded the wrong thing — the mechanism is
 the class of extension-narrowed accessor, not that one method.
 
+#### A trait method is one declaration to mago and one finding per using class to PHPStan
+
+Thirty-two emitted plugins register `NodeKind::Method`. Every one of them disagrees with PHPStan on a
+method declared in a trait, and nothing in the suite says so, because no example pair holds one.
+
+Measured on one file holding a class, an abstract class with a concrete and an abstract method, an
+interface, an enum, and a trait used by two classes. Both engines were asked the same question — for every
+method, which class encloses it — by a rule and a plugin written for that alone.
+
+    PHPStan            mago
+    PlainClass::inClass                     PlainClass::inClass
+    AbstractClass::inAbstract               AbstractClass::inAbstract
+    AbstractClass::abstractMethod           AbstractClass::abstractMethod
+    AnInterface::inInterface                AnInterface::inInterface
+    AnEnum::inEnum                          AnEnum::inEnum
+    UsesTheTrait::inTrait                   ATrait::inTrait
+    AlsoUsesIt::inTrait
+
+Five of the six agree, including the abstract declaration with no body. The trait is the whole difference:
+PHPStan visits the method once per using class and answers `getClassReflection()` with the *using* class;
+mago's member hook fires once at the declaration and the enclosing class is the trait.
+
+So a plugin on that hook under-reports by one finding per extra user, over-reports for a trait nobody uses,
+and answers a question about the wrong class wherever the rule gates on the enclosing one — "is this a
+`TestCase`" is asked of the trait.
+
+A control separates the node from the hook. `InClassMethodNode` is the virtual node four refused rules
+register for, and it was the suspect. A plain `Stmt\ClassMethod` rule — the node type this transpiler
+*already* maps to that hook — fires **identically**: twice for the trait method, never for the trait. The
+divergence is the hook, not the node, and it is already shipped rather than waiting on a new row.
+
+Counted rather than described: of the emitted PHP plugins, **32 register `NodeKind::Method`** — 18 from the
+rule packages and 14 fixtures. Not all reach it through `ClassMethod`; `FunctionLike` and the `Expr` family
+register it alongside other kinds. Every one of them is on the hook this measures.
+
+That also sizes the `InClassMethodNode` cluster honestly. The missing row is not what stops those four:
+mapping it to the member hook would be exactly as faithful as `ClassMethod` is, which is to say faithful
+everywhere except traits. Two of the four hand every finding to an injected helper and are out on their own
+terms; the other two are reflection and subtree work, not a table row.
+
+The ceiling, on real code: **35%**.
+
+Both probes were pointed at `laravel/framework`'s `Illuminate/Database/Eloquent` — 109 files, 30 traits —
+and each logged one line per firing.
+
+    mago      1395 firings    484 named by a trait   (34.7%)
+    PHPStan   1374 firings      0 named by a trait
+
+PHPStan attributes 442 of them to `Illuminate\Database\Eloquent\Model`, the class that uses the traits.
+Mago names the trait.
+
+The totals are within 1.5% of each other, and on this tree **no method fires twice on either side**. So what
+this measures is attribution, not count: every trait here is used by one analysed class, so the missing
+findings a widely-used trait would cause do not appear. A trait used by two analysed classes is the case
+that costs findings, and this tree does not hold one.
+
+Attribution alone is enough to matter. A rule that gates on the enclosing class — "does this extend
+`AbstractController`", "is this a data fixture" — is asked about the trait, which extends nothing and
+implements nothing, so the guard declines and the rule goes silent inside every trait.
+
+Counted in the emitted plugins rather than estimated: **7 of the 18** corpus rules on this hook read the
+enclosing class — `NoDoubleConsecutiveTestMockRule`, `NoGetInCommandRule`, `NoGetDoctrineInControllerRule`,
+`NoGetInControllerRule`, `NoOnlyNullReturnInRefactorRule`, `NoRouteTrailingSlashPathRule` and
+`NoRepositoryCallInDataFixtureRule`. Those seven are silent in a trait whose using class the guard would
+have accepted.
+
 #### The arithmetic family, built and then withdrawn
 
 The six `OperandsInArithmetic*` rules were ported far enough to emit and then reverted. The machinery worked;
