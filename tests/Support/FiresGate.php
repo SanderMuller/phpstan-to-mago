@@ -258,6 +258,17 @@ final readonly class FiresGate
      */
     public function magoFindings(string $rule, string $ruleFile): array
     {
+        return GateFindings::remember(
+            'mago|' . $this->fingerprint($rule, $ruleFile),
+            fn (): array => $this->runMago($rule, $ruleFile),
+        );
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    private function runMago(string $rule, string $ruleFile): array
+    {
         $prefixes = $this->identifierPrefixesOf($ruleFile);
         $sandbox = $this->sandbox($rule, $ruleFile);
         $output = $this->run(['./mago', 'analyze', '--reporting-format', 'json'], $sandbox);
@@ -306,6 +317,17 @@ final readonly class FiresGate
      */
     public function phpstanFindings(string $rule, string $ruleFile, string $ruleClass): array
     {
+        return GateFindings::remember(
+            'phpstan|' . $ruleClass . '|' . $this->fingerprint($rule, $ruleFile),
+            fn (): array => $this->runPhpstan($rule, $ruleFile, $ruleClass),
+        );
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    private function runPhpstan(string $rule, string $ruleFile, string $ruleClass): array
+    {
         $sandbox = $this->sandbox($rule, $ruleFile, $ruleClass);
         $output = $this->run([
             $this->repositoryRoot . '/vendor/bin/phpstan',
@@ -325,6 +347,22 @@ final readonly class FiresGate
      * Rebuilt per call rather than cached: mago has no result cache, so a stale sandbox would be the
      * one thing that could make a dead rule look alive.
      */
+    /**
+     * What a rule's findings depend on, so a run shares them and an edit does not.
+     *
+     * The rule's own source, every example beside it, and the target. {@see GateFindings} says why.
+     */
+    private function fingerprint(string $rule, string $ruleFile): string
+    {
+        $stamps = [Transpiler::$target, (string) filemtime($ruleFile)];
+        $examples = glob($this->examplesRoot . '/' . $rule . '/{,*/,*/*/,*/*/*/,*/*/*/*/}*.php', GLOB_BRACE);
+        foreach ($examples === false ? [] : $examples as $example) {
+            $stamps[] = $example . ':' . filemtime($example);
+        }
+
+        return hash('sha256', implode('|', $stamps));
+    }
+
     private function sandbox(string $rule, string $ruleFile, string $ruleClass = 'Stub'): string
     {
         $sandbox = $this->sandboxRoot . '/' . $rule;
