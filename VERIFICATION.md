@@ -409,6 +409,47 @@ enclosing class — `NoDoubleConsecutiveTestMockRule`, `NoGetInCommandRule`, `No
 `NoRepositoryCallInDataFixtureRule`. Those seven are silent in a trait whose using class the guard would
 have accepted.
 
+##### What closing it would take, and what it would cost
+
+Two things had to be measured before the fix could be designed, and a peer session named both while leaving
+both open. They are answered here.
+
+**The position matches.** PHPStan reports a trait-method finding at the *trait's own* declaration line, not
+at the using class:
+
+    AT TraitDivergence\PlainClass::inClass           Subjects.php:15
+    AT TraitDivergence\AnEnum::inEnum                Subjects.php:35
+    AT TraitDivergence\AlsoUsesIt::inTrait           Subjects.php (in context of class ...\AlsoUsesIt):41
+    AT TraitDivergence\UsesTheTrait::inTrait         Subjects.php (in context of class ...\UsesTheTrait):41
+
+Both trait findings land on line 41, which is where mago already reports. The file carries an
+`(in context of class X)` annotation and the line does not move. So a plugin that reported once per using
+class *at the declaration* would agree on position, and the only remaining difference is the count and that
+annotation — which matters, because the alternative was a systematic position divergence on every trait
+finding.
+
+**The index is cheaper than the host that would build it.** Mago has no reverse index — `$children` is null
+for a trait — but `getClassLikeNames()` with `getMultipleClasses()` reading `usedTraits` builds one. Measured
+on Shopware's `src`, 6023 files and 6686 class-likes: `getClassLikeNames()` 5.5 ms, the whole index 144 ms,
+finding 8578 trait-use edges over 60 distinct traits.
+
+Against a run rather than against nothing, three runs each, spread under 0.05 s and the machine
+uncontended:
+
+    plain, no extension host    0.63 s wall   1.98 s CPU
+    host that does nothing      0.75 s wall   2.48 s CPU
+    host that builds the index  0.84 s wall   2.58 s CPU
+
+The index adds 0.09 s wall and 0.10 s CPU. Starting the host it runs in costs more than that — 0.12 s wall
+and 0.50 s CPU — so on this corpus the reverse index is not what a consumer would notice.
+
+**What is not expressible.** "Which class is this method analysed in" has no answer in mago, and a peer
+probe is what settled it: the body is analysed once, at the declaration, so there is no per-using-class visit
+and no such class to name. That is a model difference rather than a missing accessor. The fix therefore has
+to be "evaluate the rule's class guard once per using class and report once per user that fails", not "ask
+which class we are in" — and for the seven rules that read the enclosing class, that guard reads class
+metadata, which the index provides.
+
 #### The arithmetic family, built and then withdrawn
 
 The six `OperandsInArithmetic*` rules were ported far enough to emit and then reverted. The machinery worked;
