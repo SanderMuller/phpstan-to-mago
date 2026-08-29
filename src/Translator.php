@@ -1016,10 +1016,17 @@ final readonly class Translator
         }
 
         if (isset($this->context->unwired[$property])) {
+            // Which of the two facts is the cause. An unregistered rule has no wiring *because* nothing
+            // registers it, so naming the missing wiring alone reads as a gap to close and is a symptom.
+            $cause = $this->context->ruleIsUnregistered
+                ? ', and no neon the package ships names this rule at all — so there is nothing to wire it '
+                    . 'from, and a consumer that wants it registers and configures it itself'
+                : ', and its type names no PHPStan service, so there is no value for the generated plugin to '
+                    . 'carry';
+
             throw new Refusal(
                 "\${$property} is a constructor parameter the package's neon does not wire for "
-                . "{$this->context->unwired[$property]}, and its type names no PHPStan service, so there is no value for "
-                . 'the generated plugin to carry',
+                . $this->context->unwired[$property] . $cause,
                 $line,
             );
         }

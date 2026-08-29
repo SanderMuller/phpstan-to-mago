@@ -217,6 +217,17 @@ final class TranslationContext
     public array $unwired = [];
 
     /**
+     * Whether no neon the package ships names this rule at all.
+     *
+     * The other half of {@see $unwired}, and usually the whole of it: nobody wires configuration for a service
+     * nobody registers, so an unregistered rule's every parameter reads as one the neon "does not wire". True
+     * and not the cause. A peer session ranked nine such rules as the corpus's largest configuration cluster
+     * and eight of them were unregistered — the census marks that on each of those lines, and the refusal did
+     * not, so the reason read as a build target.
+     */
+    public bool $ruleIsUnregistered = false;
+
+    /**
      * Where the emitted report points, when the rule moves it off the node the hook fired for.
      *
      * Null means the hook's own node, which is what almost every rule wants. A rule that loops a class-like's

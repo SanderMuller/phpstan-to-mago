@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago;
 
+use FilesystemIterator;
 use Nette\Neon\Neon;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 
 /**
  * A rule package's own configuration, read from the neon it ships.
@@ -33,6 +37,7 @@ final readonly class PackageConfiguration
     private function __construct(
         private array $arguments,
         private array $parameters,
+        private string $root,
     ) {}
 
     /**
@@ -134,7 +139,76 @@ final readonly class PackageConfiguration
             $parameters = array_replace_recursive($parameters, $fileParameters);
         }
 
-        return new self($arguments, $parameters);
+        return new self($arguments, $parameters, $root);
+    }
+
+    /**
+     * Whether any neon the package ships names this rule at all.
+     *
+     * A rule nobody registers has no wiring, so every constructor parameter it declares reads as one the neon
+     * "does not wire" — which is true and is not the cause. Eight of the nine rules a peer session ranked as a
+     * configuration cluster were unregistered, and the census said so on every one of those lines; the refusal
+     * did not, so the reason looked like a build target. This is what lets it say the real one.
+     *
+     * Every neon counts, not only the auto-included ones, and the match is on the short name. Both are
+     * deliberate and both are the census's own rules — see {@see registeredClassNames()}.
+     */
+    public function registers(string $ruleClass): bool
+    {
+        $short = substr($ruleClass, (int) strrpos('\\' . $ruleClass, '\\'));
+
+        return isset(self::registeredClassNames($this->root)[$short]);
+    }
+
+    /**
+     * Every class short name any neon under a package root mentions.
+     *
+     * Registration is a *consumer* fact, so this is deliberately broad: `symplify/phpstan-rules` auto-includes
+     * four of its thirteen config files and puts most rules behind `conditionalTags` that default off, and a
+     * consumer lists those by hand. Keyed on auto-inclusion the package would read as registering almost
+     * nothing, which is a worse denominator than the one it replaces rather than a better one.
+     *
+     * Memoised per root: the census asks it once per package and the transpiler once per refused rule.
+     *
+     * @return array<string, true>
+     */
+    public static function registeredClassNames(string $packageRoot): array
+    {
+        // A static local rather than a property: the class is `readonly`, which PHP extends to statics, and a
+        // readonly static may not carry a default.
+        /** @var array<string, array<string, true>> $memo */
+        static $memo = [];
+
+        if (isset($memo[$packageRoot])) {
+            return $memo[$packageRoot];
+        }
+
+        $found = [];
+        if (! is_dir($packageRoot)) {
+            return $memo[$packageRoot] = $found;
+        }
+
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($packageRoot, FilesystemIterator::SKIP_DOTS),
+        );
+
+        foreach ($files as $file) {
+            if (! $file instanceof SplFileInfo || $file->getExtension() !== 'neon') {
+                continue;
+            }
+
+            preg_match_all(
+                '/[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)+/',
+                (string) file_get_contents($file->getPathname()),
+                $matches,
+            );
+
+            foreach ($matches[0] as $reference) {
+                $found[substr($reference, (int) strrpos($reference, '\\') + 1)] = true;
+            }
+        }
+
+        return $memo[$packageRoot] = $found;
     }
 
     /**

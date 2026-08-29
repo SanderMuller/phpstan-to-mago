@@ -73,8 +73,8 @@ REFUSE  ForbiddenFuncCallRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->normalizeConfig()
 EMIT    ForbiddenMultipleClassLikeInOneFileRule
 REFUSE  ForbiddenNewArgumentRule  (the package registers it nowhere)
-        $forbiddenTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Complexity\ForbiddenNewArgumentRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
-        needs: $forbiddenTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Complexity\ForbiddenNewArgumentRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        $forbiddenTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Complexity\ForbiddenNewArgumentRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
+        needs: $forbiddenTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Complexity\ForbiddenNewArgumentRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
 REFUSE  ForbiddenNodeRule
         PhpParser\Node covers several node kinds, and this rule narrows to them with `instanceof` against a value rather than a written class name — a configured list of node classes. A plugin declares its targets statically, so there is no shape to register: the rule's target set is only known at analysis time
         needs: $forbiddenNodes is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
@@ -237,7 +237,7 @@ REFUSE  ParamNameToTypeConventionRule  (the package registers it nowhere)
         needs: condition outside the vocabulary: ->variadic
         needs: no PHP navigation for node.var (kind expr) on a Param node
         needs: assignment value outside the vocabulary: no PHP navigation for node.var (kind expr) on a Param node
-        needs: assignment value outside the vocabulary: $paramNamesToTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Convention\ParamNameToTypeConventionRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        needs: assignment value outside the vocabulary: $paramNamesToTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Convention\ParamNameToTypeConventionRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
         needs: $errorMessage is not a message built in this rule
 REFUSE  PhpUpgradeDowngradeRegisteredInSetRule
         assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
@@ -332,19 +332,19 @@ REFUSE  NoUnsafeRequestFacadeRule  (the package registers it nowhere)
         $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
         needs: $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
 REFUSE  NoUnsafeRequestHelperRule  (the package registers it nowhere)
-        $namespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Validation\NoUnsafeRequestHelperRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
-        needs: $namespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Validation\NoUnsafeRequestHelperRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        $namespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Validation\NoUnsafeRequestHelperRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
+        needs: $namespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Validation\NoUnsafeRequestHelperRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
 EMIT    OnlyAllowFacadeAliasInBlade  (the package registers it nowhere)
 EMIT    PositionalFlagArgumentConstructorRule
 REFUSE  PositionalFlagArgumentMethodCallRule  (the package registers it nowhere)
-        $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
-        needs: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
+        needs: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
 REFUSE  PositionalFlagArgumentNullsafeMethodCallRule
         flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
         needs: flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
 REFUSE  PositionalFlagArgumentStaticCallRule  (the package registers it nowhere)
-        $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
-        needs: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
+        needs: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
 REFUSE  StaticChainedNoDebugInNamespaceRule  (the package registers it nowhere)
         ClassReflection test on a service, which the plugin has no equivalent for
         needs: ClassReflection test on a service, which the plugin has no equivalent for

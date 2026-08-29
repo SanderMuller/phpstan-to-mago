@@ -10,6 +10,7 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use Sandermuller\PhpstanToMago\Refusal;
 use Sandermuller\PhpstanToMago\RulePaths;
+use Sandermuller\PhpstanToMago\PackageConfiguration;
 use Sandermuller\PhpstanToMago\Transpiler;
 use SplFileInfo;
 
@@ -268,22 +269,9 @@ final class TracksUpstreamDriftTest extends TestCase
      */
     private function registeredClasses(string $package): array
     {
-        $root = dirname(__DIR__, 2) . '/vendor/' . $package;
-        $found = [];
-
-        $directory = new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS);
-        foreach (new RecursiveIteratorIterator($directory) as $file) {
-            if (! $file instanceof SplFileInfo || $file->getExtension() !== 'neon') {
-                continue;
-            }
-
-            preg_match_all('/[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)+/', (string) file_get_contents($file->getPathname()), $matches);
-            foreach ($matches[0] as $reference) {
-                $found[substr($reference, (int) strrpos($reference, '\\') + 1)] = true;
-            }
-        }
-
-        return $found;
+        // The transpiler asks the same question of the same source, so a refusal naming non-registration and
+        // the marker on this line cannot disagree. It lived here first and moved when the refusal needed it.
+        return PackageConfiguration::registeredClassNames(dirname(__DIR__, 2) . '/vendor/' . $package);
     }
 
     /** Whether the rule translates, which is the whole of what this file records. */

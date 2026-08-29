@@ -684,6 +684,7 @@ PHP;
                 // constructor and nullsafe variants of its positional-flag family, and the two it leaves to a
                 // combined rule refused with `unknown local $this`, which points at nothing.
                 $this->context->unwired[$name] = $className;
+                $this->context->ruleIsUnregistered = self::isUnregistered($configuration, $className);
 
                 continue;
             }
@@ -1224,6 +1225,17 @@ PHP;
         }
 
         return $checks;
+    }
+
+    /**
+     * Whether the package ships no neon naming this rule, which is why nothing wires it.
+     *
+     * Its own method so {@see collectConfiguration()} keeps the complexity it had; the answer itself is one
+     * question asked of the package configuration.
+     */
+    private static function isUnregistered(?PackageConfiguration $configuration, string $className): bool
+    {
+        return $configuration instanceof PackageConfiguration && ! $configuration->registers($className);
     }
 
     /**
