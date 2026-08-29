@@ -30,7 +30,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 38 of 88 the package registers emit, 1 covered by the engine, 49 refuse, 8 it registers nowhere
+## symplify/phpstan-rules — 38 of 89 the package registers emit, 1 covered by the engine, 50 refuse, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -147,9 +147,10 @@ REFUSE  NoInstanceOfStaticReflectionRule
         needs: no node predicate for instanceof PhpParser\Node\Expr\Instanceof_ on a hook-node
         needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  NoIntegerRefactorReturnRule
-        no mapping for ->returnType on a hook-node
-        needs: no node predicate for instanceof PhpParser\Node\UnionType on a expr
-        needs: no iteration mapped for ->types, which resolved to a expr
+        assignment value outside the vocabulary: access path outside the vocabulary: Scalar_String
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_String
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: array_diff()
 REFUSE  NoJustPropertyAssignRule
         no hook mapping for node type PhpParser\Node\Stmt\Expression
         needs: no node predicate for instanceof PhpParser\Node\Expr\Assign on a expr
@@ -243,6 +244,12 @@ REFUSE  PreferredClassRule
         needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 EMIT    PreventParentMethodVisibilityOverrideRule
 EMIT    PublicStaticDataProviderRule
+REFUSE  RectorCheaperGuardsFirstRule
+        access path outside the vocabulary: self::ABSTRACT_RECTOR_CLASS
+        needs: access path outside the vocabulary: self::ABSTRACT_RECTOR_CLASS
+        needs: foreach with a key
+        needs: assignment value outside the vocabulary: count() of a subtree compared numerically
+        needs: statement outside the vocabulary: Stmt_For
 EMIT    RequireAtLeastOneRule
 EMIT    RequireAttributeNameRule
 REFUSE  RequireAttributeNamespaceRule
