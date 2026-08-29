@@ -36,6 +36,18 @@ use Throwable;
  * - **Findings are compared as `(identifier, file, line)` triples**, never as counts. Equal totals over
  *   different sites is a failure that looks like a success.
  *
+ * The triple is also the limit of what this can see, and the limit runs the other way. {@see bySite()} keys
+ * on `file:line`, so a site reported *twice* compares as one and the second message overwrites the first —
+ * which means `differingMessages` reads the last one only. Three findings at a site and one finding at that
+ * site are equal here.
+ *
+ * That matters for anything whose whole effect is multiplicity. A method declared in a trait is the case in
+ * front of us: PHPStan reports it once per using class, all at the trait's own line, and a port that fixed
+ * itself to do the same would produce a differential identical to one that did nothing. Such a fix has to
+ * bring a control fixture that asserts the count at one span; this instrument cannot be its evidence.
+ * Measured rather than assumed — mago returns two issues for two reports at one span and collapses nothing,
+ * so the multiplicity exists and is lost here rather than never produced.
+ *
  * Two rules can report under one identifier — `hihaho/phpstan-rules` has such a pair — so attribution is by
  * identifier, and rules sharing one are compared as a single bucket rather than split on a guess.
  */
