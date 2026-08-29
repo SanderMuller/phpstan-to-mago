@@ -97,6 +97,12 @@ final class CorpusDifferential
          * @var array<string, bool>
          */
         private readonly array $overrides = [],
+        /**
+         * Extra analyzer extensions on the mago side. {@see MagoHosts} says what they are for.
+         *
+         * @var list<string>
+         */
+        private readonly array $extensionHosts = [],
     ) {}
 
     /**
@@ -448,7 +454,7 @@ final class CorpusDifferential
             $excludes[] = '"' . $this->absolute($exclude) . '/**"';
         }
 
-        file_put_contents($this->sandbox . '/mago.toml', <<<TOML
+        file_put_contents($this->sandbox . '/mago.toml', strtr(<<<TOML
             [source]
             paths = [{$this->join($paths)}]
             includes = ["{$this->consumerRoot}/vendor"]
@@ -456,8 +462,8 @@ final class CorpusDifferential
 
             [extension-hosts.differential]
             command = ["php", "worker.php"]
-
-            TOML);
+            {extraHosts}
+            TOML, ['{extraHosts}' => MagoHosts::render($this->extensionHosts)]));
 
         return $this->sandbox . '/mago.toml';
     }

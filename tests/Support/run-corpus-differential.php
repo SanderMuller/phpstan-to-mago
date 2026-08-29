@@ -7,6 +7,7 @@ declare(strict_types=1);
  *
  *   php tests/Support/run-corpus-differential.php <consumer-root> [--threads=N] [--sandbox=DIR]
  *       [--paths=a,b] [--packages=vendor/one,vendor/two] [--parameter=name=true]
+ *       [--extension-host=/path/to/plugin.php]
  *
  * Prints the emission counts, the corpus size, and per identifier the agree / only-original / only-port
  * split. Writes nothing into the consumer, and nothing into this repository: the sandbox holds the
@@ -34,6 +35,11 @@ $packages = null;
 // something else drives a difference between them; one corpus run twice can.
 /** @var array<string, bool> $overrides */
 $overrides = [];
+// An extra analyzer extension on the *mago* side, for asking what the difference looks like when the two
+// engines carry comparable plugins. PHPStan reaches a corpus through larastan or phpstan-symfony; mago
+// reaches it through nothing, and a difference measured across that gap describes the gap rather than the
+// port.
+$extensionHosts = [];
 foreach ($arguments as $argument) {
     if (str_starts_with($argument, '--paths=')) {
         $paths = explode(',', substr($argument, 8));
@@ -43,6 +49,8 @@ foreach ($arguments as $argument) {
         $sandbox = substr($argument, 10);
     } elseif (str_starts_with($argument, '--packages=')) {
         $packages = explode(',', substr($argument, 11));
+    } elseif (str_starts_with($argument, '--extension-host=')) {
+        $extensionHosts[] = substr($argument, 17);
     } elseif (str_starts_with($argument, '--parameter=')) {
         [$name, $value] = array_pad(explode('=', substr($argument, 12), 2), 2, 'true');
         $overrides[$name] = $value === 'true';
@@ -115,6 +123,7 @@ $differential = new CorpusDifferential(
     paths: $paths,
     excludes: $excludes,
     overrides: $overrides,
+    extensionHosts: $extensionHosts,
 );
 
 $counts = $differential->emit();
