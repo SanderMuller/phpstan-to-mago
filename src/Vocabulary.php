@@ -235,7 +235,13 @@ final class Vocabulary
         'While' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
         'DoWhile' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
         'Switch' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
-        'Conditional' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        // `if` is php-parser's name for the middle arm, which an elvis does not have. Not `nthExpression(.., 1)`:
+        // that is the middle arm of a full ternary and the *else* arm of an elvis, so the two would be
+        // indistinguishable and the null test the rule opens with could never hold.
+        'Conditional' => [
+            'cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
+            'if' => [self::PHP_ONLY, 'expr', 'Support::conditionalThen($context, $node)'],
+        ],
         'UnaryPrefix' => ['expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
         'MethodCall' => [
             'var' => ['node.object', 'expr', 'Support::nthExpression($context, $node, 0)'],

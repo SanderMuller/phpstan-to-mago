@@ -77,6 +77,35 @@ final class Calls
         return self::nthExpression($context, $subject, 0);
     }
 
+    /**
+     * The middle arm of a ternary, or null for an elvis that has none.
+     *
+     * php-parser spells the absent arm `$node->if === null`, and mago spells it `then: Option<&Expression>` on
+     * its `Conditional` — the same distinction, so a rule asking which one this is gets an exact answer rather
+     * than an approximation.
+     *
+     * Counted rather than read by position, because position cannot tell them apart: index 1 is the middle arm
+     * of a full ternary and the *else* arm of an elvis. Probed on both spellings in one file — `$a > 1 ? 'big'
+     * : 'small'` gives three `Expression` children and `$a ?: 'fallback'` gives two, with no child for the `?`
+     * or the `:` to shift the count.
+     */
+    public static function conditionalThen(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        $node = Tree::node($subject);
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        $arms = 0;
+        foreach ($context->source->getChildren($node) as $child) {
+            if ($child->kind === NodeKind::Expression) {
+                ++$arms;
+            }
+        }
+
+        return $arms === 3 ? self::nthExpression($context, $subject, 1) : null;
+    }
+
     /** The member selector of a method call: `->expects(..)` gives `expects`. */
     public static function selector(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {

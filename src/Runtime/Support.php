@@ -170,6 +170,12 @@ final class Support
         return Calls::classPart($context, $subject);
     }
 
+    /** The middle arm of a ternary, or null for an elvis that has none. */
+    public static function conditionalThen(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        return Calls::conditionalThen($context, $subject);
+    }
+
     /** The member selector of a method call: `->expects(..)` gives `expects`. */
     public static function selector(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {

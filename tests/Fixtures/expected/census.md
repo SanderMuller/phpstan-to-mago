@@ -382,7 +382,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 10 of 45 the package registers emit, 0 covered by the engine, 35 refuse, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 12 of 45 the package registers emit, 0 covered by the engine, 33 refuse, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
@@ -410,9 +410,7 @@ REFUSE  BooleanInBooleanOrRule
 EMIT    BooleanInDoWhileConditionRule
 EMIT    BooleanInElseIfConditionRule
 EMIT    BooleanInIfConditionRule
-REFUSE  BooleanInTernaryOperatorRule
-        no mapping for ->if on a hook-node
-        needs: null comparison against ->if, which resolved to a expr
+EMIT    BooleanInTernaryOperatorRule
 EMIT    BooleanInWhileConditionRule
 REFUSE  ClosureUsesThisRule
         no mapping for ->static on a hook-node
@@ -433,9 +431,7 @@ REFUSE  DisallowedLooseComparisonRule
         needs: assignment value outside the vocabulary: no PHP navigation for node.left (kind expr) on a BinaryOp node
         needs: assignment value outside the vocabulary: no PHP navigation for node.right (kind expr) on a BinaryOp node
         needs: message expression outside the vocabulary: Expr_Ternary
-REFUSE  DisallowedShortTernaryRule
-        no mapping for ->if on a hook-node
-        needs: null comparison against ->if, which resolved to a expr
+EMIT    DisallowedShortTernaryRule
 REFUSE  DynamicCallOnStaticMethodsCallableRule
         no hook mapping for node type PHPStan\Node\MethodCallableNode
         needs: access path outside the vocabulary: ->getName()

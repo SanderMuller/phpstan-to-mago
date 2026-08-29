@@ -183,6 +183,7 @@ final readonly class FiresGate
         'BooleanInBooleanNotRule' => ['checkThisOnly' => false],
         'BooleanInWhileConditionRule' => ['checkThisOnly' => false],
         'BooleanInDoWhileConditionRule' => ['checkThisOnly' => false],
+        'BooleanInTernaryOperatorRule' => ['checkThisOnly' => false],
         'ClassLikeCognitiveComplexityRule' => [
             'cognitive_complexity' => ['class' => 3],
         ],

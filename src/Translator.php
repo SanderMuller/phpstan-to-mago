@@ -800,6 +800,23 @@ final readonly class Translator
             return $this->operand($subject) . ' === null';
         }
 
+        // `$node->if === null` on a ternary is *whether it has a middle arm*: an elvis has none, and php-parser
+        // spells that absence as a null. {@see Support::conditionalThen} answers the same null, by counting the
+        // arms rather than reading a position — see its comment for why position cannot tell the two apart.
+        //
+        // Gated on the field, not on the `expr` kind: most navigations that resolve to one always find
+        // something, and letting every `expr` compare to null would emit guards that can never hold.
+        if ($subject['kind'] === 'expr'
+            && ($subject['key'] ?? null) === '$node->if'
+            && $this->context->nodeKind === 'Conditional'
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a ternary middle-arm test, which only the PHP target carries', $line);
+            }
+
+            return $this->operand($subject) . ' === null';
+        }
+
         if (! in_array($subject['kind'], ['bytes', 'class-name'], true)) {
             // Names what was written as well as what it resolved to. `null comparison against a subtree` told a
             // reader nothing: the one rule refusing that way asks `$node->stmts === null`, which is *whether the

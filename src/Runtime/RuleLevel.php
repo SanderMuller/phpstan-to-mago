@@ -22,7 +22,10 @@ use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
  * can translate. So the port is one level out, at the helpers that each hardcode their callback, which is
  * what makes them the smallest portable unit.
  *
- * Ported for the arithmetic and boolean-condition families, whose rules refuse for no other reason.
+ * Ported for the boolean-condition family. Not for the arithmetic one: this holds `passesAsBoolean` and
+ * nothing else, and `OperatorRuleHelper::isValidForArithmeticOperation` is not ported anywhere. Said the
+ * other way here until the census was read — those six rules also refuse on a shape, an `if`/`elseif` chain
+ * binding two operands per branch, so they need two things rather than this one.
  *
  * ## The flags are the behaviour, so they are arguments
  *
