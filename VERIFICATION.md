@@ -343,6 +343,46 @@ whose declared union PHPStan narrows through a larastan extension and mago takes
 count of five `environment()` calls in conditions was right and bounded the wrong thing — the mechanism is
 the class of extension-narrowed accessor, not that one method.
 
+#### The arithmetic family, built and then withdrawn
+
+The six `OperandsInArithmetic*` rules were ported far enough to emit and then reverted. The machinery worked;
+the evidence did not support shipping it.
+
+What it took: an `instanceof` dispatch recogniser (php-parser has a class per operator, mago has one `Binary`
+kind with the operator in a child, and `left`/`right` and `var`/`expr` are the same two child positions in
+mago, so the whole prologue collapses to the bindings any one branch writes), targets narrowed to the kinds
+the dispatch names rather than the six an `Expr` hook carries, and `isValidForArithmeticOperation` ported
+against a table measured on real PHPStan first -- fourteen operand shapes at three flag settings, all 42
+cells reproduced.
+
+That table is worth keeping even though the port is not. A plain `string`, an `array` and an `object` operand
+are **silent** in every configuration, because `$type->toNumber()` errors for them and the helper returns
+early, deferring to what PHPStan core already reports on the same line. And `int|string` is silent where
+`bool|int` reports: one error-producing member takes the whole union out through that early exit, while two
+cleanly-converting non-numerics fall through to the criteria check. Implementing "not numeric, so report"
+would have fired on every string division PHPStan passes over.
+
+Two measurements stopped it.
+
+**The compound-assignment half cannot be read.** At `$x /= $e`, mago records the *left* operand's own type
+and the *right* operand's **coerced** type -- `bool` reads `int|float` under `/=` and `int` under `*=`. The
+rule reports on both operands, so half of every compound assignment would be silently missed. The narrow
+form of this claim took two sessions to reach: seven access routes were enumerated against the right operand
+and one against the left, and only the union of the two answers the question. Neither "enumerate the access
+routes" nor "enumerate the positions" alone would have caught it; the rule defines which positions matter.
+
+**And on real code it found nothing.** Across Shopware's 9199 files and hihaho's 2926, the division rule
+produced **zero agreements and four findings PHPStan does not make**. All four are the same shape:
+`$criteria->getLimit() ? … / $criteria->getLimit()`, a repeated method call under a truthiness guard.
+Measured, and it is not a mago defect either: mago narrows a repeated call only when the method is annotated
+`@pure`, and refuses to otherwise, which is the sounder position of the two -- an unannotated method may
+return something else the second time. Controlled to the annotation: the same method with `@pure` narrows to
+`int`, without it stays `null|int`.
+
+So the rule is arguably correct and its only real-code output is four findings that PHPStan declines for a
+reason mago deliberately rejects. That is not enough to ship. It is reverted rather than kept behind a flag,
+because unexercised vocabulary is how a table stops describing what the tool does.
+
 #### And then closed, by giving mago the plugin
 
 The section above proves what the 42 *are*. What it does not settle is whether they are a property of the
