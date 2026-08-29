@@ -7517,6 +7517,8 @@ final readonly class Translator
         // A value the rule computed, against a literal: `strtolower($name->getLast()) !== 'request'` is two
         // strings, and the case fold is the rule's own. Compared as strings rather than through the name
         // helpers, which fold case again and would make the fold invisible.
+        // `attribute-name` joins them because an attribute's name *is* a computed string once the rule has
+        // called `->toString()` on it, and a rule comparing it to `Attribute::class` is comparing two strings.
         if (in_array($subject['kind'], ['bytes', 'class-name'], true) && Transpiler::$target === 'php') {
             return $this->operand($subject) . ' === ' . $this->context->backend->bytes($this->stringLiteral($right, $line));
         }
@@ -9272,7 +9274,12 @@ final readonly class Translator
         // whether or not the rule wrote an import. Taking the short name instead emits a comparison against a
         // name no ancestor has, so the rule loads, runs and matches nothing — the failure mode that looks like
         // coverage. Only for a name that is neither imported nor already qualified.
-        if ($fqcn === $written
+        // Asked of the import map rather than by comparing the two strings. A root-namespace import maps an
+        // alias to itself -- `use Attribute;` gives `Attribute => Attribute` -- so the value comparison read
+        // it as unimported and prefixed the rule's own namespace, emitting
+        // `Symplify\PHPStanRules\Rules\Attribute` for PHP's own `Attribute`. The rule then loaded, ran and
+        // matched nothing, which is the failure this branch exists to prevent, produced by the branch itself.
+        if (! isset($this->context->useMap[$alias])
             && $this->context->ruleNamespace !== null
             && ! $expr->class instanceof FullyQualified
             && ! str_contains($written, '\\')

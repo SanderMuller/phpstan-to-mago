@@ -104,7 +104,10 @@ final class Calls
         }
 
         foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind === NodeKind::ArgumentList) {
+            // An attribute spells its arguments `PartialArgumentList`, a different kind from a call's, and
+            // reading only `ArgumentList` found nothing there -- so a rule looping over an attribute's
+            // arguments looped over an empty list, ran, and reported nothing.
+            if ($child->kind === NodeKind::ArgumentList || $child->kind === NodeKind::PartialArgumentList) {
                 return Tree::part($context, $child);
             }
         }
@@ -322,7 +325,10 @@ final class Calls
 
         $out = [];
         foreach ($list->children() as $child) {
-            if ($child->kind === NodeKind::Argument) {
+            // `PartialArgument` for the same reason as `PartialArgumentList` above: an attribute spells both
+            // halves differently from a call. Filtering on `Argument` alone dropped every attribute argument
+            // and left the loop body unreachable.
+            if ($child->kind === NodeKind::Argument || $child->kind === NodeKind::PartialArgument) {
                 $out[] = $child;
             }
         }

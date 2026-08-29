@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago;
 
+use PhpParser\Node\AttributeGroup;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
@@ -153,6 +154,12 @@ final class Vocabulary
         // `NestedVariable` and then a `DirectVariable` for the inner `$n`. All three registered, because the
         // rule that reaches here asks which shape it is rather than narrowing before the hook.
         Variable::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'DirectVariable', 'phpOnly' => true],
+        // php-parser's attribute *group* is mago's `AttributeList`. A rule registered for it asks about the
+        // attributes inside, which the group-level navigation below already answers.
+        AttributeGroup::class => [
+            'trait' => 'AttributeListHook', 'method' => 'after_attribute_list', 'node' => 'AttributeList',
+            'kind' => 'AttributeList', 'phpOnly' => true,
+        ],
         Concat::class => [
             'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
             'gate' => "Support::binaryOperatorIs(\$context, \$node, '.')", 'phpOnly' => true,
@@ -263,6 +270,12 @@ final class Vocabulary
             'class' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
             'name' => [self::PHP_ONLY, 'name-part', 'Support::namePart($context, {base})'],
         ],
+        // The attribute group as a hook node, for a rule registered on the group itself rather than reaching
+        // one from a declaration. `KIND_FIELDS` answers the same field for a group *found* on a declaration;
+        // this is the same navigation from the node the hook fired for.
+        'AttributeList' => [
+            'attrs' => [self::PHP_ONLY, 'attributes', 'Support::attributesOf(Support::asPart($context, {base}))'],
+        ],
         'Binary' => [
             'left' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
             'right' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 1)'],
@@ -345,7 +358,13 @@ final class Vocabulary
             'attrs' => [self::PHP_ONLY, 'attributes', 'Support::attributesOf({base})'],
         ],
         'attribute' => [
-            'name' => [self::PHP_ONLY, 'attribute-name', '{base}'],
+            // The `Identifier` child, not the attribute node. Mapped to the node, `textOf()` returned the
+            // whole attribute -- `Marker('gone in 2.0')` -- which matched the bare `#[Attribute]` marker by
+            // accident and nothing else.
+            'name' => [self::PHP_ONLY, 'bytes', 'Support::attributeName($context, {base})'],
+            // An attribute's arguments are an `ArgumentList` child in mago, the same shape a call carries,
+            // so they reach the argument iterable through the same helper a call's arguments do.
+            'args' => [self::PHP_ONLY, 'args', 'Support::argumentList($context, {base})'],
         ],
         // A parameter of a declaration, as written — not the metadata a reflection lookup returns. `->type` is
         // the hint, which is absent for an untyped parameter, so it goes through the option-tolerant kind.

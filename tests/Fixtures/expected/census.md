@@ -30,7 +30,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 35 of 88 the package registers emit, 1 covered by the engine, 52 refuse, 8 it registers nowhere
+## symplify/phpstan-rules — 36 of 88 the package registers emit, 1 covered by the engine, 51 refuse, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -249,9 +249,7 @@ REFUSE  PreferredClassRule
 EMIT    PreventParentMethodVisibilityOverrideRule
 EMIT    PublicStaticDataProviderRule
 EMIT    RequireAtLeastOneRule
-REFUSE  RequireAttributeNameRule
-        no hook mapping for node type PhpParser\Node\AttributeGroup
-        needs: no iteration mapped for ->attrs, which resolved to a expr
+EMIT    RequireAttributeNameRule
 REFUSE  RequireAttributeNamespaceRule
         method call outside the vocabulary ->isAttributeClass()
         needs: method call outside the vocabulary ->isAttributeClass()
