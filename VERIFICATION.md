@@ -406,13 +406,33 @@ asymmetry describes the ecosystems rather than the translation. The same applies
 `phpstan-symfony`, where **8 of 15** are `$container->getParameter()` -- enumerated, not sampled, after an
 earlier sample of three had put all 15 in that bucket and been wrong.
 
-The other 7 on Shopware are not the plugin gap and are not yet explained. Two are implicit `mixed` to
-PHPStan, which `passesAsBoolean` passes by design, so mago is the more precise of the two and the port
-reports a real violation the original declines -- an only-port finding where the port is right. The
-remaining 5 stay open: the rule runs in the sandbox (751 agreements on the same corpus), the site anchors
-correctly, the consumer's baseline carries no entry for them, and a clean reproduction of the same type
-shape *does* report. Something in that project's configuration changes the answer and this has not isolated
-which, which is why the ledger says five open rather than five explained.
+The other 7 on Shopware are not the plugin gap, and they are two further mechanisms rather than one.
+
+Two are implicit `mixed` to PHPStan, which `passesAsBoolean` passes by design, so mago is the more precise
+of the two and the port reports a real violation the original declines -- an only-port finding where the
+port is right.
+
+The remaining **5 are benevolent unions**, and finding that took three wrong answers first. The rule does
+run in the sandbox, the site anchors correctly, the consumer's baseline is silent, and a clean reproduction
+of `string|false` *does* report -- so it was none of those. What separates the reporting case from the
+silent one is a single pair of parentheses in PHPStan's own rendering:
+
+    (string|false)   benevolent, from UploadedFile::getRealPath()   -> silent
+     string|false    ordinary, from an @return                      -> reported
+
+Controlled side by side in one file, same expression shape, same run. PHPStan filters a benevolent union's
+failing members when `checkBenevolentUnionTypes` is false, keeps the `false` member because it *is* a
+boolean, and says nothing. Mago cannot represent benevolence, so the port is strict there.
+
+That corrects this file. Benevolent handling was accepted as never reaching `passesAsBoolean`, on a
+measurement of zero benevolent operands **in condition position** -- and the position was wrong. The `!`
+operand is where this family does most of its work: 224 of PHPStan's own 353 failures on the Shopware slice
+are negations. A census of `if` conditions finds zero because the type there is already `bool`.
+
+Third time a confident reading has come apart on the position rather than the mechanism, counting both
+sessions. The standing check that survives all three: **enumerate the positions the rule reads**, because
+the rule decides which positions matter, and a route enumerated against the wrong one is a confirmation of
+nothing.
 
 Corroborated from the other side, after the peer session's own count was corrected: a grep for these
 accessors inside a condition had read `5`, because `[^)]*` stops at the first `)` and every real instance

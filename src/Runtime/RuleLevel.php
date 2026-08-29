@@ -52,12 +52,21 @@ use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
  *   carries `issetFromLoop`, `nonNull`, `empty` and `truthiness` and no explicit flag, so the distinction
  *   cannot be made. Passing matches implicit mixed and under-reports explicit, which surfaces as
  *   `only-original` -- the direction to choose when one must be chosen.
- * - **Benevolent unions are invisible.** Mago has no counterpart: "benevolent" appears nowhere in the SDK
- *   and `TypeFlags` carries eleven flags, none of them it. PHPStan is *lenient* on them, so a port that
- *   cannot see them is strict where PHPStan is quiet -- the unsafe direction. Measured before accepting:
- *   **zero** benevolent operands in condition position on either corpus, so this does not touch
- *   `passesAsBoolean` at all. The arithmetic position has two divergent sites in total, both the same
- *   idiom, and they are named where that helper is added -- not here.
+ * - **Benevolent unions are invisible, and this is the one that bites.** Mago has no counterpart:
+ *   "benevolent" appears nowhere in the SDK and `TypeFlags` carries eleven flags, none of them it. PHPStan
+ *   filters a benevolent union's failing members when `checkBenevolentUnionTypes` is false, keeps the
+ *   `false` member -- which *is* a boolean -- and stays silent. A port that cannot see benevolence is
+ *   strict there, which is the unsafe direction.
+ *
+ *   This was accepted on a measurement of **zero** benevolent operands in condition position, and that
+ *   measurement was of the wrong position. The `!` operand is where this family does most of its work, and
+ *   `UploadedFile::getRealPath()` is benevolent `(string|false)` there. Five sites on Shopware, controlled
+ *   side by side in one file: `(string|false)` reports nothing and a plain `string|false` from an ordinary
+ *   `@return` reports, same expression shape, same run.
+ *
+ *   So it is a real divergence with a count rather than a hypothetical one. It cannot be closed from this
+ *   side -- there is nothing on a mago `Type` to read benevolence from -- and the only honest response is
+ *   to say where it happens and how often.
  */
 final class RuleLevel
 {
