@@ -131,7 +131,18 @@ final readonly class TypeCoverage
                 continue;
             }
 
+            // `@method` on a class docblock declares what `__call()` answers, and the codebase lists those
+            // beside the written ones. The collector visits `ClassMethod` *nodes*, so it never sees one:
+            // Laravel's factories carry two each, which was 32 declarations on one consumer's factory
+            // directory alone. The parameter metric is untouched by this because it walks the syntax, where
+            // a docblock has no function-like node at all.
+            $documented = array_flip([...$metadata->pseudoMethods, ...$metadata->staticPseudoMethods]);
+
             foreach ($metadata->methods as $name) {
+                if (isset($documented[$name])) {
+                    continue;
+                }
+
                 $method = $context->codebase->getDeclaringMethod($class, $name);
                 if (! $method instanceof FunctionLikeMetadata) {
                     continue;

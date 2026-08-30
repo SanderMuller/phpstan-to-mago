@@ -1226,3 +1226,29 @@ collector never asks.
 set-difference one — `run-coverage-setdiff.php` names *which* declarations two counters disagree about for
 the parameter metric, by stripping every type so the real rule enumerates its own set. The same trick works
 for return types and does not exist yet. Until it does, the cause is unknown and is written here as unknown.
+
+###### `@method` is not a method, and the set difference is how that got named
+
++496 became +444, and the second consumer's +55 became +42. The percentages now agree on both.
+
+The cause was found by asking *which*, not *how many*. Three explanations for a delta were refuted from
+totals earlier in this file; this one took two steps and no guessing.
+
+- **Bisect by directory.** `run-coverage-corpus.php --paths=` put +470 of the +496 in `app`, +26 in
+  `database/factories`, and **zero** in `tests/Feature`. A directory with none is as useful as one with
+  many: whatever this is, it is not something every PHP file has.
+- **Then ask the port for its own set.** The factories directory was the small one, and the port reported 31
+  declarations with no return type where the real rule reported none. Naming them took one run: `createMany`
+  and `createManyQuietly`, twice per factory file, sixteen files.
+
+They are `@method` lines on the class docblock. Laravel's factories carry two each. The collector visits
+`ClassMethod` **nodes** and a docblock writes none, so the original never sees them; mago's codebase lists
+them beside the written methods, so the port counted them. Skipping the names in `pseudoMethods` and
+`staticPseudoMethods` closes it.
+
+The parameter metric was never affected, and the control says so: it walks the syntax, where a docblock has
+no function-like node at all. That is the second time today the two metrics diverged because one reads
+metadata and the other reads source.
+
+**Still +444 and +42, so still no entry.** The bisect points at `app` and the instrument that named this one
+works on any directory, so the next cause is a run away rather than a design question.

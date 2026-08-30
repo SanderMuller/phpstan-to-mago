@@ -54,6 +54,10 @@ final class CountsReturnsLikeTheCollectorTest extends TestCase
         // The reflection extension that bounds the parameter metric has nothing to act on here: this
         // collector asks no question a reflection extension answers.
         yield 'a class whose ancestor a reflection extension invents' => ['reflection-extension', 2];
+        // `@method` declares what `__call()` answers and writes no node, so the collector never sees it.
+        // Only the real method counts. The codebase lists both, which was 32 declarations on one consumer's
+        // factory directory alone — Laravel's factories carry two `@method` lines each.
+        yield 'a class whose docblock declares methods' => ['docblock-method', 1];
     }
 
     #[DataProvider('controls')]
