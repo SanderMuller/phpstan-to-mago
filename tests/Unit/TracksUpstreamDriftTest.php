@@ -8,9 +8,10 @@ use FilesystemIterator;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use Sandermuller\PhpstanToMago\PackageConfiguration;
 use Sandermuller\PhpstanToMago\Refusal;
 use Sandermuller\PhpstanToMago\RulePaths;
-use Sandermuller\PhpstanToMago\PackageConfiguration;
+use Sandermuller\PhpstanToMago\Tests\Support\LockedCorpus;
 use Sandermuller\PhpstanToMago\Transpiler;
 use SplFileInfo;
 
@@ -63,15 +64,7 @@ final class TracksUpstreamDriftTest extends TestCase
      *
      * @var list<string>
      */
-    private const array PACKAGES = [
-        'symplify/phpstan-rules',
-        'hihaho/phpstan-rules',
-        'tomasvotruba/type-coverage',
-        'tomasvotruba/cognitive-complexity',
-        'phpstan/phpstan-strict-rules',
-        'phpstan/phpstan-phpunit',
-        'phpstan/phpstan-deprecation-rules',
-    ];
+    private const array PACKAGES = LockedCorpus::PACKAGES;
 
     /**
      * Rules whose finding the engine already reports itself, and the diagnostic that does it.
@@ -99,6 +92,11 @@ final class TracksUpstreamDriftTest extends TestCase
 
     public function test_the_corpus_still_translates_the_way_the_census_says(): void
     {
+        $mismatch = LockedCorpus::mismatch();
+        if ($mismatch !== null) {
+            self::markTestSkipped($mismatch);
+        }
+
         $census = $this->census();
         $committed = is_file(self::CENSUS) ? (string) file_get_contents(self::CENSUS) : '';
 

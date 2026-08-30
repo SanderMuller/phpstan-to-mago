@@ -7,6 +7,7 @@ namespace Sandermuller\PhpstanToMago\Tests\Unit;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sandermuller\PhpstanToMago\Tests\Support\FiresGate;
+use Sandermuller\PhpstanToMago\Tests\Support\LockedCorpus;
 use Sandermuller\PhpstanToMago\Transpiler;
 use Throwable;
 
@@ -204,6 +205,11 @@ final class EmittedRuleFiresTest extends TestCase
      */
     public function test_every_emitted_rule_has_an_example_pair(): void
     {
+        $mismatch = LockedCorpus::mismatch();
+        if ($mismatch !== null) {
+            self::markTestSkipped($mismatch);
+        }
+
         $missing = [];
         foreach (self::corpusRules() as $rule => [$file]) {
             if (! $this->gate->hasExamples($rule)) {
@@ -233,6 +239,11 @@ final class EmittedRuleFiresTest extends TestCase
      */
     public function test_every_example_pair_has_a_rule_that_emits(): void
     {
+        $mismatch = LockedCorpus::mismatch();
+        if ($mismatch !== null) {
+            self::markTestSkipped($mismatch);
+        }
+
         $emitting = array_keys(self::corpusRules());
         $fixtures = array_keys(self::fixtureRules());
 
