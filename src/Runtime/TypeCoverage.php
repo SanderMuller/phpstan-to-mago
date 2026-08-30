@@ -245,16 +245,46 @@ final readonly class TypeCoverage
         return $times;
     }
 
-    /** Property type coverage across every class-like the analysis knows. */
+    /**
+     * Property type coverage across every class-like the analysis knows.
+     *
+     * Two things this cannot read from `$metadata->properties` alone, and one field answers both.
+     *
+     * The list holds a trait's properties on **every class that uses it**, which `methods` does not — the two
+     * are not symmetric, and a shared iterator over "members" would be right for one and wrong for the other.
+     * On one consumer's models that is 83 of 217: `forceDeleting` from Laravel's `SoftDeletes` and an
+     * auditing package's `auditEvent` and siblings, listed once per using class with the declaration in a
+     * vendor file `PropertyTypeDeclarationCollector` never visits.
+     *
+     * And a finding needs a span. `PropertyMetadata::$location` is null for every ordinary declaration and
+     * set only for a constructor-promoted one — the opposite of what it reads as, and the reason this used to
+     * compute a failing percentage and report nothing at all over 142 real classes.
+     *
+     * `nameLocation` answers both. It is populated for all 217 on that population, its file is the class's
+     * own for the 134 written there and the trait's for the other 83, and it points at the property's name,
+     * which is where the original anchors a missing type. Found by the `phpstan-src-e7` session on a
+     * four-property fixture and confirmed here at corpus scale.
+     */
     public static function properties(AfterAnalysisContext $context): self
     {
         $total = 0;
         $typed = 0;
         $missing = [];
-
         foreach (self::classNames($context) as $class) {
             $metadata = $context->codebase->getClassLike($class);
             if (! $metadata instanceof ClassMetadata) {
+                continue;
+            }
+
+            $file = $metadata->location->file;
+
+            // A trait's properties are counted **zero** times, which is the opposite of its methods.
+            // `ReturnTypeDeclarationCollector` visits `ClassMethod` nodes, so a trait's method is visited in
+            // every using class's context; `PropertyTypeDeclarationCollector` visits `InClassNode` and takes
+            // `count($classLike->getProperties())` off the class node, and a class node's property list never
+            // holds the trait's. Two collectors in one package, one shape apart, and a control says so: a
+            // trait with one property and two users counts 3 to the real rule and counted 5 here.
+            if ($metadata->kind === ClassLikeKind::Trait) {
                 continue;
             }
 
@@ -264,29 +294,38 @@ final readonly class TypeCoverage
                     continue;
                 }
 
+                // Written here, or arriving from a trait or a parent. Only the first is this class-like's
+                // declaration; the rest are counted where they are written, if that file is analysed at all.
+                $at = $property->nameLocation;
+                if (! $at instanceof SourceLocation || $at->file !== $file) {
+                    continue;
+                }
+
+                // A constructor-promoted property is a `Param` to php-parser and the collector visits
+                // `Property` nodes, so the original never counts one. `location` is how they are told apart
+                // here: it is set for a promoted property and null for every ordinary declaration, which is
+                // the reverse of what the field name suggests and was measured before it was relied on.
+                if ($property->location instanceof SourceLocation) {
+                    continue;
+                }
+
                 ++$total;
-                if ($property->declaredType instanceof TypeMetadata) {
+
+                // `type`, not `declaredType`. The original counts a property as typed when it has a written
+                // type *or* a `@var` docblock — `isPropertyDocTyped()` is a second check beside the node one
+                // — and `declaredType` holds only the written one. Probed on four properties before it was
+                // relied on: a bare property answers no to both, a `@var`-only property answers no to
+                // `declaredType` and yes to `type`, and a property with only a default value answers no to
+                // both, so this is not picking up an inference.
+                if ($property->type instanceof TypeMetadata) {
                     ++$typed;
 
                     continue;
                 }
 
-                // A property's location is nullable, and which properties have one is the opposite of what
-                // it looks like. Probed on a fixture holding an ordinary declaration, an inherited one and a
-                // constructor-promoted one: only the **promoted** property has a location, and every
-                // ordinary declaration answers null. So this anchors findings on exactly the properties
-                // `PropertyTypeDeclarationCollector` does not count — it collects `Property` nodes, and a
-                // promoted parameter is a `Param`.
-                //
-                // That is one of four reasons this metric is not mapped in `Vocabulary::AGGREGATES`. The
-                // others, all read from `PropertyTypeDeclarationCollector` rather than inferred from the
-                // numbers: it counts `Property` *statements*, so `public $a, $b;` is one and not two; it
-                // treats a `@var` docblock as a type; and it never sees a promoted parameter, which is a
-                // `Param` and not a `Property`. Between them the port over-counts the total by 2.15x and
-                // reads 28 points low on a real consumer. VERIFICATION.md holds the measurement.
-                if ($property->location instanceof SourceLocation) {
-                    $missing[] = $property->location;
-                }
+                // Once, however many times it is counted: a declaration has one site, and PHPStan reports one
+                // error per (file, line, message) whatever the collector handed it.
+                $missing[] = $at;
             }
         }
 

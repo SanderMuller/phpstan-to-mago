@@ -1449,3 +1449,37 @@ that is 38 % of what the port counts.
 **And the fourth number is the one that would have shipped a silent rule.** Not one of the 217 carries a
 location, so in this population the metric computes 15.2 % against a required threshold and reports nothing
 at all. The control that first showed this held three classes; this is 142.
+
+###### `nameLocation` answers both questions, and a trait's properties are counted zero times
+
+The property metric goes from **+1667** on one consumer to **−3**, and from +85 on a pinned model tree to
+**exactly zero on both**. Still unmapped — an under-count of three or four is the gate's floor — but every
+cause named earlier is closed and one of them was named wrongly.
+
+**`PropertyMetadata` has two location fields and the port was reading the one that is never set.** Found by
+`phpstan-src-e7` on a four-property fixture and confirmed here on the pinned population: `location` is null
+for all 217, `nameLocation` is set for all 217. So the conclusion recorded earlier — that the metric could
+anchor no finding and would ship silent — was right about the symptom and wrong about the cause. It was not
+that the information is missing; it is in the other field.
+
+**And the same field answers the over-count.** `nameLocation->file` is the class's own file for the 134
+properties written there and the trait's file for the other 83. One comparison gives both the report span
+and the own-versus-inherited test, with no second lookup.
+
+**The trait rule is the opposite of the method one, which is why a shared iterator would have been wrong.**
+`ReturnTypeDeclarationCollector` visits `ClassMethod` nodes, so a trait's method is visited once in every
+using class's context. `PropertyTypeDeclarationCollector` visits `InClassNode` and takes
+`count($classLike->getProperties())` off the class node — and a class node's property list never holds the
+trait's. So a trait's methods are counted per user and its properties **zero times**. Two collectors in one
+package, one shape apart. Counting properties per user, the way methods are counted, gave 5 against 3 on the
+control that holds both.
+
+**And `type` rather than `declaredType` for the typed half.** The original counts a property as typed when it
+has a written type *or* a `@var` docblock. Probed on four properties before it was relied on: a bare property
+answers no to both fields, a `@var`-only property answers no to `declaredType` and yes to `type`, and a
+property with only a default answers no to both — so `type` is not picking up an inference from the default.
+
+One regression, caught by the suite and worth recording. Replacing `$total += $times` with `++$total`
+matched the first occurrence in the file, which is in `returns()`, not the one being edited. Four trait
+controls failed immediately; without them a metric that had just been made exact would have gone back to
+counting a trait once.
