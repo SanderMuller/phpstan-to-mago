@@ -262,6 +262,20 @@ final readonly class Translator
             ]);
         }
 
+        // `$reflectionProvider->hasConstant($node->name, $scope)`. The name argument is the node the hook
+        // fired for, so the helper is handed that rather than a rendered name: resolving a constant read is
+        // PHP's two-step fallback, not a string comparison — see {@see Constants::constantMetadata()}.
+        if ($method === 'hasConstant' && count($args) === 2) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a constant-existence question, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return $this->context->backend->call('constant_exists', [
+                '$context',
+                $this->operand($this->resolve($args[0]->value, $expr->getStartLine())),
+            ]);
+        }
+
         if ($method === 'hasClass' && count($args) === 1) {
             // The name can be a literal — `hasClass(Foo::class)` — or a name read out of the analysed file by
             // `$scope->resolveName()`. The second is what the positional-flag rules do, and it is the whole
@@ -1186,6 +1200,18 @@ final readonly class Translator
         }
 
         $formatArg = $args[0]->value;
+
+        // `<a description the port cannot read> ?? '<literal>'`. `getDeprecatedDescription()` is PHPStan
+        // reading the `@deprecated` text out of a docblock, and mago's `ConstantMetadata` carries the flag
+        // and no text at all — checked field by field. So the left side is always null here and the format is
+        // always the literal, which is what PHPStan itself uses for every built-in constant, none of which
+        // has a docblock. A user-defined constant with `@deprecated Use X instead.` gets that sentence from
+        // PHPStan and the generic one from the port: a message divergence at a site both engines report, not
+        // a finding either of them misses.
+        if ($formatArg instanceof Coalesce && $formatArg->right instanceof String_) {
+            $formatArg = $formatArg->right;
+        }
+
         $format = match (true) {
             $formatArg instanceof String_ => $formatArg->value,
             $formatArg instanceof ClassConstFetch => $this->selfConstant($formatArg),
@@ -2096,6 +2122,10 @@ final readonly class Translator
 
         $arguments = match ($entry['takes']) {
             'context' => ['$context'],
+            // A ported helper that navigates from the node the hook fired for rather than over the whole
+            // file: the scope questions PHPStan answers off `$scope` are answered here by walking up from
+            // the node, so the helper needs both.
+            'context-node' => ['$context', '$node'],
             'none' => [],
             default => ['$context->source'],
         };
@@ -6045,6 +6075,32 @@ final readonly class Translator
             return;
         }
 
+        // `$x = $this->reflectionProvider->getConstant($node->name, $scope)` — bound to the node, not to a
+        // reflection object. Every question the rule then asks of `$x` is answered from the constant read
+        // itself, and mago has no reflection to stand in the middle: `isDeprecated()`, `getName()` and the
+        // existence check all go back through {@see Constants::constantMetadata()}, which resolves the name
+        // the way PHP does. Binding a descriptor that pretends to be a reflection would put a second
+        // spelling of the same lookup in the emitted plugin.
+        if ($value instanceof MethodCall
+            && (string) $value->name === 'getConstant'
+            && count($value->getArgs()) === 2
+            && $value->var instanceof PropertyFetch
+            && ($this->context->injected[$this->memberName($value->var->name, $line)] ?? null) === 'reflectionProvider'
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a constant lookup, which only the PHP target carries', $line);
+            }
+
+            $subject = $this->resolve($value->getArgs()[0]->value, $line);
+            $this->context->locals[$name] = [
+                'rust' => $this->operand($subject),
+                'kind' => 'constant-read',
+                'php' => $this->operand($subject),
+            ];
+
+            return;
+        }
+
         // $x = $scope->getClassReflection()
         if ($value instanceof MethodCall
             && (string) $value->name === 'getClassReflection'
@@ -6889,6 +6945,26 @@ final readonly class Translator
             return $this->negateUnless(
                 $tail === 'yes',
                 $this->context->backend->call('type_is_callable', [$this->operand($this->resolve($inner->var, $line))]),
+            );
+        }
+
+        // `$constantReflection->isDeprecated()->yes()`. PHPStan answers a trinary because a reflection can be
+        // unsure; mago answers a flag bit, so this is a definite yes or no and the `maybe` the trinary exists
+        // for does not arise. Gated on the subject being a constant read, so no other `isDeprecated()` is
+        // silently caught by it.
+        if ($name === 'isDeprecated' && $args === []
+            && $this->resolve($inner->var, $line)['kind'] === 'constant-read'
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a constant-deprecation test, which only the PHP target carries', $line);
+            }
+
+            return $this->negateUnless(
+                $tail === 'yes',
+                $this->context->backend->call('constant_is_deprecated', [
+                    '$context',
+                    $this->operand($this->resolve($inner->var, $line)),
+                ]),
             );
         }
 
@@ -8351,6 +8427,21 @@ final readonly class Translator
 
         if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getName' && $expr->args === []) {
             $base = $this->resolve($expr->var, $line);
+
+            // A constant read answers its own name from the codebase, resolved the way PHP resolves it. The
+            // rule interpolates this into the message, so it is the *found* name rather than the text as
+            // written — `PHP_EOL` inside a namespace is looked up prefixed and found bare.
+            if ($base['kind'] === 'constant-read') {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal('a constant name, which only the PHP target carries', $line);
+                }
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'bytes',
+                    'php' => $this->context->backend->call('constant_name', ['$context', $this->operand($base)]),
+                ];
+            }
 
             // A class this transpiler already reduced to its name answers `getName()` with itself:
             // `getDeclaringClass()->getName()` and a class a loop bound both arrive here.

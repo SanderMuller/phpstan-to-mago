@@ -18,8 +18,11 @@ use Sandermuller\PhpstanToMago\Transpiler;
  * of those was a body-level gap sitting behind a blocker the survey had walked past.
  *
  * That is not hypothetical. A handoff ranked `unknown local $this` as the cheapest thing to build because two
- * rules reached it; both are `phpstan/phpstan-deprecation-rules`, and both are blocked by `Expr_ConstFetch`
- * having no hook, which no amount of work on `$this` would move.
+ * rules reached it; both are `phpstan/phpstan-deprecation-rules`, and both were blocked by `Expr_ConstFetch`
+ * having no hook, which no amount of work on `$this` would have moved. That hook exists now and one of the
+ * two emits, which is the ranking being wrong rather than early: the work that moved them was the hook.
+ *
+ * The fixture followed the vocabulary to `Stmt\Expression` when that happened.
  */
 final class StatesWhatSurveyAssumedTest extends TestCase
 {
@@ -39,7 +42,7 @@ final class StatesWhatSurveyAssumedTest extends TestCase
     public function test_an_emit_run_refuses_on_the_missing_hook(): void
     {
         $this->expectException(Refusal::class);
-        $this->expectExceptionMessageMatches('/^no hook mapping for node type PhpParser\\\\Node\\\\Expr\\\\ConstFetch$/');
+        $this->expectExceptionMessageMatches('/^no hook mapping for node type PhpParser\\\\Node\\\\Stmt\\\\Expression$/');
 
         (new Transpiler(self::RULE))->transpile();
     }
@@ -58,7 +61,7 @@ final class StatesWhatSurveyAssumedTest extends TestCase
 
         // The body gap first, because that is the new information, and the assumption after it, because
         // without that the reader cannot tell the gap is not the only thing in the way.
-        $this->assertStringContainsString('assuming a hook for PhpParser\Node\Expr\ConstFetch', $message);
+        $this->assertStringContainsString('assuming a hook for PhpParser\Node\Stmt\Expression', $message);
         $this->assertStringNotContainsString('assuming a hook for', explode(', assuming', $message)[0]);
         $this->assertNotSame('', $message, 'The survey run did not refuse at all.');
     }

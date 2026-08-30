@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Runtime;
 
+use Mago\Sdk\Analyzer\Metadata\ConstantMetadata;
+use Mago\Sdk\Analyzer\Metadata\MetadataFlags;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
+use Mago\Sdk\Syntax\ResolvedName;
 
 /**
  * The constants a class-like declares, and what each one is called and worth.
@@ -16,6 +19,65 @@ use Mago\Sdk\Syntax\NodeKind;
  */
 final class Constants
 {
+    /**
+     * The codebase metadata for a constant *read*, resolving the way PHP does.
+     *
+     * `getResolvedName()` on a `ConstantAccess` answers the namespace-qualified name, even for a global
+     * constant: inside `namespace Dep`, `PHP_EOL` resolves to `Dep\PHP_EOL`. That is PHP's own rule — an
+     * unqualified constant is looked for in the current namespace first and falls back to the global one —
+     * and a lookup that stopped at the resolved name would answer null for every built-in constant read
+     * inside a namespace, which is all real code. `FetchingDeprecatedConstRule` is *about* built-in
+     * constants, so it would have emitted and then reported nothing.
+     *
+     * Measured rather than reasoned: probed on `PHP_EOL`, `FILTER_SANITIZE_STRING` and a namespaced
+     * `MY_OWN`, all three resolve prefixed, and the codebase holds the first two only under their bare
+     * names.
+     */
+    public static function constantMetadata(NodeAnalysisContext $context, Part|Node|null $subject): ?ConstantMetadata
+    {
+        $node = Tree::node($subject);
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        [$file, $located] = Tree::locate($context, $node);
+        $resolved = $file->getResolvedName($located);
+
+        $candidates = [];
+        if ($resolved instanceof ResolvedName) {
+            $candidates[] = $resolved->name;
+        }
+
+        $candidates[] = trim($file->getText($located));
+
+        foreach ($candidates as $candidate) {
+            $metadata = $context->codebase->getConstant(ltrim($candidate, '\\'));
+            if ($metadata instanceof ConstantMetadata) {
+                return $metadata;
+            }
+        }
+
+        return null;
+    }
+
+    /** Whether the codebase knows the constant this node reads. PHPStan's `hasConstant()`. */
+    public static function constantExists(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return self::constantMetadata($context, $subject) instanceof ConstantMetadata;
+    }
+
+    /** Whether the constant this node reads carries a deprecation. */
+    public static function constantIsDeprecated(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return self::constantMetadata($context, $subject)?->flags->contains(MetadataFlags::DEPRECATED) === true;
+    }
+
+    /** The constant's name as the codebase holds it, for a message that interpolates it. */
+    public static function constantName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        return self::constantMetadata($context, $subject)?->name;
+    }
+
     /**
      * The items of a constant declaration: `const A = 1, B = 2;` has two.
      *

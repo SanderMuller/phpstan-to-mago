@@ -64,17 +64,17 @@ parameters:
 		-
 			rawMessage: Cannot cast PhpParser\Node\Expr|PhpParser\Node\Identifier to string.
 			identifier: cast.string
-			count: 15
+			count: 16
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 1905, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 1927, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 42, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 49, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
@@ -110,7 +110,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::trinaryTailPredicate()" is 26, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::trinaryTailPredicate()" is 31, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
@@ -122,7 +122,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveReflection()" is 329, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveReflection()" is 333, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php

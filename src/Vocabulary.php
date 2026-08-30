@@ -13,6 +13,7 @@ use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\Empty_;
 use PhpParser\Node\Expr\FuncCall;
@@ -111,6 +112,10 @@ final class Vocabulary
         // only, like every other multi-kind row: one Rust hook trait registers one kind, and registering just
         // the class hook would silently miss the interfaces and traits the rule exists to check.
         ClassLike::class => ['trait' => 'ClassDeclarationHook', 'method' => 'on_enter_class', 'node' => 'Class', 'kind' => 'Class', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata', 'phpOnly' => true],
+        // A bare constant read -- `PHP_EOL`, `FILTER_SANITIZE_STRING`. Mago spells it `ConstantAccess`, and
+        // the name is the node's own text rather than a child selector. PHP target only, like the other rows
+        // whose Rust hook trait nothing in the corpus has pinned down.
+        ConstFetch::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'ConstantAccess', 'phpOnly' => true],
         Interface_::class => ['trait' => 'InterfaceDeclarationHook', 'method' => 'on_enter_interface', 'node' => 'Interface', 'kind' => 'Interface', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata'],
         // A `foreach` statement. Probed: the hook fires for a nested one too, which is what PHPStan does — a rule
         // registered for `Foreach_` runs on every one of them, so agreement depends on that matching.
@@ -243,6 +248,12 @@ final class Vocabulary
             'if' => [self::PHP_ONLY, 'expr', 'Support::conditionalThen($context, $node)'],
         ],
         'UnaryPrefix' => ['expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        // `$node->name` on a constant read is the node itself here. php-parser hangs a `Name` off the fetch;
+        // mago's `ConstantAccess` *is* the name, and every question asked of it — does the codebase know it,
+        // is it deprecated — is answered from the node by {@see Constants::constantMetadata()}, which has to
+        // resolve it the way PHP does rather than compare text. So the field passes the node through instead
+        // of navigating to a child that does not exist.
+        'ConstantAccess' => ['name' => [self::PHP_ONLY, 'expr', '{base}']],
         'MethodCall' => [
             'var' => ['node.object', 'expr', 'Support::nthExpression($context, $node, 0)'],
             'name' => ['&node.method', 'name-selector', 'Support::selector($context, {base})'],
@@ -541,6 +552,18 @@ final class Vocabulary
             'arguments' => [],
             'types' => [1],
             'flags' => ['checkNullables', 'checkUnionTypes', 'checkThisOnly'],
+        ],
+
+        // Every rule in `phpstan-deprecation-rules` opens with this, so that deprecated code using
+        // deprecated things does not warn. The helper is a loop over injected `DeprecatedScopeResolver`s and
+        // the package ships exactly one, which asks whether the enclosing class, trait or function carries a
+        // deprecation — three metadata reads. `takes: context-node` because those are questions about where
+        // the node sits, and {@see Runtime\Deprecations} names what an extra resolver would cost.
+        'PHPStan\Rules\Deprecations\DeprecatedScopeHelper::isScopeDeprecated' => [
+            'helper' => 'Deprecations::scopeIsDeprecated',
+            'kind' => 'bool',
+            'takes' => 'context-node',
+            'arguments' => [],
         ],
     ];
 

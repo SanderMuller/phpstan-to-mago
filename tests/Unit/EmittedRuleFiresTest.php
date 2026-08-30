@@ -45,6 +45,9 @@ final class EmittedRuleFiresTest extends TestCase
         // census spoke for four packages and this gate for three, so its one emitting rule was counted and
         // never run.
         __DIR__ . '/../../vendor/phpstan/phpstan-strict-rules/src',
+        // Added when `FetchingDeprecatedConstRule` emitted, for the reason above: an emitted rule outside
+        // these corpora is counted by the census and run by nothing.
+        __DIR__ . '/../../vendor/phpstan/phpstan-deprecation-rules/src',
         // `tomasvotruba/type-coverage` is deliberately absent, and this is the one exclusion. Its emitting rule
         // is `ParamTypeCoverageRule`, an aggregate: PHPStan reduces a *collection* rather than deciding per
         // node, so registering it here would need a collector service this gate cannot add and a threshold, and

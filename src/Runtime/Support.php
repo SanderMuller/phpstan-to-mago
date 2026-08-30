@@ -1738,6 +1738,24 @@ final class Support
         return Declares::metadataIs($context, $node, $name);
     }
 
+    /** Whether the codebase knows the constant this node reads. PHPStan's `hasConstant()`. */
+    public static function constantExists(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Constants::constantExists($context, $subject);
+    }
+
+    /** Whether the constant this node reads carries a deprecation. */
+    public static function constantIsDeprecated(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Constants::constantIsDeprecated($context, $subject);
+    }
+
+    /** The constant's name as the codebase holds it, for a message that interpolates it. */
+    public static function constantName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        return Constants::constantName($context, $subject);
+    }
+
     /**
      * A finding's message, with the trait's using classes named when the subject is declared in one.
      *

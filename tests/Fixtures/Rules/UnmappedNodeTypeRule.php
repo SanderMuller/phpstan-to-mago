@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Tests\Fixtures\Rules;
 
 use PhpParser\Node;
-use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Stmt\Expression;
 use PHPStan\Analyser\Scope;
-use PHPStan\Reflection\ReflectionProvider;
 use PHPStan\Rules\Rule;
 use PHPStan\Rules\RuleErrorBuilder;
 
@@ -19,22 +18,27 @@ use PHPStan\Rules\RuleErrorBuilder;
  * The fixture exists to pin that the survey says which of those it did — a body-level gap reported without
  * the assumption behind it reads as the only thing in the way, and closing it would move nothing.
  *
- * @implements Rule<ConstFetch>
+ * It targeted `Expr\ConstFetch` until that gained a hook, and `Stmt\Expression` is the replacement because
+ * three corpus rules still refuse on it. The node type here has to be one the vocabulary does not map, so
+ * this fixture moves whenever the vocabulary catches up with it — which is the fixture working.
+ *
+ * @implements Rule<Expression>
  */
 final class UnmappedNodeTypeRule implements Rule
 {
     public const string ERROR_MESSAGE = 'Do not fetch that constant';
 
-    public function __construct(private readonly ReflectionProvider $reflectionProvider) {}
 
     public function getNodeType(): string
     {
-        return ConstFetch::class;
+        return Expression::class;
     }
 
     public function processNode(Node $node, Scope $scope): array
     {
-        if (! $this->reflectionProvider->hasConstant($node->name, $scope)) {
+        // A scope query the vocabulary maps nowhere, so the survey has a body gap to report once it has
+        // assumed the hook. What it is does not matter; that there is one does.
+        if ($scope->getAnonymousFunctionReflection() !== null) {
             return [];
         }
 

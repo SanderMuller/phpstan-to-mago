@@ -642,15 +642,11 @@ REFUSE  ShouldCallParentMethodsRule
         needs: access path outside the vocabulary: ->getStmts()
         needs: condition outside the vocabulary: Expr_Variable
 
-## phpstan/phpstan-deprecation-rules — 0 of 2 portable rules the package registers emit, 0 covered by the engine, 2 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-deprecation-rules — 1 of 2 portable rules the package registers emit, 0 covered by the engine, 1 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  CallWithDeprecatedIniOptionRule
-        unknown local $this
+        statement outside the vocabulary: Stmt_TryCatch
         needs: statement outside the vocabulary: Stmt_TryCatch
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getVersionId()
         needs: access path outside the vocabulary: Scalar_Int
-REFUSE  FetchingDeprecatedConstRule
-        no hook mapping for node type PhpParser\Node\Expr\ConstFetch
-        needs: $reflectionProvider holds the PHPStan service reflectionProvider, so ->hasConstant() has to be translated onto Mago's codebase instead
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getConstant()
-        needs: trinary tail on an unsupported query ->isDeprecated()
+EMIT    FetchingDeprecatedConstRule
