@@ -81,7 +81,9 @@ type inference underneath, and nobody has measured what it saves, so treat that 
 Run both on every commit and you have added a tool, not replaced one.
 
 The pre-filter also has a real cost. A Mago-clean commit can still fail the deferred PHPStan run, because a
-refused rule still lives only in PHPStan. It filters; it does not gate.
+refused rule still lives only in PHPStan. Both gaps are silent: a refused rule reports nothing, and a
+translated rule that under-reports reports nothing either. Only the deferred run finds them. It filters; it
+does not gate.
 
 ## Running a generated plugin
 
@@ -169,7 +171,7 @@ reaches them and a package holding one can never read as full.
 
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
-| `symplify/phpstan-rules` | 89 | 38 | 50 | 1 |
+| `symplify/phpstan-rules` | 89 | 39 | 49 | 1 |
 | `hihaho/phpstan-rules` | 7 | 4 | 3 | 0 |
 | `tomasvotruba/type-coverage` | 10 | 1 | 9 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
@@ -177,7 +179,9 @@ reaches them and a package holding one can never read as full.
 | `phpstan/phpstan-phpunit` | 13 | 0 | 13 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-That is 58 of 169. No package is complete yet, which is the number that matters for the first workflow above.
+That is 59 of the 169 portable rules these seven packages register. A `--status` run counts whatever *your*
+project installed instead, so its denominator will differ from this one; both are right, and each says which
+it used. No package is complete yet, which is the number that matters for the first workflow above.
 
 The vocabulary covers guard chains, `foreach` with an inline report, `sprintf` messages, `instanceof`
 narrowing into a binding, membership in a constant set, and comparisons on strings and integers. The larger
