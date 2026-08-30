@@ -16,10 +16,13 @@ use PHPStan\Type\TypeCombinator;
  * Folds a produced record over the receiver's classes into an accumulator.
  *
  * The shape `hihaho/phpstan-rules` v3.15.2 introduced: a record producer called inside a loop, assigned to a
- * name declared before it, and read after it. Being untranslatable is the fixture. A record's fields are
- * expressions over the item the emitted `foreach` binds, so carrying one out of the loop names a variable that
- * is out of scope there — the same escape a report anchored on a loop item makes, which this transpiler already
- * refuses.
+ * name declared before it, and read after it. A record is ordinarily a transpile-time map of field to
+ * expression, and those expressions read the item the emitted `foreach` binds — so carrying one out of the
+ * loop named a variable that is out of scope there, and this was refused for it.
+ *
+ * It is now materialised instead: one real local per field, declared before the loop and assigned inside it.
+ * The fixture holds the smallest form of the shape — one field, one producer that declines — so a change to
+ * either half is visible here before it is visible in a corpus package.
  *
  * @implements Rule<MethodCall>
  */

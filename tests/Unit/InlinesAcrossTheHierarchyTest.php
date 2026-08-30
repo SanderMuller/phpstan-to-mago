@@ -132,17 +132,49 @@ final class InlinesAcrossTheHierarchyTest extends TestCase
     }
 
     /**
-     * The shape `hihaho/phpstan-rules` v3.15.2 introduced, and the reason it is refused rather than narrowed.
+     * The shape `hihaho/phpstan-rules` v3.15.2 introduced, materialised rather than folded.
      *
-     * The old message — "is assigned but does not build a rule error" — described what this path expected
-     * instead of what the rule does, which is the failure mode a refusal exists to avoid.
+     * A record is ordinarily a transpile-time map of field to expression, which cannot leave the loop that
+     * produced it: every expression reads the item the emitted `foreach` binds. Each field becomes a real
+     * local instead — declared before the loop, assigned inside it, read after — which is the trade the
+     * counter already makes for the same reason.
      */
-    public function test_a_record_folded_inside_a_loop_is_refused_for_escaping_it(): void
+    public function test_a_record_folded_inside_a_loop_becomes_a_local_per_field(): void
     {
-        $this->expectException(Refusal::class);
-        $this->expectExceptionMessageMatches('/assigned inside a loop and hands back a record/');
+        $emitted = $this->emit('FoldsARecordRule');
 
-        $this->emit('FoldsARecordRule');
+        // Declared ahead of the loop, so the read after it names something that exists.
+        $this->assertStringContainsString('$site_method = null;', $emitted);
+        $this->assertMatchesRegularExpression('/\$site_method = null;.*foreach \(/s', $emitted);
+
+        // Assigned inside it, and copied into the accumulator rather than aliased to it.
+        $this->assertStringContainsString('$record_method = $class_reflection;', $emitted);
+        $this->assertStringContainsString('$site_method = $record_method;', $emitted);
+
+        // Read after it, by the report the rule builds.
+        $this->assertMatchesRegularExpression('/if \(\$site_method === null\) \{\s*return;/', $emitted);
+        $this->assertStringContainsString('$site_method)', $emitted);
+    }
+
+    /**
+     * The producer's own `return null` declines the rule here, and does not end the caller's iteration.
+     *
+     * `siteFor()` answers null for a class it cannot name, and the caller turns that into `return null` from
+     * the accumulator — which leaves the rule. Emitting `continue` instead would go on to the next class, so
+     * a receiver with two classes where the first produces nothing would report where PHPStan is silent.
+     */
+    public function test_a_producer_that_declines_inside_the_fold_bails_rather_than_continuing(): void
+    {
+        $emitted = $this->emit('FoldsARecordRule');
+
+        $this->assertMatchesRegularExpression(
+            '/if \(\$class_reflection === \x27\x27\) \{\s*return;/',
+            $emitted,
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/if \(\$class_reflection === \x27\x27\) \{\s*continue;/',
+            $emitted,
+        );
     }
 
     private function emit(string $rule): string

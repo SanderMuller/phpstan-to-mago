@@ -859,3 +859,57 @@ the configured values are readable off the instances rather than parsed out of a
 Not built. It changes what a coverage figure counts — a rule that emits only under a consumer's
 configuration is not the same outcome as one that emits from the package alone — and that denominator is a
 decision rather than a measurement.
+
+#### A record that leaves the loop that produced it, and the two divergences the examples found
+
+`CombinedMethodCallRule` and `PositionalFlagArgumentNullsafeMethodCallRule` emit. Coverage 59 of 169
+portable to 61.
+
+Both refused on the same line of `DetectsPositionalFlagArgument`: `agreedFlagSite()` assigns a produced
+record inside a `foreach` and reads it after. A record is ordinarily a transpile-time map of field to
+expression, folded into whatever consumes it — exact, shorter, and unable to leave the loop, because every
+expression reads the item the emitted `foreach` binds. Each field is now a real local instead: declared
+before the loop, assigned inside it, copied into the accumulator, read after. The counter reached the same
+wall and answered it the same way.
+
+Four things had to be true at once, and each one was a separate change:
+
+- **The producer's `return null` bails rather than continuing.** Inside a caller's loop a helper's null
+  ordinarily ends the iteration. Here the caller answers it with `return null` from the accumulator, which
+  declines the rule — so `continue` would go on to the next class where PHPStan stops. Read from the
+  caller's source by `nullRecordDeclines()` rather than assumed, because the other shape is legal and means
+  the opposite.
+- **The consumer's null branch comes back.** `$site === null ? null : build($site['x'])` drops its null
+  branch for a folded record, because a navigation resolves to something wherever it is read. A
+  materialised record can be absent — every field is null when the loop assigned nothing — so the branch is
+  emitted again, and only for a materialised one.
+- **The accumulator is declared before the loop from the producer's returned literal.** Inlining the
+  producer at that point would resolve expressions over a loop item that is not bound yet; only the field
+  *names* are needed, and they are written out in the source.
+- **`$site = $record` copies rather than aliases.** Aliasing makes the two names one set of locals, and the
+  agreement check then compares a value with itself and never holds.
+
+**Two divergences, both found by an example rather than by reading.** Neither is in the fold.
+
+The first is silence. `Support::objectClasses()` answered the empty list for a nullable receiver, because
+the strict reading refuses any atomic that is not a named object and `?Widget` carries a null one beside
+it. `TypeCombinator::removeNull(..)->getObjectClassReflections()` is one class to PHPStan and was nothing
+here. The single-class rendering had stripped null since it was written; the list rendering beside it had
+not, and no rule had iterated it on a nullable receiver until now. The plugin emitted, parsed, loaded, ran
+and reported nothing — the failure the fires gate exists for, and the one no static check sees.
+
+The second is an over-report, and it needed an example nobody had written. Mago models an intersection as
+one atomic with the other members hanging off it, so `A&B` answered `A` and a rule asking each declarer of
+a method about it saw one declarer. It could never find two disagreeing, so it reported where PHPStan
+declines. `Type::__toString()` collapses intersections the same way, which was measured here months ago;
+this is the same fact reached through a different door, and the earlier measurement did not stop it.
+
+The example that found it is `GoodDisagreement.php`: a receiver typed `(DimmableOne&DimmableTwo)|null`
+whose two interfaces name the flag parameter `enabled` and `active`. A single-class receiver runs the loop
+once and proves nothing about the fold. Mutation-checked: making the agreement comparison compare a value
+with itself makes that example report `active:` where PHPStan is silent.
+
+**Byte-for-byte.** Both Rust targets are identical to the baseline across the four corpus packages and
+`tests/Fixtures/Rules`, and every plugin that emitted before still emits the same bytes. The PHP target
+gains three files — the two rules and the `FoldsARecordRule` fixture that was written to prove the refusal
+and now proves the fold.

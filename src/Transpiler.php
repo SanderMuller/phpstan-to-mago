@@ -37,9 +37,10 @@ use PHPStan\Collectors\Collector;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 
 /**
- * @phpstan-type Descriptor array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, methodPhp?: string, indexPhp?: string, listPhp?: string, patternPhp?: string, subjectPhp?: string, reason?: string, as?: string, record?: array<string, array{rust: string, kind: string, php?: string, reason?: string, as?: string}>}
+ * @phpstan-type Descriptor array{rust: string, kind: string, local?: bool, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, methodPhp?: string, indexPhp?: string, listPhp?: string, patternPhp?: string, subjectPhp?: string, reason?: string, as?: string, record?: array<string, array{rust: string, kind: string, php?: string, reason?: string, as?: string, local?: bool}>}
  * @phpstan-type Declaration array{class: ClassLike, uses: array<string, string>, namespace: string|null}
- * @phpstan-type RecordFields array<string, array{rust: string, kind: string, php?: string, reason?: string, as?: string}>
+ * @phpstan-type RecordField array{rust: string, kind: string, php?: string, reason?: string, as?: string, local?: bool}
+ * @phpstan-type RecordFields array<string, array{rust: string, kind: string, php?: string, reason?: string, as?: string, local?: bool}>
  */
 final class Transpiler
 {

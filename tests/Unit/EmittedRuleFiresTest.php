@@ -262,19 +262,15 @@ final class EmittedRuleFiresTest extends TestCase
         // rule that does not emit is a case that never runs; a rule here that starts emitting again leaves a
         // stale entry, and the equality is what makes that fail too.
         //
-        // These two were already orphaned when the check was written, and the finding is what it is for:
-        // both refuse on `flagRecord()` being assigned inside a loop, and their pairs have been running
-        // nothing since. Kept rather than deleted — they are the proof material for the day that refusal
-        // closes.
+        // `CombinedMethodCallRule` and `PositionalFlagArgumentNullsafeMethodCallRule` sat here because both
+        // refused on `flagRecord()` being assigned inside a loop, and both left the way the comment promised
+        // — by emitting, once a record folded across a loop became locals rather than expressions. Their
+        // pairs had been running nothing until then, which is what this check exists to say out loud.
         //
-        // The third was written before the rule that would use it, and is still waiting: the arithmetic
-        // family needs the operand-binding shape as well as the ported helper. Its sibling
-        // `BooleanInIfConditionRule` was in this list one commit ago and left it the way the comment above
-        // promised -- by emitting.
+        // What is left was written before the rule that would use it, and is still waiting: the arithmetic
+        // family needs the operand-binding shape as well as the ported helper.
         $expected = [
-            'CombinedMethodCallRule',
             'OperandsInArithmeticDivisionRule',
-            'PositionalFlagArgumentNullsafeMethodCallRule',
         ];
         sort($orphaned);
 

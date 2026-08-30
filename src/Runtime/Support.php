@@ -762,6 +762,16 @@ final class Support
     }
 
     /**
+     * The classes a type names, with a null atomic skipped.
+     *
+     * @return list<string>
+     */
+    public static function objectClassesIgnoringNull(?Type $type): array
+    {
+        return Types::objectClassesIgnoringNull($type);
+    }
+
+    /**
      * Whether a class *is* another, or descends from it — PHPStan's `isSuperTypeOf` between two object types.
      *
      * Case-insensitive because `getClassAncestors()` answers in lowercase, the same trap that silenced an

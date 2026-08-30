@@ -265,6 +265,32 @@ final class TranslationContext
     public bool $anchorNeedsLoop = false;
 
     /**
+     * Where each open loop's `foreach-open` sits in {@see $lines}, innermost last.
+     *
+     * A record produced inside a loop has to be materialised: its fields become runtime locals, assigned each
+     * iteration and read after the loop. The assignments go where the producer is inlined, but the
+     * declarations have to come *before* the loop, and by the time the producer is reached that statement is
+     * already emitted. Holding the index is what lets them be spliced in rather than appended.
+     *
+     * A stack rather than one index, because the innermost loop is the one a record is produced in.
+     *
+     * @var list<int>
+     */
+    public array $loopOpenIndex = [];
+
+    /**
+     * The runtime local carrying each field of a record folded across a loop, by record name then field.
+     *
+     * Ordinary records are compile-time maps of field to expression, folded into the consumer. That cannot
+     * cross a loop boundary: the expressions read the item the emitted `foreach` binds, so a name declared
+     * before the loop and read after it would name an item that is out of scope. These are real variables
+     * instead, which is the same trade the counter makes.
+     *
+     * @var array<string, array<string, string>>
+     */
+    public array $foldedRecords = [];
+
+    /**
      * A local holding a built rule error whose report has not been emitted yet, inside a loop.
      *
      * Null everywhere else. The trailing report is right for a rule whose guards bail out of `analyze()`, and

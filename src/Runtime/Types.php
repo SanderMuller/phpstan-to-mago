@@ -84,13 +84,51 @@ final class Types
      */
     public static function objectClasses(?Type $type): array
     {
+        return self::objectClassNames($type, false);
+    }
+
+    /**
+     * The same list with a null atomic skipped, for a receiver the rule stripped null from first.
+     *
+     * `?Widget` carries a null atomic beside the object one, and the strict reading answers the empty list
+     * for it — correct where the rule did not strip null, and silence where it did. A nullsafe call is the
+     * shape: `TypeCombinator::removeNull($scope->getType($node->var))->getObjectClassReflections()` is one
+     * class to PHPStan and was nothing here, so the plugin ran and found nothing on every nullable receiver.
+     *
+     * @return list<string>
+     */
+    public static function objectClassesIgnoringNull(?Type $type): array
+    {
+        return self::objectClassNames($type, true);
+    }
+
+    /** @return list<string> */
+    private static function objectClassNames(?Type $type, bool $droppingNull): array
+    {
         $names = [];
         foreach ($type instanceof Type ? $type->atomicTypes : [] as $atomic) {
+            if ($droppingNull && $atomic instanceof SimpleAtomicType && $atomic->kind === SimpleAtomicTypeKind::Null) {
+                continue;
+            }
+
             if (! $atomic instanceof NamedObjectType) {
                 return [];
             }
 
             $names[] = $atomic->name;
+
+            // An intersection is one atomic here, not several: mago hangs the other members off the first
+            // one rather than putting them beside it. Reading `->name` alone answered `A` for `A&B`, so a
+            // rule that asks each declarer of a method about it saw one declarer and could never find two
+            // disagreeing — it reported where PHPStan declines. `Type::__toString()` collapses the same way,
+            // which is measured in VERIFICATION.md; this is the same fact reached through a different door.
+            foreach ($atomic->intersections ?? [] as $member) {
+                if (! $member instanceof NamedObjectType) {
+                    return [];
+                }
+
+                $names[] = $member->name;
+            }
         }
 
         return $names;

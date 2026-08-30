@@ -333,17 +333,15 @@ REFUSE  TaggedIteratorOverRepeatedServiceCallRule
         needs: no node predicate for instanceof PhpParser\Node\Stmt\Expression on a expr
 EMIT    UppercaseConstantRule
 
-## hihaho/phpstan-rules — 4 of 7 portable rules the package registers emit, 0 covered by the engine, 3 refuse, 2 unportable in principle, 11 it registers nowhere
+## hihaho/phpstan-rules — 6 of 7 portable rules the package registers emit, 0 covered by the engine, 1 refuse, 2 unportable in principle, 11 it registers nowhere
 
 EMIT    ChainedNoDebugInNamespaceRule  (the package registers it nowhere)
 EMIT    CombinedFuncCallRule
-REFUSE  CombinedMethodCallRule
-        flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
-        needs: flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
+EMIT    CombinedMethodCallRule
 REFUSE  CombinedStaticCallRule
         ClassReflection test on a service, which the plugin has no equivalent for
         needs: ClassReflection test on a service, which the plugin has no equivalent for
-        needs: expected a string literal
+        needs: access path outside the vocabulary: RequestFacade::class
 NEVER   FlagArgumentManifestCollector
         every rule that consumes this collector reports nothing and writes a file instead, so the pair cannot become a plugin whatever the collector body does
 EMIT    NoDebugInNamespaceRule  (the package registers it nowhere)
@@ -363,9 +361,7 @@ EMIT    PositionalFlagArgumentConstructorRule
 REFUSE  PositionalFlagArgumentMethodCallRule  (the package registers it nowhere)
         $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
         needs: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
-REFUSE  PositionalFlagArgumentNullsafeMethodCallRule
-        flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
-        needs: flagRecord() is assigned inside a loop and hands back a record, whose fields are expressions over the item the emitted foreach binds, so folding it into a name declared before the loop would read that item after it is out of scope
+EMIT    PositionalFlagArgumentNullsafeMethodCallRule
 REFUSE  PositionalFlagArgumentStaticCallRule  (the package registers it nowhere)
         $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
         needs: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself

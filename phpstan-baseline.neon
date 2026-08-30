@@ -68,19 +68,19 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 1951, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 2035, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 53, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 62, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::equality()" is 51, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::equality()" is 56, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
@@ -92,7 +92,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::inlineErrorHelper()" is 26, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::inlineErrorHelper()" is 36, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
@@ -122,7 +122,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveReflection()" is 333, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveReflection()" is 334, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
@@ -177,18 +177,6 @@ parameters:
 
 		-
 			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$lines (list<Sandermuller\PhpstanToMago\Stm>) does not accept non-empty-list<Sandermuller\PhpstanToMago\Stm|(literal-string&non-falsy-string)>.'
-			identifier: assign.propertyType
-			count: 1
-			path: src/Translator.php
-
-		-
-			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$locals (array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>, collector?: string, service?: string, classPhp?: string, ...}>) does not accept non-empty-array<string, array{rust: string, kind: string, key?: string, php?: string, fields?: array<string, array<string>>, collector?: string, service?: string, classPhp?: string, ...}>.'
-			identifier: assign.propertyType
-			count: 1
-			path: src/Translator.php
-
-		-
-			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$refinements (array<string, array<string, array{0: string, 1: string, 2?: string}>>) does not accept non-empty-array<string, array<string, array<string>>>.'
 			identifier: assign.propertyType
 			count: 1
 			path: src/Translator.php

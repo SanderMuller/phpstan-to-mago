@@ -86,6 +86,7 @@ use PHPStan\Type\ObjectType;
  * @phpstan-import-type Descriptor from Transpiler
  * @phpstan-import-type Declaration from Transpiler
  * @phpstan-import-type RecordFields from Transpiler
+ * @phpstan-import-type RecordField from Transpiler
  */
 final readonly class Translator
 {
@@ -833,6 +834,21 @@ final readonly class Translator
             }
 
             return $this->operand($subject) . ' === null';
+        }
+
+        // A record materialised across a loop is null exactly when its fields are, because they are declared
+        // null before the loop and assigned together inside it. Asked of one materialised field rather than
+        // of a separate flag: a second variable tracking the same fact is a second thing that can disagree
+        // with it. See {@see foldRecordInLoop}.
+        if ($subject['kind'] === 'record') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a record materialised across a loop, which only the PHP target carries', $line);
+            }
+
+            /** @var RecordFields $fields */
+            $fields = $subject['record'] ?? [];
+
+            return $this->materialisedWitness($fields, $line) . ' === null';
         }
 
         if (! in_array($subject['kind'], ['bytes', 'class-name'], true)) {
@@ -3497,6 +3513,19 @@ final readonly class Translator
             return;
         }
 
+        // A producer that hands back the accumulator it folded records into. The fields are already runtime
+        // locals — that is what {@see foldRecordInLoop} materialised them for — so the record passes through
+        // as itself rather than being resolved to one value.
+        if ($this->context->recordFields !== null
+            && $stmt->expr instanceof Variable
+            && is_string($stmt->expr->name)
+            && ($this->context->locals[$stmt->expr->name]['kind'] ?? null) === 'record'
+        ) {
+            $this->context->recordFields = $this->context->locals[$stmt->expr->name]['record'] ?? [];
+
+            return;
+        }
+
         // A producer of one value rather than a record — `lastBareFlagIndex()` hands back an index — binds
         // under the empty key, which {@see inlineValueProducer} unwraps. Same machinery either way: the guards
         // are the rule's guards and the terminal return is a transpile-time binding.
@@ -3711,6 +3740,12 @@ final readonly class Translator
             // Not every assigned helper builds a finding. A classifier hands back *which* case matched, and
             // the rule then puts that string in its message and its report code. That is a value, not a
             // report, so it binds a local instead of emitting guards.
+            // Where the emitted statements stood before any attempt below. `inlineValueProducer` inlines the
+            // producer to find out whether it hands back one value, and a producer that does not leaves its
+            // statements behind — harmless while the next step was a refusal, and a duplicated loop now that
+            // it is a second inline.
+            $emittedBefore = count($this->context->lines);
+
             $classified = $target instanceof Variable && is_string($target->name)
                 ? $this->classifierExpression($helper, $args, $method, $declaring, $line)
                 : null;
@@ -3756,13 +3791,45 @@ final readonly class Translator
             // `hihaho/phpstan-rules` v3.15.2 introduced the shape in `agreedFlagSite()`, and the refusal used
             // to read "is assigned but does not build a rule error", which describes this path's expectations
             // rather than the rule's obstacle.
-            if ($this->context->inLoop && $target instanceof Variable) {
+            if ($this->context->inLoop && $target instanceof Variable && is_string($target->name)) {
+                // Materialised into runtime locals rather than folded, which is what lets it leave the loop.
+                array_splice($this->context->lines, $emittedBefore);
+                $folded = $this->foldRecordInLoop($helper, $declaring, $method, $args, $target->name, $line);
+                if ($folded !== null) {
+                    $this->context->locals = $savedLocals;
+                    $this->context->literals = $savedLiterals;
+                    $this->context->caches = $savedCaches;
+                    $this->context->locals[$target->name] = $folded;
+
+                    return;
+                }
+
                 throw new Refusal(
-                    "{$method}() is assigned inside a loop and hands back a record, whose fields are "
-                    . 'expressions over the item the emitted foreach binds, so folding it into a name declared '
-                    . 'before the loop would read that item after it is out of scope',
+                    "{$method}() is assigned inside a loop and hands back a record this cannot materialise, "
+                    . 'whose fields are expressions over the item the emitted foreach binds, so folding it '
+                    . 'into a name declared before the loop would read that item after it is out of scope',
                     $line,
                 );
+            }
+
+            // A record producer assigned outside a loop binds the record and emits its guards, the same way
+            // a consumer reached through `recordConsumer()` does. The difference is only that the rule named
+            // the record rather than passing it straight into the builder.
+            if ($target instanceof Variable && is_string($target->name)) {
+                array_splice($this->context->lines, $emittedBefore);
+                $fields = $this->inlineProducer($helper, $declaring, $method, $args, $line);
+                if ($fields !== [] && ! array_key_exists('', $fields)) {
+                    $this->context->locals = $savedLocals;
+                    $this->context->literals = $savedLiterals;
+                    $this->context->caches = $savedCaches;
+                    $this->context->locals[$target->name] = [
+                        'rust' => self::PHP_ONLY,
+                        'kind' => 'record',
+                        'record' => $fields,
+                    ];
+
+                    return;
+                }
             }
 
             throw new Refusal("{$method}() is assigned but does not build a rule error", $line);
@@ -3885,11 +3952,24 @@ final readonly class Translator
             return null;
         }
 
+        $fields = $this->inlineRecordProducer($producer, $line);
         $this->context->locals[$parameter->name] = [
             'rust' => self::PHP_ONLY,
             'kind' => 'record',
-            'record' => $this->inlineRecordProducer($producer, $line),
+            'record' => $fields,
         ];
+
+        // `$site === null ? null : $this->build($site['x'])` drops its null branch when the record is a map
+        // of expressions: those navigate to something wherever they are read, so the branch cannot be taken.
+        // A materialised record is the other case. Its locals are declared null before the loop that fills
+        // them, so a receiver whose classes none declare the method leaves every field null — and dropping
+        // the branch there would report with a null field where the original reports nothing.
+        if ($this->isMaterialisedRecord($fields)) {
+            $this->context->lines[] = new Stm('guard', [
+                'condition' => $this->materialisedWitness($fields, $line) . ' === null',
+                'exit' => $this->context->backend->bail(),
+            ], $this->context->indent);
+        }
 
         return [$builder, $builderCall->getArgs(), $declaring, $this->findMethod($declaring['class'], $builder)];
     }
@@ -3968,7 +4048,7 @@ final readonly class Translator
      * @param array<Arg> $args
      * @param Declaration $declaring
      *
-     * @return array{rust: string, kind: string, php?: string, reason?: string, as?: string}|null
+     * @return RecordField|null
      */
     private function inlineValueProducer(ClassMethod $helper, array $declaring, string $name, array $args, int $line): ?array
     {
@@ -4009,8 +4089,14 @@ final readonly class Translator
      *
      * @return RecordFields
      */
-    private function inlineProducer(ClassMethod $helper, array $declaring, string $name, array $args, int $line): array
-    {
+    private function inlineProducer(
+        ClassMethod $helper,
+        array $declaring,
+        string $name,
+        array $args,
+        int $line,
+        bool $declineOnNull = false,
+    ): array {
         $savedLocals = $this->context->locals;
 
         $savedLiterals = $this->context->literals;
@@ -4023,11 +4109,15 @@ final readonly class Translator
         $savedUses = $this->context->useMap;
         $savedInHelper = $this->context->inErrorHelper;
         $savedFields = $this->context->recordFields;
+        $savedMethod = $this->context->currentMethod;
         $savedFloor = $this->context->helperLoopFloor;
         // Any loop already open belongs to the caller, so a `return null` inside this helper ends the caller's
         // iteration. A loop the helper opens raises the depth past this floor, and leaving that one has to
         // leave the helper instead.
-        $this->context->helperLoopFloor = $this->context->loopDepth;
+        // Below every depth when the caller turns a null record into a decline, so the producer's own
+        // `return null` renders as the rule's bail rather than as the end of the caller's iteration. See
+        // {@see nullRecordDeclines} for why that is read from the caller rather than assumed.
+        $this->context->helperLoopFloor = $declineOnNull ? -1 : $this->context->loopDepth;
 
         $this->context->locals = $this->bindParameters($helper, $args, $name, $line);
         $this->context->constants = [];
@@ -4037,6 +4127,9 @@ final readonly class Translator
         $this->context->useMap = $declaring['uses'];
         $this->context->inErrorHelper = true;
         $this->context->recordFields = [];
+        // The body being walked, so a lookahead inside it asks about this helper rather than about whatever
+        // called it. `inlineErrorHelper` already scopes this the same way.
+        $this->context->currentMethod = $helper;
         $this->collectConstants($declaring['class']);
         $this->enterInline($name, 'inlining the producer', $line);
 
@@ -4058,6 +4151,7 @@ final readonly class Translator
             $this->leaveInline();
             $this->context->helperLoopFloor = $savedFloor;
             $this->context->recordFields = $savedFields;
+            $this->context->currentMethod = $savedMethod;
             $this->context->inErrorHelper = $savedInHelper;
             $this->context->locals = $savedLocals;
             $this->context->literals = $savedLiterals;
@@ -4074,6 +4168,228 @@ final readonly class Translator
         }
 
         return $fields;
+    }
+
+    /**
+     * Materialises a record produced inside a loop into runtime locals, or null when it cannot be.
+     *
+     * An ordinary record is a compile-time map of field to expression, folded into whatever consumes it.
+     * That is exact and shorter, and it cannot cross a loop boundary: every expression reads the item the
+     * emitted `foreach` binds, so a name declared before the loop and read after it would name an item that
+     * is out of scope there. The counter faced the same wall and answered it the same way — stop folding,
+     * emit a real variable.
+     *
+     * One local per field. The assignments go here, inside the loop, where the producer's own guards are
+     * emitted too; the declarations are spliced in ahead of the `foreach`, because by the time a producer is
+     * reached that statement is already on the list.
+     *
+     * PHP only. The two Rust targets render a descriptor through `rust`, and a materialised field has no
+     * Rust rendering — returning null here refuses them by the same path as any other unsupported shape,
+     * which is what keeps their emission unchanged.
+     *
+     * @param array<Arg>  $args
+     * @param Declaration $declaring
+     *
+     * @return array{rust: string, kind: string, record: RecordFields}|null
+     */
+    private function foldRecordInLoop(
+        ClassMethod $helper,
+        array $declaring,
+        string $method,
+        array $args,
+        string $targetName,
+        int $line,
+    ): ?array {
+        if (Transpiler::$target !== 'php' || $this->context->loopOpenIndex === []) {
+            return null;
+        }
+
+        // What the caller does with a null record decides what the producer's own `return null` has to emit.
+        // Folded here it is `return null` from the accumulator, which declines the whole rule, so the
+        // producer's guards bail rather than ending the iteration. A caller that instead skipped the item
+        // would need `continue`, and the two are not interchangeable: on a receiver with two classes where
+        // the first produces nothing, bailing reports nothing and continuing goes on to the second.
+        if (! $this->nullRecordDeclines($targetName)) {
+            return null;
+        }
+
+        $fields = $this->inlineProducer($helper, $declaring, $method, $args, $line, declineOnNull: true);
+
+        // A single unnamed field is a value producer, not a record, and `inlineValueProducer` already had
+        // its chance at it above. Nothing to materialise field by field.
+        if ($fields === [] || array_key_exists('', $fields)) {
+            return null;
+        }
+
+        $open = $this->context->loopOpenIndex[array_key_last($this->context->loopOpenIndex)];
+        $outerIndent = $this->context->lines[$open]->indent;
+
+        $declares = [];
+        $record = [];
+        $locals = [];
+
+        foreach ($fields as $key => $descriptor) {
+            // A field the producer could not resolve is carried as a reason rather than a value, and a
+            // reason cannot be assigned. Carried through unmaterialised, exactly as the non-loop path
+            // carries it: `flagRecord` resolves `paramName` and holds `method` and `value` only for the
+            // manifest collector, which is refused for writing a file. A consumer that does read one still
+            // refuses, at the read, naming the field.
+            if (! isset($descriptor['php'])) {
+                $record[$key] = $descriptor;
+
+                continue;
+            }
+
+            $local = Emitter::snake($targetName . '_' . $key);
+            $locals[$key] = $local;
+
+            // Null before the loop, so the record reads as absent when the loop body never runs — which is
+            // what `$site = null` meant in the original.
+            $declares[] = new Stm('declare', ['target' => $local, 'value' => 'null'], $outerIndent);
+
+            $this->context->lines[] = new Stm('assign', [
+                'target' => $local,
+                'value' => $descriptor['php'],
+            ], $this->context->indent);
+
+            $record[$key] = [
+                'rust' => self::PHP_ONLY,
+                'kind' => $descriptor['kind'],
+                'php' => '$' . $local,
+                // Marks the field as a runtime variable rather than a folded expression. A consumer reads it
+                // to know whether the record can be absent at the point it is read: a folded expression is
+                // whatever it navigates to, but a local declared null before a loop is null when the loop
+                // assigned nothing, and the original's `=== null` branch is then live.
+                'local' => true,
+            ];
+            if (isset($descriptor['as'])) {
+                $record[$key]['as'] = $descriptor['as'];
+            }
+        }
+
+        // Nothing resolved is not a record that crossed the loop, it is a record that did not.
+        if ($locals === []) {
+            return null;
+        }
+
+        array_splice($this->context->lines, $open, 0, $declares);
+
+        // The open moved by exactly what was inserted ahead of it. A second record folded in the same loop
+        // reads this index, and a stale one would splice its declarations between the first record's and the
+        // `foreach`, which still runs but no longer says what it means.
+        array_pop($this->context->loopOpenIndex);
+        $this->context->loopOpenIndex[] = $open + count($declares);
+
+        $this->context->foldedRecords[$targetName] = $locals;
+
+        return ['rust' => self::PHP_ONLY, 'kind' => 'record', 'record' => $record];
+    }
+
+    /**
+     * One materialised field of a folded record, to ask a whole-record question of.
+     *
+     * Every materialised field is declared null before the loop and assigned in the same iteration, so any
+     * one of them answers "is this record set" for all of them. The first in declaration order is taken so
+     * the emitted question is stable across runs rather than depending on map order.
+     *
+     * @param RecordFields $fields
+     */
+    private function materialisedWitness(array $fields, int $line): string
+    {
+        foreach ($fields as $field) {
+            if (($field['local'] ?? false) === true && isset($field['php'])) {
+                return $field['php'];
+            }
+        }
+
+        throw new Refusal('a record with no materialised field to test for null', $line);
+    }
+
+    /**
+     * Whether the loop that assigns `$name` answers a null record by declining, rather than by skipping it.
+     *
+     * The fold's own step is `$record = $this->produce(..); if ($record === null) { return null; }`, and that
+     * `return null` leaves the accumulator, which leaves the rule. Read from the caller's source rather than
+     * assumed, because the other shape is legal and means the opposite: a `continue` there skips this class
+     * and goes on to the next, and a receiver with two classes tells the two apart.
+     */
+    private function nullRecordDeclines(string $name): bool
+    {
+        $method = $this->context->currentMethod;
+        if (! $method instanceof ClassMethod) {
+            return false;
+        }
+
+        foreach ((new NodeFinder())->findInstanceOf([$method], Foreach_::class) as $loop) {
+            $statements = array_values($loop->stmts);
+            foreach ($statements as $index => $statement) {
+                if (! $statement instanceof Expression
+                    || ! $statement->expr instanceof Assign
+                    || ! $statement->expr->var instanceof Variable
+                    || $statement->expr->var->name !== $name
+                ) {
+                    continue;
+                }
+
+                $next = $statements[$index + 1] ?? null;
+
+                return $next instanceof If_ && $this->isReturnNull($next->stmts);
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a record's fields are runtime locals rather than folded expressions.
+     *
+     * @param RecordFields $fields
+     */
+    private function isMaterialisedRecord(array $fields): bool
+    {
+        foreach ($fields as $field) {
+            if (($field['local'] ?? false) === true) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Copies one materialised record's fields into another's locals, field by field.
+     *
+     * Both names already hold locals — the accumulator's were declared before the loop, the producer's are
+     * assigned inside it — so the copy is assignments between variables and nothing is rebound. That is what
+     * keeps the two distinguishable at the agreement check, which is the only reason the fold has two names
+     * rather than one.
+     */
+    private function copyRecord(string $target, string $source, int $line): void
+    {
+        $into = $this->context->locals[$target]['record'] ?? [];
+        $from = $this->context->locals[$source]['record'] ?? [];
+
+        $copied = 0;
+        foreach ($into as $field => $descriptor) {
+            $value = $from[$field]['php'] ?? null;
+            $local = $descriptor['php'] ?? null;
+            if (! is_string($value) || ! is_string($local)) {
+                continue;
+            }
+
+            $this->context->lines[] = new Stm('assign', [
+                'target' => ltrim($local, '$'),
+                'value' => $value,
+            ], $this->context->indent);
+            ++$copied;
+        }
+
+        if ($copied === 0) {
+            throw new Refusal(
+                'a record copied into an accumulator that shares no materialised field with it',
+                $line,
+            );
+        }
     }
 
     /**
@@ -5299,7 +5615,7 @@ final readonly class Translator
      * Records that the given PHP expression has been narrowed, so later reads of its properties
      * resolve to the binding. Keyed by the PHP source shape, so both `$node->var` and the local
      * that aliases it see the refinement.
-     * @param array<string, string[]> $fields
+     * @param array<string, array{0: string, 1: string, 2?: string}> $fields
      */
     private function rememberRefined(Expr $subject, array $fields): void
     {
@@ -5561,6 +5877,10 @@ final readonly class Translator
         $this->context->inLoop = true;
         ++$this->context->loopDepth;
 
+        // Remembered before the open is pushed, so a record folded inside this loop can splice its
+        // declarations in front of it. See {@see TranslationContext::$loopOpenIndex}.
+        $this->context->loopOpenIndex[] = count($this->context->lines);
+
         $this->context->lines[] = new Stm('foreach-open', [
             'variable' => $variable,
             // Rust iterates with `.iter()`; PHP's `foreach` takes the list directly, so a descriptor
@@ -5579,6 +5899,7 @@ final readonly class Translator
             $this->context->indent -= 4;
             $this->context->inLoop = $savedLoop;
             --$this->context->loopDepth;
+            array_pop($this->context->loopOpenIndex);
             $this->context->locals = $savedLocals;
             $this->context->literals = $savedLiterals;
             $this->context->caches = $savedCaches;
@@ -6084,6 +6405,105 @@ final readonly class Translator
      * the count; `TaggedIteratorOverRepeatedServiceCallRule` reaches the same shape through
      * `array_count_values()`.
      */
+    /**
+     * The field names a record copied into `$name` inside a loop will carry, or null when there is no copy.
+     *
+     * `$site = null; foreach (..) { $record = $this->flagRecord(..); ..; $site = $record; }` is the shape.
+     * `$site` is not an unassigned scalar there — it is the accumulator the loop folds records into, and its
+     * fields have to be declared before the loop.
+     *
+     * Read from the producer's returned array literal rather than by inlining it. Inlining resolves each
+     * field against the loop item, which is not bound at the point `$site = null` is translated; the names
+     * are all that is needed to declare the locals, and they are written out in the source.
+     *
+     * PHP only, like the fold it prepares. Asking the same question on a Rust target and answering it here
+     * would emit declarations for a materialisation that then refuses.
+     *
+     * @return list<string>|null
+     */
+    private function carriedRecordFields(string $name): ?array
+    {
+        $method = $this->context->currentMethod;
+        if (Transpiler::$target !== 'php' || ! $method instanceof ClassMethod) {
+            return null;
+        }
+
+        $source = null;
+        foreach ((new NodeFinder())->findInstanceOf([$method], Assign::class) as $assign) {
+            if ($assign->var instanceof Variable
+                && $assign->var->name === $name
+                && $assign->expr instanceof Variable
+                && is_string($assign->expr->name)
+            ) {
+                $source = $assign->expr->name;
+
+                break;
+            }
+        }
+
+        if ($source === null) {
+            return null;
+        }
+
+        // What that name was assigned from: an own-method call, whose returned literal names the fields.
+        foreach ((new NodeFinder())->findInstanceOf([$method], Assign::class) as $assign) {
+            if (! $assign->var instanceof Variable
+                || $assign->var->name !== $source
+                || ! $assign->expr instanceof MethodCall
+                || ! $this->isOwnMethodCall($assign->expr)
+            ) {
+                continue;
+            }
+
+            $producer = $this->context->currentClass instanceof ClassLike
+                ? $this->declaringOf($this->memberName($assign->expr->name, $assign->getStartLine()))
+                : null;
+            if ($producer === null) {
+                return null;
+            }
+
+            $body = $this->findMethod($producer['class'], $this->memberName($assign->expr->name, $assign->getStartLine()));
+
+            return $this->returnedRecordKeys($body);
+        }
+
+        return null;
+    }
+
+    /**
+     * The keys of the array literal a producer returns, or null when it returns something else.
+     *
+     * @return list<string>|null
+     */
+    private function returnedRecordKeys(ClassMethod $producer): ?array
+    {
+        $keys = null;
+        foreach ((new NodeFinder())->findInstanceOf([$producer], Return_::class) as $return) {
+            if (! $return->expr instanceof Array_) {
+                continue;
+            }
+
+            $found = [];
+            foreach ($return->expr->items as $item) {
+                if ($item === null || ! $item->key instanceof String_) {
+                    return null;
+                }
+
+                $found[] = $item->key->value;
+            }
+
+            // Two returned literals with different keys are two record shapes, and one set of declarations
+            // cannot stand for both. Refused by answering null, which leaves the fold to name the obstacle.
+            if ($keys !== null && $keys !== $found) {
+                return null;
+            }
+
+            $keys = $found;
+        }
+
+        return $keys === [] ? null : $keys;
+    }
+
     private function isIncremented(string $name): bool
     {
         $method = $this->context->currentMethod;
@@ -6299,7 +6719,39 @@ final readonly class Translator
         // The kind carries no value, so every read of it refuses. That is the point: binding the name is not
         // support for the shape, only an honest place to stand while the shape is refused.
         if ($value instanceof ConstFetch && strtolower((string) $value->name) === 'null') {
+            // Unless the method goes on to copy a record into this name inside a loop. Then `null` is the
+            // record's own absent state and the fields have to exist here, before the loop, or the copy has
+            // nowhere to write and the `!== null` test before it has nothing to ask. Only the field *names*
+            // are needed to declare them, and the producer's returned literal carries those — inlining it
+            // here would resolve expressions over a loop item that is not bound yet.
+            $carried = $this->carriedRecordFields($name);
+            if ($carried !== null) {
+                $record = [];
+                foreach ($carried as $field) {
+                    $local = Emitter::snake($name . '_' . $field);
+                    $this->context->lines[] = new Stm('declare', ['target' => $local, 'value' => 'null'], $this->context->indent);
+                    $record[$field] = ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'php' => '$' . $local, 'local' => true];
+                }
+
+                $this->context->locals[$name] = ['rust' => self::PHP_ONLY, 'kind' => 'record', 'record' => $record];
+
+                return;
+            }
+
             $this->context->locals[$name] = ['rust' => self::PHP_ONLY, 'kind' => 'unassigned', 'php' => 'null'];
+
+            return;
+        }
+
+        // `$site = $record;` — the fold's own step, and a copy rather than an alias. Aliasing would make the
+        // two names one set of locals, and the agreement check that compares them would then compare a value
+        // with itself and never hold. Emitted as one assignment per field the accumulator declared.
+        if ($value instanceof Variable
+            && is_string($value->name)
+            && ($this->context->locals[$name]['kind'] ?? null) === 'record'
+            && ($this->context->locals[$value->name]['kind'] ?? null) === 'record'
+        ) {
+            $this->copyRecord($name, $value->name, $line);
 
             return;
         }
@@ -7917,7 +8369,20 @@ final readonly class Translator
         // `attribute-name` joins them because an attribute's name *is* a computed string once the rule has
         // called `->toString()` on it, and a rule comparing it to `Attribute::class` is comparing two strings.
         if (in_array($subject['kind'], ['bytes', 'class-name'], true) && Transpiler::$target === 'php') {
-            return $this->operand($subject) . ' === ' . $this->context->backend->bytes($this->stringLiteral($right, $line));
+            try {
+                return $this->operand($subject) . ' === ' . $this->context->backend->bytes($this->stringLiteral($right, $line));
+            } catch (Refusal $notLiteral) {
+                // Two computed strings rather than one against a written word. The fold's agreement check is
+                // the shape that needs it — `$record['paramName'] !== $site['paramName']` asks whether two
+                // declarers named the flag parameter the same thing, and neither side is a literal. Reached
+                // only after the literal reading fails, so nothing that compared against a word changes.
+                $other = $this->resolve($right, $line);
+                if (! in_array($other['kind'], ['bytes', 'class-name'], true)) {
+                    throw $notLiteral;
+                }
+
+                return $this->operand($subject) . ' === ' . $this->operand($other);
+            }
         }
 
         throw new Refusal(
@@ -8128,7 +8593,7 @@ final readonly class Translator
     }
 
     /**
-     * @param array<string, string>|array<string, mixed[]> $subject
+     * @param Descriptor $subject
      */
     private function requireType(array $subject, int $line): void
     {
@@ -8335,7 +8800,12 @@ final readonly class Translator
                 throw new Refusal("getObjectClassReflections() of a {$of['kind']}", $line);
             }
 
-            $helper = $of['kind'] === 'type-without-null' ? 'soleObjectClassIgnoringNull' : 'soleObjectClass';
+            $stripped = $of['kind'] === 'type-without-null';
+            $helper = $stripped ? 'soleObjectClassIgnoringNull' : 'soleObjectClass';
+            // The list follows the same strip. It did not, and the single-class rendering was the only one
+            // any rule reached, so a nullable receiver answered the empty list to every rule that iterated —
+            // emitted, loaded, ran, reported nothing. That is the failure static checks cannot see.
+            $list = $stripped ? 'objectClassesIgnoringNull' : 'objectClasses';
 
             // Two renderings of one question, because rules ask it two ways. Most ask `count(..) === 1` and
             // then use the name, which is what `sole-class` is for. One iterates the list instead, and giving
@@ -8345,7 +8815,7 @@ final readonly class Translator
                 'rust' => self::PHP_ONLY,
                 'kind' => 'sole-class',
                 'php' => 'Support::' . $helper . '(' . $this->operand($of) . ')',
-                'listPhp' => 'Support::objectClasses(' . $this->operand($of) . ')',
+                'listPhp' => 'Support::' . $list . '(' . $this->operand($of) . ')',
             ];
         }
 
