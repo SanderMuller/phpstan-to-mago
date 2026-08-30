@@ -574,6 +574,7 @@ PHP;
             throw new Refusal(
                 'every rule that consumes this collector reports nothing and writes a file instead, so the '
                 . 'pair cannot become a plugin whatever the collector body does',
+                permanent: true,
             );
         }
 
@@ -584,6 +585,7 @@ PHP;
                 . "*other* rules fire on it. An analyzer plugin's only output is report(), and there is no "
                 . 'equivalent of feeding a node back into Mago, so no node hook and no vocabulary entry can '
                 . 'make this one portable',
+                permanent: true,
             );
         }
     }

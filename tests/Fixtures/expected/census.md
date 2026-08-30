@@ -18,6 +18,15 @@ a statement kind, four different access paths, an array search and a guard shape
 label it ties for the largest cluster here and is not a cluster at all. A need is one capability
 only where the text after the label is the same text.
 
+`NEVER` is a third outcome, apart from `REFUSE`, and the denominator excludes it. Those rules
+report nothing a plugin could carry — they write a build artefact, or hand a synthesised node
+back to PHPStan's own analysis — so no vocabulary entry, hook or body change reaches them, and a
+package holding one can never read as full. `hihaho/phpstan-rules` is 4 of 7 rather than 4 of 9
+for that reason. The mark comes from the transpiler rather than a curated list: the two places
+that refuse a shape no body could fix say so on the refusal itself, and everything else is
+provisional, which is the safe direction — a refusal wrongly called permanent stops someone
+looking. No `needs:` is printed under one, because its body is not the obstacle.
+
 The list is a **lower bound**. A statement that refuses is stepped over and the next one is
 translated, so obstacles in different statements all appear and a second one inside a single
 statement does not; a rule blocked early shows less than it needs.
@@ -44,7 +53,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 38 of 89 the package registers emit, 1 covered by the engine, 50 refuse, 8 it registers nowhere
+## symplify/phpstan-rules — 38 of 89 portable rules the package registers emit, 1 covered by the engine, 50 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -309,7 +318,7 @@ REFUSE  TaggedIteratorOverRepeatedServiceCallRule
         needs: no iteration mapped for ->stmts, which resolved to a subtree
 EMIT    UppercaseConstantRule
 
-## hihaho/phpstan-rules — 4 of 9 the package registers emit, 0 covered by the engine, 5 refuse, 11 it registers nowhere
+## hihaho/phpstan-rules — 4 of 7 portable rules the package registers emit, 0 covered by the engine, 3 refuse, 2 unportable in principle, 11 it registers nowhere
 
 EMIT    ChainedNoDebugInNamespaceRule  (the package registers it nowhere)
 EMIT    CombinedFuncCallRule
@@ -320,7 +329,7 @@ REFUSE  CombinedStaticCallRule
         ClassReflection test on a service, which the plugin has no equivalent for
         needs: ClassReflection test on a service, which the plugin has no equivalent for
         needs: expected a string literal
-REFUSE  FlagArgumentManifestCollector
+NEVER   FlagArgumentManifestCollector
         every rule that consumes this collector reports nothing and writes a file instead, so the pair cannot become a plugin whatever the collector body does
 EMIT    NoDebugInNamespaceRule  (the package registers it nowhere)
 EMIT    NoEloquentWithPropertyRule
@@ -352,10 +361,10 @@ EMIT    TraitRequiresInterfaceRule
 REFUSE  UnvalidatedFormRequestFieldRule  (the package registers it nowhere)
         $fieldAccessorsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
         needs: $fieldAccessorsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
-REFUSE  WriteNamedArgumentManifestRule
+NEVER   WriteNamedArgumentManifestRule
         this rule reports nothing: it writes a file and returns no findings, so there is nothing for a plugin to report. An analyzer plugin's only output is report(), and agreement has no meaning for a build artefact
 
-## tomasvotruba/type-coverage — 1 of 10 the package registers emit, 0 covered by the engine, 9 refuse, 0 it registers nowhere
+## tomasvotruba/type-coverage — 1 of 10 portable rules the package registers emit, 0 covered by the engine, 9 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ConstantTypeCoverageRule
         no aggregate mapped for the collector ConstantTypeDeclarationCollector
@@ -393,7 +402,7 @@ REFUSE  ReturnTypeDeclarationCollector
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: access path outside the vocabulary: Scalar_Int
 
-## tomasvotruba/cognitive-complexity — 2 of 3 the package registers emit, 0 covered by the engine, 1 refuse, 0 it registers nowhere
+## tomasvotruba/cognitive-complexity — 2 of 3 portable rules the package registers emit, 0 covered by the engine, 1 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ClassDependencyTreeRule
         method call outside the vocabulary ->hasConstructor()
@@ -403,7 +412,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 12 of 45 the package registers emit, 0 covered by the engine, 33 refuse, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 12 of 45 portable rules the package registers emit, 0 covered by the engine, 33 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
@@ -572,7 +581,7 @@ REFUSE  WrongCaseOfInheritedMethodRule
         needs: if statement that is not a single-statement guard
         needs: access path outside the vocabulary: ->getInterfaces()
 
-## phpstan/phpstan-phpunit — 0 of 14 the package registers emit, 0 covered by the engine, 14 refuse, 0 it registers nowhere
+## phpstan/phpstan-phpunit — 0 of 13 portable rules the package registers emit, 0 covered by the engine, 13 refuse, 1 unportable in principle, 0 it registers nowhere
 
 REFUSE  AssertEqualsIsDiscouragedRule
         statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
@@ -610,7 +619,7 @@ REFUSE  ClassMethodCoversExistsRule
         needs: assignment to something other than a simple local
         needs: assignment value outside the vocabulary: access path outside the vocabulary: array_map()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
-REFUSE  DataProviderDataRule
+NEVER   DataProviderDataRule
         this rule reports nothing: its whole output is $scope->invokeNodeCallback(), which synthesises a node with inferred argument types and hands it back to PHPStan's own analysis so that *other* rules fire on it. An analyzer plugin's only output is report(), and there is no equivalent of feeding a node back into Mago, so no node hook and no vocabulary entry can make this one portable
 REFUSE  DataProviderDeclarationRule
         foreach with a key
@@ -633,7 +642,7 @@ REFUSE  ShouldCallParentMethodsRule
         needs: access path outside the vocabulary: ->getStmts()
         needs: condition outside the vocabulary: Expr_Variable
 
-## phpstan/phpstan-deprecation-rules — 0 of 2 the package registers emit, 0 covered by the engine, 2 refuse, 0 it registers nowhere
+## phpstan/phpstan-deprecation-rules — 0 of 2 portable rules the package registers emit, 0 covered by the engine, 2 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  CallWithDeprecatedIniOptionRule
         unknown local $this

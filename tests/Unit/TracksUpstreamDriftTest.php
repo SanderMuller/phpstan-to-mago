@@ -151,6 +151,15 @@ final class TracksUpstreamDriftTest extends TestCase
             'label it ties for the largest cluster here and is not a cluster at all. A need is one capability',
             'only where the text after the label is the same text.',
             '',
+            '`NEVER` is a third outcome, apart from `REFUSE`, and the denominator excludes it. Those rules',
+            'report nothing a plugin could carry — they write a build artefact, or hand a synthesised node',
+            "back to PHPStan's own analysis — so no vocabulary entry, hook or body change reaches them, and a",
+            'package holding one can never read as full. `hihaho/phpstan-rules` is 4 of 7 rather than 4 of 9',
+            'for that reason. The mark comes from the transpiler rather than a curated list: the two places',
+            'that refuse a shape no body could fix say so on the refusal itself, and everything else is',
+            'provisional, which is the safe direction — a refusal wrongly called permanent stops someone',
+            'looking. No `needs:` is printed under one, because its body is not the obstacle.',
+            '',
             'The list is a **lower bound**. A statement that refuses is stepped over and the next one is',
             'translated, so obstacles in different statements all appear and a second one inside a single',
             'statement does not; a rule blocked early shows less than it needs.',
@@ -205,14 +214,25 @@ final class TracksUpstreamDriftTest extends TestCase
                 ARRAY_FILTER_USE_BOTH,
             ));
 
+            // A rule no plugin could carry, counted apart from the ones not translated yet. Both are
+            // "refused", and a package holding one of these can never be fully covered — so the portable
+            // denominator is the one a coverage figure has to quote, or it names a target this tool will
+            // never reach.
+            $unportable = count(array_filter(
+                $named,
+                static fn (string $outcome): bool => str_starts_with($outcome, 'UNPORTABLE '),
+            ));
+
             $lines[] = '';
             $lines[] = sprintf(
-                '## %s — %d of %d the package registers emit, %d covered by the engine, %d refuse, %d it registers nowhere',
+                '## %s — %d of %d portable rules the package registers emit, %d covered by the engine, '
+                . '%d refuse, %d unportable in principle, %d it registers nowhere',
                 $package,
                 $emitted,
-                count($named),
+                count($named) - $unportable,
                 $engine,
-                count($named) - $emitted - $engine,
+                count($named) - $emitted - $engine - $unportable,
+                $unportable,
                 count($outcomes) - count($named),
             );
             $lines[] = '';
@@ -241,6 +261,15 @@ final class TracksUpstreamDriftTest extends TestCase
                 // the half nothing reviewed. Four refusals in one week named a construct that was not what
                 // stopped the rule, each read as one table row away, and none of them would have survived
                 // arriving as a diff here.
+                // No `needs:` under an unportable one. That list is what a rule's body would take, and this
+                // rule's body is not the obstacle — printing it would invite exactly the sizing the label
+                // exists to prevent.
+                if (str_starts_with($outcome, 'UNPORTABLE ')) {
+                    $lines[] = 'NEVER   ' . $name . $where . "\n        " . substr($outcome, strlen('UNPORTABLE '));
+
+                    continue;
+                }
+
                 $needs = $this->needs($files[$name]);
                 $lines[] = 'REFUSE  ' . $name . $where . "\n        " . substr($outcome, strlen('REFUSE '))
                     . ($needs === [] ? '' : "\n        needs: " . implode("\n        needs: ", $needs));
@@ -349,7 +378,12 @@ final class TracksUpstreamDriftTest extends TestCase
         } catch (Refusal $refusal) {
             // Line numbers stripped, and every occurrence rather than the last: a nested refusal carries the
             // inner construct's line as well as the outer one's. A construct moving down a file is not drift.
-            return 'REFUSE ' . trim((string) preg_replace('/ \(line \d+\)/', '', $refusal->getMessage()));
+            $reason = trim((string) preg_replace('/ \(line \d+\)/', '', $refusal->getMessage()));
+
+            // "Not translated yet" and "no plugin could carry this" read the same in a list and are not the
+            // same fact. A package holding one of the second kind can never be fully covered, so counting
+            // them together makes its figure quote a denominator this tool will never reach.
+            return ($refusal->permanent ? 'UNPORTABLE ' : 'REFUSE ') . $reason;
         }
     }
 }

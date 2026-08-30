@@ -57,6 +57,7 @@ final readonly class AggregateRule
                 'this rule reports nothing: it writes a file and returns no findings, so there is nothing for '
                 . "a plugin to report. An analyzer plugin's only output is report(), and agreement has no "
                 . 'meaning for a build artefact',
+                permanent: true,
             );
         }
 

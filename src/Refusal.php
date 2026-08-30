@@ -8,8 +8,24 @@ use RuntimeException;
 
 final class Refusal extends RuntimeException
 {
-    public function __construct(string $reason, ?int $line = null)
-    {
+    /**
+     * Whether no vocabulary, hook or body change could ever move this rule.
+     *
+     * Two refusals differ in kind and read the same in a list. "Not translated yet" is work; "reports nothing
+     * a plugin could carry" is a property of the rule, and a package holding one can never be fully covered.
+     * Counting them together makes every per-package figure quote a denominator that includes rules no
+     * version of this tool will reach — which matters most exactly when a package approaches full and the
+     * number starts being quoted.
+     *
+     * Set only where the transpiler already knows: {@see Transpiler::refuseWhatNoBodyCouldFix()}, whose whole
+     * job is the shapes no body could fix. Anything else is provisional by default, which is the safe
+     * direction — a refusal wrongly called permanent stops someone looking.
+     */
+    public function __construct(
+        string $reason,
+        ?int $line = null,
+        public readonly bool $permanent = false,
+    ) {
         parent::__construct($line === null ? $reason : "$reason (line $line)");
     }
 }
