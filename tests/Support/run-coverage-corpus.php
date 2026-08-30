@@ -149,11 +149,21 @@ if ($untracked === null) {
 }
 
 printf("  metric:   %s\n", $metric);
-printf("  original: %d declarations\n", $totals['original']);
-printf("  port:     %d declarations\n", $totals['port']);
+printf("  original: %d declarations, %.1f %% typed\n", $totals['original'], $totals['originalPercentage']);
+printf("  port:     %d declarations, %.1f %% typed\n", $totals['port'], $totals['portPercentage']);
 $delta = $totals['port'] - $totals['original'];
 
 printf("  delta:    %+d\n", $delta);
+
+// The percentage is what the rule reports, so agreeing on the denominator is not agreeing. Reported next to
+// the delta rather than folded into it: a run can match on count and differ on how many are typed, and a
+// reader needs to see which half moved.
+if (abs($totals['portPercentage'] - $totals['originalPercentage']) > 0.05) {
+    printf(
+        "  typed:    the two disagree by %+.1f percentage points, so the counts agreeing is not agreement\n",
+        $totals['portPercentage'] - $totals['originalPercentage'],
+    );
+}
 
 $whole = $requested === null && $extraExcludes === [];
 if (! $whole) {

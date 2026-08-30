@@ -125,6 +125,7 @@ parameters:
                 - tests/Support/run-render-census.php
                 - tests/Support/HierarchyKnowledge.php
                 - tests/Support/FiresGate.php
+                - tests/Unit/AggregatesDeclareCoverageTest.php
                 - tests/Unit/AggregatesTypeCoverageTest.php
                 - tests/Unit/AnalysesTheEmittedPluginsTest.php
                 # The trait divergence is a fact about two engines, so measuring it means running both.

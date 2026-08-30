@@ -61,6 +61,7 @@
         ".github",
         "demo",
         "internal",
+        "tests/Fixtures/aggregate/project-declares",
         "tests/Fixtures/expected",
         "vendor"
     ]

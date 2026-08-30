@@ -13,8 +13,8 @@ use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
-use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Closure;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Empty_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
@@ -491,6 +491,7 @@ final class Vocabulary
      */
     public const array AGGREGATES = [
         'ParamTypeDeclarationCollector' => 'parameters',
+        'DeclareCollector' => 'declares',
     ];
 
     /**
@@ -676,6 +677,15 @@ final class Vocabulary
                 . 'also *under*-count, by a separate cause: a class declared twice in one file behind a version '
                 . 'guard is counted by PHPStan and by neither body here, which is -7 on nikic/php-parser. '
                 . 'Reproduce either with `php tests/Support/run-coverage-corpus.php <consumer-root>`.',
+        ],
+        'declares' => [
+            'ceiling' => 0.0,
+            'note' => 'Counted exactly on the two Laravel consumers it was measured on: 2932 of 2932 files '
+                . 'and 1895 of 1895, agreeing on the percentage as well as the count. A zero ceiling is the '
+                . 'measurement rather than an absence of one — the question is per file rather than per '
+                . 'declaration, so the trait multiplicity and the reflection-extension lookup that bound the '
+                . 'parameter metric have nothing to act on here. Reproduce with '
+                . '`php tests/Support/run-coverage-corpus.php <consumer-root> --metric=declares`.',
         ],
     ];
 

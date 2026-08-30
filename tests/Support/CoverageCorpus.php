@@ -39,9 +39,14 @@ final readonly class CoverageCorpus
     /**
      * What each metric is called on either side of the comparison.
      *
-     * Three names for one measurement, and none of them derivable from the others: the runtime method, the
-     * `measure: true` summary line the real rule prints, and nothing else. Kept in one place so adding a
-     * metric is one row rather than three edits that can disagree.
+     * Two names for one measurement, and neither derivable from the other: the runtime method, and the
+     * `measure: true` summary line the real rule prints. Kept in one place so adding a metric is one row
+     * rather than edits in three files that can disagree.
+     *
+     * Each summary is copied out of its rule rather than inferred from the metric's name. Three of the four
+     * follow one pattern and `declares` does not — it prints "Strict declares coverage" where the shape
+     * predicts "Declare coverage" — and a wrong summary is not a wrong number, it is no number at all: the
+     * regex finds nothing and the run dies naming the real rule instead of the guess.
      *
      * @var array<string, array{method: string, summary: string}>
      */
@@ -49,7 +54,7 @@ final readonly class CoverageCorpus
         'parameters' => ['method' => 'parameters', 'summary' => 'Param type coverage'],
         'returns' => ['method' => 'returns', 'summary' => 'Return type coverage'],
         'properties' => ['method' => 'properties', 'summary' => 'Property type coverage'],
-        'declares' => ['method' => 'declares', 'summary' => 'Declare coverage'],
+        'declares' => ['method' => 'declares', 'summary' => 'Strict declares coverage'],
     ];
 
     /**
@@ -69,15 +74,28 @@ final readonly class CoverageCorpus
     ) {}
 
     /**
-     * The real rule's total, and the port's.
+     * The real rule's total and percentage, and the port's.
      *
-     * @return array{original: int, port: int}
+     * Both, because the total alone is half the measurement. A metric can count the same declarations and
+     * disagree about how many of them are typed, and the percentage is what the rule reports — two runs that
+     * agree on the denominator and not the numerator would pass a totals-only gate while saying different
+     * things to a reader.
+     *
+     * @return array{original: int, port: int, originalPercentage: float, portPercentage: float}
      */
     public function totals(): array
     {
         $this->write();
 
-        return ['original' => $this->originalTotal(), 'port' => $this->portTotal()];
+        [$original, $originalPercentage] = $this->originalMeasure();
+        [$port, $portPercentage] = $this->portMeasure();
+
+        return [
+            'original' => $original,
+            'port' => $port,
+            'originalPercentage' => $originalPercentage,
+            'portPercentage' => $portPercentage,
+        ];
     }
 
     /** The `.php` files under the analysed paths, which is what "the corpus" means for both tools. */
@@ -237,7 +255,8 @@ final readonly class CoverageCorpus
 
                 public function afterAnalysis(AfterAnalysisContext \$context): void
                 {
-                    file_put_contents('measure.txt', (string) TypeCoverage::{$method}(\$context)->total);
+                    \$measured = TypeCoverage::{$method}(\$context);
+                    file_put_contents('measure.txt', \$measured->total . ' ' . \$measured->percentage());
                 }
             }
             PLUGIN);
@@ -323,7 +342,8 @@ final readonly class CoverageCorpus
             NEON);
     }
 
-    private function originalTotal(): int
+    /** @return array{int, float} */
+    private function originalMeasure(): array
     {
         // The consumer's own phpstan, not this repository's: the consumer's config declares parameters whose
         // schema comes from extensions it installs, and this repository's phpstan rejects such a config
@@ -338,12 +358,13 @@ final readonly class CoverageCorpus
 
         $summary = preg_quote(self::METRICS[$this->metric]['summary'], '/');
 
-        return preg_match('/' . $summary . ' is [\d.]+ % out of (\d+) possible/', $output, $matched) === 1
-            ? (int) $matched[1]
+        return preg_match('/' . $summary . ' is ([\d.]+) % out of (\d+) possible/', $output, $matched) === 1
+            ? [(int) $matched[2], (float) $matched[1]]
             : throw new RuntimeException("The real rule reported no count:\n" . substr($output, 0, 2000));
     }
 
-    private function portTotal(): int
+    /** @return array{int, float} */
+    private function portMeasure(): array
     {
         if (is_file($this->sandbox . '/measure.txt')) {
             unlink($this->sandbox . '/measure.txt');
@@ -354,9 +375,13 @@ final readonly class CoverageCorpus
             ? (string) file_get_contents($this->sandbox . '/measure.txt')
             : '';
 
-        return $measured === ''
-            ? throw new RuntimeException("The port reported no count:\n" . substr($output, 0, 2000))
-            : (int) $measured;
+        if ($measured === '') {
+            throw new RuntimeException("The port reported no count:\n" . substr($output, 0, 2000));
+        }
+
+        [$total, $percentage] = array_pad(explode(' ', trim($measured), 2), 2, '0');
+
+        return [(int) $total, (float) $percentage];
     }
 
     /** @param list<string> $command */

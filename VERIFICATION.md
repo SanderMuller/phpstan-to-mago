@@ -1076,3 +1076,36 @@ The instrument is in the repository rather than the result alone: `run-coverage-
 `--metric=` and `CoverageCorpus` names each metric's runtime method and summary line in one table, so the
 next metric is one row and one run. A metric with no stated bound reports and fails on any difference,
 rather than being gated against a ceiling measured for a different measurement.
+
+##### And the declare metric, which passed
+
+`DeclareCoverageRule` emits. Coverage 61 of 169 portable to 62, and `tomasvotruba/type-coverage` reads 2 of
+10 rather than 1.
+
+Picked over the other two by shape rather than by looking cheaper. `DeclareCollector` returns one record per
+analysed *file*; the return and property collectors return one per declaration, once per using class. The
+divergence that stopped `returns` — a collector summed without deduplication against a port that walks
+declarations once — has nothing to act on in a per-file question, and neither does the reflection-extension
+lookup that bounds the parameter metric.
+
+**Fixture:** four files, one covered — no `declare` at all, a `declare` that is not `strict_types`, and
+`strict_types=0`. Both tools report 4 possible, 1 typed, 25.0 %, and the same three files. Mutation-checked:
+matching `strict_types` rather than `strict_types=1` takes the port to 2 typed of 4 and the comparison fails
+on `ExplicitlyOff.php`, which is the file that exists for it.
+
+**Corpus:** two Laravel consumers, 2932 of 2932 files and 1895 of 1895, agreeing on the percentage as well
+as the count. The second matters more than the first: the first project declares strict types everywhere, so
+its 100 % exercises nothing on the typed side, and only the second — 25.2 % on both tools — shows the two
+halves counted the same way. `ACCEPTED_DIVERGENCE['declares']` states a ceiling of zero, which is a
+measurement rather than the absence of one.
+
+Two instrument corrections came out of it. The differential compared totals only, so two runs could count
+the same declarations and disagree about how many were typed and still pass; it compares the percentage now,
+and prints how far apart the two are when they differ. And the summary line each rule prints is copied out
+of that rule rather than inferred: three of the four follow one pattern and `declares` does not — it prints
+"Strict declares coverage" where the shape predicts "Declare coverage" — and a wrong summary is not a wrong
+number but no number, because the regex finds nothing and the run dies.
+
+One rendering difference, stated rather than smoothed over. PHPStan reports line `-1` for a finding about a
+file rather than a position in one; mago has no way to report without a span, so the port anchors on the
+file's first node. The test compares messages and files and says why it leaves lines out.
