@@ -17,11 +17,14 @@ namespace Sandermuller\PhpstanToMago\Tests\Support;
  * a different one. They skip instead, naming which package moved. What `--prefer-lowest` is for — that the
  * transpiler works against minimum supported versions — is still checked by every other test in the suite.
  *
- * Compared against the versions the *census* records, not against `composer.lock`. CI installs with
- * `composer update --prefer-lowest`, which rewrites the lock in the workspace, so a lock-versus-installed
- * check agrees with itself on exactly the run it needs to catch — measured, after that was the first fix and
- * it changed nothing. The census is committed and regenerated deliberately, which makes it the record an
- * install cannot move.
+ * Compared against the versions the *census* records, not against `composer.lock`. The first fix here read
+ * the lock and changed nothing, and the reason is stronger than it first looked: **the lock is gitignored**.
+ * CI installs with `composer update`, which writes one, so every run compares a freshly generated lock
+ * against the install that generated it and agrees with itself by construction. There was never a committed
+ * lock for a resolution to differ from — for anyone, not only in CI.
+ *
+ * The census is committed and regenerated deliberately, which makes it the only record here an install
+ * cannot move.
  */
 final class LockedCorpus
 {

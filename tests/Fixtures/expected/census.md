@@ -32,6 +32,9 @@ Generated against these package versions. A run whose installed corpus differs â
 describe a corpus skip there rather than fail. Regenerating this file updates the list, which is
 what keeps the two from drifting apart.
 
+This list rather than `composer.lock`, which is gitignored: every install writes one and then
+agrees with it, so a lock can say what is installed and never what was expected.
+
     hihaho/phpstan-rules                      v3.15.2
     phpstan/phpstan-deprecation-rules         2.0.5
     phpstan/phpstan-phpunit                   2.0.18
