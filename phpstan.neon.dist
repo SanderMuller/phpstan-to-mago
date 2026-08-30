@@ -22,6 +22,10 @@ parameters:
         # real PHPStan over them with only one rule registered. Analysing them here instead reports the
         # wrongness we put there on purpose.
         - tests/Fixtures/examples
+        # The trait-divergence fixtures, for the same reason and one more: the route one extends a stubbed
+        # Symfony controller that only the sandbox puts on the path, so analysing it here reports an unknown
+        # parent class that is present everywhere the fixture is actually used.
+        - tests/Fixtures/TraitDivergence
         # Fixture rule *packages*, shaped to reproduce how real packages wire their rules — a configured
         # value, a PHPStan service, a value derived in the constructor, one the neon never wires. They are
         # input the transpiler reads, so their shape is dictated by what they must reproduce rather than by

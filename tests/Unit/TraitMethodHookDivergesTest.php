@@ -83,6 +83,158 @@ final class TraitMethodHookDivergesTest extends TestCase
     }
 
     /**
+     * What the divergence costs a real shipped rule, counted at one span.
+     *
+     * The three tests above measure the hook. This measures a plugin: `NoRouteTrailingSlashPathRule` emits
+     * today, and it gates on the enclosing class being a controller — one of the seven corpus rules on this
+     * hook that do. So in a trait the port asks that question of the trait, which extends nothing, and the
+     * rule goes quiet rather than merely reporting once instead of twice.
+     *
+     * This is the control the fix needs and the corpus differential cannot be: that instrument keys findings
+     * on `file:line`, so N reports at one span and one report at one span compare equal there. Here the count
+     * is the assertion, so a fix that works changes this test and a fix that does nothing does not.
+     */
+    public function test_a_shipped_rule_reports_nothing_in_a_trait_where_phpstan_reports_once_per_user(): void
+    {
+        $sandbox = $this->ruleSandbox();
+
+        self::assertSame(
+            [
+                'Routes.php:41',
+                'Routes.php (in context of class Examples\Controllers\FirstController):22',
+                'Routes.php (in context of class Examples\Controllers\SecondController):22',
+            ],
+            $this->phpstanRouteFindings($sandbox),
+            'PHPStan no longer reports a trait-declared route once per using controller.',
+        );
+
+        self::assertSame(
+            ['src/Routes.php:41'],
+            $this->magoRouteFindings($sandbox),
+            'The emitted plugin now reports somewhere other than the one class-declared route.',
+        );
+    }
+
+    /** @return list<string> */
+    private function phpstanRouteFindings(string $sandbox): array
+    {
+        file_put_contents($sandbox . '/phpstan.neon', <<<NEON
+            parameters:
+                level: 0
+                paths:
+                    - src
+                scanFiles:
+                    - stubs/Framework.php
+                    - stubs/Helpers.php
+            services:
+                -
+                    class: Symplify\PHPStanRules\Rules\Symfony\NoRouteTrailingSlashPathRule
+                    tags: [phpstan.rules.rule]
+            NEON);
+
+        $output = $this->capture([
+            $this->root() . '/vendor/bin/phpstan',
+            'analyse', '-c', 'phpstan.neon', '--no-progress', '--error-format=json',
+        ], $sandbox);
+
+        /** @var array{files?: array<string, array{messages: list<array{message: string, line: int}>}>} $decoded */
+        $decoded = json_decode($output, true) ?? [];
+
+        $found = [];
+        foreach ($decoded['files'] ?? [] as $file => $info) {
+            foreach ($info['messages'] as $message) {
+                if (str_contains($message['message'], 'trailing slash')) {
+                    $found[] = basename($file) . ':' . $message['line'];
+                }
+            }
+        }
+
+        return $found;
+    }
+
+    /** @return list<string> */
+    private function magoRouteFindings(string $sandbox): array
+    {
+        $output = $this->capture([$this->root() . '/vendor/bin/mago', 'analyze'], $sandbox);
+
+        $found = [];
+        foreach (explode("\n", $output) as $line) {
+            if (str_contains($line, 'trailing slash') && preg_match('#(src/\S+?):(\d+):#', $line, $match) === 1) {
+                $found[] = $match[1] . ':' . $match[2];
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * The rule fixture, with the rule transpiled into it and the example stubs beside it.
+     *
+     * The stubs sit next to `src` rather than in it for the reason the per-rule gate gives: mago needs them
+     * in its source paths to resolve `AbstractController`, and PHPStan must scan them without analysing them.
+     */
+    private function ruleSandbox(): string
+    {
+        $sandbox = sys_get_temp_dir() . '/trait-rule-' . bin2hex(random_bytes(6));
+        mkdir($sandbox . '/src', 0o777, true);
+        mkdir($sandbox . '/stubs', 0o777, true);
+        copy(self::FIXTURES . '/rule/Routes.php', $sandbox . '/src/Routes.php');
+
+        $stubs = glob($this->root() . '/tests/Fixtures/examples/stubs/*.php');
+        foreach ($stubs === false ? [] : $stubs as $stub) {
+            copy($stub, $sandbox . '/stubs/' . basename($stub));
+        }
+
+        $rule = $this->root()
+            . '/vendor/symplify/phpstan-rules/src/Rules/Symfony/NoRouteTrailingSlashPathRule.php';
+        $this->capture([$this->root() . '/bin/phpstan-to-mago', '--target=php', '--out=gen', $rule], $sandbox);
+
+        mkdir($sandbox . '/plugins', 0o777, true);
+        copy($sandbox . '/gen/generated-php/NoRouteTrailingSlashPathRule.php', $sandbox . '/plugins/rule.php');
+
+        $autoload = $this->root() . '/vendor/autoload.php';
+        file_put_contents($sandbox . '/worker.php', <<<PHP
+            <?php
+            require '{$autoload}';
+            require __DIR__ . '/plugins/rule.php';
+            (new Mago\Sdk\Worker(new Mago\Sdk\Extension(
+                'gate/trait', 'Trait control', '0.0.0',
+                analyzerPlugins: [new \Transpiled\NoRouteTrailingSlashPathRule()],
+            )))->run();
+            PHP);
+        file_put_contents($sandbox . '/mago.toml', <<<TOML
+            [source]
+            paths = ["src", "stubs"]
+
+            [extension-hosts.gate]
+            command = ["php", "worker.php"]
+            TOML);
+        symlink($this->root() . '/vendor', $sandbox . '/vendor');
+
+        return $sandbox;
+    }
+
+    /**
+     * @param list<string> $command
+     */
+    private function capture(array $command, string $sandbox): string
+    {
+        $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+        $process = proc_open($command, $descriptors, $pipes, $sandbox, Subprocess::environment());
+        if (! is_resource($process)) {
+            throw new RuntimeException('Could not start ' . $command[0]);
+        }
+
+        $stdout = (string) stream_get_contents($pipes[1]);
+        $stderr = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        proc_close($process);
+
+        return $stdout === '' ? $stderr : $stdout;
+    }
+
+    /**
      * @param callable(string, string): void $run takes the sandbox and the log path
      *
      * @return list<string>
