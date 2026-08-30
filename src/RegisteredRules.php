@@ -33,7 +33,7 @@ use Nette\Neon\Neon;
 final readonly class RegisteredRules
 {
     /**
-     * @param list<array{class: string, file: string|null, core: bool, services: int}> $rules
+     * @param list<array{class: string, file: string|null, core: bool, services: int, arguments?: array<string, mixed>}> $rules
      */
     private function __construct(
         public array $rules,
@@ -113,6 +113,31 @@ final readonly class RegisteredRules
         sort($files);
 
         return $files;
+    }
+
+    /**
+     * The configured values a rule was built with, by property name, as the project's container made it.
+     *
+     * Empty for a rule whose constructor takes nothing carryable, and empty for a class this project does
+     * not register — the two are the same answer here on purpose, because both mean "no consumer value for
+     * this property" and the transpiler's refusal already distinguishes why.
+     *
+     * The package's own neon stays the source wherever it wires the rule; see `PackageConfiguration`. This
+     * is for the rules it registers nowhere, where a consumer that wants them registers and configures them
+     * itself, and the container is the only place those values exist.
+     *
+     * @return array<string, mixed>
+     */
+    public function argumentsFor(string $class): array
+    {
+        $wanted = ltrim($class, '\\');
+        foreach ($this->rules as $rule) {
+            if ($rule['class'] === $wanted) {
+                return $rule['arguments'] ?? [];
+            }
+        }
+
+        return [];
     }
 
     /**
@@ -200,7 +225,7 @@ final readonly class RegisteredRules
     }
 
     /**
-     * @return list<array{class: string, file: string|null, core: bool, services: int}>
+     * @return list<array{class: string, file: string|null, core: bool, services: int, arguments?: array<string, mixed>}>
      *
      * @throws Refusal when PHPStan wrote nothing, which is a failed run rather than a project with no rules
      */
@@ -210,7 +235,7 @@ final readonly class RegisteredRules
             throw new Refusal("PHPStan did not report its registered rules:\n" . trim($output));
         }
 
-        /** @var array{ok?: bool, error?: string|null, rules?: list<array{class: string, file: string|null, core: bool, services: int}>}|null $payload */
+        /** @var array{ok?: bool, error?: string|null, rules?: list<array{class: string, file: string|null, core: bool, services: int, arguments?: array<string, mixed>}>}|null $payload */
         $payload = json_decode($written, true);
         if (! is_array($payload) || ! isset($payload['ok'])) {
             throw new Refusal("PHPStan reported its registered rules in a shape this does not understand:\n" . $written);

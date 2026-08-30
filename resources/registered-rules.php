@@ -64,6 +64,54 @@ use PHPStan\Rules\Rule;
         $coreRoot = $normalise(dirname($ruleInterface, 3)) . '/';
     }
 
+    /**
+     * The configured values a registered rule was built with, read off the object the container made.
+     *
+     * A rule the package registers nowhere has no neon to read its wiring from, and the consumer's own
+     * config is the only place the values exist — the same argument `RegisteredRules` is built on, one
+     * level further in. Asking the container rather than parsing the config settles `%parameter%`
+     * interpolation, `includes:` and conditional tags by letting PHPStan do them.
+     *
+     * Only values a generated plugin could carry. A property holding a service is skipped rather than
+     * refused here: the transpiler already classifies those by declared type and says what would have to be
+     * translated, and answering "unreadable" for one would lose that.
+     *
+     * @return array<string, scalar|list<scalar>|array<string, scalar>>
+     */
+    $arguments = static function (ReflectionClass $reflection, object $rule): array {
+        $carryable = static function (mixed $value) use (&$carryable): bool {
+            if (is_scalar($value) || $value === null) {
+                return true;
+            }
+
+            if (! is_array($value)) {
+                return false;
+            }
+
+            foreach ($value as $item) {
+                if (! $carryable($item)) {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+
+        $values = [];
+        foreach ($reflection->getProperties() as $property) {
+            if ($property->isStatic() || ! $property->isInitialized($rule)) {
+                continue;
+            }
+
+            $value = $property->getValue($rule);
+            if ($carryable($value)) {
+                $values[$property->getName()] = $value;
+            }
+        }
+
+        return $values;
+    };
+
     $rules = [];
     foreach ($registered as $rule) {
         $reflection = new ReflectionClass($rule);
@@ -84,6 +132,7 @@ use PHPStan\Rules\Rule;
             'file' => $file,
             'core' => $coreRoot !== null && $file !== null && str_starts_with($normalise($file), $coreRoot),
             'services' => 1,
+            'arguments' => $arguments($reflection, $rule),
         ];
     }
 

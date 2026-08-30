@@ -959,3 +959,41 @@ that starts with zero.
 
 The fires-gate exists because "it emitted" was not a result. "The page rendered" is the same claim held to a
 lower standard, and nothing here holds it to any.
+
+#### Reading a rule's configuration off the project that registered it
+
+Nine rules refuse on a constructor parameter no package neon wires. Wiring them in a scratch copy measured
+the ceiling at four; this is where those values come from, and it changes no coverage figure — the rules are
+all in the `(the package registers it nowhere)` bucket, which sits beside the 169 rather than inside it.
+**61 of 169 stays 61 of 169.** The gain is on `--from-config`, where the denominator is what the project
+registered and one of these rules counts like any other.
+
+The values could not come from the package: it names these rules nowhere, so there is nothing to read. They
+could not come from a consuming project either, under the rule `PackageConfiguration` states — the package's
+own neon is the source, so a generated plugin stands alone and two projects cannot generate two different
+plugins from one rule and both call it the port. `--from-config` is the case that rule does not cover: the
+project *is* the subject, and it is already the denominator.
+
+So the source is the project's container, which `resources/registered-rules.php` already runs inside. It
+holds the constructed rule objects, so the values are read off the instances rather than parsed out of a
+neon — the same argument `RegisteredRules` is built on, one level further in. Interpolation, `includes:` and
+conditional tags are settled by letting PHPStan do them.
+
+Two shapes, and the second is why reading the object beats reading the config:
+
+- A promoted parameter is held by a property of its own name, and reads back directly.
+- A parameter that is *not* promoted leaves no property. `NoUnsafeRequestDataRule` takes `array
+  $unsafeMethods` and keeps only `array_fill_keys(array_map(strtolower(...), $unsafeMethods), true)`. There
+  is nothing to read the argument from and nothing to derive it from on this side either — but the container
+  already ran the derivation, so the computed table reads back instead. The recipe is not carryable and the
+  answer is.
+
+**A defect the map found.** `Emitter::phpDefault()` rendered every array as a list. Every configured default
+before this one came from a package's `parameters:` and was a list, so it had never been handed a keyed
+array — and a lookup table rendered as `[true, true]` instead of `['vardump' => true, 'ray' => true]` is
+valid PHP, loads, and answers false to every membership test it exists to answer. Mutation-checked: forcing
+the list branch makes the emitted constructor carry `[true, true]` and the assertion fails on exactly that.
+
+Verified against a fixture project that registers `ConfiguredByTheProjectRule` and configures it with both
+shapes. Package-walk emission is byte-identical across all three targets, which is the point: the flag is
+the only way in, and a run over paths has no project to ask.

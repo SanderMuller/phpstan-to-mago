@@ -99,6 +99,21 @@ final class Transpiler
     public static ?string $examplesDir = null;
 
     /**
+     * The project this run was pointed at with `--from-config`, or null for a run over paths.
+     *
+     * A rule the shipping package registers nowhere has no neon to read its wiring from, and refuses on the
+     * first constructor parameter it cannot answer. A consumer that wants such a rule registers *and*
+     * configures it in their own config, so under `--from-config` the values exist — in the container that
+     * already told this run which rules to carry across.
+     *
+     * Only for that case. Where the package wires a rule, {@see PackageConfiguration} stays the source, so
+     * a plugin generated from a package alone still carries the package's defaults and stands on its own.
+     * Reading a consumer's overrides there would make two projects generate two different plugins from one
+     * rule and call both the port of it.
+     */
+    public static ?RegisteredRules $consumerConfiguration = null;
+
+    /**
      * The functions a constructor derivation may call and still be copied verbatim.
      *
      * Closed on purpose, and every entry is a pure array or string operation with no dependency on state
@@ -690,14 +705,18 @@ PHP;
                     continue;
                 }
 
-                if ($this->takeOwnObject($name, $param, $configuration)) {
+                // Two more places an unwired parameter can be answered from, in that order: an object the
+                // rule builds for itself, and — under `--from-config` — the project that registered it,
+                // whose container holds the values it was built with.
+                if ($this->takeOwnObject($name, $param, $configuration) || $this->takeConsumerValue($name, $className)) {
                     continue;
                 }
 
-                // A constructor parameter the neon does not wire and whose type names no service. Recorded so
-                // that reading it refuses by naming *that* — `hihaho/phpstan-rules` registers only the
-                // constructor and nullsafe variants of its positional-flag family, and the two it leaves to a
-                // combined rule refused with `unknown local $this`, which points at nothing.
+                // A constructor parameter the neon does not wire, whose type names no service, and which no
+                // project supplied. Recorded so that reading it refuses by naming *that* —
+                // `hihaho/phpstan-rules` registers only the constructor and nullsafe variants of its
+                // positional-flag family, and the two it leaves to a combined rule refused with
+                // `unknown local $this`, which points at nothing.
                 $this->context->unwired[$name] = $className;
                 $this->context->ruleIsUnregistered = self::isUnregistered($configuration, $className);
 
@@ -721,7 +740,33 @@ PHP;
             ];
         }
 
-        $this->traceConstructorBody($constructor);
+        $this->traceConstructorBody($constructor, $className);
+    }
+
+    /**
+     * Records what the project registering this rule built the property with, or false when it did not.
+     *
+     * Only reachable under `--from-config`, where the container this run already asked which rules to carry
+     * across is holding the constructed rule objects. The value is recorded as an ordinary configured one,
+     * so the generated constructor names the parameter and defaults it exactly as it would a package's.
+     *
+     * The package's neon stays the source wherever it wires a rule; see {@see PackageConfiguration}. This
+     * is for the rules a package registers nowhere, where the consumer is the only place values exist.
+     */
+    private function takeConsumerValue(string $property, string $className): bool
+    {
+        $supplied = self::$consumerConfiguration?->argumentsFor($className) ?? [];
+        if (! array_key_exists($property, $supplied)) {
+            return false;
+        }
+
+        $this->context->configured[$property] = [
+            'parameter' => $className . '::$' . $property,
+            'default' => $supplied[$property],
+            'kind' => $this->translator->configKind($supplied[$property]),
+        ];
+
+        return true;
     }
 
     /**
@@ -732,7 +777,7 @@ PHP;
      * `ReflectionProvider` and stores the reflection, which is not. Both used to read back as
      * `unknown local $this`, which named neither. Tracing the assignments lets the refusal say which it is.
      */
-    private function traceConstructorBody(ClassMethod $constructor): void
+    private function traceConstructorBody(ClassMethod $constructor, string $className): void
     {
         foreach ($constructor->stmts ?? [] as $statement) {
             if (! $statement instanceof Expression || ! $statement->expr instanceof Assign) {
@@ -789,6 +834,15 @@ PHP;
                     [new Arg(new Variable($aliased))],
                 );
 
+                continue;
+            }
+
+            // A derivation this cannot follow, of a property the consumer's own container already computed.
+            // Reading the answer rather than the recipe: `array_fill_keys(array_map(strtolower(...), ..))`
+            // is not a shape the generated constructor can carry, and the lookup table it produces is. Only
+            // reachable because the parameter it derives from is not promoted, so there is no property
+            // holding it and nothing to derive from on this side either.
+            if ($this->takeConsumerValue($property, $className)) {
                 continue;
             }
 

@@ -9,7 +9,9 @@ use ReflectionClass;
 use Sandermuller\PhpstanToMago\Refusal;
 use Sandermuller\PhpstanToMago\RegisteredRules;
 use Sandermuller\PhpstanToMago\RulePaths;
+use Sandermuller\PhpstanToMago\Tests\Fixtures\RegisteredRulePackage\ConfiguredByTheProjectRule;
 use Sandermuller\PhpstanToMago\Tests\Fixtures\RegisteredRulePackage\DiscoveredRule;
+use Sandermuller\PhpstanToMago\Transpiler;
 
 /**
  * A coverage figure is only worth reading if its denominator is the rules a project actually runs.
@@ -29,6 +31,72 @@ final class AsksPhpstanWhichRulesAreRegisteredTest extends TestCase
     private const string PROJECT = __DIR__ . '/../Fixtures/RegisteredProject';
 
     private const string PHPSTAN = __DIR__ . '/../../vendor/bin/phpstan';
+
+    /**
+     * A rule no package neon wires reads its values from the project that registered it.
+     *
+     * `PackageConfiguration` reads the package's own neon on purpose, so a generated plugin stands alone.
+     * For a rule the package registers nowhere there is nothing there to read, and the refusal used to say
+     * so — correctly, and permanently, because no package change would ever wire it. The consumer is where
+     * those values live, and the container this run already asks which rules to carry across is holding the
+     * constructed rule with them in it.
+     */
+    public function test_reads_the_values_the_project_built_a_rule_with(): void
+    {
+        $registered = RegisteredRules::discover(self::PROJECT, self::PHPSTAN);
+
+        $arguments = $registered->argumentsFor(ConfiguredByTheProjectRule::class);
+
+        // A promoted parameter, held by a property of the same name.
+        $this->assertSame(['dump', 'dd'], $arguments['banned'] ?? null);
+
+        // And one that is not promoted, so nothing holds the parameter and only what the constructor
+        // derived from it can be read. Lower-cased by that derivation, which is the evidence it is the
+        // computed table rather than the argument.
+        $this->assertSame(['vardump' => true, 'ray' => true], $arguments['bannedLookup'] ?? null);
+    }
+
+    /**
+     * And the emitted plugin carries them, keys and all.
+     *
+     * The map is the half that fails quietly. A lookup table rendered without its keys — `[true, true]` for
+     * `['vardump' => true, 'ray' => true]` — is still valid PHP, still loads, and answers false to every
+     * membership test it exists to answer. Every default before this one came from a package's
+     * `parameters:` and was a list, so the renderer had never been handed a keyed array.
+     */
+    public function test_the_emitted_plugin_carries_what_the_project_configured(): void
+    {
+        $registered = RegisteredRules::discover(self::PROJECT, self::PHPSTAN);
+
+        $target = Transpiler::$target;
+        Transpiler::$consumerConfiguration = $registered;
+        Transpiler::$target = 'php';
+
+        try {
+            $emitted = (new Transpiler((string) (new ReflectionClass(ConfiguredByTheProjectRule::class))->getFileName()))
+                ->transpile()['rust'];
+        } finally {
+            Transpiler::$consumerConfiguration = null;
+            Transpiler::$target = $target;
+        }
+
+        $this->assertStringContainsString("\$banned = ['dump', 'dd']", $emitted);
+        $this->assertStringContainsString("\$bannedLookup = ['vardump' => true, 'ray' => true]", $emitted);
+    }
+
+    /**
+     * A rule that takes nothing carryable is the same answer as a rule this project does not register.
+     *
+     * Both mean "no consumer value for this property". Asserted so that a future change cannot start
+     * answering null for one of them and leave callers to tell two absences apart.
+     */
+    public function test_a_rule_with_no_configured_values_reads_as_empty(): void
+    {
+        $registered = RegisteredRules::discover(self::PROJECT, self::PHPSTAN);
+
+        $this->assertSame([], $registered->argumentsFor(DiscoveredRule::class));
+        $this->assertSame([], $registered->argumentsFor('Nothing\\Registers\\This'));
+    }
 
     public function test_finds_a_rule_that_walking_the_project_cannot_see(): void
     {

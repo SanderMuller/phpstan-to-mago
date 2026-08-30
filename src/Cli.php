@@ -384,6 +384,10 @@ final class Cli
         $registered = RegisteredRules::discover($options->fromConfig);
         $discovered = $registered->portableFiles();
 
+        // A rule this project registers itself carries the values this project built it with. Only reachable
+        // through this flag: a run over paths has no project to ask. See `Transpiler::$consumerConfiguration`.
+        Transpiler::$consumerConfiguration = $registered;
+
         echo '  CONFIG  ', $registered->configFile, "\n";
         echo '          ', count($registered->rules), ' rules registered, ',
         $registered->coreCount(), " of them PHPStan's own, ",

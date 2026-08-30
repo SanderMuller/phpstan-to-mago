@@ -9,3 +9,14 @@ services:
         class: Sandermuller\PhpstanToMago\Tests\Fixtures\RegisteredRulePackage\DiscoveredRule
         tags:
             - phpstan.rules.rule
+
+    # Registered and configured by this project, because no package neon names it. The two arguments are
+    # deliberately different shapes: one promoted and readable as a property, one not promoted and readable
+    # only as the table the constructor derived from it.
+    -
+        class: Sandermuller\PhpstanToMago\Tests\Fixtures\RegisteredRulePackage\ConfiguredByTheProjectRule
+        arguments:
+            banned: ['dump', 'dd']
+            alsoBanned: ['VarDump', 'Ray']
+        tags:
+            - phpstan.rules.rule

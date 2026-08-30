@@ -92,9 +92,16 @@ final readonly class Emitter
     private function phpDefault(mixed $default): string
     {
         if (is_array($default)) {
+            // Keys are written out for a map and dropped for a list, which is the difference between
+            // `['input' => true]` and `[true]`. Every default read from a package's `parameters:` is a list,
+            // so this stayed list-only and was right until a value arrived already computed: a lookup table
+            // rendered without its keys still parses, still loads, and answers false to every membership
+            // test it exists to answer.
+            $list = array_is_list($default);
+
             $items = [];
-            foreach ($default as $item) {
-                $items[] = $this->phpDefault($item);
+            foreach ($default as $key => $item) {
+                $items[] = ($list ? '' : $this->phpDefault($key) . ' => ') . $this->phpDefault($item);
             }
 
             return '[' . implode(', ', $items) . ']';
