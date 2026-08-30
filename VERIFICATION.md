@@ -1109,3 +1109,38 @@ number but no number, because the regex finds nothing and the run dies.
 One rendering difference, stated rather than smoothed over. PHPStan reports line `-1` for a finding about a
 file rather than a position in one; mago has no way to report without a span, so the port anchors on the
 file's first node. The test compares messages and files and says why it leaves lines out.
+
+##### The property metric, which failed for three separate reasons
+
+Third and last of the mapped-aggregate candidates. It stays refused, and the useful part is that the three
+reasons are different from each other and from the one that stopped `returns`.
+
+**The corpus, first.** On a 1897-file consumer, real PHPStan counts 1443 property declarations at 93.3 %
+typed and the port counts 3110 at 65.0 % — **+1667, and 28.3 percentage points apart**. The direction of the
+percentage rules out the obvious explanation: promoted properties are almost always typed, so if the extra
+were promoted the port's percentage would be higher, not lower. Whatever supplies roughly 1700 mostly-untyped
+properties is **not traced**, and is written here as untraced rather than guessed at.
+
+**Then a control, which found two things the corpus number could not separate.** Three classes: a base with
+an untyped property, a child with a typed one and a constructor-promoted one, and a second child with an
+untyped one. PHPStan counts 3 possible and 1 typed. The port counts 4 and 2.
+
+- **The extra is the promoted property.** `PropertyTypeDeclarationCollector` collects `Property` nodes and a
+  promoted parameter is a `Param`, so the original never sees it.
+- **Inheritance is not a cause.** The inherited property is counted once by both, so the multiplicity that
+  stopped `returns` does not arise here. Worth stating because it was the first thing to suspect.
+
+**And a third, which no count would have shown.** The port reported *nothing* on that fixture while
+computing 50 % against a required 99. Probed per property: `PropertyMetadata::$location` is set for the
+**promoted** property and null for every ordinary declaration — the opposite of what the code's own comment
+said. So the metric anchors findings on exactly the properties the original does not count, and can never
+anchor one on a property it should report. A percentage that fails and a rule that reports nothing is the
+plausible-but-wrong shape, and only running it showed it.
+
+The comment is corrected in place. The metric is left otherwise as written: something not emitted is a
+measurement waiting for its differential, not shipped behaviour, and reworking it before its cause is traced
+would be building on the guess this note declines to make.
+
+So of the three candidates behind `no aggregate mapped for the collector`, one passed and two did not, for
+unrelated reasons — a summed collector against a deduplicating port, and this. The cluster was worth one
+rule, and the census could not have said so: it records no `needs:` for any of the five.

@@ -175,8 +175,16 @@ final readonly class TypeCoverage
                     continue;
                 }
 
-                // A property's location is nullable — a promoted one is declared in the constructor — so a
-                // declaration with nowhere to point at is counted but not anchored.
+                // A property's location is nullable, and which properties have one is the opposite of what
+                // it looks like. Probed on a fixture holding an ordinary declaration, an inherited one and a
+                // constructor-promoted one: only the **promoted** property has a location, and every
+                // ordinary declaration answers null. So this anchors findings on exactly the properties
+                // `PropertyTypeDeclarationCollector` does not count — it collects `Property` nodes, and a
+                // promoted parameter is a `Param`.
+                //
+                // That is one of three reasons this metric is not mapped in `Vocabulary::AGGREGATES`; see
+                // VERIFICATION.md for the other two. Left as written rather than reworked, because a metric
+                // that is not emitted is a measurement waiting for its differential, not shipped behaviour.
                 if ($property->location instanceof SourceLocation) {
                     $missing[] = $property->location;
                 }
