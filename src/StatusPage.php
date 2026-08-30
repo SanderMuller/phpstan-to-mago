@@ -269,8 +269,11 @@ final class StatusPage
             #tip[data-below="true"]::after { bottom: auto; top: -5px; border: 0;
                           border-left: 1px solid var(--tip-line);
                           border-top: 1px solid var(--tip-line); }
-            .refresh { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem .8rem;
+            .refresh { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .7rem;
                        margin-top: .35rem; }
+            .refresh code { background: var(--ground); border: 1px solid var(--line);
+                            border-radius: .25rem; padding: .2rem .45rem; font-size: .78rem;
+                            user-select: all; }
             .refresh button { font: inherit; font-size: .78rem; font-weight: 500; color: var(--ink);
                               background: var(--ground); border: 1px solid var(--line);
                               border-radius: .3rem; padding: .3rem .7rem; cursor: pointer; }
@@ -293,8 +296,9 @@ final class StatusPage
             something else, so two correct numbers will differ. The table below is the configuration behind
             this one.</p>
             <div class="refresh">
-              <button type="button" id="refresh" data-command="{$command}">Copy refresh command</button>
-              <span>Generated {$generated}. This page is a static snapshot, so re-run the command to update it.</span>
+              <span>Generated {$generated}. This page is a static snapshot, so re-run this to update it:</span>
+              <code id="command">{$command}</code>
+              <button type="button" id="refresh" data-command="{$command}">Copy</button>
             </div>
             </header>
             <div class="wrap">
@@ -379,17 +383,52 @@ final class StatusPage
             })();
 
             // The page cannot re-scan on its own: the coverage numbers come from parsing every rule body,
-            // which is the transpiler running, not something a static file can do. Anything that redrew this
-            // page from the browser would either be showing the same snapshot or executing the transpiler
-            // over HTTP -- so the button hands over the command instead of pretending to run it.
-            document.getElementById('refresh').addEventListener('click', function (event) {
-              var button = event.currentTarget;
-              navigator.clipboard.writeText(button.dataset.command).then(function () {
-                var original = button.textContent;
-                button.textContent = 'Copied';
-                setTimeout(function () { button.textContent = original; }, 1600);
+            // which is the transpiler running, not something a static file can do. So the button hands over
+            // the command instead of pretending to run it.
+            //
+            // `navigator.clipboard` is undefined outside a secure context, and this page is commonly served
+            // over plain http from a local dev host -- where the unguarded call threw instead of degrading.
+            // The command is rendered visibly and `user-select: all`, so it is obtainable whatever the
+            // button manages; copying is the convenience, not the only route to it.
+            (function () {
+              var button = document.getElementById('refresh');
+              if (!button) { return; }
+
+              function fallback(text) {
+                var field = document.createElement('textarea');
+                field.value = text;
+                field.setAttribute('readonly', '');
+                field.style.position = 'fixed';
+                field.style.opacity = '0';
+                document.body.appendChild(field);
+                field.select();
+
+                var copied = false;
+                try { copied = document.execCommand('copy'); } catch (error) { copied = false; }
+                document.body.removeChild(field);
+
+                return copied;
+              }
+
+              function done(ok) {
+                button.textContent = ok ? 'Copied' : 'Select above';
+                setTimeout(function () { button.textContent = 'Copy'; }, 1800);
+              }
+
+              button.addEventListener('click', function () {
+                var text = button.dataset.command;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                  navigator.clipboard.writeText(text).then(
+                    function () { done(true); },
+                    function () { done(fallback(text)); }
+                  );
+
+                  return;
+                }
+
+                done(fallback(text));
               });
-            });
+            })();
             </script>
             </body>
             </html>

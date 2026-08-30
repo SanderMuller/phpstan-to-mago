@@ -279,7 +279,12 @@ final class Cli
 
         $pageDir = $outRoot . '/' . self::STATUS_DIRECTORY;
         self::ensureDirectory($pageDir);
-        $markdown = $pageDir . '/status.md';
+
+        // The markdown sits beside the directory rather than inside it, so a served copy answers
+        // `{host}/phpstan-to-mago.md` next to the page at `{host}/phpstan-to-mago`. Both are named for the
+        // package, which is what keeps a file written into a consumer's document root from colliding with
+        // something they own.
+        $markdown = $outRoot . '/' . self::STATUS_DIRECTORY . '.md';
         $html = $pageDir . '/index.html';
         file_put_contents($markdown, StatusPage::markdown($report));
         file_put_contents($html, StatusPage::html($report));

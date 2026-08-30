@@ -197,12 +197,24 @@ final class ReportsInstalledCoverageTest extends TestCase
             // written to the root it would be the site's index, and no project installs a dev dependency
             // expecting that.
             $this->assertFileExists($out . '/phpstan-to-mago/index.html');
-            $this->assertFileExists($out . '/phpstan-to-mago/status.md');
             $this->assertFileDoesNotExist($out . '/index.html');
             $this->assertFileDoesNotExist($out . '/status.html');
+
+            // Beside the directory rather than inside it, so a served copy answers
+            // `{host}/phpstan-to-mago.md` next to the page at `{host}/phpstan-to-mago`. Both names carry the
+            // package, which is what keeps either from colliding with a path the consumer owns.
+            $this->assertFileExists($out . '/phpstan-to-mago.md');
+            $this->assertFileDoesNotExist($out . '/phpstan-to-mago/status.md');
         } finally {
-            $written = glob($out . '/phpstan-to-mago/*');
+            $written = glob($out . '/phpstan-to-mago*');
             foreach ($written === false ? [] : $written as $file) {
+                if (is_file($file)) {
+                    unlink($file);
+                }
+            }
+
+            $inside = glob($out . '/phpstan-to-mago/*');
+            foreach ($inside === false ? [] : $inside as $file) {
                 unlink($file);
             }
 

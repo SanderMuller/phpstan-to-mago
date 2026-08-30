@@ -172,14 +172,14 @@ reaches them and a package holding one can never read as full.
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
 | `symplify/phpstan-rules` | 89 | 39 | 49 | 1 |
-| `hihaho/phpstan-rules` | 7 | 4 | 3 | 0 |
+| `hihaho/phpstan-rules` | 7 | 6 | 1 | 0 |
 | `tomasvotruba/type-coverage` | 10 | 1 | 9 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
 | `phpstan/phpstan-strict-rules` | 45 | 12 | 33 | 0 |
 | `phpstan/phpstan-phpunit` | 13 | 0 | 13 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-That is 59 of the 169 portable rules these seven packages register. A `--status` run counts whatever *your*
+That is 61 of the 169 portable rules these seven packages register. A `--status` run counts whatever *your*
 project installed instead, so its denominator will differ from this one; both are right, and each says which
 it used. No package is complete yet, which is the number that matters for the first workflow above.
 
