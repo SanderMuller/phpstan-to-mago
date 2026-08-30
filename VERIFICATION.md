@@ -913,3 +913,31 @@ with itself makes that example report `active:` where PHPStan is silent.
 `tests/Fixtures/Rules`, and every plugin that emitted before still emits the same bytes. The PHP target
 gains three files — the two rules and the `FoldsARecordRule` fixture that was written to prove the refusal
 and now proves the fold.
+
+## The status page has no equivalent of any of this
+
+The gate above, the emitted-output snapshots and the census all watch the same artefact: the PHP this tool
+writes for mago to run. The tool also writes a page — `--status` emits HTML and markdown describing what a
+project's installed rules do — and none of the three checks reaches it.
+
+That is not a hypothesis. The page's copy button called `navigator.clipboard.writeText` unguarded.
+`navigator.clipboard` is undefined outside a secure context, and the page is served from a local dev host
+over plain http as often as not, so every click threw `Cannot read properties of undefined (reading
+'writeText')`. It shipped, and a person opening the page with a console found it.
+
+Each existing check would have passed it, for a different reason:
+
+- **The per-rule gate** runs emitted plugins under mago. The page is not a plugin and mago never sees it.
+- **The emitted-output snapshots** compare bytes the transpiler writes for a rule. The page is written by
+  `StatusPage`, which no snapshot covers, and a byte-identical run across all three targets says nothing
+  about it.
+- **The census** records a verdict per rule. It has no opinion about a file that describes verdicts.
+
+The unit tests around the page assert the counts agree between renderers, that reasons are present, and that
+HTML is escaped. All of that was true while the button threw. What none of them execute is the page's
+JavaScript in a browser, which is the only place that defect exists.
+
+Worth stating rather than fixing quietly, because the shape recurs: a check watches an artefact, and the
+tool grows a second artefact the check does not cover. The refusal-vs-emission discipline had the same gap
+until `PhpBackend::checked()` was added — six files that did not parse and two that parsed while still
+containing Rust were all "emitted" until something looked at the output rather than the count.
