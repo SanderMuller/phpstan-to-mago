@@ -177,6 +177,16 @@ final class Transpiler
     /** @return array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, identifiers: list<string>, arguments: array<string, mixed>, messages: list<string>} */
     private function translate(): array
     {
+        // Tested for rather than suppressed, and refused by name. `file_get_contents()` on a path that
+        // names nothing raises a warning and returns false, and the refusal that followed said `no class
+        // found` -- which names neither the file nor the reason, and sent a consumer looking at their rule
+        // instead of at their `--out` argument. The warning matters on its own: an emitted plugin talks to
+        // mago over a binary protocol on stdout, and a worker that printed one failed with `invalid
+        // extension frame magic: 0a576172`, the first bytes of `Warning:`.
+        if (! is_file($this->file)) {
+            throw new Refusal('no file at ' . $this->file);
+        }
+
         $code = (string) file_get_contents($this->file);
         $ast = SourceIndex::parse($code);
         if ($ast === null) {
