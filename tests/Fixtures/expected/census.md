@@ -157,7 +157,8 @@ REFUSE  NoDuplicateArgAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
         needs: no argument list on a expr node
-        needs: if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
+        needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return
 REFUSE  NoDuplicateArgsAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
@@ -182,7 +183,7 @@ REFUSE  NoGetRepositoryOnServiceRepositoryEntityRule
 REFUSE  NoGetRepositoryOutsideServiceRule
         statement in isDynamicArg() outside the vocabulary: an if whose body is 2 statements ending in Stmt_Return, which is a decision tree rather than a guard that exits
         needs: statement in isDynamicArg() outside the vocabulary: an if whose body is 2 statements ending in Stmt_Return, which is a decision tree rather than a guard that exits
-        needs: if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return
 EMIT    NoGlobalConstRule
 REFUSE  NoInstanceOfStaticReflectionRule
         no node predicate for instanceof PhpParser\Node\Expr\Instanceof_ on a hook-node
@@ -223,7 +224,7 @@ REFUSE  NoReferenceRule
         needs: guard body is neither `return []` nor `continue`, but Stmt_Return
         needs: no node predicate for instanceof PhpParser\Node\Expr\Closure on a hook-node
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
-        needs: if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Expression
 EMIT    NoRepositoryCallInDataFixtureRule
 EMIT    NoRequiredOutsideClassRule
 REFUSE  NoReturnSetterMethodRule
@@ -235,8 +236,8 @@ REFUSE  NoRoutingPrefixRule
         no node predicate for instanceof PhpParser\Node\Identifier on a bytes
         needs: no node predicate for instanceof PhpParser\Node\Identifier on a bytes
 REFUSE  NoServiceAutowireDuplicateRule
-        if statement that is not a single-statement guard
-        needs: if statement that is not a single-statement guard
+        if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Continue
+        needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Continue
 REFUSE  NoServiceSameNameSetClassRule
         assignment value outside the vocabulary: no mapping for ->class on a expr
         needs: assignment value outside the vocabulary: guard body is neither `return []` nor `continue`, but Stmt_Return
@@ -411,8 +412,8 @@ REFUSE  PropertyTypeDeclarationCollector
 REFUSE  ReturnTypeCoverageRule
         no aggregate mapped for the collector ReturnTypeDeclarationCollector
 REFUSE  ReturnTypeDeclarationCollector
-        if statement that is not a single-statement guard
-        needs: if statement that is not a single-statement guard
+        if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Expression
+        needs: if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Expression
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: cannot render a accumulator as a message argument
 
@@ -433,7 +434,7 @@ REFUSE  ArrayFilterStrictRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ArgumentsNormalizer::reorderFuncArguments()
-        needs: if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard, but 4 statements: Stmt_Expression + Stmt_Expression + Stmt_If + Stmt_Return
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeType()
         needs: cannot read a type as a name
 REFUSE  BooleanInBooleanAndRule
@@ -486,7 +487,7 @@ REFUSE  DynamicCallOnStaticMethodsRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
         needs: assignment value outside the vocabulary: unknown local $type
-        needs: if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Return
 EMIT    IllegalConstructorMethodCallRule
 REFUSE  IllegalConstructorStaticCallRule
         access path outside the vocabulary: ->getFunction()
@@ -517,24 +518,24 @@ REFUSE  OperandInArithmeticUnaryPlusRule
         no hook mapping for node type PhpParser\Node\Expr\UnaryPlus
         needs: no PHP navigation for node.expr (kind expr) on a UnaryPlus node
 REFUSE  OperandsInArithmeticAdditionRule
-        if statement that is not a single-statement guard
-        needs: if statement that is not a single-statement guard
+        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
         needs: access path outside the vocabulary: ->getArrays()
 REFUSE  OperandsInArithmeticDivisionRule
-        if statement that is not a single-statement guard
-        needs: if statement that is not a single-statement guard
+        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
 REFUSE  OperandsInArithmeticExponentiationRule
-        if statement that is not a single-statement guard
-        needs: if statement that is not a single-statement guard
+        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
 REFUSE  OperandsInArithmeticModuloRule
-        if statement that is not a single-statement guard
-        needs: if statement that is not a single-statement guard
+        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
 REFUSE  OperandsInArithmeticMultiplicationRule
-        if statement that is not a single-statement guard
-        needs: if statement that is not a single-statement guard
+        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
 REFUSE  OperandsInArithmeticSubtractionRule
-        if statement that is not a single-statement guard
-        needs: if statement that is not a single-statement guard
+        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
 REFUSE  OverwriteVariablesWithForLoopInitRule
         no hook mapping for node type PhpParser\Node\Stmt\For_
         needs: no iteration mapped for ->init, which resolved to a expr
@@ -565,7 +566,7 @@ REFUSE  UselessCastRule
         needs: the inferred type of a hook-node
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->generalize()
         needs: no PHP navigation for node.expr (kind expr) on a Cast node
-        needs: if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return
 EMIT    VariableMethodCallRule
 REFUSE  VariableMethodCallableRule
         no hook mapping for node type PHPStan\Node\MethodCallableNode
@@ -592,7 +593,7 @@ REFUSE  WrongCaseOfInheritedMethodRule
         no hook mapping for node type PHPStan\Node\InClassMethodNode
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getMethodReflection()
         needs: assignment value outside the vocabulary: unknown local $methodReflection
-        needs: if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
         needs: access path outside the vocabulary: ->getInterfaces()
 
 ## phpstan/phpstan-phpunit — 0 of 13 portable rules the package registers emit, 0 covered by the engine, 13 refuse, 1 unportable in principle, 0 it registers nowhere
@@ -625,7 +626,7 @@ REFUSE  ClassCoversExistsRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
         needs: assignment to something other than a simple local
         needs: assignment value outside the vocabulary: access path outside the vocabulary: array_shift()
-        needs: if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
 REFUSE  ClassMethodCoversExistsRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()

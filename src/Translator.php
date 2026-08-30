@@ -2791,7 +2791,7 @@ final readonly class Translator
         if ($stmt->elseifs !== [] || count($stmt->stmts) !== 1
             || ($stmt->else instanceof Else_ && ! $this->isFlagAssignment($stmt->stmts[0]))
         ) {
-            throw new Refusal('if statement that is not a single-statement guard', $stmt->getStartLine());
+            throw new Refusal('if statement that is not a single-statement guard, but ' . $this->guardBodyShape($stmt), $stmt->getStartLine());
         }
 
         $only = $stmt->stmts[0];
@@ -2854,6 +2854,45 @@ final readonly class Translator
         }
 
         $this->translateGuard($stmt->cond, $exit);
+    }
+
+    /**
+     * What an `if` this cannot translate actually is, in the terms someone would build against.
+     *
+     * The bare message was the largest cluster in the census — sixteen registered rules — and it is not one
+     * capability. Six are the withdrawn arithmetic family; of the remaining ten, every body is two statements
+     * with no else, and those two statements are four different things: a flag then `continue`, a binding
+     * then `return`, a binding then a nested `if`, two bindings. The emitted handling differs for each, so a
+     * reader counting the label was sizing four jobs as one.
+     *
+     * Named the way the sibling refusal names a guard body — "but Stmt_Return" — so the four are countable
+     * by grepping the whole line, which is what the census header asks for and this message made impossible.
+     *
+     * Distinct from {@see ifShape()}, which answers the same question for an `if` inside an *inlined helper*,
+     * where the shape that matters is whether the body exits rather than what its statements are.
+     */
+    private function guardBodyShape(If_ $stmt): string
+    {
+        if ($stmt->elseifs !== []) {
+            return sprintf(
+                'a chain of %d elseif%s',
+                count($stmt->elseifs),
+                $stmt->else instanceof Else_ ? ' and an else' : '',
+            );
+        }
+
+        if ($stmt->else instanceof Else_ && count($stmt->stmts) === 1) {
+            return 'one statement and an else: ' . $stmt->stmts[0]->getType();
+        }
+
+        $kinds = array_map(static fn (Stmt $inner): string => $inner->getType(), $stmt->stmts);
+
+        return sprintf(
+            '%d statements%s: %s',
+            count($kinds),
+            $stmt->else instanceof Else_ ? ' and an else' : '',
+            implode(' + ', $kinds),
+        );
     }
 
     /**
