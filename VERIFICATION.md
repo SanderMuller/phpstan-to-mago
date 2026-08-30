@@ -1414,3 +1414,38 @@ and 61 — the repeated line being the provider that fails both tests.
 So the audit ends with one rule fixed, one already covered by accident, and one covered by an added example
 that was never going to fail. That is the right ratio to expect: the criterion finds candidates, and only
 reading each one says which are real.
+
+###### The property metric's over-count, pinned to a population and named
+
+`phpstan-src-e7` asked for an apples-to-apples property count and could not get one — three filter attempts
+in a row selected the wrong population, once selecting exactly the classes meant to be excluded. The corpus
+harness already pins the population, so this is that number.
+
+On one consumer's `app/Models` — 141 files, 142 class-likes — **PHPStan counts 132 property declarations and
+the port counts 217**. The same run on a second consumer's models is 257 against 703.
+
+Four measurements over that pinned population, which together say what the 85 is and what it is not:
+
+| | |
+|:--|--:|
+| properties the port counts | 217 |
+| of those, written in the class's own file | 134 |
+| **not written there — a trait's or a parent's** | **83** |
+| `magicProperties` on the same classes | 1508 |
+| names in both lists | 1 |
+| properties carrying a location | 0 |
+
+**It is not the magic properties**, and that is worth stating because the ratio invites the opposite
+conclusion: 1508 `@property` entries against 217 real ones is better than six to one, and the metric reads
+**none** of them — the two lists overlap on a single name. A signal can be real, large, and attached to a
+field nothing reads.
+
+**It is the trait properties.** The 83 are `forceDeleting` from Laravel's `SoftDeletes`, and
+`auditCustomNew`, `auditEvent`, `auditingDisabled` and their siblings from an auditing package's trait —
+listed on every class that uses the trait, with the declaration in a vendor file the collector never visits.
+That is the asymmetry recorded earlier, now sized: `methods` is own-only and `properties` is not, and here
+that is 38 % of what the port counts.
+
+**And the fourth number is the one that would have shipped a silent rule.** Not one of the 217 carries a
+location, so in this population the metric computes 15.2 % against a required threshold and reports nothing
+at all. The control that first showed this held three classes; this is 142.
