@@ -200,10 +200,10 @@ final class ReportsInstalledCoverageTest extends TestCase
             $this->assertFileDoesNotExist($out . '/index.html');
             $this->assertFileDoesNotExist($out . '/status.html');
 
-            // Beside the directory rather than inside it, so a served copy answers
-            // `{host}/phpstan-to-mago.md` next to the page at `{host}/phpstan-to-mago`. Both names carry the
-            // package, which is what keeps either from colliding with a path the consumer owns.
-            $this->assertFileExists($out . '/phpstan-to-mago.md');
+            // Inside the directory, not beside it. `--out` is pointed at a document root, so everything
+            // this writes belongs under one entry there and nothing loose next to it.
+            $this->assertFileExists($out . '/phpstan-to-mago/index.md');
+            $this->assertFileDoesNotExist($out . '/phpstan-to-mago.md');
             $this->assertFileDoesNotExist($out . '/phpstan-to-mago/status.md');
         } finally {
             $written = glob($out . '/phpstan-to-mago*');

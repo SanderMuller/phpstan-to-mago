@@ -280,11 +280,11 @@ final class Cli
         $pageDir = $outRoot . '/' . self::STATUS_DIRECTORY;
         self::ensureDirectory($pageDir);
 
-        // The markdown sits beside the directory rather than inside it, so a served copy answers
-        // `{host}/phpstan-to-mago.md` next to the page at `{host}/phpstan-to-mago`. Both are named for the
-        // package, which is what keeps a file written into a consumer's document root from colliding with
-        // something they own.
-        $markdown = $outRoot . '/' . self::STATUS_DIRECTORY . '.md';
+        // Both files inside the directory, so pointing `--out` at a document root writes one entry there
+        // and nothing beside it. The markdown was briefly a sibling to answer `{host}/phpstan-to-mago.md`,
+        // which cost a file in the consumer's web root for a shorter URL -- the wrong trade when the whole
+        // reason for the directory is that this tool writes into a tree it does not own.
+        $markdown = $pageDir . '/index.md';
         $html = $pageDir . '/index.html';
         file_put_contents($markdown, StatusPage::markdown($report));
         file_put_contents($html, StatusPage::html($report));
