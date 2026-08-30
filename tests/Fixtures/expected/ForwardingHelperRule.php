@@ -59,7 +59,7 @@ final class ForwardingHelperRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.forwardingHelper',
-            Issue::new('Do not call forbidden()', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'Do not call forbidden()'), $node->span, 'here'),
         );
     }
 

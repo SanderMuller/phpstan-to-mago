@@ -55,7 +55,7 @@ final class AnyConstantHelperRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.anyConstantHelper',
-            Issue::new('A constant is named id', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'A constant is named id'), $node->span, 'here'),
         );
     }
 

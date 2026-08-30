@@ -64,7 +64,7 @@ final class ClassifiedCodeRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.noDebugIn' . $area,
-            Issue::new(sprintf('No debug statements in the %s namespace', $area), $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, sprintf('No debug statements in the %s namespace', $area)), $node->span, 'here'),
         );
     }
 

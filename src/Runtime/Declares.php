@@ -20,6 +20,16 @@ use Mago\Sdk\Syntax\ResolvedName;
  */
 final class Declares
 {
+    /**
+     * Trait name to the classes whose use of it satisfied an enclosing-class guard, for this process.
+     *
+     * Written where the guard passes and read where the finding is built. Keyed rather than a single slot
+     * because a rule may ask the question of several nodes before it reports.
+     *
+     * @var array<string, list<string>>
+     */
+    private static array $satisfyingUsers = [];
+
     /** How far below a class-like to look for its members: body, then member list. */
     private const int MEMBER_DEPTH = 3;
 
@@ -330,13 +340,43 @@ final class Declares
             return false;
         }
 
+        $satisfying = [];
         foreach (self::traitUsers($context, $className) as $user) {
             if (strcasecmp($user, $name) === 0 || self::inheritsFrom($context, $user, $name)) {
-                return true;
+                $satisfying[] = $user;
             }
         }
 
-        return false;
+        if ($satisfying === []) {
+            return false;
+        }
+
+        // Remembered so the report can name them. Keyed by the trait, so a stale set from an earlier node
+        // cannot be appended to a finding about a different one — {@see satisfyingUsers()} looks the current
+        // trait up rather than taking whatever was recorded last.
+        self::$satisfyingUsers[strtolower($className)] = $satisfying;
+
+        return true;
+    }
+
+    /**
+     * The classes that made a trait-declared method pass its enclosing-class guard.
+     *
+     * PHPStan reports such a method once per using class, which on Shopware's most-used trait would be 1185
+     * identical lines at one span. This port reports once and names them instead — a deliberate divergence,
+     * chosen over exact agreement because the agreeing output is unreadable. `VERIFICATION.md` carries the
+     * distribution behind that choice and the `differingMessages` cost it owes.
+     *
+     * Empty for anything that is not a trait, and empty for a trait whose guard nothing recorded, so a rule
+     * with no enclosing-class guard is unaffected.
+     *
+     * @return list<string>
+     */
+    public static function satisfyingUsers(NodeAnalysisContext $context, Part|Node|null $node): array
+    {
+        $className = self::enclosingClassName($context, $node);
+
+        return $className === null ? [] : self::$satisfyingUsers[strtolower($className)] ?? [];
     }
 
     /** Whether a class-like has this name anywhere above it. */
@@ -382,8 +422,10 @@ final class Declares
                         continue;
                     }
 
+                    // `originalName`, not `name`: the metadata lowercases names, and a message reading
+                    // `examples\controllers\firstcontroller` names nothing a reader can search for.
                     foreach ($metadata->usedTraits as $used) {
-                        $index[strtolower($used)][] = $metadata->name;
+                        $index[strtolower($used)][] = $metadata->originalName;
                     }
                 }
             }

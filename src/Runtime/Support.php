@@ -1737,4 +1737,17 @@ final class Support
     {
         return Declares::metadataIs($context, $node, $name);
     }
+
+    /**
+     * A finding's message, with the trait's using classes named when the subject is declared in one.
+     *
+     * Returns the message unchanged everywhere else, which is everything but a trait-declared member, so
+     * this wraps every report and changes almost none of them.
+     */
+    public static function viaTraitUsers(NodeAnalysisContext $context, Part|Node|null $node, string $message): string
+    {
+        $users = Declares::satisfyingUsers($context, $node);
+
+        return $users === [] ? $message : $message . ' (via ' . implode(', ', $users) . ')';
+    }
 }

@@ -56,7 +56,7 @@ final class UppercaseConstantRule implements Plugin, NodeAnalysisHook
             $context->report(
                 Level::Error,
                 'fixture.uppercaseConstant',
-                Issue::new(sprintf('Constant "%s" must be uppercase', Support::constantItemName($const_)), $node->span, 'here'),
+                Issue::new(Support::viaTraitUsers($context, $node, sprintf('Constant "%s" must be uppercase', Support::constantItemName($const_))), $node->span, 'here'),
             );
 
             return;

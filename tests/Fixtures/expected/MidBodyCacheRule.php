@@ -59,7 +59,7 @@ final class MidBodyCacheRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.midBodyCache',
-            Issue::new('No dump() in a namespaced file', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'No dump() in a namespaced file'), $node->span, 'here'),
         );
     }
 

@@ -59,7 +59,7 @@ final class CompoundClassGuardRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.compoundClassGuard',
-            Issue::new('Declaration is not allowed here', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'Declaration is not allowed here'), $node->span, 'here'),
         );
     }
 

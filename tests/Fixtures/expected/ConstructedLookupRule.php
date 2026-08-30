@@ -66,7 +66,7 @@ final class ConstructedLookupRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.constructedLookup',
-            Issue::new('Do not call a debug helper', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'Do not call a debug helper'), $node->span, 'here'),
         );
     }
 

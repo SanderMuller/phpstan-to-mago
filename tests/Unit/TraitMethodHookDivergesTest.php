@@ -119,10 +119,20 @@ final class TraitMethodHookDivergesTest extends TestCase
         // Line 22 is the trait's route and 41 the class-declared control. The port reaches the trait now and
         // reports it once; PHPStan reports it twice, once per using controller. That one finding is the whole
         // of what is left, and it is under-reporting rather than over-reporting.
+        //
         self::assertSame(
             ['src/Routes.php:22', 'src/Routes.php:41'],
             $this->magoRouteFindings($sandbox),
             'The emitted plugin no longer reports the trait-declared route alongside the class-declared one.',
+        );
+
+        // The message carries what the second report would have said, which is the deliberate divergence
+        // here: one readable finding naming its users, rather than N identical lines. Asserted, because the
+        // whole point of choosing it is that a reader can act on it.
+        self::assertStringContainsString(
+            '(via Examples\Controllers\FirstController, Examples\Controllers\SecondController)',
+            $this->magoRouteOutput,
+            'The trait finding no longer names the classes that made its guard pass.',
         );
     }
 
@@ -163,10 +173,14 @@ final class TraitMethodHookDivergesTest extends TestCase
         return $found;
     }
 
+    /** The raw mago output of the last {@see magoRouteFindings()} call, for asserting message text. */
+    private string $magoRouteOutput = '';
+
     /** @return list<string> */
     private function magoRouteFindings(string $sandbox): array
     {
         $output = $this->capture([$this->root() . '/vendor/bin/mago', 'analyze'], $sandbox);
+        $this->magoRouteOutput = $output;
 
         $found = [];
         foreach (explode("\n", $output) as $line) {

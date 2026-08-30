@@ -566,7 +566,7 @@ PHP;
         $context->report(
             Level::Error,
             {CODE},
-            Issue::new({MESSAGE}, {ANCHOR}, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, {MESSAGE}), {ANCHOR}, 'here'),
         );
 
 REPORT, ['{ANCHOR}' => $this->context->anchor ?? $this->defaultAnchor()]);

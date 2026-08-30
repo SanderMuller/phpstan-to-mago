@@ -87,7 +87,7 @@ final class PositionalFlagRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.positionalFlagArgument',
-            Issue::new(sprintf('Pass a named argument (%s: ...) for the bool/null flag — it is opaque positionally.', Support::parameterName($context, Support::resolvedName($context, Support::classPart($context, $node)), '__construct', Support::argCount(Support::argumentList($context, $node)) - 1)), $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, sprintf('Pass a named argument (%s: ...) for the bool/null flag — it is opaque positionally.', Support::parameterName($context, Support::resolvedName($context, Support::classPart($context, $node)), '__construct', Support::argCount(Support::argumentList($context, $node)) - 1))), $node->span, 'here'),
         );
     }
 

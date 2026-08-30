@@ -59,7 +59,7 @@ final class ForbiddenStaticConstFetchRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.forbiddenStaticConstFetch',
-            Issue::new('Avoid static access of constants', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'Avoid static access of constants'), $node->span, 'here'),
         );
     }
 

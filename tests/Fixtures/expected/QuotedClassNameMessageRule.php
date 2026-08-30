@@ -59,7 +59,7 @@ final class QuotedClassNameMessageRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.quotedClassNameMessage',
-            Issue::new(sprintf('Constant access must go through "%s" instead', 'Acme\\Contract\\Repository\\ServiceRepositoryInterface'), $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, sprintf('Constant access must go through "%s" instead', 'Acme\\Contract\\Repository\\ServiceRepositoryInterface')), $node->span, 'here'),
         );
     }
 

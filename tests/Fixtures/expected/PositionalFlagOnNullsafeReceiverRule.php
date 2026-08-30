@@ -83,7 +83,7 @@ final class PositionalFlagOnNullsafeReceiverRule implements Plugin, NodeAnalysis
         $context->report(
             Level::Error,
             'fixture.positionalFlagOnNullsafeReceiver',
-            Issue::new(sprintf('Pass a named argument (%s: ...) for the bool/null flag — it is opaque positionally.', Support::parameterName($context, Support::soleObjectClassIgnoringNull($context->receiverType), Support::textOf(Support::selector($context, $node)), Support::argCount(Support::argumentList($context, $node)) - 1)), $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, sprintf('Pass a named argument (%s: ...) for the bool/null flag — it is opaque positionally.', Support::parameterName($context, Support::soleObjectClassIgnoringNull($context->receiverType), Support::textOf(Support::selector($context, $node)), Support::argCount(Support::argumentList($context, $node)) - 1))), $node->span, 'here'),
         );
     }
 

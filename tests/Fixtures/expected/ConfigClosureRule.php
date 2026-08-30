@@ -55,7 +55,7 @@ final class ConfigClosureRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.configClosure',
-            Issue::new('This config closure is registered twice', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'This config closure is registered twice'), $node->span, 'here'),
         );
     }
 

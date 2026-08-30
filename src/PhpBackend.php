@@ -80,7 +80,11 @@ final class PhpBackend implements Backend
                 return "{$pad}\$context->report(\n"
                     . "{$pad}    Level::Error,\n"
                     . "{$pad}    {$a['code']},\n"
-                    . "{$pad}    Issue::new({$a['message']}, {$a['anchor']}, 'here'),\n"
+                    // Wrapped rather than emitted conditionally: only the runtime knows whether the node it
+                    // is handed sits in a trait, and the helper hands the message back untouched when it
+                    // does not. A method declared in a trait is reported once here and once per *using*
+                    // class by PHPStan, so the users are named instead of the finding being repeated.
+                    . "{$pad}    Issue::new(Support::viaTraitUsers(\$context, \$node, {$a['message']}), {$a['anchor']}, 'here'),\n"
                     . "{$pad});\n\n";
             default:
                 throw new LogicException("no PHP rendering for statement kind {$s->kind}");

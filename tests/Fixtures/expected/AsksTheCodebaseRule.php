@@ -63,7 +63,7 @@ final class AsksTheCodebaseRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.asksTheCodebase',
-            Issue::new('Do not call helper() when the Facade exists', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'Do not call helper() when the Facade exists'), $node->span, 'here'),
         );
     }
 

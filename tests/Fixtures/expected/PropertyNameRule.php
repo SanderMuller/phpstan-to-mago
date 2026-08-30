@@ -55,7 +55,7 @@ final class PropertyNameRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.propertyName',
-            Issue::new('Do not declare $with globally', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'Do not declare $with globally'), $node->span, 'here'),
         );
     }
 

@@ -65,7 +65,7 @@ final class EveryExpressionRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.everyExpression',
-            Issue::new('Name it out', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'Name it out'), $node->span, 'here'),
         );
 
     }
@@ -83,7 +83,7 @@ final class EveryExpressionRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.everyExpression',
-            Issue::new('Name it out', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'Name it out'), $node->span, 'here'),
         );
 
     }

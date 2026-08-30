@@ -59,7 +59,7 @@ final class ConstantSetRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.constantSet',
-            Issue::new('No debug calls', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'No debug calls'), $node->span, 'here'),
         );
     }
 

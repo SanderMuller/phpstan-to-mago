@@ -63,7 +63,7 @@ final class MemoisedLookupRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.memoisedLookup',
-            Issue::new('No dump() inside a namespace', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'No dump() inside a namespace'), $node->span, 'here'),
         );
     }
 

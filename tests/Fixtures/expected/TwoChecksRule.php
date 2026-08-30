@@ -70,7 +70,7 @@ final class TwoChecksRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.twoChecks.debug',
-            Issue::new(sprintf('No dump() in the %s namespace', $namespace), $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, sprintf('No dump() in the %s namespace', $namespace)), $node->span, 'here'),
         );
 
     }
@@ -84,7 +84,7 @@ final class TwoChecksRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.twoChecks.invade',
-            Issue::new(sprintf('No invade() in the %s namespace', $namespace), $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, sprintf('No invade() in the %s namespace', $namespace)), $node->span, 'here'),
         );
 
     }

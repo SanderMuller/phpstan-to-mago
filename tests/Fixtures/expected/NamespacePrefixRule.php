@@ -67,7 +67,7 @@ final class NamespacePrefixRule implements Plugin, NodeAnalysisHook
         $context->report(
             Level::Error,
             'fixture.namespacePrefix',
-            Issue::new('No dump() inside the App namespace', $node->span, 'here'),
+            Issue::new(Support::viaTraitUsers($context, $node, 'No dump() inside the App namespace'), $node->span, 'here'),
         );
     }
 
