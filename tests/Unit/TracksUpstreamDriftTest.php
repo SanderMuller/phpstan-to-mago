@@ -4,16 +4,11 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
-use FilesystemIterator;
 use PHPUnit\Framework\TestCase;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use Sandermuller\PhpstanToMago\PackageConfiguration;
-use Sandermuller\PhpstanToMago\Refusal;
-use Sandermuller\PhpstanToMago\RulePaths;
+use Sandermuller\PhpstanToMago\PackageCoverage;
+use Sandermuller\PhpstanToMago\RuleOutcome;
 use Sandermuller\PhpstanToMago\Tests\Support\LockedCorpus;
 use Sandermuller\PhpstanToMago\Transpiler;
-use SplFileInfo;
 
 /**
  * The census: what this transpiler does with every rule in the corpus, pinned as a file.
@@ -109,8 +104,8 @@ final class TracksUpstreamDriftTest extends TestCase
         // after they were added failed on nothing else, with every rule line identical. An alarm that fires
         // always carries as little as one that never fires.
         $this->assertSame(
-            self::withoutVersions($committed),
-            self::withoutVersions($census),
+            $this->withoutVersions($committed),
+            $this->withoutVersions($census),
             "The corpus no longer translates the way the census records.\n\n"
             . 'This is the upstream-drift alarm, and the diff names what moved: a rule added, a rule removed, '
             . 'a rule whose body changed into (or out of) a shape the vocabulary covers, or a refusal that now '
@@ -173,7 +168,7 @@ final class TracksUpstreamDriftTest extends TestCase
             'The nightly drift watch sets `WATCH_CORPUS_DRIFT` and is compared anyway. It installs another',
             'corpus on purpose, so skipping there would be the alarm going green having looked at nothing.',
             '',
-            ...self::corpusVersions(),
+            ...$this->corpusVersions(),
             '',
             'The list is a **lower bound**. A statement that refuses is stepped over and the next one is',
             'translated, so obstacles in different statements all appear and a second one inside a single',
@@ -203,39 +198,11 @@ final class TracksUpstreamDriftTest extends TestCase
         ];
 
         foreach (self::PACKAGES as $package) {
-            $source = dirname(__DIR__, 2) . '/vendor/' . $package . '/src';
-            $outcomes = [];
-            $files = [];
-            foreach (RulePaths::expand(is_dir($source) ? [$source] : []) as $file) {
-                $name = basename($file, '.php');
-                $outcomes[$name] = $this->outcome($file);
-                $files[$name] = $file;
-            }
+            $coverage = PackageCoverage::forPackage($package, dirname(__DIR__, 2) . '/vendor/' . $package);
 
-            // Sorted by name, because `RulePaths` walks the filesystem and its order is not the same on every
-            // machine — an unsorted census would diff against itself between a laptop and a runner.
-            ksort($outcomes);
-
-            $registered = $this->registeredClasses($package);
-            $named = array_filter(
-                $outcomes,
-                static fn (string $outcome, string $name): bool => isset($registered[$name]),
-                ARRAY_FILTER_USE_BOTH,
-            );
-            $emitted = count(array_filter($named, static fn (string $outcome): bool => $outcome === 'EMIT'));
             $engine = count(array_filter(
-                $named,
-                static fn (string $outcome, string $name): bool => $outcome !== 'EMIT' && isset(self::ENGINE_COVERED[$name]),
-                ARRAY_FILTER_USE_BOTH,
-            ));
-
-            // A rule no plugin could carry, counted apart from the ones not translated yet. Both are
-            // "refused", and a package holding one of these can never be fully covered — so the portable
-            // denominator is the one a coverage figure has to quote, or it names a target this tool will
-            // never reach.
-            $unportable = count(array_filter(
-                $named,
-                static fn (string $outcome): bool => str_starts_with($outcome, 'UNPORTABLE '),
+                $coverage->registered(),
+                static fn (RuleOutcome $o): bool => ! $o->emitted() && isset(self::ENGINE_COVERED[$o->name]),
             ));
 
             $lines[] = '';
@@ -243,31 +210,32 @@ final class TracksUpstreamDriftTest extends TestCase
                 '## %s — %d of %d portable rules the package registers emit, %d covered by the engine, '
                 . '%d refuse, %d unportable in principle, %d it registers nowhere',
                 $package,
-                $emitted,
-                count($named) - $unportable,
+                $coverage->emitted(),
+                $coverage->portable(),
                 $engine,
-                count($named) - $emitted - $engine - $unportable,
-                $unportable,
-                count($outcomes) - count($named),
+                $coverage->refused() - $engine,
+                $coverage->never(),
+                $coverage->unwired(),
             );
             $lines[] = '';
-            foreach ($outcomes as $name => $outcome) {
+            foreach ($coverage->outcomes as $outcome) {
                 // A class the package names in no neon of its own — not a dead one. A consumer registers rules
                 // by hand all the time: `StringFileAbsolutePathExistsRule` is marked here and is the first
                 // entry in `../hihaho`'s own `rules:` list. What the mark rules out is counting it against the
                 // package's own coverage, which overstated the gap by thirteen rules for `hihaho`.
-                $where = isset($registered[$name]) ? '' : '  (the package registers it nowhere)';
+                $where = $outcome->registered ? '' : '  (the package registers it nowhere)';
 
                 // A rule the engine already covers is not a gap, so it does not read as one. The diagnostic is
                 // named on the line, because "covered" without saying by what is a claim nobody can check.
-                if ($outcome !== 'EMIT' && isset(self::ENGINE_COVERED[$name])) {
-                    $lines[] = 'ENGINE  ' . $name . '  (mago reports ' . self::ENGINE_COVERED[$name] . ')' . $where;
+                if (! $outcome->emitted() && isset(self::ENGINE_COVERED[$outcome->name])) {
+                    $lines[] = 'ENGINE  ' . $outcome->name
+                        . '  (mago reports ' . self::ENGINE_COVERED[$outcome->name] . ')' . $where;
 
                     continue;
                 }
 
-                if ($outcome === 'EMIT') {
-                    $lines[] = 'EMIT    ' . $name . $where;
+                if ($outcome->emitted()) {
+                    $lines[] = 'EMIT    ' . $outcome->name . $where;
 
                     continue;
                 }
@@ -279,15 +247,14 @@ final class TracksUpstreamDriftTest extends TestCase
                 // No `needs:` under an unportable one. That list is what a rule's body would take, and this
                 // rule's body is not the obstacle — printing it would invite exactly the sizing the label
                 // exists to prevent.
-                if (str_starts_with($outcome, 'UNPORTABLE ')) {
-                    $lines[] = 'NEVER   ' . $name . $where . "\n        " . substr($outcome, strlen('UNPORTABLE '));
+                if ($outcome->verdict === RuleOutcome::NEVER) {
+                    $lines[] = 'NEVER   ' . $outcome->name . $where . "\n        " . $outcome->reason;
 
                     continue;
                 }
 
-                $needs = $this->needs($files[$name]);
-                $lines[] = 'REFUSE  ' . $name . $where . "\n        " . substr($outcome, strlen('REFUSE '))
-                    . ($needs === [] ? '' : "\n        needs: " . implode("\n        needs: ", $needs));
+                $lines[] = 'REFUSE  ' . $outcome->name . $where . "\n        " . $outcome->reason
+                    . ($outcome->needs === [] ? '' : "\n        needs: " . implode("\n        needs: ", $outcome->needs));
             }
         }
 
@@ -301,7 +268,7 @@ final class TracksUpstreamDriftTest extends TestCase
      * describes. Comparing them as well would make the nightly `dev-main` leg fail on the words `dev-main`
      * and never reach the rules it exists to watch.
      */
-    private static function withoutVersions(string $census): string
+    private function withoutVersions(string $census): string
     {
         return (string) preg_replace('/^ {4}\S+\/\S+ {2,}\S+$\n/m', '', $census);
     }
@@ -314,7 +281,7 @@ final class TracksUpstreamDriftTest extends TestCase
      *
      * @return list<string>
      */
-    private static function corpusVersions(): array
+    private function corpusVersions(): array
     {
         $lines = [];
         foreach (LockedCorpus::installed() as $package => $version) {
@@ -324,113 +291,5 @@ final class TracksUpstreamDriftTest extends TestCase
         sort($lines);
 
         return $lines;
-    }
-
-    /**
-     * The rule classes a package names in a neon of its own, by short name.
-     *
-     * The denominator that matters is what a package actually wires. `hihaho/phpstan-rules` ships twenty rule
-     * classes and registers seven; the other thirteen are the un-merged originals its `Combined*` rules absorb,
-     * and counting them as unfinished work overstated the gap by thirteen. Their "constructor parameter the
-     * neon does not wire" refusals are final for a reason no feature reaches: nothing constructs them, so
-     * PHPStan never runs them and a differential would have nothing to compare against.
-     *
-     * Every neon the package ships counts, not only the auto-included ones. Registration is a *consumer* fact:
-     * `symplify/phpstan-rules` auto-includes four of its thirteen config files and puts most rules behind
-     * `conditionalTags` that default off, so a consumer lists them by hand — as `../hihaho` does with eleven.
-     * Keyed on auto-inclusion, symplify would read as zero of ninety-five, which is a worse denominator than
-     * the one this replaces rather than a better one.
-     *
-     * @return array<string, true>
-     */
-    private function registeredClasses(string $package): array
-    {
-        // The transpiler asks the same question of the same source, so a refusal naming non-registration and
-        // the marker on this line cannot disagree. It lived here first and moved when the refusal needed it.
-        return PackageConfiguration::registeredClassNames(dirname(__DIR__, 2) . '/vendor/' . $package);
-    }
-
-    /** Whether the rule translates, which is the whole of what this file records. */
-    /**
-     * `EMIT`, or `REFUSE ` and the reason.
-     *
-     * Only a `Refusal` is caught. A broader catch turned any crash into a refusal whose reason was the crash,
-     * which reads as a vocabulary gap and is not one; nothing in the corpus throws anything else today, so
-     * letting it fail loudly costs nothing and a bug cannot hide as an outcome.
-     */
-    /**
-     * Everything a refused rule's body needs, rather than only what stops it first.
-     *
-     * The half the census was missing, and the half work gets sized from. A first blocker says what to fix
-     * next; it never says what a fix is worth, and reading it as though it did has been wrong three times —
-     * the type renderer looked like one customer where 27 rules interpolate a rendered type, a five-rule
-     * family looked like one missing navigation where it needs that *and* the renderer, and a whole corpus
-     * looked absent because the walk that would have read it stopped for an unrelated reason.
-     *
-     * A lower bound, and the shape of the collection is why: a statement that refuses is stepped over and
-     * the next one translated, so obstacles in *different* statements all appear, and a second obstacle
-     * inside one statement does not. `MatchingTypeInSwitchCaseConditionRule` shows `->cond` and `->cases`
-     * and not the `describe()` inside the loop it could not enter.
-     *
-     * @return list<string>
-     */
-    private function needs(string $file): array
-    {
-        $survey = Transpiler::$survey;
-        Transpiler::$survey = true;
-
-        Transpiler::$collectNeeds = true;
-
-        try {
-            $transpiler = new Transpiler($file);
-
-            try {
-                $transpiler->transpile();
-            } catch (Refusal) {
-                // The verdict is the caller's; this pass is only here for the list it collected on the way.
-            }
-
-            $needs = array_map(
-                static fn (string $need): string => trim((string) preg_replace('/ \(line \d+\)/', '', $need)),
-                $transpiler->needs(),
-            );
-
-            // `unknown local $x` is not a capability the rule needs; it is what stepping over the statement
-            // that bound `$x` produces. Keeping those would make every skipped assignment cost two lines and
-            // read as two gaps.
-            $needs = array_filter(
-                $needs,
-                static fn (string $need): bool => ! str_starts_with($need, 'unknown local $'),
-            );
-
-            // First sentence only. A needs entry is a *label* for sizing, and one refusal's full text runs to a
-            // paragraph — repeated across the 27 rules that share it, the census would be mostly that
-            // paragraph. The line above it still carries the whole reason for whichever rule it stops.
-            return array_values(array_map(
-                static fn (string $need): string => explode('. ', $need)[0],
-                $needs,
-            ));
-        } finally {
-            Transpiler::$survey = $survey;
-            Transpiler::$collectNeeds = false;
-        }
-    }
-
-    private function outcome(string $file): string
-    {
-        try {
-            (new Transpiler($file))->transpile();
-
-            return 'EMIT';
-        } catch (Refusal $refusal) {
-            // Line numbers stripped, and every occurrence rather than the last: a nested refusal carries the
-            // inner construct's line as well as the outer one's. A construct moving down a file is not drift.
-            $reason = trim((string) preg_replace('/ \(line \d+\)/', '', $refusal->getMessage()));
-
-            // "Not translated yet" and "no plugin could carry this" read the same in a list and are not the
-            // same fact. A package holding one of the second kind can never be fully covered, so counting
-            // them together makes its figure quote a denominator this tool will never reach.
-            return ($refusal->permanent ? 'UNPORTABLE ' : 'REFUSE ') . $reason;
-        }
     }
 }

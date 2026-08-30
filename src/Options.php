@@ -35,6 +35,7 @@ final readonly class Options
         public ?string $examplesDir,
         public bool $unverified = false,
         public ?string $fromConfig = null,
+        public ?string $status = null,
     ) {}
 
     /**
@@ -50,9 +51,17 @@ final readonly class Options
         $examplesDir = null;
         $unverified = false;
         $fromConfig = null;
+        $status = null;
 
         foreach ($argv as $argument) {
-            if ($argument === '--unverified' || $argument === '--unverified-aggregates') {
+            if ($argument === '--status') {
+                // The project this tool was pointed at, which for a `--dev` install is the directory the
+                // consumer runs it from. Defaulted rather than required, because a flag that always needs a
+                // path is one people get wrong in the common case.
+                $status = getcwd() === false ? '.' : getcwd();
+            } elseif (str_starts_with($argument, '--status=')) {
+                $status = substr($argument, strlen('--status='));
+            } elseif ($argument === '--unverified' || $argument === '--unverified-aggregates') {
                 $unverified = true;
             } elseif ($argument === '--survey') {
                 $survey = true;
@@ -67,7 +76,7 @@ final readonly class Options
             }
         }
 
-        return new self($paths, $target, $survey, $examplesDir, $unverified, $fromConfig);
+        return new self($paths, $target, $survey, $examplesDir, $unverified, $fromConfig, $status);
     }
 
     public function outDir(string $outRoot): string
