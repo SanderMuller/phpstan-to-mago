@@ -1,6 +1,7 @@
 <?php declare(strict_types=1);
 
 use Rector\Caching\ValueObject\Storage\FileCacheStorage;
+use Rector\Carbon\Rector\FuncCall\DateFuncCallToCarbonRector;
 use Rector\CodeQuality\Rector\ClassMethod\InlineArrayReturnAssignRector;
 use Rector\CodeQuality\Rector\If_\ExplicitBoolCompareRector;
 use Rector\CodingStyle\Rector\String_\UseClassKeywordForClassNameResolutionRector;
@@ -67,4 +68,11 @@ return RectorConfig::configure()
         // dependencies would see `src/` name a class it does not have — and the property that makes a new
         // corpus cheap to adopt is exactly that packages are named as data.
         UseClassKeywordForClassNameResolutionRector::class,
+        // `nesbot/carbon` is in no `require` block here — it arrives transitively through testbench. Rewriting
+        // `date()` to `Carbon::now()` in `src/` would ship an import against an undeclared dependency, and a
+        // consumer installing without dev dependencies would fatal on it. `tests/` may use Carbon, because a
+        // dev-only dependency is exactly what a test is allowed to reach for.
+        DateFuncCallToCarbonRector::class => [
+            __DIR__ . '/src',
+        ],
     ]);
