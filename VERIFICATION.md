@@ -523,6 +523,32 @@ pattern in it, and a filter is easier to add than context that was never emitted
 whatever builds this owes `differingMessages` a filter on the day it ships, not on the day someone notices
 that diagnostic is always full.
 
+#### `spaze/phpstan-disallowed-calls`: 38 rules, and the answer is neither one cluster nor many
+
+A peer session's status page walks `vendor/` rather than a curated list and found two rule packages the
+census never covered. The larger is `spaze/phpstan-disallowed-calls`: 38 registered rules, none running.
+Surveyed rather than estimated, and the reasons group three ways:
+
+- **20 rules — one hook row each, for twenty different node types.** `Stmt\Echo_`, `Stmt\Goto_`,
+  `Stmt\Global_`, `Expr\Eval_`, `Expr\Include_`, `Expr\Print_`, `Expr\Isset_`, `Expr\Match_` and so on,
+  one rule apiece. Twenty rows is twenty rows; nothing about them shares a capability.
+- **9 rules — `could not find the reported message`.** Every one is a shim whose whole body is
+  `return $this->disallowedKeywordRuleErrors->get($node, $scope, 'if', $this->disallowedKeywords, ...)`.
+- **3 rules — the same shape through a different builder.**
+
+**The nine are the finding, and they change what the package is.** `DisallowedKeywordRuleErrors::get()`
+loops over `$disallowedKeywords` — a list of value objects a *consumer* configures — and reports only where
+one matches. At package defaults it reports nothing. The same holds for the calls and constants rules: this
+package exists to let a project declare what it forbids, so its rules have no behaviour of their own.
+
+So "38 rules refusing" is not a vocabulary backlog. Covering them means carrying a consumer's configuration
+into the emitted plugin, which is the `--from-config` denominator question rather than a translation one —
+and a plugin generated that way is a plugin for that consumer, which is the property `--from-config` is
+already careful about. Sizing it as 38 rules of missing capability would have been wrong in the way this
+document keeps recording.
+
+`composer/pcre` is the other package the walk found: 2 registered rules, not surveyed here.
+
 #### What sits behind statement iteration, sized by attempting it
 
 `Members::statementsOf()` shipped and moved three rules past `no iteration mapped for ->stmts` in one step.
