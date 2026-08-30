@@ -1310,3 +1310,36 @@ That is the shape this file warns about in its own first section — a number qu
 auditable, and a number whose baseline is two projects says nothing about the third. The bound is not
 wrong about the two it names. It is being read as a property of the rule, and it is a property of those
 two corpora.
+
+###### Chasing the −722: it is the LSP guard, exactly, and the shape alone does not reproduce it
+
+The shipped parameter metric under-counts a third consumer by 722 of 10164. Localised, and the localisation
+is exact rather than approximate.
+
+- **By directory:** −721 of it in `app`, and inside that −386 in `app/Repositories`, −87 in `app/Commands`,
+  −25 in `app/Http`, −24 in `app/Models`. Spread, not one construct.
+- **By cause, in the directory with the most:** counting what `lockedByAncestor()` skips gives **386 on the
+  nose**. The LSP guard accounts for the whole deficit there — turn it off and the port would count 999,
+  which is what the real rule counts.
+- **By declaration:** the 25 disputed parameter lines in one repository file belong to 14 methods, and the
+  interface that class implements declares **all 14**. So the port's guard is doing what the rule's own
+  words say — skip a method a parent or interface already declares — and the real rule is not skipping them.
+
+**A control with the same layering agrees.** An interface extending an interface, an abstract base
+implementing the outer one, a final class extending the base and implementing the inner one, methods on each:
+both count 3. So the divergence is not the shape, and reading more source will not find it.
+
+What is not yet known is why PHPStan's `getInterfaces()`/`hasMethod()` answers no for these classes when the
+metadata answers yes. Two candidates, neither tested: the consumer's own configuration reaching the guard
+through something the harness's `paths!` replacement changes, and an ancestry PHPStan resolves differently
+from mago. Both are testable against that project and neither is testable from here.
+
+**One instrument caveat found on the way, worth more than the hypothesis it killed.**
+`run-coverage-setdiff.php` renames the class in its stripped copy so the copy does not collide with the
+original. A renamed class still implements its interfaces, so the set it prints is trustworthy here — but
+the same rename is why the tool cannot answer *why* the guard differs: it changes the very reflection the
+guard consults. It names which declarations, and it is the wrong instrument for asking about ancestry.
+
+The bound stays as written, because it is accurate about the two corpora it names. What is now recorded
+beside it is that a third corpus breaks it in the other direction, and that the cause is the guard rather
+than the counting.
