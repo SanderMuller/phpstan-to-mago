@@ -306,6 +306,47 @@ final class EmittedRuleFiresTest extends TestCase
     }
 
     /**
+     * A rule that accumulates findings has to be shown accumulating, and one span can hold two.
+     *
+     * `TraitRequiresInterfaceRule` loops over its configured trait-to-interface pairs and adds a finding for
+     * each one a class-like violates — and reports every one of them at the *class*, not at the `use`
+     * statement that caused it. So two violations are two findings at the same file and line.
+     *
+     * Its pair could not see that. One configured pair means one finding per class, which a port reporting
+     * once per class produces too, and the differential agrees either way. The trick that rescued
+     * `RequireAttributeNameRule` — writing the construct across lines so the findings land on different ones
+     * — is not available here, because the span is the class however the source is laid out. The only shape
+     * that separates the two readings is the count at one span, asserted here.
+     *
+     * Found by the `phpstan-src-e7` session auditing for exactly this after the attribute case. The general
+     * form: an example pair proves nothing about a rule that reports N times per node unless some example
+     * makes N greater than one.
+     */
+    public function test_a_rule_that_reports_per_pair_reports_twice_at_one_span(): void
+    {
+        $mismatch = LockedCorpus::mismatch();
+        if ($mismatch !== null) {
+            self::markTestSkipped($mismatch);
+        }
+
+        $rule = 'TraitRequiresInterfaceRule';
+        [$file, $class] = self::corpusRules()[$rule] ?? [null, null];
+        if ($file === null || $class === null) {
+            self::markTestSkipped('the corpus no longer emits ' . $rule);
+        }
+
+        $mago = $this->gate->magoFindings($rule, $file);
+        $phpstan = $this->gate->phpstanFindings($rule, $file, $class);
+
+        $this->assertCount(
+            2,
+            $phpstan['BadTwoTraitsOneClass.php'] ?? [],
+            'The real rule no longer reports one finding per violated pair, so this example proves nothing.',
+        );
+        $this->assertSame($phpstan['BadTwoTraitsOneClass.php'], $mago['BadTwoTraitsOneClass.php'] ?? []);
+    }
+
+    /**
      * A dropped guard has to name the proof that lets it be dropped.
      *
      * Dropping a guard widens the rule, so it is only sound where the case the guard filters out cannot

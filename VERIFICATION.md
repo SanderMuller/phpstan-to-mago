@@ -1364,3 +1364,30 @@ remembering: an example can exercise a construct and still be blind to it, becau
 and a construct written on one line has one line.
 
 Nothing changed in the transpiler. The reading was already right; what was missing was any evidence of it.
+
+##### The same blindness on a shipped rule, where splitting lines does not rescue it
+
+`TraitRequiresInterfaceRule` emits, and its pair had the same hole — found by `phpstan-src-e7` auditing for
+it after the attribute case, with a criterion worth keeping. Looking for emitted plugins that *report inside
+a loop* gives four candidates and one of them is a red herring: `UppercaseConstantRule` loops over
+`$node->consts` but **returns** from inside the loop, so it produces one finding per declaration however many
+constants it walks. A search and an accumulation look identical from outside. The criterion that works is
+`$errors[] = ...` inside a `foreach` — an accumulation — which leaves four emitting rules, of which this is
+the live one.
+
+It loops over its configured trait-to-interface pairs and adds a finding for each pair a class-like
+violates. The gate configured **one** pair, so one violation was the most any example could produce — and a
+port reporting once per class produces that too. The differential agreed either way.
+
+**And the attribute fix does not transfer.** Those findings could be separated by writing the construct
+across lines. These are all reported at the *class*, so they share a file and a line however the source is
+laid out. The only shape that separates the two readings is the count at one span, which is now asserted:
+two pairs configured, an example using both traits and implementing neither, and both tools reporting
+exactly 2 on it.
+
+The port was already right. What was missing was any example that could have caught it being wrong — which
+is the first live instance of the multiplicity caveat recorded earlier here, rather than a hypothetical.
+
+The general form, now that two rules have shown it: **an example pair proves nothing about a rule that
+reports N times per node unless some example makes N greater than one** — and where the findings share a
+span, the assertion has to be a count rather than a set.

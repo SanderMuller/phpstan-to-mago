@@ -173,6 +173,21 @@ interface LocalisedContract
     public function locale(): string;
 }
 
+/**
+ * A second pair, because one pair cannot tell "reports per violated pair" from "reports once per class".
+ *
+ * The rule accumulates a finding per configured pair a class-like violates, and every finding lands on the
+ * class's own line — so two violations are two findings at one span. An example using one trait agrees with
+ * a port that reports once, and the splitting-across-lines that rescued the attribute pair is not available
+ * here: the span is the class, however the `use` statements are laid out.
+ */
+trait Auditable {}
+
+interface AuditableContract
+{
+    public function auditKey(): string;
+}
+
 namespace Illuminate\Foundation\Http;
 
 /**

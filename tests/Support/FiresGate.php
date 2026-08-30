@@ -165,9 +165,13 @@ final readonly class FiresGate
             'banned' => ['dump', 'dd'],
             'alsoBanned' => ['VarDump', 'Ray'],
         ],
+        // Two pairs, not one. The rule accumulates a finding per violated pair and reports each at the
+        // class's own line, so a class using both traits and implementing neither is two findings at one
+        // span — the only shape that separates "per violated pair" from "once per class".
         'TraitRequiresInterfaceRule' => [
             'traitRequiresInterface' => [
                 'Examples\\Contracts\\Localised' => 'Examples\\Contracts\\LocalisedContract',
+                'Examples\\Contracts\\Auditable' => 'Examples\\Contracts\\AuditableContract',
             ],
         ],
     ];
