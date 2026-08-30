@@ -1391,3 +1391,26 @@ is the first live instance of the multiplicity caveat recorded earlier here, rat
 The general form, now that two rules have shown it: **an example pair proves nothing about a rule that
 reports N times per node unless some example makes N greater than one** — and where the findings share a
 span, the assertion has to be a count rather than a set.
+
+###### And the condition for a collapse, which is narrower than "same line"
+
+The other two accumulating rules were audited by `phpstan-src-e7` and neither needed what
+`TraitRequiresInterfaceRule` needed. Reading the differential rather than reasoning about it says why.
+
+`CorpusDifferential` groups findings **by identifier** before `bySite()` keys them on `file:line`. So the
+overwrite that hides a missing finding needs **the same identifier and the same line**, not either alone.
+
+- `NoRequiredOutsideClassRule` accumulates under one identifier and reports at each method's own line. Two
+  offending methods are two lines by construction, and its bad example already held two — the accumulation
+  was exercised without anyone arranging it.
+- `PublicStaticDataProviderRule` reports *two* findings at one line when a provider is neither static nor
+  public, which is the trait rule's shape exactly — except that the two carry different identifiers, so they
+  land in different buckets and neither can hide the other.
+
+The example still never held such a provider, so the port emitting only one of the two checks had never been
+observed. It does emit both: with one added, both tools report 4 findings on that file at lines 51, 51, 56
+and 61 — the repeated line being the provider that fails both tests.
+
+So the audit ends with one rule fixed, one already covered by accident, and one covered by an added example
+that was never going to fail. That is the right ratio to expect: the criterion finds candidates, and only
+reading each one says which are real.

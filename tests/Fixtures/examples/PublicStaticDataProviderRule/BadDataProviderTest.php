@@ -33,6 +33,26 @@ final class BadDataProviderTest extends TestCase
         $this->assertSame($number, $number);
     }
 
+    /** @dataProvider provideNeither */
+    public function test_needs_both(int $number): void
+    {
+        $this->assertSame($number, $number);
+    }
+
+    /**
+     * Neither static nor public, which is two findings at one line.
+     *
+     * The rule tests the two properties in separate `if` blocks and reports both at the provider's own line,
+     * so this is the only shape where a port emitting one check and not the other still agrees on every
+     * other example. It survives the differential only because the two carry different identifiers — a
+     * collapse there needs the same identifier *and* the same line, which is what made
+     * `TraitRequiresInterfaceRule` the live case and leaves this one safe.
+     */
+    private function provideNeither(): array
+    {
+        return [[3]];
+    }
+
     public function provideNotStatic(): array
     {
         return [[1]];
