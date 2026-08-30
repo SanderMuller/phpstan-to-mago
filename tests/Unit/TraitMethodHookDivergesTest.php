@@ -120,10 +120,17 @@ final class TraitMethodHookDivergesTest extends TestCase
         // reports it once; PHPStan reports it twice, once per using controller. That one finding is the whole
         // of what is left, and it is under-reporting rather than over-reporting.
         //
+        $found = $this->magoRouteFindings($sandbox);
+
+        // The output goes in the message, because the first CI run of this test failed with an empty list and
+        // nothing to say why. A findings list that came back empty can mean the plugin declined, the worker
+        // never started, or the binary is not there, and those want different fixes — an assertion that only
+        // prints `[]` sends the reader to the wrong one.
         self::assertSame(
             ['src/Routes.php:22', 'src/Routes.php:41'],
-            $this->magoRouteFindings($sandbox),
-            'The emitted plugin no longer reports the trait-declared route alongside the class-declared one.',
+            $found,
+            "The emitted plugin no longer reports the trait-declared route alongside the class-declared one.\n"
+            . "mago output:\n" . $this->magoRouteOutput,
         );
 
         // The message carries what the second report would have said, which is the deliberate divergence
@@ -212,10 +219,21 @@ final class TraitMethodHookDivergesTest extends TestCase
 
         $rule = $this->root()
             . '/vendor/symplify/phpstan-rules/src/Rules/Symfony/NoRouteTrailingSlashPathRule.php';
-        $this->capture([$this->root() . '/bin/phpstan-to-mago', '--target=php', '--out=gen', $rule], $sandbox);
+
+        // Through `php` rather than the shebang. The file is executable in git, but the transpile failing for
+        // any reason at all used to surface here as an empty findings list two steps later.
+        $transpiled = $this->capture(
+            ['php', $this->root() . '/bin/phpstan-to-mago', '--target=php', '--out=gen', $rule],
+            $sandbox,
+        );
+
+        $plugin = $sandbox . '/gen/generated-php/NoRouteTrailingSlashPathRule.php';
+        if (! is_file($plugin)) {
+            throw new RuntimeException("The rule did not transpile, so there is no plugin to run:\n" . $transpiled);
+        }
 
         mkdir($sandbox . '/plugins', 0o777, true);
-        copy($sandbox . '/gen/generated-php/NoRouteTrailingSlashPathRule.php', $sandbox . '/plugins/rule.php');
+        copy($plugin, $sandbox . '/plugins/rule.php');
 
         $autoload = $this->root() . '/vendor/autoload.php';
         file_put_contents($sandbox . '/worker.php', <<<PHP
