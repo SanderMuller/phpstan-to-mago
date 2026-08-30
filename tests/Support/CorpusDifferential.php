@@ -503,7 +503,7 @@ final class CorpusDifferential
                 }
 
                 $agree[] = $site;
-                if ($right[$site] !== $message) {
+                if (self::withoutTraitUsers($right[$site]) !== $message) {
                     $differing[] = $site . "\n      original: " . $message . "\n      port:     " . $right[$site];
                 }
             }
@@ -670,6 +670,32 @@ final class CorpusDifferential
         }
 
         return $bySite;
+    }
+
+    /**
+     * A port message with the trait's using classes taken off the end.
+     *
+     * PHPStan reports a trait-declared violation once per using class and carries which one in the *file*
+     * field — `Foo.php (in context of class Bar):12` — where a plugin cannot write. The port reports once
+     * and names them in the message instead, which is a deliberate divergence: 51 of Shopware's 60 used
+     * traits have two or more users, and agreeing exactly would mean 1185 identical lines for one violation
+     * in the worst of them.
+     *
+     * That choice was made knowing it would land here. `differingMessages` compares message text at every
+     * *agreeing* site, not only where sites disagree, so without this every trait finding would sit in this
+     * diagnostic permanently and real message drift would hide inside a list that is always full. The debt
+     * was written down when the message shipped and this is it being paid.
+     *
+     * Only the suffix this port appends, and only at the end. A message that merely contains `(via ` keeps
+     * it, because the point is to drop what the port added rather than to make two messages match.
+     *
+     * Public so it can be tested without a consumer to run a differential against. That is the limit of what
+     * the test proves: the behaviour of this function, not that {@see compare()} calls it. The call site is
+     * one line there and this note is the only thing pinning it.
+     */
+    public static function withoutTraitUsers(string $message): string
+    {
+        return (string) preg_replace('/ \(via [^()]+\)$/', '', $message);
     }
 
     /** Whether the consumer's own configuration keeps this file out of its analysis. */
