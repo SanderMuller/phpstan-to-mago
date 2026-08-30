@@ -1343,3 +1343,24 @@ guard consults. It names which declarations, and it is the wrong instrument for 
 The bound stays as written, because it is accurate about the two corpora it names. What is now recorded
 beside it is that a third corpus breaks it in the other direction, and that the cause is the guard rather
 than the counting.
+
+#### An example pair that could not tell two readings apart
+
+`RequireAttributeNameRule` emits and its pair passed, and the pair could not have failed for the thing it
+most needed to check. The `phpstan-src-e7` session found it while probing the CST: `#[A] #[B]` is two
+`AttributeList` nodes, not one list of two, so a rule counting attributes against a list would answer per
+group — and every example here used a single-attribute group.
+
+Two shapes added, and the second one matters more than the first.
+
+- `#[Grouped('first'), Grouped('second')]` — one group, two attributes. Written on **one line** it proves
+  nothing: findings are compared as `(file, line, message)`, so both readings collapse to a single finding
+  and both tools answer 2. Written across **separate lines** the readings part company — a port treating a
+  group as one attribute answers 2, and iterating the attributes inside it answers 3.
+- Two groups on one declaration, which is the shape the peer's probe names.
+
+Both tools answer **3**. The pair now distinguishes the readings, and the line-splitting is the part worth
+remembering: an example can exercise a construct and still be blind to it, because the comparison is by line
+and a construct written on one line has one line.
+
+Nothing changed in the transpiler. The reading was already right; what was missing was any evidence of it.
