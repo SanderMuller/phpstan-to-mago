@@ -27,6 +27,19 @@ that refuse a shape no body could fix say so on the refusal itself, and everythi
 provisional, which is the safe direction — a refusal wrongly called permanent stops someone
 looking. No `needs:` is printed under one, because its body is not the obstacle.
 
+Generated against these package versions. A run whose installed corpus differs — `composer update
+--prefer-lowest` is the one CI does — is looking at different rules, so the assertions that
+describe a corpus skip there rather than fail. Regenerating this file updates the list, which is
+what keeps the two from drifting apart.
+
+    hihaho/phpstan-rules                      v3.15.2
+    phpstan/phpstan-deprecation-rules         2.0.5
+    phpstan/phpstan-phpunit                   2.0.18
+    phpstan/phpstan-strict-rules              2.0.12
+    symplify/phpstan-rules                    14.13.1
+    tomasvotruba/cognitive-complexity         1.2.0
+    tomasvotruba/type-coverage                2.3.6
+
 The list is a **lower bound**. A statement that refuses is stepped over and the next one is
 translated, so obstacles in different statements all appear and a second one inside a single
 statement does not; a rule blocked early shows less than it needs.

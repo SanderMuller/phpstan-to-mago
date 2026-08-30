@@ -158,6 +158,13 @@ final class TracksUpstreamDriftTest extends TestCase
             'provisional, which is the safe direction — a refusal wrongly called permanent stops someone',
             'looking. No `needs:` is printed under one, because its body is not the obstacle.',
             '',
+            'Generated against these package versions. A run whose installed corpus differs — `composer update',
+            '--prefer-lowest` is the one CI does — is looking at different rules, so the assertions that',
+            'describe a corpus skip there rather than fail. Regenerating this file updates the list, which is',
+            'what keeps the two from drifting apart.',
+            '',
+            ...self::corpusVersions(),
+            '',
             'The list is a **lower bound**. A statement that refuses is stepped over and the next one is',
             'translated, so obstacles in different statements all appear and a second one inside a single',
             'statement does not; a rule blocked early shows less than it needs.',
@@ -275,6 +282,26 @@ final class TracksUpstreamDriftTest extends TestCase
         }
 
         return implode("\n", $lines) . "\n";
+    }
+
+    /**
+     * The installed version of each corpus package, as census lines.
+     *
+     * Four spaces and two between, because {@see LockedCorpus} reads them back with a pattern rather than by
+     * position — the list is the record, so it has to be parseable and not only readable.
+     *
+     * @return list<string>
+     */
+    private static function corpusVersions(): array
+    {
+        $lines = [];
+        foreach (LockedCorpus::installed() as $package => $version) {
+            $lines[] = sprintf('    %-40s  %s', $package, $version);
+        }
+
+        sort($lines);
+
+        return $lines;
     }
 
     /**

@@ -17,8 +17,11 @@ namespace Sandermuller\PhpstanToMago\Tests\Support;
  * a different one. They skip instead, naming which package moved. What `--prefer-lowest` is for — that the
  * transpiler works against minimum supported versions — is still checked by every other test in the suite.
  *
- * Compared by version string rather than by resolving anything: the lock names one and the installed tree
- * reports one, and if they differ the corpus is not the corpus these tests were written against.
+ * Compared against the versions the *census* records, not against `composer.lock`. CI installs with
+ * `composer update --prefer-lowest`, which rewrites the lock in the workspace, so a lock-versus-installed
+ * check agrees with itself on exactly the run it needs to catch — measured, after that was the first fix and
+ * it changed nothing. The census is committed and regenerated deliberately, which makes it the record an
+ * install cannot move.
  */
 final class LockedCorpus
 {
@@ -40,23 +43,39 @@ final class LockedCorpus
         'phpstan/phpstan-deprecation-rules',
     ];
 
-    /** A reason to skip, or null when every corpus package matches the lock. */
+    /** Where the versions this corpus was recorded against are written down. */
+    private const string CENSUS = __DIR__ . '/../Fixtures/expected/census.md';
+
+    /**
+     * The versions each rule package is installed at, by name.
+     *
+     * @return array<string, string>
+     */
+    public static function installed(): array
+    {
+        $versions = self::versions(dirname(__DIR__, 2) . '/vendor/composer/installed.json');
+
+        return array_intersect_key($versions, array_flip(self::PACKAGES));
+    }
+
+    /** A reason to skip, or null when the installed corpus is the one the census records. */
     public static function mismatch(): ?string
     {
-        $locked = self::versions(dirname(__DIR__, 2) . '/composer.lock', ['packages', 'packages-dev']);
-        $installed = self::versions(dirname(__DIR__, 2) . '/vendor/composer/installed.json', ['packages']);
+        $recorded = self::recorded();
+        if ($recorded === []) {
+            return null;
+        }
 
-        foreach (self::PACKAGES as $package) {
-            $want = $locked[$package] ?? null;
-            $have = $installed[$package] ?? null;
-            if ($want === null || $have === null || $want === $have) {
+        foreach (self::installed() as $package => $have) {
+            $want = $recorded[$package] ?? null;
+            if ($want === null || $want === $have) {
                 continue;
             }
 
             return sprintf(
-                'The installed corpus is not the locked one: %s is %s and composer.lock pins %s. These '
-                . 'assertions describe what the locked packages contain, so a different resolution — '
-                . '`--prefer-lowest`, or a manual install — is a different corpus rather than a regression.',
+                'The installed corpus is not the one the census records: %s is %s and the census was '
+                . 'generated against %s. These assertions describe what those packages contain, so a '
+                . 'different resolution is a different corpus rather than a regression.',
                 $package,
                 $have,
                 $want,
@@ -67,27 +86,52 @@ final class LockedCorpus
     }
 
     /**
-     * @param list<string> $keys
+     * The versions the committed census names, read back out of it.
+     *
+     * Not `composer.lock`. CI installs with `composer update --prefer-lowest`, which *rewrites* the lock in
+     * the workspace — so a lock-versus-installed comparison agrees with itself on exactly the run this needs
+     * to detect. The census is committed, regenerated deliberately, and cannot be rewritten by an install,
+     * which makes it the only record here that survives one.
      *
      * @return array<string, string>
      */
-    private static function versions(string $file, array $keys): array
+    private static function recorded(): array
+    {
+        if (! is_file(self::CENSUS)) {
+            return [];
+        }
+
+        preg_match_all(
+            '/^ {4}(\S+\/\S+) {2,}(\S+)$/m',
+            (string) file_get_contents(self::CENSUS),
+            $matches,
+            PREG_SET_ORDER,
+        );
+
+        $recorded = [];
+        foreach ($matches as $match) {
+            $recorded[$match[1]] = $match[2];
+        }
+
+        return $recorded;
+    }
+
+    /** @return array<string, string> */
+    private static function versions(string $file): array
     {
         if (! is_file($file)) {
             return [];
         }
 
-        /** @var array<string, list<array{name?: string, version?: string}>> $decoded */
+        /** @var array{packages?: list<array{name?: string, version?: string}>} $decoded */
         $decoded = json_decode((string) file_get_contents($file), true) ?? [];
 
         $versions = [];
-        foreach ($keys as $key) {
-            foreach ($decoded[$key] ?? [] as $package) {
-                $name = $package['name'] ?? null;
-                $version = $package['version'] ?? null;
-                if (is_string($name) && is_string($version)) {
-                    $versions[$name] = $version;
-                }
+        foreach ($decoded['packages'] ?? [] as $package) {
+            $name = $package['name'] ?? null;
+            $version = $package['version'] ?? null;
+            if (is_string($name) && is_string($version)) {
+                $versions[$name] = $version;
             }
         }
 
