@@ -127,7 +127,7 @@ final class TraitMethodHookDivergesTest extends TestCase
         // never started, or the binary is not there, and those want different fixes — an assertion that only
         // prints `[]` sends the reader to the wrong one.
         self::assertSame(
-            ['src/Routes.php:22', 'src/Routes.php:41'],
+            ['Routes.php:22', 'Routes.php:41'],
             $found,
             "The emitted plugin no longer reports the trait-declared route alongside the class-declared one.\n"
             . "mago output:\n" . $this->magoRouteOutput,
@@ -138,7 +138,7 @@ final class TraitMethodHookDivergesTest extends TestCase
         // whole point of choosing it is that a reader can act on it.
         self::assertStringContainsString(
             '(via Examples\Controllers\FirstController, Examples\Controllers\SecondController)',
-            $this->magoRouteOutput,
+            implode("\n", $this->magoRouteMessages),
             'The trait finding no longer names the classes that made its guard pass.',
         );
     }
@@ -180,21 +180,57 @@ final class TraitMethodHookDivergesTest extends TestCase
         return $found;
     }
 
-    /** The raw mago output of the last {@see magoRouteFindings()} call, for asserting message text. */
+    /** The raw mago output of the last {@see magoRouteFindings()} call, for saying what a failure saw. */
     private string $magoRouteOutput = '';
 
-    /** @return list<string> */
+    /**
+     * The decoded messages of that call, for asserting text.
+     *
+     * Decoded rather than matched against the raw output: JSON escapes a backslash, so a class name reads
+     * `Examples\\Controllers\\FirstController` there and matches nothing spelled the way the plugin emits it.
+     *
+     * @var list<string>
+     */
+    private array $magoRouteMessages = [];
+
+    /**
+     * @return list<string>
+     *
+     * Read from `--reporting-format=json`, not from the listing. The compact listing puts the file, line and
+     * message on one line locally and splits them across two under CI, so a parser written against what a
+     * terminal shows found the message and no location and reported *nothing* — including the class-declared
+     * control, which made a working plugin look dead. The JSON is the same everywhere, and it is the shape
+     * `CorpusDifferential` already reads for the same reason.
+     */
     private function magoRouteFindings(string $sandbox): array
     {
-        $output = $this->capture([$this->root() . '/vendor/bin/mago', 'analyze'], $sandbox);
+        $output = $this->capture(
+            [$this->root() . '/vendor/bin/mago', 'analyze', '--reporting-format=json'],
+            $sandbox,
+        );
         $this->magoRouteOutput = $output;
+        $this->magoRouteMessages = [];
+
+        /** @var array{issues?: list<array{message?: string, annotations?: list<array{span?: array{file_id?: array{name?: string}, start?: array{line?: int}}}>}>} $decoded */
+        $decoded = json_decode($output, true) ?? [];
 
         $found = [];
-        foreach (explode("\n", $output) as $line) {
-            if (str_contains($line, 'trailing slash') && preg_match('#(src/\S+?):(\d+):#', $line, $match) === 1) {
-                $found[] = $match[1] . ':' . $match[2];
+        foreach ($decoded['issues'] ?? [] as $issue) {
+            if (! str_contains($issue['message'] ?? '', 'trailing slash')) {
+                continue;
             }
+
+            $this->magoRouteMessages[] = $issue['message'] ?? '';
+            $span = $issue['annotations'][0]['span'] ?? [];
+            $file = $span['file_id']['name'] ?? '';
+            // Plus one: mago's JSON span counts lines from zero and its own listing counts from one, which is
+            // also why PHPStan's numbers sit one higher in the assertion above. `CorpusDifferential` makes the
+            // same correction at the same field, and the two sides are only comparable once it is made.
+            $line = ((int) ($span['start']['line'] ?? 0)) + 1;
+            $found[] = basename($file) . ':' . $line;
         }
+
+        sort($found);
 
         return $found;
     }
