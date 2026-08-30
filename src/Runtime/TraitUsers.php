@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Runtime;
 
 use Mago\Sdk\Analyzer\AfterAnalysisContext;
+use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata;
 use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
@@ -37,11 +38,26 @@ final class TraitUsers
      */
     public static function reachedAs(AfterAnalysisContext $context, string $class, string $site, array $names): ?string
     {
+        $metadata = $context->codebase->getClassLike($class);
+        $documented = $metadata instanceof ClassLikeMetadata
+            ? array_flip([...$metadata->pseudoMethods, ...$metadata->staticPseudoMethods])
+            : [];
+
         foreach ($names as $name) {
             $declaring = $context->codebase->getDeclaringMethod($class, $name);
             if ($declaring instanceof FunctionLikeMetadata
                 && $declaring->location->file . ':' . $declaring->location->span->start === $site
             ) {
+                return $name;
+            }
+
+            // A `@method` line on the class does not take the name away from the trait. The codebase
+            // resolves the name to the documented declaration, so the site comparison above says "not
+            // reached" — but PHP gives the class the trait's method all the same, and PHPStan analyses the
+            // trait's body in that class's context. Three of one consumer's factories document `createMany`
+            // and `createManyQuietly` beside a trait that declares them, which was exactly the -6 left in
+            // that directory after every other cause was closed.
+            if (isset($documented[strtolower($name)])) {
                 return $name;
             }
         }

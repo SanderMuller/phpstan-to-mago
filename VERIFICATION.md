@@ -1279,3 +1279,34 @@ Two things this run establishes independently of that. The other consumer agrees
 count and the percentage, over 1897 files — the first time any metric other than `declares` has done that.
 And the parameter metric is untouched by both of today's causes, because it walks the syntax: a docblock has
 no function-like node, and neither does an enum's `cases()`.
+
+###### A `@method` line takes no name away from a trait — and a shipped bound that does not hold
+
+The return metric is at **−1** on one consumer and **exactly zero** on the other. The six that were left
+are closed, and closing them turned up something more important about a rule that already ships.
+
+**The six.** One trait, `FactoryTrait`, five methods, 34 users — and the per-method reach counts said
+`createMany` and `createManyQuietly` reached 31 of the 34 while the other three methods reached all 34.
+Three of those factories declare those two names as `@method` lines. The codebase resolves the name to the
+documented declaration, so asking *where the name lands* answered "not the trait" and the class was not
+counted. PHP disagrees: a docblock takes no name away from a trait, and PHPStan analyses the trait's body in
+that class's context like any other user's. 3 classes × 2 methods = the 6.
+
+Mutation-checked on a control holding a trait, a plain user and a documenting user: without the branch the
+port counts 1 where the real rule counts 2, for **both** metrics. The control is in both suites, because
+`reachedAs()` is shared and the case was found through the metric that does not ship.
+
+**And the finding that matters more.** Running the *parameter* metric against a third consumer — one the
+stated bound was never measured on — gives **−722 of 10164, or −7.1 %**. `ACCEPTED_DIVERGENCE['parameters']`
+states a ceiling of +1.11 % and a floor of zero, quoting +81 of 13694 and +37 of 11428, and
+`ParamTypeCoverageRule` is emitted carrying that sentence in its docblock. On this consumer the port
+under-counts by seven percent, which the corpus gate is written to fail on.
+
+Confirmed not to be today's change: the same run against the same consumer with `reachedAs()` reverted gives
+the same −722. It is pre-existing and was simply never measured, because the bound was stated from two
+consumers and this is a third.
+
+That is the shape this file warns about in its own first section — a number quoted with its baseline is
+auditable, and a number whose baseline is two projects says nothing about the third. The bound is not
+wrong about the two it names. It is being read as a property of the rule, and it is a property of those
+two corpora.

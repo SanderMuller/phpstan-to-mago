@@ -62,6 +62,9 @@ final class CountsReturnsLikeTheCollectorTest extends TestCase
         // them, so there is no node to visit and only the two declared methods count. This was +430 of a
         // +444 corpus delta, all of it in one directory of 157 enums.
         yield 'an enum and a backed enum' => ['enum-cases', 2];
+        // A `@method` line takes no name away from a trait, so both users reach the declaration. The
+        // codebase resolves the name to the documented one, which said the documenting class did not.
+        yield 'a class documenting the trait method it uses' => ['documented-trait-method', 2];
     }
 
     #[DataProvider('controls')]

@@ -72,6 +72,10 @@ final class CountsParametersLikeTheCollectorTest extends TestCase
         // *only* the alias: asking the guard about the alias predicts 8, asking about the original predicts
         // 10, and the original counts 8. Written before the run rather than read off it.
         yield 'an interface declaring only the alias' => ['aliased-trait-locked-by-alias', 8];
+        // A `@method` line takes no name away from a trait, so both users reach the declaration. Shared with
+        // the return metric, which is where the case was found: the codebase resolves the name to the
+        // documented declaration, and asking where it lands said the documenting class did not reach it.
+        yield 'a class documenting the trait method it uses' => ['documented-trait-method', 2];
     }
 
     #[DataProvider('controls')]
