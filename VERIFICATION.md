@@ -808,3 +808,54 @@ CI.
 That is the honest state: per-rule agreement on example pairs is proven and gated; corpus-scale agreement is
 not, and no number here should be read as claiming it.
 
+
+#### The unwired-configuration cluster, sized by wiring it
+
+Nine rules refuse on a constructor parameter the shipping package never wires, eight of them on nothing
+else. That is the largest single-need cluster in the census that is not the withdrawn arithmetic family, so
+the question is what supplying the wiring would actually unlock.
+
+Measured rather than reasoned. `hihaho/phpstan-rules` was copied into a scratch tree, its six unregistered
+rules were added to the copy's `extension.neon` as ordinary `services:` entries pointing at the parameter
+paths the package already declares, and the survey was run over the copy before and after.
+
+| | emitted | refused |
+|:--|--:|--:|
+| package as shipped | 8 | 12 |
+| the same package with the six rules wired | **12** | 8 |
+
+Four clear on the wiring alone — `PositionalFlagArgumentStaticCallRule`, `NoUnsafeRequestDataRule`,
+`NoUnsafeRequestHelperRule` and `UnvalidatedFormRequestFieldRule`. The last of those also takes PHPStan's
+`Parser` service, which the census could not see behind the configuration refusal and which turned out not
+to block it.
+
+Two do not, and both were already counted elsewhere:
+
+- `PositionalFlagArgumentMethodCallRule` lands on `flagRecord()` **inside a loop** — the same refusal, at the
+  same line 131, that already blocks its registered twin `PositionalFlagArgumentNullsafeMethodCallRule` and
+  `CombinedMethodCallRule`. Predicted before the run by reading `DetectsPositionalFlagArgument`: both go
+  through `agreedFlagSite()`, whose `foreach` holds the call, while `flagSiteForNew()` and
+  `flagSiteForStaticCall()` call it directly — which is exactly why `PositionalFlagArgumentConstructorRule`
+  already emits.
+- `NoUnsafeRequestFacadeRule` lands on `expected a string literal` at line 40, a new obstacle the
+  configuration refusal was hiding.
+
+So the cluster is worth four rules, not eight. The census `needs:` line was a lower bound in both directions
+here: it over-counted two rules whose real blocker sits behind it, and under-counted the `Parser` service
+that turned out to be free.
+
+The nine also do not divide the way "unregistered means unimportant" suggests. These are not dead twins: the
+registered enforcement for three of them is `CombinedMethodCallRule` and `CombinedStaticCallRule`, and both
+are themselves refused. A consumer who registers the standalone rules instead would get plugins where the
+combined ones cannot be ported at all.
+
+Where the wiring would come from is not the package. `PackageConfiguration` reads the rule package's own
+neon on purpose, so a generated project stands alone, and for a rule the package registers nowhere there is
+nothing there to read. The consumer's container is the only place the values exist — and
+`resources/registered-rules.php` already runs inside it and already holds the constructed rule objects, so
+the configured values are readable off the instances rather than parsed out of a neon. That is the same
+"ask the container" argument `RegisteredRules` is built on.
+
+Not built. It changes what a coverage figure counts — a rule that emits only under a consumer's
+configuration is not the same outcome as one that emits from the package alone — and that denominator is a
+decision rather than a measurement.
