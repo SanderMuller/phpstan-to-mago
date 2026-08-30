@@ -129,7 +129,7 @@ EMIT    NoAssertFuncCallInTestsRule
 REFUSE  NoBareAndSecurityIsGrantedContentsRule
         no hook mapping for node type PhpParser\Node\Attribute
         needs: in_array() over a expr
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_ArrayDimFetch
 EMIT    NoBundleResourceConfigRule
 REFUSE  NoClassLevelRouteRule
         method call outside the vocabulary ->isPublic()
@@ -304,7 +304,7 @@ REFUSE  RequireInvokableControllerRule
 REFUSE  RequireIsGrantedEnumRule
         no hook mapping for node type PhpParser\Node\Attribute
         needs: in_array() over a expr
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_ArrayDimFetch
 REFUSE  RequireQueryBuilderOnRepositoryRule
         statement in isValidRepositoryObjectType() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Foreach, which is a decision tree rather than a guard that exits
         needs: statement in isValidRepositoryObjectType() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Foreach, which is a decision tree rather than a guard that exits
@@ -326,11 +326,8 @@ REFUSE  ServicesExcludedDirectoryMustExistRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->find()
 EMIT    SingleArgEventDispatchRule
 REFUSE  SingleRequiredMethodRule
-        assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
+        statement outside the vocabulary: Stmt_Expression
         needs: statement outside the vocabulary: Stmt_Expression
-        needs: numeric comparison outside the vocabulary
-        needs: $errorMessage is not a message built in this rule
 EMIT    StringFileAbsolutePathExistsRule  (the package registers it nowhere)
 REFUSE  TaggedIteratorOverRepeatedServiceCallRule
         no node predicate for instanceof PhpParser\Node\Stmt\Expression on a expr
@@ -391,7 +388,7 @@ REFUSE  ConstantTypeDeclarationCollector
         no hook mapping for node type PHPStan\Node\ClassConstantsNode
         needs: guard body is neither `return []` nor `continue`, but Stmt_Return
         needs: assignment value outside the vocabulary: count() of a const-decls compared numerically
-        needs: access path outside the vocabulary: Scalar_Int
+        needs: access path outside the vocabulary: Expr_ArrayDimFetch
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
 REFUSE  DeclareCollector
         no iteration mapped for ->getNodes(), which resolved to a hook-node
@@ -410,7 +407,7 @@ REFUSE  PropertyTypeCoverageRule
         no aggregate mapped for the collector PropertyTypeDeclarationCollector
 REFUSE  PropertyTypeDeclarationCollector
         no mapping for ->props on a property
-        needs: access path outside the vocabulary: Scalar_Int
+        needs: access path outside the vocabulary: Expr_ArrayDimFetch
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: cannot render a accumulator as a message argument
 REFUSE  ReturnTypeCoverageRule
@@ -419,7 +416,7 @@ REFUSE  ReturnTypeDeclarationCollector
         if statement that is not a single-statement guard
         needs: if statement that is not a single-statement guard
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
-        needs: access path outside the vocabulary: Scalar_Int
+        needs: cannot render a accumulator as a message argument
 
 ## tomasvotruba/cognitive-complexity — 2 of 3 portable rules the package registers emit, 0 covered by the engine, 1 refuse, 0 unportable in principle, 0 it registers nowhere
 
@@ -440,7 +437,7 @@ REFUSE  ArrayFilterStrictRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ArgumentsNormalizer::reorderFuncArguments()
         needs: if statement that is not a single-statement guard
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeType()
-        needs: access path outside the vocabulary: Scalar_Int
+        needs: cannot read a type as a name
 REFUSE  BooleanInBooleanAndRule
         no hook mapping for node type PHPStan\Node\BooleanAndNode
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getOperatorSigil()
@@ -605,7 +602,6 @@ REFUSE  WrongCaseOfInheritedMethodRule
 REFUSE  AssertEqualsIsDiscouragedRule
         statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
         needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_Int
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: trinary tail on an unsupported query ->isScalar()
 REFUSE  AssertSameBooleanExpectedRule
@@ -644,8 +640,9 @@ REFUSE  DataProviderDeclarationRule
         foreach with a key
         needs: foreach with a key
 REFUSE  MockMethodCallRule
-        access path outside the vocabulary: Scalar_Int
-        needs: access path outside the vocabulary: Scalar_Int
+        count() of something other than an argument list
+        needs: count() of something other than an argument list
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getMethodReflection()
 REFUSE  NoMissingSpaceInClassAnnotationRule
         could not find the reported message
 REFUSE  NoMissingSpaceInMethodAnnotationRule
@@ -667,5 +664,5 @@ REFUSE  CallWithDeprecatedIniOptionRule
         statement outside the vocabulary: Stmt_TryCatch
         needs: statement outside the vocabulary: Stmt_TryCatch
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getVersionId()
-        needs: access path outside the vocabulary: Scalar_Int
+        needs: function call outside the vocabulary array_key_exists()
 EMIT    FetchingDeprecatedConstRule

@@ -9440,6 +9440,17 @@ final readonly class Translator
             ];
         }
 
+        // An integer literal. Not a path to anything, which is why it had none — but the shapes that reach
+        // here hand one to something that indexes: `$node->getArgs()[0]->value` inside `$scope->getType(..)`
+        // is the whole of what ten census entries name, and the branch that reads an argument at a computed
+        // index was already written and waiting for a subject of kind `int`.
+        //
+        // A literal index elsewhere is folded into a binding by the statement path, so this only reaches
+        // positions where the index is read as a value rather than bound.
+        if ($expr instanceof Int_) {
+            return ['rust' => (string) $expr->value, 'kind' => 'int', 'php' => (string) $expr->value];
+        }
+
         throw new Refusal('access path outside the vocabulary: ' . $this->describe($expr), $line);
     }
 
