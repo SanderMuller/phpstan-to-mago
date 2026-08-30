@@ -59,8 +59,14 @@ jobs:
       - name: List the corpus versions
         run: composer show -D
 
+      # The census and the fires-gate skip when the installed corpus is not the one the census records, so a
+      # `--prefer-lowest` run does not fail for measuring different rules. Here a different corpus is the
+      # whole question, so the skip stands aside — without this the drift watch would go green having looked
+      # at nothing, which is the failure it exists to prevent.
       - name: Execute tests
         id: tests
+        env:
+          WATCH_CORPUS_DRIFT: '1'
         run: vendor/bin/pest --ci
 
       # The census writes what it actually saw beside itself when it disagrees, which is the readable form of

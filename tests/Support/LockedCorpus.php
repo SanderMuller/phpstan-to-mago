@@ -17,6 +17,11 @@ namespace Sandermuller\PhpstanToMago\Tests\Support;
  * a different one. They skip instead, naming which package moved. What `--prefer-lowest` is for — that the
  * transpiler works against minimum supported versions — is still checked by every other test in the suite.
  *
+ * **Except where a different corpus is the question.** `upstream-parity` installs the released and
+ * `dev-main` corpora on purpose and exists to see whether the census still matches; skipping there would
+ * turn the drift watch green while it looked at nothing. That workflow sets {@see WATCHING}, and the skip
+ * stands aside for it.
+ *
  * Compared against the versions the *census* records, not against `composer.lock`. The first fix here read
  * the lock and changed nothing, and the reason is stronger than it first looked: **the lock is gitignored**.
  * CI installs with `composer update`, which writes one, so every run compares a freshly generated lock
@@ -61,9 +66,26 @@ final class LockedCorpus
         return array_intersect_key($versions, array_flip(self::PACKAGES));
     }
 
+    /**
+     * The variable a run sets when a different corpus is the *point* rather than an accident.
+     *
+     * `upstream-parity` installs the released and `dev-main` corpora deliberately and exists to find out
+     * whether the census still matches — so the skip below would silence exactly the run it was built for,
+     * and the drift watch would go green having looked at nothing. That is the failure this repository names
+     * most often, and this fix nearly introduced it.
+     *
+     * Explicit rather than inferred: nothing in a process can tell "installed differently on purpose" from
+     * "installed differently by accident", and guessing would put the drift watch's usefulness on a heuristic.
+     */
+    public const string WATCHING = 'WATCH_CORPUS_DRIFT';
+
     /** A reason to skip, or null when the installed corpus is the one the census records. */
     public static function mismatch(): ?string
     {
+        if (getenv(self::WATCHING) !== false) {
+            return null;
+        }
+
         $recorded = self::recorded();
         if ($recorded === []) {
             return null;

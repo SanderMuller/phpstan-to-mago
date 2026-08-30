@@ -35,6 +35,9 @@ what keeps the two from drifting apart.
 This list rather than `composer.lock`, which is gitignored: every install writes one and then
 agrees with it, so a lock can say what is installed and never what was expected.
 
+The nightly drift watch sets `WATCH_CORPUS_DRIFT` and is compared anyway. It installs another
+corpus on purpose, so skipping there would be the alarm going green having looked at nothing.
+
     hihaho/phpstan-rules                      v3.15.2
     phpstan/phpstan-deprecation-rules         2.0.5
     phpstan/phpstan-phpunit                   2.0.18
