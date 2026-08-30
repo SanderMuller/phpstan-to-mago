@@ -95,6 +95,9 @@ final class TraitMethodHookDivergesTest extends TestCase
      * closes the last one is the emitted body reporting per using class, which is a code-generation change;
      * answering the guard differently cannot produce a second report.
      *
+     * Two users here is not a corner: 51 of Shopware's 60 used traits have two or more, one of them 1185.
+     * VERIFICATION.md carries the distribution and the question it raises about what agreement would emit.
+     *
      * This is the control that fix needs and the corpus differential cannot be: that instrument keys findings
      * on `file:line`, so N reports at one span and one report at one span compare equal there. Here the count
      * is the assertion, so a fix that works changes this test and a fix that does nothing does not.

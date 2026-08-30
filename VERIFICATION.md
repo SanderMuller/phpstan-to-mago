@@ -466,8 +466,22 @@ using controller and the port reports it once. That is under-reporting, the safe
 closed from here — answering the guard differently cannot produce a second report. It needs the emitted body
 to loop over the users, which is a code-generation change.
 
-The common case is now exact rather than merely closer: a trait used by one class that satisfies the guard
-gets one finding on both sides.
+**"The common case is one user" is false, and I published it before measuring it.** The distribution, from
+the same index on two real trees:
+
+    Shopware src        6686 class-likes   60 traits used    9 with one user   51 with two or more
+    laravel/Illuminate  2287 class-likes  153 traits used   65 with one user   88 with two or more
+
+Shopware's tail is long: one trait has 1185 users, four more are above 1000, and 113 methods sit in
+multi-user traits. Laravel has 933 such methods and a trait with 270 users. So the exact case is the
+minority on both — 15% on Shopware, 42% on Laravel — and the remaining gap is the majority of trait methods
+rather than an edge.
+
+That inverts the sizing and raises a question the number does not answer. Agreement here means emitting one
+finding *per using class at one span* — 1185 identical lines for a violation in Shopware's most-used trait,
+because that is what PHPStan does. Closing the gap and producing usable output may not be the same goal, and
+whoever builds the per-user loop should decide that first rather than discover it at the end. The
+measurement says the work is worth doing; it does not say the destination is right.
 
 Two things this cost, both worth recording. The first version indexed by the key `getMultipleClasses()`
 returns rather than by `$metadata->name`; the key is an int, `strcasecmp()` refused it, and the *whole
