@@ -201,6 +201,41 @@ final class Members
      * child whose text is `";"` and whose only child is `MethodAbstractBody`. Reading the wrapper alone
      * answered "has a body" for both, and the fires-gate caught it on a pair written for the question.
      */
+    /**
+     * The statements a declaration or closure body holds, one `Statement` each.
+     *
+     * php-parser hangs them off `$node->stmts`; mago keeps them inside a body node, which
+     * {@see bodyOf()} already finds — so this is that plus its `Statement` children, and the two cannot
+     * disagree about what a body is.
+     *
+     * Top level only, deliberately. `foreach ($node->stmts as $stmt)` in the corpus walks the statements the
+     * body writes and then searches *within* one; a flattened list would make the outer loop visit nodes the
+     * rule never sees, and `NoServiceAutowireDuplicateRule` counts on the order and the nesting both — it
+     * turns a flag on at one statement and reports at a later one.
+     *
+     * Probed rather than assumed: a closure is `Closure -> Block -> Statement`, with the parameter list and
+     * the return hint as siblings of the block rather than inside it.
+     *
+     * @return list<Part>
+     */
+    public static function statementsOf(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        $body = self::bodyOf($context, $subject);
+        $node = Tree::node($body);
+        if (! $node instanceof Node) {
+            return [];
+        }
+
+        $statements = [];
+        foreach ($context->source->getChildren($node) as $child) {
+            if ($child->kind === NodeKind::Statement) {
+                $statements[] = Tree::part($context, $child);
+            }
+        }
+
+        return $statements;
+    }
+
     public static function bodyOf(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
         $node = Tree::node($subject);

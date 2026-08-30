@@ -1245,6 +1245,16 @@ final class Support
     }
 
     /**
+     * The statements a declaration or closure body holds, one `Statement` each.
+     *
+     * @return list<Part>
+     */
+    public static function statementsOf(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        return Members::statementsOf($context, $subject);
+    }
+
+    /**
      * Every node of the given kinds anywhere below this one, which is php-parser's `NodeFinder::findInstanceOf()`.
      *
      * Recurses blindly, including into nested closures and functions, because php-parser does: a rule counting

@@ -153,10 +153,12 @@ final readonly class Translator
      * that way and all three write `foreach (... ->stmts as ...)`, which is one nameable missing capability —
      * iterating the statements of a declaration or a closure body — and not three unrelated gaps.
      *
-     * `->stmts` is the whole cluster. Two more rules need it behind their own first obstacle
-     * (`NoReferenceRule` and `NewWithFollowingSettersCollector` read it across seven node kinds), so five rules
-     * sit behind it. Nothing here iterates a statement list yet: there is no `Support::` reader for one and no
-     * `ITERABLES` entry, so this is a capability to add rather than a row to fill.
+     * `->stmts` was the whole cluster and is now built: {@see Runtime\Members::statementsOf()} reads a body's
+     * top-level statements and `subtree` is iterable. Three rules moved past it in one step, which is what
+     * the cluster promised, and none of them emits — each meets something else immediately. Two want a
+     * predicate for a statement *kind* (`instanceof Stmt\Expression`, `instanceof Stmt\ClassConst`) and the
+     * third a flag carried across loop iterations. So the capability was one thing and the rules behind it
+     * are not one thing, which this comment claimed before anyone had looked.
      */
     private function noIterationRefusal(Expr $subject, string $kind): string
     {

@@ -439,6 +439,11 @@ final class Vocabulary
         // What a subtree search found, one node each. `expr` because what a rule does with a found node is ask
         // the same things it asks of any expression it navigated to.
         'found-nodes' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => '{rust}'],
+        // `foreach ($node->stmts as $stmt)` — the statements a declaration or closure body writes, top level
+        // only. php-parser hangs them off `->stmts`, which resolves to a subtree here, and iterating one has
+        // exactly this meaning: three rules write that loop and each then searches *inside* the statement it
+        // was handed. Flattening would make the outer loop visit nodes the rule never sees.
+        'subtree' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => 'Support::statementsOf($context, {rust})'],
         // The method declarations of a class-like body, one `method-decl` each.
         'method-members' => ['iter' => self::PHP_ONLY, 'item' => 'method-decl', 'phpIter' => '{rust}'],
         // php-parser models attributes in two levels: a declaration carries attribute *groups*, each holding

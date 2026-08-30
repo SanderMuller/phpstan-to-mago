@@ -216,8 +216,8 @@ EMIT    NoOnlyNullReturnInRefactorRule
 EMIT    NoParentRepositoryRule
 EMIT    NoPropertyNodeAssignRule
 REFUSE  NoProtectedClassStmtRule  (the package registers it nowhere)
-        no iteration mapped for ->stmts, which resolved to a subtree
-        needs: no iteration mapped for ->stmts, which resolved to a subtree
+        no node predicate for instanceof PhpParser\Node\Stmt\ClassConst on a expr
+        needs: no node predicate for instanceof PhpParser\Node\Stmt\ClassConst on a expr
 REFUSE  NoReferenceRule
         PhpParser\Node covers several node kinds, and this rule narrows to 8 of them with `instanceof`: AssignRef, Closure, ArrowFunction, Function_, ClassMethod, Arg, Foreach_, ArrayItem. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
         needs: guard body is neither `return []` nor `continue`, but Stmt_Return
@@ -235,8 +235,8 @@ REFUSE  NoRoutingPrefixRule
         no node predicate for instanceof PhpParser\Node\Identifier on a bytes
         needs: no node predicate for instanceof PhpParser\Node\Identifier on a bytes
 REFUSE  NoServiceAutowireDuplicateRule
-        no iteration mapped for ->stmts, which resolved to a subtree
-        needs: no iteration mapped for ->stmts, which resolved to a subtree
+        if statement that is not a single-statement guard
+        needs: if statement that is not a single-statement guard
 REFUSE  NoServiceSameNameSetClassRule
         assignment value outside the vocabulary: no mapping for ->class on a expr
         needs: assignment value outside the vocabulary: guard body is neither `return []` nor `continue`, but Stmt_Return
@@ -333,8 +333,8 @@ REFUSE  SingleRequiredMethodRule
         needs: $errorMessage is not a message built in this rule
 EMIT    StringFileAbsolutePathExistsRule  (the package registers it nowhere)
 REFUSE  TaggedIteratorOverRepeatedServiceCallRule
-        no iteration mapped for ->stmts, which resolved to a subtree
-        needs: no iteration mapped for ->stmts, which resolved to a subtree
+        no node predicate for instanceof PhpParser\Node\Stmt\Expression on a expr
+        needs: no node predicate for instanceof PhpParser\Node\Stmt\Expression on a expr
 EMIT    UppercaseConstantRule
 
 ## hihaho/phpstan-rules — 4 of 7 portable rules the package registers emit, 0 covered by the engine, 3 refuse, 2 unportable in principle, 11 it registers nowhere
