@@ -523,6 +523,37 @@ pattern in it, and a filter is easier to add than context that was never emitted
 whatever builds this owes `differingMessages` a filter on the day it ships, not on the day someone notices
 that diagnostic is always full.
 
+#### What sits behind statement iteration, sized by attempting it
+
+`Members::statementsOf()` shipped and moved three rules past `no iteration mapped for ->stmts` in one step.
+Three further capabilities were built on top of it, measured, and taken back out: they moved two refusals
+deeper and emitted nothing.
+
+**What they were, and that they are right.** Mago wraps twice — a body's children are `Statement` nodes
+whose own child is the concrete kind, and a class-like's are `ClassLikeMember` the same way. Probed on a
+closure and a class body together:
+
+    Statement        -> ExpressionStatement | If | Foreach
+    ClassLikeMember  -> ClassLikeConstant   | Method
+
+So `$stmt instanceof Stmt\Expression` is a question about the *child*, and asking it of the wrapper is false
+for every statement there is. `$stmt->expr` is two levels down for the same reason. Both are one table row
+and one helper each, and both worked.
+
+**Why they came out anyway.** The rules behind them are not close.
+`TaggedIteratorOverRepeatedServiceCallRule` reaches
+`RepeatedServiceAdderCallNameFinder::find()`, which searches a subtree for method calls, reads a string
+argument out of each, inspects a one-item array literal, and then folds the names through
+`array_count_values()` and reports only where a count reaches three. A count-by-key fold with a threshold is
+not a row. `NoProtectedClassStmtRule` moved one row further and is registered nowhere, so it cannot move
+coverage at all.
+
+That leaves the ratio the decision turns on: three capabilities, two truer refusals, one of them on a rule
+no package registers, and nothing emitted. `statementsOf()` earned its place by moving three rules at once;
+these did not, and unexercised vocabulary stops describing what the tool does.
+
+The table row is written down here so the next attempt starts with the probe rather than repeating it.
+
 #### The second deprecation rule, sized by attempting it
 
 `FetchingDeprecatedConstRule` emits; `CallWithDeprecatedIniOptionRule` does not, and the attempt was
