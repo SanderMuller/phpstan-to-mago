@@ -523,6 +523,36 @@ pattern in it, and a filter is easier to add than context that was never emitted
 whatever builds this owes `differingMessages` a filter on the day it ships, not on the day someone notices
 that diagnostic is always full.
 
+#### The second deprecation rule, sized by attempting it
+
+`FetchingDeprecatedConstRule` emits; `CallWithDeprecatedIniOptionRule` does not, and the attempt was
+reverted rather than left half-built. What it found is worth more than the code was.
+
+**Its `try`/`catch` is not an obstacle.** The rule wraps `getFunction()` only to swallow
+`FunctionNotFoundException`, and its own comment says why — "other rules will notify if the function is not
+found". The catch returns `[]`, which is the bail an emitted binding already makes when its helper answers
+null. A `try` holding one statement whose catches all `return []` needs no statement kind; it needs its body
+translated. That is four lines and it worked.
+
+**`PhpVersion::getVersionId()` is a trap, and the peer's note pointed straight at it.** Their check said to
+read `PHPVersion::$id`, a public readonly int. The two engines do not encode a version the same way:
+
+    PHPStan   getVersionId()   major * 10000 + minor * 100 + patch      8.3.0 -> 80300
+    mago      fromParts()      (major << 16) | (minor << 8) | patch     8.3.0 -> 525056
+
+A rule comparing against a table of PHPStan-shaped ids — this one holds twenty — would find every entry
+smaller than the version and report every deprecated option whatever the project runs. Over-reporting, from
+two numbers that look like the same kind of thing. Read out of `fromParts()`; `major()`, `minor()` and
+`patch()` are the accessors that make the conversion exact.
+
+**What still blocks it, after four capabilities were added and taken back out:** `$node->getArgs()[0]->value`
+inside `$scope->getType(..)` refuses on the index, and `self::DEPRECATED_OPTIONS[$key]` is a string-to-*int*
+map read by a key known only at analysis time — the vocabulary carries key *sets* and lists of strings, not
+maps with values. Both are real features rather than rows.
+
+So the package is 1 of 2, and the second rule is not one obstacle away. It was reverted for the reason the
+arithmetic family was: vocabulary nothing exercises stops describing what the tool does.
+
 #### The arithmetic family, built and then withdrawn
 
 The six `OperandsInArithmetic*` rules were ported far enough to emit and then reverted. The machinery worked;
