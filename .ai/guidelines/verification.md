@@ -72,6 +72,17 @@ a probe establishes and what it does not, especially when handing it to someone 
 unverified inference in the same sentence look identical to whoever builds on them, and only they can tell
 which was which — too late.
 
+The version case is sharper than that, and it is why the rule is about *marking* rather than about care. One
+message carried three things in one voice: `$id` exists (probed), so read `$id` (inferred), and
+`availableVersions` may serve better, worth a look (a suggestion). The reader followed the third, opened
+`fromParts()`, and found the second was wrong. Four claims of different standing, nothing distinguishing
+them, and it was luck that the one followed was the one that led to the error. Neither sender nor receiver
+was careless; there was no way to sort them.
+
+So mark what each claim is when you send it, and ask when you receive one that is not marked. The receiver
+is the last person who can catch it, which is exactly why the rule cannot be "the sender should have
+checked".
+
 Reachability is the usual gap. "The field is there", "the method answers", "the class resolves" say nothing
 about what the value *means*, whether two values are comparable, or whether the question is the one the rule
 asks. Where a value is going to be compared against something, probe the comparison.
