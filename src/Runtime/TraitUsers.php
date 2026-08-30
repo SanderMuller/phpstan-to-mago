@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Runtime;
 
 use Mago\Sdk\Analyzer\AfterAnalysisContext;
+use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
 use Mago\Sdk\Syntax\SourceFile;
@@ -20,6 +21,34 @@ use Mago\Sdk\Syntax\SourceFile;
  */
 final class TraitUsers
 {
+    /**
+     * Which name a class reaches one declaration under, or null when it reaches it under none.
+     *
+     * A class that uses a trait does not always get the trait's method: its own declaration of the same name
+     * wins, and an `insteadof` gives the name to a different trait. Either way the collector never sees that
+     * declaration in that class's context, so it is not counted for it. An alias is the other direction — a
+     * renamed method still arrives, under the new name — which is why the caller passes every name the class
+     * could reach it under and this answers which one landed.
+     *
+     * Identity is the declaration *site*, not the name: two traits can declare the same name and only one of
+     * them is the declaration being counted.
+     *
+     * @param list<string> $names the original name first, then whatever adaptations introduce
+     */
+    public static function reachedAs(AfterAnalysisContext $context, string $class, string $site, array $names): ?string
+    {
+        foreach ($names as $name) {
+            $declaring = $context->codebase->getDeclaringMethod($class, $name);
+            if ($declaring instanceof FunctionLikeMetadata
+                && $declaring->location->file . ':' . $declaring->location->span->start === $site
+            ) {
+                return $name;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * How many classes use each trait, keyed by the trait's lowercased name as it is written.
      *

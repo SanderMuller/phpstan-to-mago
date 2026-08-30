@@ -41,6 +41,19 @@ final class CountsReturnsLikeTheCollectorTest extends TestCase
         yield 'a trait on an abstract base with two subclasses' => ['inherited-trait', 1];
         // Once, for the one class at the end of the chain — not once per link in it.
         yield 'a trait used by a trait used by a class' => ['trait-in-trait', 1];
+        // The class's own method wins, so the trait's version is never analysed in its context. Counting the
+        // trait's *users* rather than the users that *reach* the declaration made this 2.
+        yield 'a trait method the using class overrides' => ['overridden-trait-method', 1];
+        // A renamed method still arrives, under the new name, so the class reaches both declarations.
+        yield 'a trait method reached under an alias' => ['aliased-trait-method', 3];
+        // The interface's own declaration counts, and the trait's is skipped for the class that implements
+        // it — the LSP guard is the parameter collector's, and this one has none, so all three count.
+        yield 'a trait method whose name an interface declares' => ['locked-by-interface', 3];
+        // An anonymous class is a using class like any other, and has no name to ask the codebase about.
+        yield 'an anonymous class implementing an interface' => ['anonymous-class', 3];
+        // The reflection extension that bounds the parameter metric has nothing to act on here: this
+        // collector asks no question a reflection extension answers.
+        yield 'a class whose ancestor a reflection extension invents' => ['reflection-extension', 2];
     }
 
     #[DataProvider('controls')]
@@ -55,24 +68,20 @@ final class CountsReturnsLikeTheCollectorTest extends TestCase
     }
 
     /**
-     * The one control that is *meant* to disagree, and the reason this metric is not mapped.
+     * The one control that is *meant* to disagree, and it is a known under-count rather than a new cause.
      *
-     * `Over` uses `Provided` and declares its own `m()`. The class's own method wins, so the trait's version
-     * is never analysed in that class's context and PHPStan counts one declaration. This counts two: the
-     * multiplier asks how many classes use the trait and not which of them actually reach the declaration.
+     * A class declared twice in one file behind a version guard is counted by PHPStan and by neither body
+     * here — the same shape `Vocabulary::ACCEPTED_DIVERGENCE['parameters']` records as -7 on
+     * `nikic/php-parser`. The codebase holds one declaration for a name, and the second is invisible to it.
      *
-     * `DeclaredParameters::timesCounted()` answers that question — through `reachedAs()`, which follows
-     * overrides and `insteadof` and aliases — and it does so by walking the syntax rather than the metadata,
-     * which is the shape this metric would have to take as well.
-     *
-     * Written as the exact divergence rather than "at least one", because a bound nobody pins is how +2
-     * becomes +400, and the numbers were predicted before the run: one declaration to the original, two here.
+     * Asserted as the exact divergence rather than "at least one", because a bound nobody pins is how -1
+     * becomes -400.
      */
-    public function test_an_overridden_trait_method_is_the_divergence_that_remains(): void
+    public function test_a_conditionally_redeclared_class_is_the_known_under_count(): void
     {
-        [$original, $port] = (new CoverageControl(self::CONTROLS . '/overridden-trait-method', 'returns'))->totals();
+        [$original, $port] = (new CoverageControl(self::CONTROLS . '/conditionally-redeclared', 'returns'))->totals();
 
         $this->assertSame(1, $original);
-        $this->assertSame(2, $port);
+        $this->assertSame(0, $port);
     }
 }

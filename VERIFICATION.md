@@ -1198,3 +1198,31 @@ including the prediction that the override control would disagree.
 
 The controls harness is metric-aware for the same reason the corpus one is, and both now read one shared
 table of what each metric is called: the runtime method, and the summary line its rule prints.
+
+###### And the override case, which fourteen of fifteen controls now agree on
+
+The divergence the last note pinned is closed. A trait's method is counted for the classes that **reach**
+it, not for the classes that use the trait: a class declaring the same method itself never has the trait's
+version analysed in its context, and an alias means it reaches the declaration under a different name.
+
+`DeclaredParameters` already answered that question, in a private helper. It is shared now rather than
+copied — one implementation of "which name does this class reach this declaration site under", used by both
+metrics, with the fifteen parameter controls standing as the check that moving it changed nothing.
+
+No syntax walk was needed after all. The earlier note said this metric would have to walk the source the way
+the parameter one does; it does not, because the reach question is asked of a *declaration site*, and the
+metadata carries the site. The parameter metric walks syntax for a different reason — its collector's LSP
+guard reads the method node's name — which is a reason this collector has none of.
+
+**Every control now agrees except one, and that one is already known.** `conditionally-redeclared` — a class
+declared twice in one file behind a version guard — counts 1 to the real rule and 0 here, the same
+under-count `ACCEPTED_DIVERGENCE['parameters']` records as −7 on `nikic/php-parser`. Ten of the fifteen
+control projects now carry return expectations beside their parameter ones, including
+`reflection-extension`, which agrees: the lookup that bounds the parameter metric asks a question this
+collector never asks.
+
+**The corpus is still not zero.** +496 of 18307 on one consumer and +55 of 8526 on the other, down from
++561 and +55, and both over-counts. Fifteen controls do not explain it, so the next instrument is the
+set-difference one — `run-coverage-setdiff.php` names *which* declarations two counters disagree about for
+the parameter metric, by stripping every type so the real rule enumerates its own set. The same trick works
+for return types and does not exist yet. Until it does, the cause is unknown and is written here as unknown.

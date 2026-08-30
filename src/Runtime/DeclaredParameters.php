@@ -6,7 +6,6 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 
 use Mago\Sdk\Analyzer\AfterAnalysisContext;
 use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata as ClassMetadata;
-use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\SourceLocation;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
@@ -222,7 +221,7 @@ final class DeclaredParameters
             // Which name this class reaches the declaration under, because that is the name the guard has to
             // be asked about. An `insteadof` or an override means it reaches it under none, and the collector
             // never sees this declaration in that class's context.
-            $reached = self::reachedAs($context, $class, $here, [$method, ...$user['aliases']]);
+            $reached = TraitUsers::reachedAs($context, $class, $here, [$method, ...$user['aliases']]);
             if ($reached === null) {
                 continue;
             }
@@ -240,25 +239,6 @@ final class DeclaredParameters
         }
 
         return $times;
-    }
-
-    /**
-     * The name, if any, under which this class reaches the declaration at this location.
-     *
-     * @param list<string> $names
-     */
-    private static function reachedAs(AfterAnalysisContext $context, string $class, string $here, array $names): ?string
-    {
-        foreach ($names as $name) {
-            $declaring = $context->codebase->getDeclaringMethod($class, $name);
-            if ($declaring instanceof FunctionLikeMetadata
-                && $declaring->location->file . ':' . $declaring->location->span->start === $here
-            ) {
-                return $name;
-            }
-        }
-
-        return null;
     }
 
     /**

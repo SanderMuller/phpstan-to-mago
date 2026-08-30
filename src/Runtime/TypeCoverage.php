@@ -124,14 +124,21 @@ final readonly class TypeCoverage
                 continue;
             }
 
-            $times = self::timesAnalysed($metadata, $traitUsers);
-            if ($times === 0) {
+            $users = $metadata->kind === ClassLikeKind::Trait
+                ? $traitUsers[strtolower($metadata->originalName)] ?? []
+                : null;
+            if ($users === []) {
                 continue;
             }
 
             foreach ($metadata->methods as $name) {
                 $method = $context->codebase->getDeclaringMethod($class, $name);
                 if (! $method instanceof FunctionLikeMetadata) {
+                    continue;
+                }
+
+                $times = self::timesAnalysed($context, $method, $users);
+                if ($times === 0) {
                     continue;
                 }
 
@@ -171,27 +178,51 @@ final readonly class TypeCoverage
     }
 
     /**
-     * How many times PHPStan analyses one class-like's body, which is not always once.
+     * How many times PHPStan analyses one method declaration, which is not always once.
      *
      * The collectors here run per analysed *scope*, and a trait's body is analysed once for every class that
-     * uses it — twice for a trait two classes use, and **not at all** for a trait nobody uses. A class is
-     * analysed once.
+     * uses it — twice for a trait two classes use, and **not at all** for a trait nobody uses. A method
+     * declared in a class is analysed once.
      *
-     * Measured, and it is the difference between two wrong numbers cancelling and two right ones. On a
-     * fixture with a trait used by two classes and a trait used by none, walking declarations once gave the
-     * same total as the real rule while counting the wrong things: the unused trait's method added the one
-     * the shared trait's second user was missing. Deleting the unused trait separated them — PHPStan stayed
-     * at 3 and this dropped to 2.
+     * Counting the trait's users is not enough, which a control says rather than an argument. A class that
+     * uses a trait and declares the same method itself never has the trait's version analysed in its
+     * context: its own wins. `overridden-trait-method` counted 1 to the real rule and 2 here while this
+     * asked how many classes *use* the trait rather than how many *reach* the declaration.
      *
-     * @param array<string, list<array{class: string|null, aliases: list<string>}>> $traitUsers
+     * Measured before that, and it is the difference between two wrong numbers cancelling and two right
+     * ones: on a fixture with a trait used by two classes and a trait used by none, counting each
+     * declaration once gave the same total as the real rule while counting the wrong things. Deleting the
+     * unused trait separated them — PHPStan stayed at 3 and this dropped to 2.
+     *
+     * @param list<array{class: string|null, aliases: list<string>}>|null $users null for a class-like that
+     *        is not a trait, whose body is analysed once
      */
-    private static function timesAnalysed(ClassMetadata $metadata, array $traitUsers): int
+    private static function timesAnalysed(AfterAnalysisContext $context, FunctionLikeMetadata $method, ?array $users): int
     {
-        if ($metadata->kind !== ClassLikeKind::Trait) {
+        if ($users === null) {
             return 1;
         }
 
-        return count($traitUsers[strtolower($metadata->originalName)] ?? []);
+        $site = $method->location->file . ':' . $method->location->span->start;
+
+        $times = 0;
+        foreach ($users as $user) {
+            $class = $user['class'];
+
+            // An anonymous class has no name to ask the codebase about, so the question cannot be put to it
+            // and the declaration counts once for it.
+            if ($class === null) {
+                ++$times;
+
+                continue;
+            }
+
+            if (TraitUsers::reachedAs($context, $class, $site, [$method->name, ...$user['aliases']]) !== null) {
+                ++$times;
+            }
+        }
+
+        return $times;
     }
 
     /** Property type coverage across every class-like the analysis knows. */
