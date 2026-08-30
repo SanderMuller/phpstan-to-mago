@@ -104,9 +104,13 @@ final class TracksUpstreamDriftTest extends TestCase
             file_put_contents(self::CENSUS . '.actual', $census);
         }
 
+        // The version block is recorded and not compared. `upstream-parity` installs `dev-main`, so those
+        // lines differ on every run of the leg whose whole point is the *rules* — the first dev-main run
+        // after they were added failed on nothing else, with every rule line identical. An alarm that fires
+        // always carries as little as one that never fires.
         $this->assertSame(
-            $committed,
-            $census,
+            self::withoutVersions($committed),
+            self::withoutVersions($census),
             "The corpus no longer translates the way the census records.\n\n"
             . 'This is the upstream-drift alarm, and the diff names what moved: a rule added, a rule removed, '
             . 'a rule whose body changed into (or out of) a shape the vocabulary covers, or a refusal that now '
@@ -288,6 +292,18 @@ final class TracksUpstreamDriftTest extends TestCase
         }
 
         return implode("\n", $lines) . "\n";
+    }
+
+    /**
+     * The census without its version block, which is recorded rather than asserted.
+     *
+     * {@see LockedCorpus} reads those lines to decide whether a run is looking at the corpus this file
+     * describes. Comparing them as well would make the nightly `dev-main` leg fail on the words `dev-main`
+     * and never reach the rules it exists to watch.
+     */
+    private static function withoutVersions(string $census): string
+    {
+        return (string) preg_replace('/^ {4}\S+\/\S+ {2,}\S+$\n/m', '', $census);
     }
 
     /**
