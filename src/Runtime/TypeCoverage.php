@@ -138,6 +138,15 @@ final readonly class TypeCoverage
             // a docblock has no function-like node at all.
             $documented = array_flip([...$metadata->pseudoMethods, ...$metadata->staticPseudoMethods]);
 
+            // And the three methods the language gives an enum. `cases()` on any of them, `from()` and
+            // `tryFrom()` on a backed one — nobody writes them, so there is no `ClassMethod` node for the
+            // collector to visit, and the codebase lists them like any other method. PHP forbids declaring
+            // a method under one of these names on an enum, so skipping them by name cannot skip a written
+            // one. This was +430 of a +444 corpus delta, all of it in one directory of 157 enums.
+            if ($metadata->kind === ClassLikeKind::Enum) {
+                $documented += array_flip(['cases', 'from', 'tryfrom']);
+            }
+
             foreach ($metadata->methods as $name) {
                 if (isset($documented[$name])) {
                     continue;

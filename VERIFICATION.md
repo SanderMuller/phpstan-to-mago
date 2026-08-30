@@ -1252,3 +1252,30 @@ metadata and the other reads source.
 
 **Still +444 and +42, so still no entry.** The bisect points at `app` and the instrument that named this one
 works on any directory, so the next cause is a run away rather than a design question.
+
+###### An enum's three free methods, and where the last seven live
+
++444 became **−7** on one consumer and **+42 became zero** on the other. The over-count is closed; what is
+left is an under-count of seven, and the gate fails on those by design.
+
+The same two steps found it. Bisecting `app` by subdirectory put **+430 of the +444 in `app/Enums`** and
+zero in `Models`, `DataObjects` and `Concerns` — 157 enums, and 430 is close to three per enum. The language
+gives an enum `cases()`, and a backed one `from()` and `tryFrom()`; nobody writes them, so the collector has
+no `ClassMethod` node to visit and the codebase lists them like any other method. PHP forbids declaring a
+method under one of those names on an enum, so skipping them by name cannot skip a written one.
+
+**The remaining seven are traced to a directory and to a mechanism, but not yet to a cause.** Six are in
+one consumer's 42 top-level factory files and one is elsewhere in `app`. The interesting part is that
+neither half of those 42 files diverges on its own: 21 files give 200 against 200, the other 21 give 175
+against 175, and all 42 give 470 against 464. Analysing them together adds 95 declarations to the real
+rule's count and 89 to this one — a trait used by classes across both halves, counted once per user, where
+six of those users are not reached here.
+
+So the cause is in the user set rather than in the counting: `TraitUsers::of()` or `reachedAs()` misses six
+classes that PHPStan analyses the declaration in. That is a narrower question than any that has been asked
+of this metric so far, and the leave-one-out bisect the corpus runner already supports is how to close it.
+
+Two things this run establishes independently of that. The other consumer agrees **exactly**, on both the
+count and the percentage, over 1897 files — the first time any metric other than `declares` has done that.
+And the parameter metric is untouched by both of today's causes, because it walks the syntax: a docblock has
+no function-like node, and neither does an enum's `cases()`.

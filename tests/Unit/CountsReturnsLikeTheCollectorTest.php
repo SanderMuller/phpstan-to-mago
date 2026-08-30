@@ -58,6 +58,10 @@ final class CountsReturnsLikeTheCollectorTest extends TestCase
         // Only the real method counts. The codebase lists both, which was 32 declarations on one consumer's
         // factory directory alone — Laravel's factories carry two `@method` lines each.
         yield 'a class whose docblock declares methods' => ['docblock-method', 1];
+        // The language gives an enum `cases()`, and a backed one `from()` and `tryFrom()`. Nobody writes
+        // them, so there is no node to visit and only the two declared methods count. This was +430 of a
+        // +444 corpus delta, all of it in one directory of 157 enums.
+        yield 'an enum and a backed enum' => ['enum-cases', 2];
     }
 
     #[DataProvider('controls')]
