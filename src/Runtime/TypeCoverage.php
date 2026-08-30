@@ -182,9 +182,12 @@ final readonly class TypeCoverage
                 // `PropertyTypeDeclarationCollector` does not count — it collects `Property` nodes, and a
                 // promoted parameter is a `Param`.
                 //
-                // That is one of three reasons this metric is not mapped in `Vocabulary::AGGREGATES`; see
-                // VERIFICATION.md for the other two. Left as written rather than reworked, because a metric
-                // that is not emitted is a measurement waiting for its differential, not shipped behaviour.
+                // That is one of four reasons this metric is not mapped in `Vocabulary::AGGREGATES`. The
+                // others, all read from `PropertyTypeDeclarationCollector` rather than inferred from the
+                // numbers: it counts `Property` *statements*, so `public $a, $b;` is one and not two; it
+                // treats a `@var` docblock as a type; and it never sees a promoted parameter, which is a
+                // `Param` and not a `Property`. Between them the port over-counts the total by 2.15x and
+                // reads 28 points low on a real consumer. VERIFICATION.md holds the measurement.
                 if ($property->location instanceof SourceLocation) {
                     $missing[] = $property->location;
                 }

@@ -1118,8 +1118,24 @@ reasons are different from each other and from the one that stopped `returns`.
 **The corpus, first.** On a 1897-file consumer, real PHPStan counts 1443 property declarations at 93.3 %
 typed and the port counts 3110 at 65.0 % — **+1667, and 28.3 percentage points apart**. The direction of the
 percentage rules out the obvious explanation: promoted properties are almost always typed, so if the extra
-were promoted the port's percentage would be higher, not lower. Whatever supplies roughly 1700 mostly-untyped
-properties is **not traced**, and is written here as untraced rather than guessed at.
+were promoted the port's percentage would be higher, not lower.
+
+That gap was recorded as untraced and has since been traced, by reading
+`PropertyTypeDeclarationCollector` rather than by reasoning about the numbers. Two causes, and each moves a
+different half:
+
+- **The original counts `Property` *statements*, not properties.** `count($classLike->getProperties())` is
+  the total, and `public $a, $b, $c;` is one statement declaring three names — one, to PHPStan, and three to
+  a port reading metadata. That inflates the port's denominator.
+- **A `@var` docblock counts as typed.** The collector skips a property when `isPropertyDocTyped()` answers
+  yes, and the port reads only a declared type. That deflates the port's numerator.
+
+Two guesses were tested and refuted before the reading settled it, and both are worth keeping because both
+were plausible. Properties inherited from *unanalysed* code are not counted by the port — a control with a
+base class in the resolvable-but-not-analysed set counts one property, the child's own, on both sides. And
+the untyped mass is not `@property` docblocks: of the forty classes contributing the most untyped
+properties, **none** sits in a file containing `@property`. They are ordinary untyped declarations, and the
+port sees them because it counts names where the original counts statements.
 
 **Then a control, which found two things the corpus number could not separate.** Three classes: a base with
 an untyped property, a child with a typed one and a constructor-promoted one, and a second child with an
@@ -1137,9 +1153,11 @@ said. So the metric anchors findings on exactly the properties the original does
 anchor one on a property it should report. A percentage that fails and a rule that reports nothing is the
 plausible-but-wrong shape, and only running it showed it.
 
-The comment is corrected in place. The metric is left otherwise as written: something not emitted is a
-measurement waiting for its differential, not shipped behaviour, and reworking it before its cause is traced
-would be building on the guess this note declines to make.
+The comment is corrected in place. The metric is left otherwise as written, but no longer for want of a
+cause: it now needs four changes, and all four are named — count statements rather than names, read a `@var`
+docblock as a type, skip a promoted parameter, and find an anchor for an ordinary declaration. The first
+needs the syntax rather than the metadata, which is the same route `DeclaredParameters` takes for the
+parameter metric.
 
 So of the three candidates behind `no aggregate mapped for the collector`, one passed and two did not, for
 unrelated reasons — a summed collector against a deduplicating port, and this. The cluster was worth one
