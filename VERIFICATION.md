@@ -541,11 +541,17 @@ loops over `$disallowedKeywords` — a list of value objects a *consumer* config
 one matches. At package defaults it reports nothing. The same holds for the calls and constants rules: this
 package exists to let a project declare what it forbids, so its rules have no behaviour of their own.
 
-So "38 rules refusing" is not a vocabulary backlog. Covering them means carrying a consumer's configuration
-into the emitted plugin, which is the `--from-config` denominator question rather than a translation one —
-and a plugin generated that way is a plugin for that consumer, which is the property `--from-config` is
-already careful about. Sizing it as 38 rules of missing capability would have been wrong in the way this
-document keeps recording.
+**Two facts, and running them together is the mistake this file warns about.** The 38 refusals are honest
+*translation* refusals: twenty want a hook row, nine cannot find a message to report. They are real and would
+still be real if the package shipped defaults. What the survey adds is a *feasibility* fact sitting behind
+them — translate all 38 and a default install still reports nothing, because the behaviour is the
+consumer's configuration. Both are true and they are different denominators. This section first said "38
+rules refusing is not a vocabulary backlog", which asserts the second by denying the first; a peer session
+caught it.
+
+So covering the package usefully means carrying a consumer's configuration into the emitted plugin, which is
+the `--from-config` question, *and* the twenty rows are still twenty rows. Sizing it either as 38 rules of
+missing capability or as nothing at all would be wrong.
 
 `composer/pcre` is the other package the walk found: 2 registered rules, not surveyed here.
 
