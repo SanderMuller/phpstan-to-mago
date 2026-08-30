@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Runtime;
 
+use Mago\Sdk\Analyzer\Metadata\ClassLikeKind;
 use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Syntax\Node;
@@ -310,6 +311,37 @@ final class Declares
             return true;
         }
 
+        if (self::inheritsFrom($context, $className, $name)) {
+            return true;
+        }
+
+        // A method declared in a trait. PHPStan analyses such a method once per *using* class and answers
+        // `getClassReflection()` with that class; mago fires once at the declaration and the enclosing
+        // class-like is the trait, which extends nothing and implements nothing. So a rule gating on the
+        // enclosing class went silent inside every trait — measured at three findings to one on a controller
+        // fixture, and `NoRouteTrailingSlashPathRule` is one of seven corpus rules that gate this way.
+        //
+        // Answered here as "any using class satisfies it", which makes the common case — a trait used by one
+        // class that satisfies the guard — exact, and leaves the port reporting once where PHPStan reports
+        // once per satisfying user. That remaining gap is under-reporting, which is the safe direction, and
+        // closing it needs the emitted body to report per user rather than a different answer here.
+        $metadata = $context->codebase->getClassLike($className);
+        if ($metadata?->kind !== ClassLikeKind::Trait) {
+            return false;
+        }
+
+        foreach (self::traitUsers($context, $className) as $user) {
+            if (strcasecmp($user, $name) === 0 || self::inheritsFrom($context, $user, $name)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Whether a class-like has this name anywhere above it. */
+    private static function inheritsFrom(NodeAnalysisContext $context, string $className, string $name): bool
+    {
         foreach ($context->codebase->getClassAncestors($className) as $ancestor) {
             if (strcasecmp($ancestor, $name) === 0) {
                 return true;
@@ -317,6 +349,47 @@ final class Declares
         }
 
         return false;
+    }
+
+    /**
+     * The classes that use a trait, from an index built once per process.
+     *
+     * Mago has no reverse index — `$children` is null for a trait — so this walks every class-like once and
+     * reads `usedTraits`. Measured on Shopware's `src`, 6023 files and 6686 class-likes: 144 ms for the whole
+     * index, which is 0.09 s of wall on a run whose extension host alone costs 0.12 s. It is built lazily, so
+     * a run whose rules never reach a trait never pays it.
+     *
+     * A trait used by another *trait* is not found: `getMultipleClasses()` answers for classes. That is the
+     * transitive case, and no corpus rule has needed it.
+     *
+     * @return list<string>
+     */
+    private static function traitUsers(NodeAnalysisContext $context, string $trait): array
+    {
+        /** @var array<string, list<string>>|null $index */
+        static $index = null;
+
+        if ($index === null) {
+            $index = [];
+            foreach (array_chunk($context->codebase->getClassLikeNames(), 500) as $chunk) {
+                // `$metadata->name`, not the key `getMultipleClasses()` returns them under. The key is an
+                // int there, which reached `strcasecmp()` as an int and failed the whole worker — the plugin
+                // then reported nothing at all, including the class-declared case it had always caught.
+                foreach ($context->codebase->getMultipleClasses($chunk) as $metadata) {
+                    // A name the codebase lists and cannot resolve answers null here, which is the ordinary
+                    // case on a tree with unresolvable classes — mago reported 6395 of them on one corpus.
+                    if (! $metadata instanceof ClassLikeMetadata) {
+                        continue;
+                    }
+
+                    foreach ($metadata->usedTraits as $used) {
+                        $index[strtolower($used)][] = $metadata->name;
+                    }
+                }
+            }
+        }
+
+        return $index[strtolower($trait)] ?? [];
     }
 
     /** The class-declaration hook's `metadata_is`, which asks the same question. */

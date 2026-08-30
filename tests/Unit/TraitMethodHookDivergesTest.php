@@ -87,14 +87,19 @@ final class TraitMethodHookDivergesTest extends TestCase
      *
      * The three tests above measure the hook. This measures a plugin: `NoRouteTrailingSlashPathRule` emits
      * today, and it gates on the enclosing class being a controller — one of the seven corpus rules on this
-     * hook that do. So in a trait the port asks that question of the trait, which extends nothing, and the
-     * rule goes quiet rather than merely reporting once instead of twice.
+     * hook that do. In a trait the port asks that question of the trait, which extends nothing, so before
+     * `Declares::traitUsers()` the rule went *silent* there rather than merely reporting once instead of
+     * twice: one finding of PHPStan's three.
      *
-     * This is the control the fix needs and the corpus differential cannot be: that instrument keys findings
+     * It is now two of three, and the assertion says which one is missing rather than only how many. What
+     * closes the last one is the emitted body reporting per using class, which is a code-generation change;
+     * answering the guard differently cannot produce a second report.
+     *
+     * This is the control that fix needs and the corpus differential cannot be: that instrument keys findings
      * on `file:line`, so N reports at one span and one report at one span compare equal there. Here the count
      * is the assertion, so a fix that works changes this test and a fix that does nothing does not.
      */
-    public function test_a_shipped_rule_reports_nothing_in_a_trait_where_phpstan_reports_once_per_user(): void
+    public function test_a_shipped_rule_reports_a_trait_route_once_where_phpstan_reports_it_per_user(): void
     {
         $sandbox = $this->ruleSandbox();
 
@@ -108,10 +113,13 @@ final class TraitMethodHookDivergesTest extends TestCase
             'PHPStan no longer reports a trait-declared route once per using controller.',
         );
 
+        // Line 22 is the trait's route and 41 the class-declared control. The port reaches the trait now and
+        // reports it once; PHPStan reports it twice, once per using controller. That one finding is the whole
+        // of what is left, and it is under-reporting rather than over-reporting.
         self::assertSame(
-            ['src/Routes.php:41'],
+            ['src/Routes.php:22', 'src/Routes.php:41'],
             $this->magoRouteFindings($sandbox),
-            'The emitted plugin now reports somewhere other than the one class-declared route.',
+            'The emitted plugin no longer reports the trait-declared route alongside the class-declared one.',
         );
     }
 

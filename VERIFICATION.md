@@ -450,6 +450,32 @@ to be "evaluate the rule's class guard once per using class and report once per 
 which class we are in" — and for the seven rules that read the enclosing class, that guard reads class
 metadata, which the index provides.
 
+##### Half of it closed, and which half
+
+`Declares::enclosingClassIs()` now falls through to the trait's users: when the enclosing class-like is a
+trait, the guard is asked of each class that uses it and answers true if any satisfies it. The index is the
+one measured above, built lazily, so a run whose rules never reach a trait never pays for it.
+
+Counted on the controller fixture, both engines run for real:
+
+    before   PHPStan 3   port 1   the port silent in the trait
+    after    PHPStan 3   port 2   the port reports the trait route once
+
+So the rule no longer goes quiet. What is left is multiplicity: PHPStan reports the trait route once per
+using controller and the port reports it once. That is under-reporting, the safe direction, and it cannot be
+closed from here — answering the guard differently cannot produce a second report. It needs the emitted body
+to loop over the users, which is a code-generation change.
+
+The common case is now exact rather than merely closer: a trait used by one class that satisfies the guard
+gets one finding on both sides.
+
+Two things this cost, both worth recording. The first version indexed by the key `getMultipleClasses()`
+returns rather than by `$metadata->name`; the key is an int, `strcasecmp()` refused it, and the *whole
+worker* failed — so the plugin reported nothing at all, including the class-declared route it had always
+caught. A change meant to close a gap made the rule strictly worse, and the count assertion is what said so
+in one line. The second is that the same call answers null for a name the codebase lists and cannot resolve,
+which is ordinary on a real tree.
+
 ##### Where the using class goes, priced
 
 PHPStan carries the distinguishing context in the *file* field — `Subjects.php (in context of class X):41` —
