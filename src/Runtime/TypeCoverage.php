@@ -82,6 +82,34 @@ final readonly class TypeCoverage
     }
 
     /** Return type coverage across every function-like the analysis knows. */
+    /**
+     * The method names php-parser calls magic, copied from `ClassMethod::$magicNames`.
+     *
+     * Carried rather than asked of mago, because the two do not agree and the rule means this one. Copied
+     * verbatim so an upstream addition is a diff here rather than a silent divergence in a percentage.
+     *
+     * @var array<string, true>
+     */
+    private const array MAGIC_NAMES = [
+        '__construct' => true,
+        '__destruct' => true,
+        '__call' => true,
+        '__callstatic' => true,
+        '__get' => true,
+        '__set' => true,
+        '__isset' => true,
+        '__unset' => true,
+        '__sleep' => true,
+        '__wakeup' => true,
+        '__tostring' => true,
+        '__set_state' => true,
+        '__clone' => true,
+        '__invoke' => true,
+        '__debuginfo' => true,
+        '__serialize' => true,
+        '__unserialize' => true,
+    ];
+
     public static function returns(AfterAnalysisContext $context): self
     {
         $total = 0;
@@ -89,16 +117,20 @@ final readonly class TypeCoverage
         $missing = [];
 
         foreach (self::methods($context) as $method) {
-            // A constructor has no return type to declare, so counting it would make full coverage
-            // unreachable.
-            if ($method->constructor) {
-                continue;
-            }
-
+            // A constructor has no return type to declare, and it needs no check of its own: php-parser
+            // counts `__construct` among its magic names, so the list below already excludes it. A separate
+            // check stood here and a mutation could not make it fail, which is what said it was dead.
+            //
             // Only the *return* collector skips a magic method — the parameter collector counts one. Putting
             // this in the shared iterator was wrong in a way no fixture caught until the totals were compared
             // against the real rule: PHPStan's count of 7 includes `__get($name)`.
-            if ($method->flags->contains(MetadataFlags::MAGIC_METHOD)) {
+            //
+            // By name, not by `MetadataFlags::MAGIC_METHOD`. The original's filter is php-parser's
+            // `ClassMethod::isMagic()`, which is membership in a fixed list of seventeen names, and mago's
+            // flag is a different set: measured on a fixture holding `__get()`, PHPStan counted 6 methods and
+            // this counted 7, because the flag was not set for it. The list is what the rule means, so the
+            // list is what the port carries.
+            if (self::MAGIC_NAMES[strtolower($method->name)] ?? false) {
                 continue;
             }
 

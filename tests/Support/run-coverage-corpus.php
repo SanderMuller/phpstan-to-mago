@@ -40,6 +40,7 @@ $arguments = array_slice((array) ($_SERVER['argv'] ?? []), 1);
 $consumer = null;
 $sandbox = sys_get_temp_dir() . '/phpstan-to-mago-coverage-corpus';
 $requested = null;
+$metric = 'parameters';
 $extraExcludes = [];
 foreach ($arguments as $argument) {
     if (str_starts_with($argument, '--paths=')) {
@@ -49,6 +50,10 @@ foreach ($arguments as $argument) {
         // trait and the classes using it are counted once per user, so measuring either alone measures
         // something else. `--exclude` takes a directory out of an otherwise whole run.
         $extraExcludes = explode(',', substr($argument, 10));
+    } elseif (str_starts_with($argument, '--metric=')) {
+        // Which measurement this run compares. Each metric is its own port and its own divergence, so a
+        // bound measured for one says nothing about another and the two are never quoted together.
+        $metric = substr($argument, 9);
     } elseif (str_starts_with($argument, '--sandbox=')) {
         $sandbox = substr($argument, 10);
     } else {
@@ -118,6 +123,7 @@ $corpus = new CoverageCorpus(
     resolvable: $resolvable,
     excludes: array_values(array_unique($excludes)),
     sandbox: $sandbox,
+    metric: $metric,
 );
 
 $totals = $corpus->totals();
@@ -142,8 +148,9 @@ if ($untracked === null) {
     );
 }
 
-printf("  original: %d parameters\n", $totals['original']);
-printf("  port:     %d parameters\n", $totals['port']);
+printf("  metric:   %s\n", $metric);
+printf("  original: %d declarations\n", $totals['original']);
+printf("  port:     %d declarations\n", $totals['port']);
 $delta = $totals['port'] - $totals['original'];
 
 printf("  delta:    %+d\n", $delta);
@@ -155,7 +162,14 @@ if (! $whole) {
     exit(0);
 }
 
-$ceiling = Vocabulary::ACCEPTED_DIVERGENCE['parameters']['ceiling'];
+$known = Vocabulary::ACCEPTED_DIVERGENCE[$metric] ?? null;
+if ($known === null) {
+    printf("  bound:    none stated for %s yet, so this run reports rather than gates\n", $metric);
+
+    exit($totals['port'] === $totals['original'] ? 0 : 1);
+}
+
+$ceiling = $known['ceiling'];
 $ratio = $totals['original'] === 0 ? 0.0 : $delta / $totals['original'];
 
 printf("  bound:    %+.3f%% against a ceiling of +%.3f%% and a floor of 0\n", $ratio * 100, $ceiling * 100);

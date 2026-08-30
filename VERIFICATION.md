@@ -1027,3 +1027,52 @@ it would actually have hurt.
 One direction of the pair check was reading a different rule list from the data provider, so this rule was
 covered by four gate cases and simultaneously reported as an example directory nothing emits. Both now read
 `gatedRules()`.
+
+#### The return metric agreed on a fixture and missed a fifth of a real corpus
+
+Five rules refuse with `no aggregate mapped for the collector`, and the census records **no `needs:` under
+any of them** — the refusal fires before the body is walked, so the grep-a-capability strategy cannot see
+this cluster at all. It is the largest one left inside the denominator.
+
+Probed first, with all four collectors mapped temporarily: `ReturnTypeCoverageRule`,
+`PropertyTypeCoverageRule` and `DeclareCoverageRule` all **emit**, so nothing hides behind the aggregate
+mapping. `ConstantTypeCoverageRule` needs a runtime metric that does not exist, and `NewOverSettersRule`'s
+collector is not a percentage aggregate at all — per-class findings from collected data, a different shape.
+So the ceiling is three, not five.
+
+`AGGREGATES` states the bar: an entry is added when its differential passes. Taking `returns` through it
+found two defects and then stopped the entry.
+
+**Magic methods were skipped by the wrong list.** The port tested `MetadataFlags::MAGIC_METHOD`; the
+original's filter is php-parser's `ClassMethod::isMagic()`, which is membership in a fixed list of
+seventeen names. Measured on a fixture holding `__get()`: PHPStan counted 6 methods, the port 7, because
+mago does not set that flag for it. The list is what the rule means, so the list is what the port now
+carries — copied verbatim, so an upstream addition is a diff rather than a silent drift.
+
+**And a filter beside it was dead.** A separate constructor skip could not be made to fail by mutation:
+`__construct` is one of php-parser's seventeen names, so the list already excludes it. Removed rather than
+kept as defence — a filter no mutation can break is a filter nobody can trust.
+
+With both fixed the fixture agrees exactly: 6 possible, 2 typed, 33.3 %, and the same four reported
+locations. The fixture earns its parts — a magic method, a constructor, a trait method, an abstract method,
+an interface method, one typed and one untyped return.
+
+**Then the corpus said otherwise.** On a 2950-file consumer, real PHPStan counts 18307 method declarations
+and the port counts 14398 — **−3909, a 21 % under-count**, where the parameter metric on the same corpus is
++81 of 13791 and inside its stated ceiling.
+
+The cause is traced, not guessed. `CollectorDataNormalizer::normalize()` sums every collected record with
+no deduplication, and a trait method is collected once per using class — so the real total counts it once
+per user. `TypeCoverage::returns()` walks declarations and dedups by declaration location. The parameter
+metric does not have this problem because it does not share that iterator: `DeclaredParameters` builds a
+trait-user index and a `timesCounted()` multiplicity for exactly this reason, which is the work `returns`
+still needs.
+
+So no `AGGREGATES` entry. The rule stays refused, which is what the docblock's rule is for: a fixture
+differential is necessary and was never sufficient, and this is the second time a metric agreed on a fixture
+and diverged on real code.
+
+The instrument is in the repository rather than the result alone: `run-coverage-corpus.php` takes
+`--metric=` and `CoverageCorpus` names each metric's runtime method and summary line in one table, so the
+next metric is one row and one run. A metric with no stated bound reports and fails on any difference,
+rather than being gated against a ceiling measured for a different measurement.

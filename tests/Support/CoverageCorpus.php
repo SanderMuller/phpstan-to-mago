@@ -37,6 +37,22 @@ use SplFileInfo;
 final readonly class CoverageCorpus
 {
     /**
+     * What each metric is called on either side of the comparison.
+     *
+     * Three names for one measurement, and none of them derivable from the others: the runtime method, the
+     * `measure: true` summary line the real rule prints, and nothing else. Kept in one place so adding a
+     * metric is one row rather than three edits that can disagree.
+     *
+     * @var array<string, array{method: string, summary: string}>
+     */
+    private const array METRICS = [
+        'parameters' => ['method' => 'parameters', 'summary' => 'Param type coverage'],
+        'returns' => ['method' => 'returns', 'summary' => 'Return type coverage'],
+        'properties' => ['method' => 'properties', 'summary' => 'Property type coverage'],
+        'declares' => ['method' => 'declares', 'summary' => 'Declare coverage'],
+    ];
+
+    /**
      * @param list<string> $paths absolute directories both tools analyse
      * @param list<string> $resolvable absolute directories both tools may resolve symbols in, analysed or not
      * @param list<string> $excludes absolute paths the consumer's own configuration excludes
@@ -49,6 +65,7 @@ final readonly class CoverageCorpus
         private array $resolvable,
         private array $excludes,
         private string $sandbox,
+        private string $metric = 'parameters',
     ) {}
 
     /**
@@ -177,7 +194,10 @@ final readonly class CoverageCorpus
 
         // Measure mode reports a count unconditionally, so the plugin does too — and writes it to a file
         // rather than reporting it, because a count is not a finding and has no span to sit on.
-        file_put_contents($this->sandbox . '/plugin.php', <<<'PLUGIN'
+        // Interpolating rather than a nowdoc, for the one name that varies: which measurement this run is.
+        $method = self::METRICS[$this->metric]['method'];
+
+        file_put_contents($this->sandbox . '/plugin.php', <<<PLUGIN
             <?php
 
             declare(strict_types=1);
@@ -198,9 +218,9 @@ final readonly class CoverageCorpus
                     return new PluginDefinition(identifier: 'corpus/measure', name: 'Measure', description: 'Measure');
                 }
 
-                public function register(PluginRegistry $registry): void
+                public function register(PluginRegistry \$registry): void
                 {
-                    $registry->registerAfterAnalysisHook($this);
+                    \$registry->registerAfterAnalysisHook(\$this);
                 }
 
                 /** @return list<never> */
@@ -215,9 +235,9 @@ final readonly class CoverageCorpus
                     return [];
                 }
 
-                public function afterAnalysis(AfterAnalysisContext $context): void
+                public function afterAnalysis(AfterAnalysisContext \$context): void
                 {
-                    file_put_contents('measure.txt', (string) TypeCoverage::parameters($context)->total);
+                    file_put_contents('measure.txt', (string) TypeCoverage::{$method}(\$context)->total);
                 }
             }
             PLUGIN);
@@ -316,7 +336,9 @@ final readonly class CoverageCorpus
             '--configuration=' . $this->sandbox . '/phpstan-coverage.neon',
         ], $this->consumerRoot);
 
-        return preg_match('/Param type coverage is [\d.]+ % out of (\d+) possible/', $output, $matched) === 1
+        $summary = preg_quote(self::METRICS[$this->metric]['summary'], '/');
+
+        return preg_match('/' . $summary . ' is [\d.]+ % out of (\d+) possible/', $output, $matched) === 1
             ? (int) $matched[1]
             : throw new RuntimeException("The real rule reported no count:\n" . substr($output, 0, 2000));
     }
