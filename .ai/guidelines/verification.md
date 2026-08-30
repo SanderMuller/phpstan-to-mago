@@ -52,6 +52,30 @@ evidence.
 mechanically found that two were something else, and one of those was a correct-forever refusal rather than
 part of the story. The number was the part being used to size the work.
 
+## A probe answers the question you asked, not the one you are about to act on
+
+Two APIs were checked before a rule was built on them, both by running code, and both answers were true.
+Neither was the answer the rule needed.
+
+- `PHPVersion::$id` exists and is a public readonly int — verified. "So read `$id`" is a *different* claim,
+  about what the integer means, and it is false: mago packs a version as `(major << 16) | (minor << 8) |
+  patch` and PHPStan encodes it as `major * 10000 + minor * 100 + patch`. 8.3.0 is 525056 against 80300. A
+  rule comparing against twenty PHPStan-shaped ids would have reported every deprecated option on every
+  project. It was caught by reading `fromParts()`, not by testing: 525056 does not look wrong on its own,
+  only next to 80300, and a reachability probe never puts the two numbers side by side.
+- `getConstant('PHP_EOL')` comes back with the deprecation flag right — verified, by bare name. The rule
+  reads constants *inside namespaces*, where `getResolvedName()` answers `Dep\PHP_EOL` and the codebase
+  holds only `PHP_EOL`. The rule would have emitted and reported nothing on every real file.
+
+Both probes were correct instruments answering a narrower question than the one being decided. So state what
+a probe establishes and what it does not, especially when handing it to someone else: a verified fact and an
+unverified inference in the same sentence look identical to whoever builds on them, and only they can tell
+which was which — too late.
+
+Reachability is the usual gap. "The field is there", "the method answers", "the class resolves" say nothing
+about what the value *means*, whether two values are comparable, or whether the question is the one the rule
+asks. Where a value is going to be compared against something, probe the comparison.
+
 ## A wrong "why" is worse than none
 
 Reproduction steps, tests and the fix all get built on the stated cause. When you have not traced it, say
