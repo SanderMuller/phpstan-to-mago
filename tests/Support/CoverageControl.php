@@ -20,7 +20,10 @@ use RuntimeException;
  */
 final readonly class CoverageControl
 {
-    public function __construct(private string $project) {}
+    public function __construct(
+        private string $project,
+        private string $metric = 'parameters',
+    ) {}
 
     /**
      * The real rule's total, and the port's, as `[phpstan, port]`.
@@ -63,7 +66,10 @@ final readonly class CoverageControl
             symlink($root . '/vendor/bin/mago', $sandbox . '/mago');
         }
 
-        file_put_contents($sandbox . '/plugin.php', <<<'PLUGIN'
+        // Interpolating rather than a nowdoc, for the one name that varies: which measurement this is.
+        $method = CoverageMetrics::ALL[$this->metric]['method'];
+
+        file_put_contents($sandbox . '/plugin.php', <<<PLUGIN
             <?php
 
             declare(strict_types=1);
@@ -84,9 +90,9 @@ final readonly class CoverageControl
                     return new PluginDefinition(identifier: 'control/measure', name: 'Measure', description: 'Measure');
                 }
 
-                public function register(PluginRegistry $registry): void
+                public function register(PluginRegistry \$registry): void
                 {
-                    $registry->registerAfterAnalysisHook($this);
+                    \$registry->registerAfterAnalysisHook(\$this);
                 }
 
                 /** @return list<never> */
@@ -101,9 +107,9 @@ final readonly class CoverageControl
                     return [];
                 }
 
-                public function afterAnalysis(AfterAnalysisContext $context): void
+                public function afterAnalysis(AfterAnalysisContext \$context): void
                 {
-                    file_put_contents('measure.txt', (string) TypeCoverage::parameters($context)->total);
+                    file_put_contents('measure.txt', (string) TypeCoverage::{$method}(\$context)->total);
                 }
             }
             PLUGIN);
@@ -178,7 +184,9 @@ final readonly class CoverageControl
         ]);
 
         // "Param type coverage is 0.0 % out of 6 possible" — the measure-mode message.
-        return preg_match('/Param type coverage is [\d.]+ % out of (\d+) possible/', $output, $matched) === 1
+        $summary = preg_quote(CoverageMetrics::ALL[$this->metric]['summary'], '/');
+
+        return preg_match('/' . $summary . ' is [\d.]+ % out of (\d+) possible/', $output, $matched) === 1
             ? (int) $matched[1]
             : throw new RuntimeException("The real rule reported no count:\n" . $output);
     }

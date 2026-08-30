@@ -37,27 +37,6 @@ use SplFileInfo;
 final readonly class CoverageCorpus
 {
     /**
-     * What each metric is called on either side of the comparison.
-     *
-     * Two names for one measurement, and neither derivable from the other: the runtime method, and the
-     * `measure: true` summary line the real rule prints. Kept in one place so adding a metric is one row
-     * rather than edits in three files that can disagree.
-     *
-     * Each summary is copied out of its rule rather than inferred from the metric's name. Three of the four
-     * follow one pattern and `declares` does not — it prints "Strict declares coverage" where the shape
-     * predicts "Declare coverage" — and a wrong summary is not a wrong number, it is no number at all: the
-     * regex finds nothing and the run dies naming the real rule instead of the guess.
-     *
-     * @var array<string, array{method: string, summary: string}>
-     */
-    private const array METRICS = [
-        'parameters' => ['method' => 'parameters', 'summary' => 'Param type coverage'],
-        'returns' => ['method' => 'returns', 'summary' => 'Return type coverage'],
-        'properties' => ['method' => 'properties', 'summary' => 'Property type coverage'],
-        'declares' => ['method' => 'declares', 'summary' => 'Strict declares coverage'],
-    ];
-
-    /**
      * @param list<string> $paths absolute directories both tools analyse
      * @param list<string> $resolvable absolute directories both tools may resolve symbols in, analysed or not
      * @param list<string> $excludes absolute paths the consumer's own configuration excludes
@@ -213,7 +192,7 @@ final readonly class CoverageCorpus
         // Measure mode reports a count unconditionally, so the plugin does too — and writes it to a file
         // rather than reporting it, because a count is not a finding and has no span to sit on.
         // Interpolating rather than a nowdoc, for the one name that varies: which measurement this run is.
-        $method = self::METRICS[$this->metric]['method'];
+        $method = CoverageMetrics::ALL[$this->metric]['method'];
 
         file_put_contents($this->sandbox . '/plugin.php', <<<PLUGIN
             <?php
@@ -356,7 +335,7 @@ final readonly class CoverageCorpus
             '--configuration=' . $this->sandbox . '/phpstan-coverage.neon',
         ], $this->consumerRoot);
 
-        $summary = preg_quote(self::METRICS[$this->metric]['summary'], '/');
+        $summary = preg_quote(CoverageMetrics::ALL[$this->metric]['summary'], '/');
 
         return preg_match('/' . $summary . ' is ([\d.]+) % out of (\d+) possible/', $output, $matched) === 1
             ? [(int) $matched[2], (float) $matched[1]]

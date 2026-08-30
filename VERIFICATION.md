@@ -1162,3 +1162,39 @@ parameter metric.
 So of the three candidates behind `no aggregate mapped for the collector`, one passed and two did not, for
 unrelated reasons — a summed collector against a deduplicating port, and this. The cluster was worth one
 rule, and the census could not have said so: it records no `needs:` for any of the five.
+
+##### The return metric, brought from −21 % to +3 % by counting a trait once per user
+
+Not mapped yet, and much closer. The obstacle named last time — the collector sums records with no
+deduplication, so a trait's body counts once for every class that uses it — is implemented, and the corpus
+delta moved from **−3909 of 18307** to **+561**, with a second consumer at **+55 of 8526**.
+
+**A fixture agreed by accident first, which is the part worth keeping.** A trait used by two classes and a
+trait used by nobody gave 3 against the real rule's 3 — while counting the wrong things in both directions,
+because the unused trait's method supplied the one the shared trait's second user was missing. Deleting the
+unused trait separated them: PHPStan stayed at 3 and the port dropped to 2. Two errors of the same size in
+opposite directions is what a single total cannot show.
+
+Three facts about mago's model decided the shape, all probed rather than assumed:
+
+- A class's `methods` list holds **only its own**. A trait's methods are not listed on the classes that use
+  it, and a parent's are not listed on a subclass — so a declaration is reached exactly once, at its own
+  class-like, and the deduplication that used to sit here had nothing to do but cancel the multiplicity.
+- `properties` is the **opposite**: a trait's property *is* listed on every class that uses it. The two
+  members are not symmetric, and a shared iterator over "members" would be wrong for one of them.
+- A class-like's `kind` says whether it is a trait, so the multiplier is a lookup in `TraitUsers::of()` —
+  the index `DeclaredParameters` already builds.
+
+**What is left is one thing, and it is pinned by a control.** `overridden-trait-method` — a class that uses
+a trait and declares the same method itself — counts 1 to the real rule and 2 here: the class's own method
+wins, so the trait's version is never analysed in that context. The multiplier asks how many classes use the
+trait, not how many of them actually reach the declaration. `DeclaredParameters::timesCounted()` answers the
+harder question through `reachedAs()`, following overrides, `insteadof` and aliases — and it does so by
+walking the syntax rather than the metadata, which is the shape this metric will have to take too.
+
+Four control projects now carry return-count expectations alongside their parameter ones, and a fifth pins
+the divergence exactly rather than as "at least one". All five numbers were written before the run,
+including the prediction that the override control would disagree.
+
+The controls harness is metric-aware for the same reason the corpus one is, and both now read one shared
+table of what each metric is called: the runtime method, and the summary line its rule prints.

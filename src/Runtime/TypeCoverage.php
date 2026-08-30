@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Runtime;
 
 use Mago\Sdk\Analyzer\AfterAnalysisContext;
+use Mago\Sdk\Analyzer\Metadata\ClassLikeKind;
 use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata as ClassMetadata;
 use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\Metadata\MetadataFlags;
@@ -115,38 +116,82 @@ final readonly class TypeCoverage
         $total = 0;
         $typed = 0;
         $missing = [];
+        $traitUsers = TraitUsers::of($context);
 
-        foreach (self::methods($context) as $method) {
-            // A constructor has no return type to declare, and it needs no check of its own: php-parser
-            // counts `__construct` among its magic names, so the list below already excludes it. A separate
-            // check stood here and a mutation could not make it fail, which is what said it was dead.
-            //
-            // Only the *return* collector skips a magic method — the parameter collector counts one. Putting
-            // this in the shared iterator was wrong in a way no fixture caught until the totals were compared
-            // against the real rule: PHPStan's count of 7 includes `__get($name)`.
-            //
-            // By name, not by `MetadataFlags::MAGIC_METHOD`. The original's filter is php-parser's
-            // `ClassMethod::isMagic()`, which is membership in a fixed list of seventeen names, and mago's
-            // flag is a different set: measured on a fixture holding `__get()`, PHPStan counted 6 methods and
-            // this counted 7, because the flag was not set for it. The list is what the rule means, so the
-            // list is what the port carries.
-            if (self::MAGIC_NAMES[strtolower($method->name)] ?? false) {
+        foreach (self::classNames($context) as $class) {
+            $metadata = $context->codebase->getClassLike($class);
+            if (! $metadata instanceof ClassMetadata) {
                 continue;
             }
 
-            ++$total;
-            if ($method->declaredReturnType !== null) {
-                ++$typed;
-
+            $times = self::timesAnalysed($metadata, $traitUsers);
+            if ($times === 0) {
                 continue;
             }
 
-            // `nameLocation` is where the original anchors a missing return type, and it is nullable — a
-            // closure has no name to point at — so the declaration's own location stands in.
-            $missing[] = $method->nameLocation instanceof SourceLocation ? $method->nameLocation : $method->location;
+            foreach ($metadata->methods as $name) {
+                $method = $context->codebase->getDeclaringMethod($class, $name);
+                if (! $method instanceof FunctionLikeMetadata) {
+                    continue;
+                }
+
+                // Only the *return* collector skips a magic method — the parameter collector counts one.
+                // Putting this in a shared iterator was wrong in a way no fixture caught until the totals
+                // were compared against the real rule: PHPStan's count of 7 includes `__get($name)`.
+                //
+                // By name, not by `MetadataFlags::MAGIC_METHOD`. The original's filter is php-parser's
+                // `ClassMethod::isMagic()`, which is membership in a fixed list of seventeen names, and
+                // mago's flag is a different set: measured on a fixture holding `__get()`, PHPStan counted 6
+                // methods and this counted 7, because the flag was not set for it. The list is what the rule
+                // means, so the list is what the port carries. `__construct` is one of the seventeen, which
+                // is why no separate constructor check stands here — one did, and no mutation could make it
+                // fail.
+                if (self::MAGIC_NAMES[strtolower($method->name)] ?? false) {
+                    continue;
+                }
+
+                $total += $times;
+                if ($method->declaredReturnType !== null) {
+                    $typed += $times;
+
+                    continue;
+                }
+
+                // Once, however many times it is counted: a declaration has one site, and PHPStan reports
+                // one error per (file, line, message) whatever the collector handed it. `DeclaredParameters`
+                // anchors the same way for the same reason.
+                //
+                // `nameLocation` is where the original anchors a missing return type, and it is nullable — a
+                // closure has no name to point at — so the declaration's own location stands in.
+                $missing[] = $method->nameLocation instanceof SourceLocation ? $method->nameLocation : $method->location;
+            }
         }
 
         return new self($total, $typed, $missing);
+    }
+
+    /**
+     * How many times PHPStan analyses one class-like's body, which is not always once.
+     *
+     * The collectors here run per analysed *scope*, and a trait's body is analysed once for every class that
+     * uses it — twice for a trait two classes use, and **not at all** for a trait nobody uses. A class is
+     * analysed once.
+     *
+     * Measured, and it is the difference between two wrong numbers cancelling and two right ones. On a
+     * fixture with a trait used by two classes and a trait used by none, walking declarations once gave the
+     * same total as the real rule while counting the wrong things: the unused trait's method added the one
+     * the shared trait's second user was missing. Deleting the unused trait separated them — PHPStan stayed
+     * at 3 and this dropped to 2.
+     *
+     * @param array<string, list<array{class: string|null, aliases: list<string>}>> $traitUsers
+     */
+    private static function timesAnalysed(ClassMetadata $metadata, array $traitUsers): int
+    {
+        if ($metadata->kind !== ClassLikeKind::Trait) {
+            return 1;
+        }
+
+        return count($traitUsers[strtolower($metadata->originalName)] ?? []);
     }
 
     /** Property type coverage across every class-like the analysis knows. */
@@ -235,44 +280,6 @@ final readonly class TypeCoverage
         }
 
         return new self($total, $typed, $missing);
-    }
-
-    /**
-     * Every method the analysis knows, resolved through its declaring class.
-     *
-     * Resolved rather than listed: a class using a trait does not list the trait's methods, so walking each
-     * class's own list would silently drop them. `getDeclaringMethod()` finds a method wherever it is
-     * declared, and hands back metadata already attributed to that file.
-     *
-     * @return iterable<FunctionLikeMetadata>
-     */
-    private static function methods(AfterAnalysisContext $context): iterable
-    {
-        $seen = [];
-        foreach (self::classNames($context) as $class) {
-            $metadata = $context->codebase->getClassLike($class);
-            if (! $metadata instanceof ClassMetadata) {
-                continue;
-            }
-
-            foreach ($metadata->methods as $name) {
-                $method = $context->codebase->getDeclaringMethod($class, $name);
-                if (! $method instanceof FunctionLikeMetadata) {
-                    continue;
-                }
-
-                // One declaration counted once, however many classes reach it. Names arrive lowercased, so
-                // the key folds case for free.
-                $key = $method->location->file . ':' . $method->location->span->start;
-                if (isset($seen[$key])) {
-                    continue;
-                }
-
-                $seen[$key] = true;
-
-                yield $method;
-            }
-        }
     }
 
     /**
