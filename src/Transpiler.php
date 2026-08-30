@@ -570,6 +570,17 @@ PHP;
     {
         // A collector-and-consumer pair has no per-file body to translate, so it is recognised and re-emitted
         // rather than walked.
+        //
+        // The one contingent `permanent` of the three. The other two are permanent by their own body — one
+        // writes a file, one hands a node back to an analysis mago has no equivalent for, and nothing outside
+        // those rules changes it. This one is permanent by what *currently* consumes the collector: add a
+        // consumer that reports and the pair becomes portable.
+        //
+        // Which would be the dangerous kind of mark, except that it cannot go stale.
+        // {@see AggregateRule::onlyFeedsAWriter()} re-reads every consumer on every run and answers false the
+        // moment one of them builds a rule error, so the mark disappears by itself and the census drift alarm
+        // fires on the line that changed. Recorded because a reader who does not know that would either
+        // distrust the mark or try to make it derived, and it already is.
         if (self::$target === 'php' && $this->implementsCollector($class) && AggregateRule::onlyFeedsAWriter($this->file)) {
             throw new Refusal(
                 'every rule that consumes this collector reports nothing and writes a file instead, so the '
