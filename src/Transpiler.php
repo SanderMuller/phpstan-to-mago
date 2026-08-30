@@ -251,6 +251,7 @@ final class Transpiler
         }
 
         $processNode = $this->inheritedRuleMethod($class, 'processNode');
+        $this->context->currentMethod = $processNode;
         $this->context->checkMode = self::$target === 'php' && $this->independentChecks($processNode) >= 2;
         foreach ($processNode->stmts ?? [] as $stmt) {
             $this->translateOrCollect($stmt);

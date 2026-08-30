@@ -7,6 +7,7 @@ namespace Sandermuller\PhpstanToMago;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\ClassLike;
+use PhpParser\Node\Stmt\ClassMethod;
 
 /**
  * Everything one rule's translation mutates, in one place.
@@ -204,6 +205,24 @@ final class TranslationContext
      * friends. Such a rule has to run on the pre hook, or it sees the state the node just created.
      */
     public bool $readsPriorScope = false;
+
+    /**
+     * Constructor parameters the rule package's neon does not wire, by the rule that declares them.
+     *
+     * Not the same as an unconfigured *package*: the package can wire other rules and skip this one. Reading
+     * such a property has to refuse by naming that, or it falls through to the generic path and refuses with
+     * `unknown local $this`, which points at the receiver instead of at the missing wiring.
+     *
+     * @var array<string, string>
+     */
+    /**
+     * The method whose body is being translated, for questions about it a statement cannot answer.
+     *
+     * Scoped like `$currentClass`: saved and restored around every inline, so a helper's body is asked about
+     * the helper rather than about the rule that called it. Used to tell a folded integer local from a
+     * counter — see {@see Translator::isIncremented()}.
+     */
+    public ?ClassMethod $currentMethod = null;
 
     /**
      * Constructor parameters the rule package's neon does not wire, by the rule that declares them.

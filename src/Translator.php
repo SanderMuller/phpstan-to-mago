@@ -39,6 +39,8 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
+use PhpParser\Node\Expr\PostInc;
+use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
@@ -3733,6 +3735,7 @@ final readonly class Translator
         $savedClass = $this->context->currentClass;
         $savedUses = $this->context->useMap;
         $savedInHelper = $this->context->inErrorHelper;
+        $savedMethod = $this->context->currentMethod;
         $savedConditions = $this->context->reportConditions;
         $savedTrailing = $this->context->helperTrailingReport;
 
@@ -3743,6 +3746,7 @@ final readonly class Translator
         $this->context->currentClass = $declaring['class'];
         $this->context->useMap = $declaring['uses'];
         $this->context->inErrorHelper = true;
+        $this->context->currentMethod = $helper;
         $this->context->reportConditions = [];
         $this->context->helperTrailingReport = false;
         $this->collectConstants($declaring['class']);
@@ -3765,6 +3769,7 @@ final readonly class Translator
             $this->context->reportConditions = $savedConditions;
             $this->context->helperTrailingReport = $savedTrailing;
             $this->context->inErrorHelper = $savedInHelper;
+            $this->context->currentMethod = $savedMethod;
             $this->context->locals = $savedLocals;
             $this->context->literals = $savedLiterals;
             $this->context->caches = $savedCaches;
@@ -5039,6 +5044,31 @@ final readonly class Translator
             return;
         }
 
+        // `++$n;` on a counter. The loop it sits in is already emitted around it, so this is the increment
+        // and nothing else — the declaration went in where the counter was bound and the threshold test
+        // reads it after the loop closes.
+        if ($stmt instanceof Expression
+            && ($stmt->expr instanceof PreInc || $stmt->expr instanceof PostInc)
+            && $stmt->expr->var instanceof Variable
+            && is_string($stmt->expr->var->name)
+            && ($this->context->locals[$stmt->expr->var->name]['kind'] ?? null) === 'int'
+        ) {
+            // Only a counter this transpiler declared, which is the one shape that carries a `php` rendering
+            // naming a variable. An integer local folded to its literal has none, and incrementing a literal
+            // is not something to emit — it is a rule doing arithmetic this vocabulary does not carry.
+            $rendered = $this->context->locals[$stmt->expr->var->name]['php'] ?? null;
+            if (! is_string($rendered) || ! str_starts_with($rendered, '$')) {
+                throw new Refusal('an increment of something other than a counter', $stmt->getStartLine());
+            }
+
+            $this->context->lines[] = new Stm('assign', [
+                'target' => substr($rendered, 1),
+                'value' => $rendered . ' + 1',
+            ], $this->context->indent);
+
+            return;
+        }
+
         // `static $cache = [];` part-way through a helper. Nothing is emitted: a cache is invisible to the
         // answer, and what it stands for is settled by its fill and read back at each use.
         if ($stmt instanceof Static_ && $this->takesACacheStatement($stmt)) {
@@ -6002,6 +6032,38 @@ final readonly class Translator
             . $this->context->backend->bytes($group) . ')';
     }
 
+    /**
+     * Whether a name is incremented anywhere in the method being translated.
+     *
+     * A local assigned an integer literal is ordinarily folded — a read of it emits the literal, which is
+     * exact and shorter. A *counter* cannot be: `$n = 0` followed by `++$n` in a loop is a value that
+     * changes, and folding it would emit `0` at every read and report a count that is always the initial
+     * one. So the binding has to know, at the assignment, what happens to the name later.
+     *
+     * Looked up in the method rather than guessed from the assignment, because nothing about `$n = 0` says
+     * which of the two it is. `SingleRequiredMethodRule` counts `#[Required]` methods this way and reports
+     * the count; `TaggedIteratorOverRepeatedServiceCallRule` reaches the same shape through
+     * `array_count_values()`.
+     */
+    private function isIncremented(string $name): bool
+    {
+        $method = $this->context->currentMethod;
+        if (! $method instanceof ClassMethod) {
+            return false;
+        }
+
+        foreach ((new NodeFinder())->findInstanceOf([$method], Expr::class) as $found) {
+            if (($found instanceof PreInc || $found instanceof PostInc)
+                && $found->var instanceof Variable
+                && $found->var->name === $name
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function bindLocal(Assign $assign, int $line): void
     {
         if (! $assign->var instanceof Variable || ! is_string($assign->var->name)) {
@@ -6010,6 +6072,21 @@ final readonly class Translator
 
         $name = $assign->var->name;
         $value = $assign->expr;
+
+        // `$n = 0` that something later increments is a counter, not a constant. Declared as a real variable
+        // and read as one, where an integer local is ordinarily folded to its literal — folding a counter
+        // would emit `0` at every read and report a count that never moved off its initial value.
+        if ($value instanceof Int_ && $this->isIncremented($name)) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a counter carried across a loop, which only the PHP target carries', $line);
+            }
+
+            $local = Emitter::snake($name);
+            $this->context->lines[] = new Stm('declare', ['target' => $local, 'value' => (string) $value->value], $this->context->indent);
+            $this->context->locals[$name] = ['rust' => '$' . $local, 'kind' => 'int', 'php' => '$' . $local];
+
+            return;
+        }
 
         // $ruleErrors = [];  — the accumulator a rule fills in a loop. Reports are emitted where they
         // are appended, so the binding itself produces no code.

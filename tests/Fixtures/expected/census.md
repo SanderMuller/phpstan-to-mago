@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 38 of 89 portable rules the package registers emit, 1 covered by the engine, 50 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 39 of 89 portable rules the package registers emit, 1 covered by the engine, 49 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -325,9 +325,7 @@ REFUSE  ServicesExcludedDirectoryMustExistRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->find()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->find()
 EMIT    SingleArgEventDispatchRule
-REFUSE  SingleRequiredMethodRule
-        statement outside the vocabulary: Stmt_Expression
-        needs: statement outside the vocabulary: Stmt_Expression
+EMIT    SingleRequiredMethodRule
 EMIT    StringFileAbsolutePathExistsRule  (the package registers it nowhere)
 REFUSE  TaggedIteratorOverRepeatedServiceCallRule
         no node predicate for instanceof PhpParser\Node\Stmt\Expression on a expr
