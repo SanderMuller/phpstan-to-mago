@@ -91,18 +91,42 @@ final class EmittedRuleFiresTest extends TestCase
         // The vendored corpus is the shipped claim, and every emitted rule in it owes the gate a pair. The
         // local fixtures join whenever one is written for them: a fixture exists to pin a specific shape, and
         // a shape worth pinning is worth running.
-        $rules = self::corpusRules();
-        foreach (self::fixtureRules() as $rule => $entry) {
-            $rules[$rule] ??= $entry;
-        }
-
-        foreach ($rules as $rule => [$file, $class]) {
+        foreach (self::gatedRules() as $rule => [$file, $class]) {
             if (glob(self::EXAMPLES . '/' . $rule . '/Bad*.php') === []) {
                 continue;
             }
 
             yield $rule => [$rule, $file, $class];
         }
+    }
+
+    /**
+     * Every rule this gate knows about, from all three sources.
+     *
+     * One list rather than three, because both directions of the pair check read it and a rule visible to
+     * one and not the other reads as an orphaned example directory. That is how `ConfiguredByTheProjectRule`
+     * first failed: covered by the data provider, invisible to the orphan check, and reported as a pair
+     * nothing emits while its four cases were passing.
+     *
+     * @return array<string, array{string, string}>
+     */
+    private static function gatedRules(): array
+    {
+        $rules = self::corpusRules();
+        foreach (self::fixtureRules() as $rule => $entry) {
+            $rules[$rule] ??= $entry;
+        }
+
+        // The rule a project configures rather than a package. It sits outside `Fixtures/Rules` on purpose:
+        // that glob emits what it finds with no project behind it, and this rule refuses that way —
+        // correctly, because without `--from-config` there is nowhere for its values to come from.
+        // `FiresGate::FROM_PROJECT` names the project it is emitted against.
+        $rules['ConfiguredByTheProjectRule'] = [
+            __DIR__ . '/../Fixtures/RegisteredRulePackage/ConfiguredByTheProjectRule.php',
+            'Sandermuller\\PhpstanToMago\\Tests\\Fixtures\\RegisteredRulePackage\\ConfiguredByTheProjectRule',
+        ];
+
+        return $rules;
     }
 
     /**
@@ -244,7 +268,7 @@ final class EmittedRuleFiresTest extends TestCase
             self::markTestSkipped($mismatch);
         }
 
-        $emitting = array_keys(self::corpusRules());
+        $emitting = array_keys(self::gatedRules());
         $fixtures = array_keys(self::fixtureRules());
 
         $orphaned = [];

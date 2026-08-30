@@ -8,6 +8,7 @@ use FilesystemIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RuntimeException;
+use Sandermuller\PhpstanToMago\RegisteredRules;
 use Sandermuller\PhpstanToMago\Transpiler;
 use SplFileInfo;
 
@@ -143,7 +144,27 @@ final readonly class FiresGate
      *
      * @var array<string, array<string, mixed>>
      */
+    /**
+     * Rules whose configuration comes from a project rather than from the package that ships them.
+     *
+     * The package registers these nowhere, so there is no neon to read their wiring from and the transpiler
+     * refuses them outright unless `--from-config` points it at a project. Named here so the gate emits them
+     * the way that flag does, against the container of the project below.
+     *
+     * @var array<string, string>
+     */
+    private const array FROM_PROJECT = [
+        'ConfiguredByTheProjectRule' => __DIR__ . '/../Fixtures/RegisteredProject',
+    ];
+
     private const array CONFIGURED = [
+        // PHPStan's side only, for a rule in {@see FROM_PROJECT}. The plugin is deliberately given nothing:
+        // its constructor defaults are what the project's container supplied, and whether those are right is
+        // the whole question. Passing them again would test the gate's own table instead.
+        'ConfiguredByTheProjectRule' => [
+            'banned' => ['dump', 'dd'],
+            'alsoBanned' => ['VarDump', 'Ray'],
+        ],
         'TraitRequiresInterfaceRule' => [
             'traitRequiresInterface' => [
                 'Examples\\Contracts\\Localised' => 'Examples\\Contracts\\LocalisedContract',
@@ -525,6 +546,18 @@ final readonly class FiresGate
      */
     private function configuredValues(string $ruleFile): array
     {
+        // For a rule in {@see FROM_PROJECT} the transpiled arguments are the *plugin's* properties, and a
+        // derived one has no constructor parameter to match it: `bannedLookup` is computed from
+        // `alsoBanned`, so handing PHPStan both is "Unable to pass specified arguments to __construct()".
+        // The table names what the rule declares; the plugin gets nothing and stands on its defaults.
+        if (isset(self::FROM_PROJECT[basename($ruleFile, '.php')])) {
+            // Read without a fallback on purpose. A rule emitted against a project must appear in
+            // {@see CONFIGURED} too, or PHPStan registers it unconfigured and the pair compares a rule that
+            // was given values against one that was not. Adding a `?? []` would make that a silent pass;
+            // this way the two tables are checked against each other statically.
+            return self::CONFIGURED[basename($ruleFile, '.php')];
+        }
+
         /** @var array<string, mixed> $arguments */
         $arguments = $this->transpiled($ruleFile)['arguments'];
 
@@ -544,6 +577,14 @@ final readonly class FiresGate
         // the transpiler gives it: the parameter's last segment is the property name. One override, both sides
         // — the alternative was a second map to keep in step, and a threshold configured on one side only is
         // exactly how this pair first failed, with the plugin still carrying the package default of 40.
+        // A rule configured by a project carries those values as its constructor defaults already, and
+        // handing them over again would prove the gate can pass an argument rather than that the defaults
+        // are the project's. It also cannot work: PHPStan takes the parameter a rule declares and the plugin
+        // takes the property, and a derived property has no parameter of its own.
+        if (isset(self::FROM_PROJECT[basename($ruleFile, '.php')])) {
+            return '';
+        }
+
         $supplied = self::CONFIGURED[basename($ruleFile, '.php')] ?? [];
         foreach (self::PARAMETERS[basename($ruleFile, '.php')] ?? [] as $root => $values) {
             // A top-level scalar names the property itself; a tree names it in its last segment.
@@ -625,14 +666,24 @@ final readonly class FiresGate
     {
         $target = Transpiler::$target;
         $survey = Transpiler::$survey;
+        $consumer = Transpiler::$consumerConfiguration;
         Transpiler::$target = 'php';
         Transpiler::$survey = false;
+
+        $project = self::FROM_PROJECT[basename($ruleFile, '.php')] ?? null;
+        if ($project !== null) {
+            Transpiler::$consumerConfiguration = RegisteredRules::discover(
+                $project,
+                $this->repositoryRoot . '/vendor/bin/phpstan',
+            );
+        }
 
         try {
             return (new Transpiler($ruleFile))->transpile();
         } finally {
             Transpiler::$target = $target;
             Transpiler::$survey = $survey;
+            Transpiler::$consumerConfiguration = $consumer;
         }
     }
 

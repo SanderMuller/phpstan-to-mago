@@ -997,3 +997,33 @@ the list branch makes the emitted constructor carry `[true, true]` and the asser
 Verified against a fixture project that registers `ConfiguredByTheProjectRule` and configures it with both
 shapes. Package-walk emission is byte-identical across all three targets, which is the point: the flag is
 the only way in, and a run over paths has no project to ask.
+
+##### And the same rule under the fires gate
+
+The tests above prove the values are read and reach the emitted constructor. They do not prove the plugin
+agrees with PHPStan at runtime, which is the standard everything else here is held to — "it emitted" is not
+a result, and neither is "it carried the right default".
+
+`ConfiguredByTheProjectRule` now runs through the gate like any corpus rule: emitted, loaded into a mago
+worker, run over an example pair, and diffed against real PHPStan running the original. Two things had to
+change for a rule with no package behind it.
+
+- **The gate emits it against a project.** `FiresGate::FROM_PROJECT` names one, and the transpiler is
+  pointed at that project's container for the length of the transpile — the same thing `--from-config` does,
+  through the same field.
+- **The plugin is given no arguments.** Everywhere else the gate hands both sides the same values, because a
+  threshold set on one side only is not a comparison. Here the plugin's *defaults* are what the project
+  supplied, and passing them again would test the gate's table rather than the defaults. It also cannot
+  work: PHPStan takes the parameter a rule declares and the plugin takes the property, and a derived
+  property has no parameter of its own. The two tables are read against each other statically instead, so a
+  rule emitted against a project that nobody configured on the PHPStan side fails to type-check rather than
+  passing quietly.
+
+The bad example calls `dump()` — in the promoted list — and `vardump()`, which is only reachable through the
+derived map. Mutation-checked at this level too: forcing `phpDefault()` down its list branch makes the gate
+report a disagreement with PHPStan, not just a failed string assertion. That is the map defect caught where
+it would actually have hurt.
+
+One direction of the pair check was reading a different rule list from the data provider, so this rule was
+covered by four gate cases and simultaneously reported as an example directory nothing emits. Both now read
+`gatedRules()`.
