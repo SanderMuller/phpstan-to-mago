@@ -937,7 +937,25 @@ The unit tests around the page assert the counts agree between renderers, that r
 HTML is escaped. All of that was true while the button threw. What none of them execute is the page's
 JavaScript in a browser, which is the only place that defect exists.
 
-Worth stating rather than fixing quietly, because the shape recurs: a check watches an artefact, and the
-tool grows a second artefact the check does not cover. The refusal-vs-emission discipline had the same gap
-until `PhpBackend::checked()` was added — six files that did not parse and two that parsed while still
-containing Rust were all "emitted" until something looked at the output rather than the count.
+Worth stating rather than fixing quietly, because it is the third instance in a week of one shape: the tool
+grows an artefact, and every check already here is aimed somewhere else.
+
+- `run-tests` filters on `**.php`, `phpunit.xml`, `composer.json`, `composer.lock` and its own workflow file.
+  A markdown-only commit runs nothing, and the absent run reads as a failure until someone opens the
+  workflow. Anything committed and compared that is not one of those extensions sits outside the alarm.
+- The census version block was committed, compared, and outside what the alarm watched — first silencing it,
+  then firing it every night on the word `dev-main`, until `withoutVersions()` made it recorded rather than
+  asserted.
+- The page is the same thing again, and it had no check to sit outside of.
+
+The distinction from `PhpBackend::checked()` is worth keeping straight, because the fix differs. That gap was
+one artefact with the wrong property measured: the emitted PHP was watched throughout, and what was counted
+was that a file appeared rather than that it contained PHP. Its lesson is *inspect the artefact, not the
+count*. This one's lesson is *enumerate your artefacts* — a better assertion about `StatusPage` still leaves
+nothing running the page's JavaScript.
+
+The emitted-plugin discipline is three checks aimed at one artefact, and every artefact this tool grows after
+that starts with zero.
+
+The fires-gate exists because "it emitted" was not a result. "The page rendered" is the same claim held to a
+lower standard, and nothing here holds it to any.
