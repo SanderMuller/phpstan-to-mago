@@ -49,6 +49,27 @@ final class CountsPropertiesLikeTheCollectorTest extends TestCase
      * corpus differential, which compares the percentage as well and reads 100 % and 93.3 % against the real
      * rule's own on the two consumers. Said plainly rather than left to look like more than it is.
      */
+    /**
+     * The one shape that is *meant* to disagree, pinned exactly.
+     *
+     * `public $a = 'x;y', $b;` is one `Property` node to the collector. The statement each metadata name
+     * belongs to is found by scanning the source back to the previous `;` or brace, and the quoted one reads
+     * as the end of a statement, so the group counts twice.
+     *
+     * Blanking string literals before that scan fixes this control and costs 23 declarations on one real
+     * consumer and 19 on the other, because an apostrophe in a comment opens a quote that never closes. It
+     * was written, measured, and reverted. Handling comments too is the real fix and is more than this case
+     * has earned: the over-count needs a grouped declaration *and* a boundary character inside its default,
+     * and neither consumer holds one.
+     */
+    public function test_a_grouped_declaration_with_a_quoted_boundary_is_the_known_over_count(): void
+    {
+        [$original, $port] = (new CoverageControl(self::CONTROLS . '/grouped-with-literal', 'properties'))->totals();
+
+        $this->assertSame(2, $original);
+        $this->assertSame(3, $port);
+    }
+
     public function test_holds_every_shape_the_typed_half_turns_on(): void
     {
         [$original, $port] = (new CoverageControl(self::CONTROLS . '/property-typing', 'properties'))->totals();

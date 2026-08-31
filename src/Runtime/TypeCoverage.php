@@ -274,11 +274,8 @@ final readonly class TypeCoverage
         // looking it up by walking the file list each time is one pass over every analysed file for every
         // untyped property.
         $contents = [];
-        $boundaries = [];
         foreach ($context->analysis->files as $analysed) {
-            $source = $analysed->getSourceFile()->contents;
-            $contents[$analysed->file] = $source;
-            $boundaries[$analysed->file] = self::withoutLiterals($source);
+            $contents[$analysed->file] = $analysed->getSourceFile()->contents;
         }
 
         foreach (self::classNames($context) as $class) {
@@ -336,7 +333,7 @@ final readonly class TypeCoverage
                 // The guards below are the statement's, not the name's — the original reads
                 // `$property->props[0]->name` and asks once — so a grouped declaration is decided by its
                 // first name and counted once.
-                $statement = self::statementStart($boundaries[$file] ?? '', $at->span->start);
+                $statement = self::statementStart($contents[$file] ?? '', $at->span->start);
                 if (isset($statements[$statement])) {
                     continue;
                 }
@@ -393,9 +390,6 @@ final readonly class TypeCoverage
      * `public $a, $b;` is one `Property` node to the collector and two names in the metadata, so the two have
      * to collapse to one count. Nothing in the metadata says which statement a name belongs to; the source
      * does, because a declaration starts after the previous one ends.
-     *
-     * Given the source with string literals blanked, because `public $a = 'x;y', $b;` is still one statement
-     * and a raw scan would read the quoted semicolon as the end of one.
      */
     private static function statementStart(string $contents, int $at): int
     {
@@ -404,54 +398,6 @@ final readonly class TypeCoverage
         $close = strrpos(substr($contents, 0, $at), '}');
 
         return max($boundary === false ? -1 : $boundary, $open === false ? -1 : $open, $close === false ? -1 : $close);
-    }
-
-    /**
-     * The source with the contents of every string literal replaced by spaces, offsets preserved.
-     *
-     * Only for finding statement boundaries. A `;` or a brace inside a default value — `public $a = 'x;y',
-     * $b;` — is not the end of anything, and a scan that reads it as one splits a grouped declaration into
-     * two. Blanking rather than removing keeps every offset where it was, so a position found in this text
-     * is the same position in the file.
-     *
-     * Escapes are honoured so a `\'` inside a single-quoted string does not close it. Heredocs are left
-     * alone: they carry no `;` before their terminator on the same line as a property declaration, and
-     * treating them properly is more machinery than the question needs.
-     */
-    private static function withoutLiterals(string $source): string
-    {
-        $out = $source;
-        $quote = null;
-        for ($i = 0, $length = strlen($source); $i < $length; ++$i) {
-            $character = $source[$i];
-
-            if ($quote === null) {
-                if ($character === "'" || $character === '"') {
-                    $quote = $character;
-                }
-
-                continue;
-            }
-
-            if ($character === '\\') {
-                $out[$i] = ' ';
-                if ($i + 1 < $length) {
-                    $out[++$i] = ' ';
-                }
-
-                continue;
-            }
-
-            if ($character === $quote) {
-                $quote = null;
-
-                continue;
-            }
-
-            $out[$i] = ' ';
-        }
-
-        return $out;
     }
 
     /**
