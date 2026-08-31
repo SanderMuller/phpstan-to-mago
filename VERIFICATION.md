@@ -2161,5 +2161,13 @@ The good example carries all three near misses the rule's guards turn on: an abs
 constructor, a concrete one with a constructor, and an abstract class with a constructor whose name does not
 end in `Controller`.
 
-No corpus exercises it — `extends AbstractController` and abstract `*Controller` classes appear in none of the
-four projects to hand, which are Laravel and Rector.
+The corpus says nothing about it, and the reason is not the one first written here. Abstract `*Controller`
+classes are **not** absent from the projects to hand — hihaho has 1, finconnect 4, mijntp 8, rector-src none —
+and the differential was run rather than inferred from that count: on hihaho the identifier reads
+`agree 0, only-original 0, only-port 0`, because the one class there declares no constructor. The other two
+that have such classes do not install `symplify/phpstan-rules`, so there is nothing to compare. hihaho's whole
+run for the package stays at `agree 422, only-original 0, only-port 0`.
+
+The first version of this paragraph said the classes appear nowhere, which was written from the shape of the
+previous few rules rather than from a grep. It is the same mistake this file keeps recording: a count is
+cheap, and an absence asserted without one is not a measurement.
