@@ -7915,6 +7915,22 @@ final readonly class Translator
                 : $this->context->backend->call('is_in_class', Transpiler::$target === 'php' ? ['$context', '$node'] : ['context']);
         }
 
+        // `$classReflection->isAttributeClass()` — whether the class-like carries PHP's own `#[Attribute]`.
+        // That is what the reflection answers, and the attribute is on the declaration, so the question is the
+        // one {@see Vocabulary::COLLABORATOR_CALLS} already answers for `AttributeFinder::hasAttribute()`:
+        // resolved names, compared exactly, which is how `#[\Attribute]` and an imported `#[Attribute]` both
+        // come back as `Attribute`.
+        if ($method === 'isAttributeClass' && $args === []) {
+            $subject = $this->resolve($expr->var, $expr->getStartLine());
+            if ($subject['kind'] === 'class-reflection' || $subject['kind'] === 'hook-node') {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal('an attribute-class test, which only the PHP target carries', $expr->getStartLine());
+                }
+
+                return 'Support::hasAttributeNamed($context, $node, ' . $this->context->backend->bytes('Attribute') . ')';
+            }
+        }
+
         // $classReflection->is($type) — the enclosing class, against a literal or a loop variable
         if ($method === 'is' && count($args) === 1) {
             $subject = $this->resolve($expr->var, $expr->getStartLine());

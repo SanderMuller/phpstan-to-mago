@@ -2205,3 +2205,37 @@ answer false reports the abstract one at line 31, which is exactly the guard it 
 `Runtime\Declares` went one point over its complexity limit when the helper landed there, so it sits in
 `Reflect` instead — the class that already asks the codebase about a class-like. A new baseline entry for a
 runtime class is the thing that split is there to avoid.
+
+#### An attribute class, and one corpus number I could not account for
+
+`RequireAttributeNamespaceRule` asks whether a class carries PHP's own `#[Attribute]` and, if so, whether it
+lives in an `Attribute` namespace. Its only obstacle was `isAttributeClass()`, and the answer was already
+built: `Support::hasAttributeNamed()`, added for `AttributeFinder::hasAttribute()` two steps ago, compares
+resolved names exactly — which is how `#[\Attribute]` and an imported `#[Attribute]` both come back as
+`Attribute`. Only `isAttributeClass` is mapped; nothing else moved.
+
+`symplify/phpstan-rules` reads **46 of 89**, and the total 80 of 169.
+
+The good example holds the near miss the guard exists for: a class that *carries* an attribute without being
+one. Widening `hasAttributeNamed()` to "has any attribute" reports it at line 14, which PHPStan does not — so
+the discrimination is load-bearing rather than incidental.
+
+##### rector-src is silent on both sides; hihaho reads one only-original I did not trace
+
+`rector-src` has seven attribute classes and reads `agree 0, only-original 0, only-port 0` — all seven are in
+an `Attribute` namespace, so silence is the right answer on both sides. The package's whole run there stays at
+`agree 79, only-original 0, only-port 0`.
+
+hihaho has exactly one attribute class, `app/Attributes/Description.php` — namespace `App\Attributes`, plural,
+so the rule reports — and the differential reads **`only-original 1`**. What was established, and what was
+not:
+
+- Running `mago` by hand over the differential's own sandbox, with its generated `mago.toml` and worker,
+  produces the finding: one issue, that file, that identifier.
+- A fixture of the same shape — docblock, `use Attribute;`, an attribute *with arguments*,
+  `final readonly class` — is in the example pair now and the gate is green on it, line and message.
+- So the emitted plugin does report this shape, and the number is not reproduced by anything I could build.
+
+I did not settle where the differential loses it. It may be the instrument's site matching rather than the
+rule, and saying which would need work this measurement did not do — so it is recorded as untraced rather than
+attributed. The direction is silence, and the gate is the standard this repository holds a per-node rule to.

@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 45 of 89 portable rules the package registers emit, 1 covered by the engine, 43 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 46 of 89 portable rules the package registers emit, 1 covered by the engine, 42 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -285,9 +285,7 @@ REFUSE  RectorCheaperGuardsFirstRule
         needs: statement outside the vocabulary: Stmt_For
 EMIT    RequireAtLeastOneRule
 EMIT    RequireAttributeNameRule
-REFUSE  RequireAttributeNamespaceRule
-        method call outside the vocabulary ->isAttributeClass()
-        needs: method call outside the vocabulary ->isAttributeClass()
+EMIT    RequireAttributeNamespaceRule
 EMIT    RequireExceptionNamespaceRule
 EMIT    RequireInvokableControllerRule
 EMIT    RequireIsGrantedEnumRule
