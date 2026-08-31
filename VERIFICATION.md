@@ -1887,3 +1887,64 @@ The lesson is the one above it, from the other direction. That pair had been ext
 `\`-prefixed function names, after the rule reported 169 sites on `nikic/php-parser` — and still had no
 variable call in it. A gate is only as wide as the shapes someone thought to write down, which is why the
 corpus differential is run per identifier and why a 3 is worth bisecting.
+
+#### Sweeping the rest of the emitted rules, and the one family that still disagrees
+
+The two sections above each came out of a per-identifier corpus run, so the run was extended to every package
+a corpus installs. Two of the four came back with nothing left to say:
+
+- `symplify/phpstan-rules` on hihaho and rector-src — exact, after the two fixes above.
+- `phpstan/phpstan-phpunit` and `phpstan/phpstan-deprecation-rules` on rector-src — `exercised: 0 of 3`. The
+  instrument says so itself rather than reporting three agreeing zeros.
+
+`phpstan-src` cannot be used as a corpus at all: it has no `vendor/bin/phpstan`, because it *is* PHPStan. The
+differential refuses rather than comparing against a binary that is not there, which is the right answer and
+worth writing down before someone else reaches for the obvious corpus.
+
+That leaves one family, and it is the one already documented: the three boolean-condition rules of
+`phpstan-strict-rules`. On hihaho's 2932 files, at the consumer's own level 7:
+
+| identifier | agree | only-original | only-port |
+|:--|--:|--:|--:|
+| `booleanNot.exprNotBoolean` | 309 | 75 | 16 |
+| `if.condNotBoolean` | 175 | 47 | 26 |
+| `ternary.condNotBoolean` | 81 | 29 | 2 |
+
+The `only-port` side is the one this file already priced, on Shopware, and traced to the ecosystem asymmetry:
+PHPStan reaches a framework through larastan or `phpstan-symfony` and mago reaches it through nothing, so 33
+of 42 disappeared the moment a comparable plugin was given to mago. **The `only-original` side had a number
+and no cause.** It has two now.
+
+##### The recorded mixed divergence, confirmed at a named site
+
+`config/sentry.php` is the smallest isolated case — one finding, no agreements, one file. The condition is
+`env('SENTRY_RELEASE') ?? file_exists(base_path('VERSION.txt'))`, and the port computes `mixed` for it and
+passes. `BooleanRuleHelper` opens with `if ($type instanceof MixedType) return ! $type->isExplicitMixed();`,
+and `env()` declares `mixed`, so PHPStan calls it explicit and reports.
+
+That is exactly what `RuleLevel`'s docblock already states, and re-checked against the pinned SDK rather than
+taken from the note: `Mago\Sdk\Analyzer\Type\MixedType` carries `issetFromLoop`, `nonNull`, `empty` and a
+`truthiness`, and nothing that separates written `mixed` from inferred. The population is **1292** `mixed`
+conditions in `app/` alone, so most of it is the implicit kind that PHPStan passes too.
+
+##### And a second cause, which had no name
+
+**442 of the conditions these rules read carry no inferred type at all.** `passesAsBoolean` is handed null and
+passes, so the rule is silent. 441 of the 442 are a call — `$response->successful()`, `config('vapor.active')`,
+`$token->expires_at?->isPast()` — and one is `$element instanceof Component` against a class mago cannot
+resolve. That one matters: "every one of them is a call" would have been wrong at 1 in 442, which is the
+granularity this file keeps being taught to check.
+
+It is not a requirement the plugin forgot to ask for. Declaring all four type requirements at once —
+`ExpressionTypes`, `TargetExpressionTypes`, `ReceiverType`, `ArgumentTypes` — left the count identical.
+
+Reading the callee's *declared* return type instead is the obvious fallback and it does not price out. A probe
+answers `none` for `$response->successful()`, whose signature says `bool`: the receiver of a chained call is
+untyped for the same reason the call is, so the lookup has nothing to start from. Stated as an attempted
+pricing rather than a conclusion about the fallback, because the probe's own navigation is a candidate
+explanation for the `none`.
+
+Both causes are silence, which is the safe direction, and both populations are far larger than the
+disagreement they produce: 1292 `mixed` and 442 untyped conditions in one directory against 151
+`only-original` over the whole corpus. Counted at flags all-false, which is what makes those two rows
+comparable — the nullable rows move with the level and are not quoted here.

@@ -48,7 +48,7 @@ use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
  * - **The explicit- and implicit-mixed branches inside `findTypeToCheck`.** Reachable only at levels 9 and
  *   10. Dead by configuration.
  *
- * ## Two divergences, both stated rather than discovered
+ * ## Three divergences, all stated rather than discovered
  *
  * - **Mixed passes.** `passesAsBoolean` opens with `if ($type instanceof MixedType) return
  *   !$type->isExplicitMixed();`, outside `findTypeToCheck` and live at every level. Mago's `MixedType`
@@ -70,6 +70,18 @@ use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
  *   So it is a real divergence with a count rather than a hypothetical one. It cannot be closed from this
  *   side -- there is nothing on a mago `Type` to read benevolence from -- and the only honest response is
  *   to say where it happens and how often.
+ * - **A call in condition position has no inferred type at all,** so `passesAsBoolean` is handed null and
+ *   passes. Measured over one consumer's `app/`: **442** of the conditions these three rules read carry no
+ *   type, 441 of them a call and one an `instanceof` against a class mago cannot resolve. Every
+ *   `FileAnalysisRequirement` was declared at once -- `ExpressionTypes`, `TargetExpressionTypes`,
+ *   `ReceiverType`, `ArgumentTypes` -- and the count did not move, so it is not a requirement the plugin
+ *   forgot to ask for. Reading the callee's *declared* return type instead was attempted in a probe and does
+ *   not price out: it answers `none` for `$response->successful()`, whose signature says `bool`, because the
+ *   receiver of a chained call is the same absence one level down.
+ *
+ *   Silence, so the safe direction, and the population is far larger than the disagreement it contributes
+ *   to: 442 untyped and 1292 `mixed` conditions in that directory against 151 `only-original` findings over
+ *   the whole 2932-file corpus. Most of both populations is something PHPStan passes as well.
  */
 final class RuleLevel
 {
