@@ -21,7 +21,7 @@ function helper(): int
  */
 final class GoodWrittenNames
 {
-    public function everyKind(Holder $subject): mixed
+    public function everyKind(Holder $subject, callable $callable, \Closure $closure): mixed
     {
         $constant = Holder::FIXED;
         $staticProperty = Holder::$prop;
@@ -38,6 +38,11 @@ final class GoodWrittenNames
         $qualified = \count([1]);
         $namespaced = \Examples\Dynamic\helper();
 
-        return [$constant, $staticProperty, $property, $method, $staticMethod, $name, $bare, $qualified, $namespaced];
+        // A variable call whose type *is* callable, which the rule exempts by asking the type rather than the
+        // spelling. Both spellings, because the exemption tests `callable` and `Closure` separately.
+        $viaCallable = $callable(1);
+        $viaClosure = $closure(1);
+
+        return [$constant, $staticProperty, $property, $method, $staticMethod, $name, $bare, $qualified, $namespaced, $viaCallable, $viaClosure];
     }
 }

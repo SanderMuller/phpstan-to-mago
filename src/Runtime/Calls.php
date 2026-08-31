@@ -204,6 +204,22 @@ final class Calls
             return false;
         }
 
+        // A `Variable` name part means opposite things in two positions, and the part alone cannot tell them
+        // apart: `Holder::$prop` and `$next(1)` both spell it `Variable > DirectVariable`. php-parser splits
+        // them — a static property's written name is a `VarLikeIdentifier`, and a function call's written name
+        // is a `Name`, so a variable there *is* an `Expr` — and the parent node is what says which position
+        // this is. Without it every dynamic call written as a plain variable answered "written", and
+        // `NoDynamicNameRule` was silent on the three `$next($request)` calls of a real consumer's middleware
+        // that PHPStan reports.
+        // Only in the static-property position, and `$$n` is still computed there: `Holder::$$n` spells the
+        // part `Variable > NestedVariable`, which the list below already rejects, so the position test gates
+        // the descent rather than replacing it.
+        if ($part->kind === NodeKind::Variable
+            && $part->source->getParent($part->node)?->kind !== NodeKind::StaticPropertyAccess
+        ) {
+            return false;
+        }
+
         $inner = $part->children()[0] ?? null;
 
         return in_array(($inner instanceof Part ? $inner : $part)->kind, self::WRITTEN_NAME_KINDS, true);

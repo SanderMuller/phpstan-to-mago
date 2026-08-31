@@ -1850,3 +1850,40 @@ which one" of an argument or a value, and each was declining a class constant wh
 widened. All four are gated, and the gate is green. On hihaho's 2932 files the run reads `agree 419,
 only-original 3, only-port 0` — the direction that matters for a widening change is `only-port`, and it is
 zero.
+
+#### A shipped rule silent on every middleware pipeline, found by chasing a 3
+
+The previous section's differential left one number unexplained: `hihaho` read `agree 419, only-original 3`
+for `symplify/phpstan-rules`. Three findings on 2932 files is the size at which a delta is easy to leave
+alone, and it was the whole of `NoDynamicNameRule` on one of its six targets.
+
+Bisected to one file, `app/Http/Middleware/RedirectIfTermsNeedToBeAccepted.php`, and to one expression
+written three times: `$next($request)`. A function call whose name is a plain variable — the shape a
+middleware pipeline is made of, and the shape the rule exists to report.
+
+Instrumented rather than reasoned about. `Support::isWrittenName()` answers **true** for it, so the rule's
+`! $node->name instanceof Expr` guard inverted and the plugin returned before reporting. And the reason it
+answers true is not a mistake in the list of written-name kinds — it is that the part alone cannot decide:
+
+    Holder::$prop   namePart = Variable > DirectVariable   written    (a static property's own name)
+    $next(1)        namePart = Variable > DirectVariable   dynamic    (a function call's name is an Expr)
+
+Identical spellings, opposite answers. php-parser splits them by type — `VarLikeIdentifier` for the static
+property, `Name` for a written function name — and mago does not. The parent node is what says which position
+this is, and `Part` already carries the node and the source, so the correction needed no signature change and
+changed no emitted byte.
+
+The position test gates the descent rather than replacing it, because `Holder::$$n` is still computed in the
+static-property position: it spells `Variable > NestedVariable`, which the kind list already rejects. All
+eight shapes were probed in one file before and after — two static accesses, three member accesses, a written
+method, a written function and a braced selector — and the first attempt at the fix got `$$n` wrong, which is
+what the eight-shape probe caught.
+
+**After it: `agree 422, only-original 0, only-port 0` on hihaho**, `agree 34, only-original 0, only-port 0` on
+rector-src. The example pair's own docblock said it covered "five of its six targets"; the sixth is in it now,
+and removing the position test drops exactly that finding from the comparison.
+
+The lesson is the one above it, from the other direction. That pair had been extended once before — for
+`\`-prefixed function names, after the rule reported 169 sites on `nikic/php-parser` — and still had no
+variable call in it. A gate is only as wide as the shapes someone thought to write down, which is why the
+corpus differential is run per identifier and why a 3 is worth bisecting.
