@@ -2078,6 +2078,14 @@ final readonly class Translator
 
         $expression = $final;
         foreach (array_reverse($guards) as [$condition, $value]) {
+            // A guard that cannot hold contributes nothing but noise. `hasRouteAnnotationOrAttribute()` opens
+            // with `$node instanceof ClassMethod && ! $node->isPublic()`, which is constantly false for its
+            // class-like caller — emitted unfolded that reads `false ? false : …`, which is correct and which
+            // nobody should have to read in a generated plugin.
+            if ($this->stripOuterParentheses($condition) === 'false') {
+                continue;
+            }
+
             $expression = $this->context->backend->conditional($condition, $value, $expression);
         }
 
@@ -2359,6 +2367,14 @@ final readonly class Translator
      */
     private function collaboratorClass(Expr $receiver, int $line): ?array
     {
+        // A collaborator the helper built for itself, held in a local. The class is the same, and so is
+        // everything that follows from it — only the receiver's shape differs.
+        if ($receiver instanceof Variable && is_string($receiver->name)) {
+            $built = $this->context->localCollaborators[$receiver->name] ?? null;
+
+            return $built === null ? null : $this->findClassByName($built);
+        }
+
         if (! $receiver instanceof PropertyFetch
             || ! $receiver->var instanceof Variable
             || $receiver->var->name !== 'this'
@@ -6590,6 +6606,22 @@ final readonly class Translator
         $name = $assign->var->name;
         $value = $assign->expr;
 
+        // `$analyzer = new SomeAnalyzer();` — a collaborator the code builds for itself rather than taking
+        // through a constructor. Remembered as a handle and nothing emitted: such an analyzer carries no state
+        // a plugin would have to hold, and the calls on it resolve through the same table an injected one
+        // uses. Two of the corpus's Symfony rules reach `AttributeFinder` this way, and both refused on the
+        // `new` rather than on anything the analyzer does.
+        if ($value instanceof New_ && $value->class instanceof Name) {
+            // The short name, which is what the index resolves and what an injected collaborator is recorded
+            // under — `$param->type->getLast()` there, the same shape here.
+            $class = $value->class->getLast();
+            if ($this->findClassByName($class) !== null) {
+                $this->context->localCollaborators[$name] = $class;
+
+                return;
+            }
+        }
+
         // `$n = 0` that something later increments is a counter, not a constant. Declared as a real variable
         // and read as one, where an integer local is ordinarily folded to its literal — folding a counter
         // would emit `0` at every read and report a count that never moved off its initial value.
@@ -6951,11 +6983,19 @@ final readonly class Translator
         }
 
         if ($cond instanceof BooleanAnd) {
-            return $this->combine(
-                '&&',
-                $this->parenthesiseDisjunction($cond->left),
-                $this->parenthesiseDisjunction($cond->right),
-            );
+            $left = $this->parenthesiseDisjunction($cond->left);
+
+            // Short-circuited at *translation* time, not only in the rendering. A left operand that cannot
+            // hold makes the right one unreachable, and translating it anyway refuses on whatever it asks —
+            // `hasRouteAnnotationOrAttribute()` takes `ClassLike|ClassMethod` and opens with
+            // `$node instanceof ClassMethod && ! $node->isPublic()`, so a class-like caller was refused on a
+            // visibility question about a declaration that has none. `combine()` folds the identity operand
+            // and cannot help here: by then the right side has already been translated.
+            if ($this->stripOuterParentheses($left) === 'false') {
+                return 'false';
+            }
+
+            return $this->combine('&&', $left, $this->parenthesiseDisjunction($cond->right));
         }
 
         if ($cond instanceof BooleanOr) {
@@ -7452,6 +7492,16 @@ final readonly class Translator
         // method declaration, so the narrowing holds by construction here.
         if ($subject['kind'] === 'method-decl' && $wanted === ClassMethod::class) {
             return $this->alwaysHolds('the caller passed a method declaration, so this narrowing holds by construction');
+        }
+
+        // And the other caller of the same helper. A class-like declaration is never a method one, so the
+        // narrowing cannot hold — which is what makes the rest of that conjunct unreachable rather than
+        // untranslatable.
+        if ($subject['kind'] === 'hook-node'
+            && $wanted === ClassMethod::class
+            && in_array($this->context->nodeKind, self::CLASS_LIKE_HOOK_KINDS, true)
+        ) {
+            return 'false';
         }
 
         // `$firstItem instanceof ArrayItem` asks whether the literal has an element at that position, since
@@ -10189,6 +10239,17 @@ final readonly class Translator
         // positions where the index is read as a value rather than bound.
         if ($expr instanceof Int_) {
             return ['rust' => (string) $expr->value, 'kind' => 'int', 'php' => (string) $expr->value];
+        }
+
+        // A class constant whose value is a string literal this transpiler can read — `SymfonyClass::
+        // ROUTE_ATTRIBUTE` and the like, where a package keeps the names it matches on in one holder class.
+        // `resolveClassConstant()` already finds them for a message or a comparison; the only thing missing
+        // was a value position, which is where a mapped collaborator's arguments are resolved. Last, so no
+        // shape that already had a reading loses it, and still a refusal when the constant is not a literal.
+        if ($expr instanceof ClassConstFetch) {
+            $literal = $this->resolveClassConstant($expr, $line);
+
+            return ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'php' => $this->context->backend->bytes($literal)];
         }
 
         throw new Refusal('access path outside the vocabulary: ' . $this->describe($expr), $line);

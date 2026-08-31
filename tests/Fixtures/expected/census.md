@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 40 of 89 portable rules the package registers emit, 1 covered by the engine, 48 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 42 of 89 portable rules the package registers emit, 1 covered by the engine, 46 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -130,9 +130,7 @@ REFUSE  NoBareAndSecurityIsGrantedContentsRule
         needs: in_array() over a expr
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_ArrayDimFetch
 EMIT    NoBundleResourceConfigRule
-REFUSE  NoClassLevelRouteRule
-        method call outside the vocabulary ->isPublic()
-        needs: method call outside the vocabulary ->isPublic()
+EMIT    NoClassLevelRouteRule
 REFUSE  NoClassReflectionStaticReflectionRule
         early return from a helper that is not a boolean literal
         needs: early return from a helper that is not a boolean literal
@@ -191,7 +189,7 @@ REFUSE  NoInstanceOfStaticReflectionRule
 REFUSE  NoIntegerRefactorReturnRule
         assignment value outside the vocabulary: access path outside the vocabulary: Scalar_String
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_String
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
+        needs: statement outside the vocabulary: Stmt_Expression
         needs: assignment value outside the vocabulary: access path outside the vocabulary: array_diff()
 REFUSE  NoJustPropertyAssignRule
         no hook mapping for node type PhpParser\Node\Stmt\Expression
@@ -287,8 +285,8 @@ REFUSE  PreferredClassRule
 EMIT    PreventParentMethodVisibilityOverrideRule
 EMIT    PublicStaticDataProviderRule
 REFUSE  RectorCheaperGuardsFirstRule
-        access path outside the vocabulary: self::ABSTRACT_RECTOR_CLASS
-        needs: access path outside the vocabulary: self::ABSTRACT_RECTOR_CLASS
+        self::ABSTRACT_RECTOR_CLASS is not a string constant of this rule
+        needs: self::ABSTRACT_RECTOR_CLASS is not a string constant of this rule
         needs: foreach with a key
         needs: assignment value outside the vocabulary: count() of a subtree compared numerically
         needs: statement outside the vocabulary: Stmt_For
@@ -298,9 +296,7 @@ REFUSE  RequireAttributeNamespaceRule
         method call outside the vocabulary ->isAttributeClass()
         needs: method call outside the vocabulary ->isAttributeClass()
 EMIT    RequireExceptionNamespaceRule
-REFUSE  RequireInvokableControllerRule
-        assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
+EMIT    RequireInvokableControllerRule
 REFUSE  RequireIsGrantedEnumRule
         no hook mapping for node type PhpParser\Node\Attribute
         needs: in_array() over a expr
@@ -340,7 +336,6 @@ EMIT    CombinedMethodCallRule
 REFUSE  CombinedStaticCallRule
         ClassReflection test on a service, which the plugin has no equivalent for
         needs: ClassReflection test on a service, which the plugin has no equivalent for
-        needs: access path outside the vocabulary: RequestFacade::class
 NEVER   FlagArgumentManifestCollector
         every rule that consumes this collector reports nothing and writes a file instead, so the pair cannot become a plugin whatever the collector body does
 EMIT    NoDebugInNamespaceRule  (the package registers it nowhere)

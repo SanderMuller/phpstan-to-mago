@@ -260,6 +260,12 @@ final class Support
         return Attributes::attributeNames($context, $subject);
     }
 
+    /** Whether a declaration carries the named attribute — `AttributeFinder::hasAttribute()`. */
+    public static function hasAttributeNamed(NodeAnalysisContext $context, Part|Node|null $subject, string $name): bool
+    {
+        return Attributes::hasAttributeNamed($context, $subject, $name);
+    }
+
     /**
      * The interfaces the enclosing class-like's declaration writes, which is `$classLike->implements`.
      *

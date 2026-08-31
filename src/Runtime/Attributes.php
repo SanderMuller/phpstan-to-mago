@@ -52,6 +52,20 @@ final class Attributes
     }
 
     /**
+     * Whether a declaration carries the named attribute — `AttributeFinder::hasAttribute()`.
+     *
+     * Compared exactly, and against the resolved name, because that is what the original compares:
+     * `$attribute->name->toString() === $desiredAttributeClass` after PHPStan has resolved the name, and only
+     * for an attribute whose name node is `FullyQualified`. {@see attributeNames()} answers in the same shape
+     * — resolved, and with the case as written — so the comparison needs no folding, and folding it would be
+     * wider than the rule.
+     */
+    public static function hasAttributeNamed(NodeAnalysisContext $context, Part|Node|null $subject, string $name): bool
+    {
+        return in_array($name, self::attributeNames($context, $subject), true);
+    }
+
+    /**
      * The attribute groups a declaration carries, one per `#[..]` written on it.
      *
      * @return list<Part>

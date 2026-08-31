@@ -1976,3 +1976,54 @@ and two distinct messages, the third being `TRUE` in the other case, which the r
 No corpus exercises it: `assertSame(true, …)` and `assertSame(false, …)` appear **0** times across hihaho,
 finconnect, rector-src and mijntp — the same answer the `null` sibling got, and for the same reason. The gate
 is the evidence, and this file does not quote an agreeing zero as if it were one.
+
+#### Five small pieces, two Symfony rules, and a dead branch that had been shipping
+
+`NoClassLevelRouteRule` and `RequireInvokableControllerRule` both reach `SymfonyControllerAnalyzer`, and both
+refused inside it rather than on anything they wrote themselves. Five additions between them, each general
+rather than rule-shaped, and each found by re-running the transpiler and reading the next refusal:
+
+1. **A narrowing that cannot hold.** `hasRouteAnnotationOrAttribute()` takes `ClassLike|ClassMethod` and opens
+   with `$node instanceof ClassMethod && ! $node->isPublic()`. The mirror fold already existed for the method
+   caller — "the caller passed a method declaration, so this holds by construction" — and the class-like
+   caller had none, so it was refused on a visibility question about a declaration that has no visibility.
+2. **Short-circuiting at translation time.** A left operand that cannot hold makes the right one unreachable,
+   but `combine()` folds only the *identity* operand and runs after both sides are translated. So the fold
+   above was not enough on its own: the `isPublic()` still had to be translated to be thrown away.
+3. **A collaborator built rather than injected.** `$attributeFinder = new AttributeFinder();` is the same
+   handle as a constructor-injected one, one line later instead of one constructor away. Recorded under the
+   short name, which is what an injected collaborator is already recorded under.
+4. **`AttributeFinder::hasAttribute()` mapped rather than inlined.** It walks `attrGroups` two levels to reach
+   each name, which is exactly the shape the `->attrGroups` mapping refuses to fake — metadata carries the
+   names flattened and resolved, and answering `->attrs` and `->name` from that list would be three mappings
+   pretending the tree has a shape it does not. The question maps exactly instead.
+5. **A class constant in value position.** `SymfonyClass::ROUTE_ATTRIBUTE` — a package keeping the names it
+   matches on in one holder class. `resolveClassConstant()` already found such constants for a message or a
+   comparison; the only position without a reading was the one a mapped collaborator's arguments go through.
+
+`symplify/phpstan-rules` reads **42 of 89**, and the seven-package total 72 of 169.
+
+##### The dead branch was already in the plugins
+
+The guard-chain assembly emitted a constantly-false guard as `false ? false : …` rather than dropping it, and
+the emission diff over seven packages and three targets shows that shipping in **eight** files — six PHP and
+two Rust, including `NoMockOnlyTestRule`, `NoRouteTrailingSlashPathRule` and `NoEloquentWithPropertyRule`.
+Every one of the eight diffs is the same removal and nothing else, so the change is readability with identical
+semantics; it is named here because a reader comparing two versions of a shipped plugin should not have to
+work that out.
+
+Two refusals also became more specific rather than disappearing: `NoIntegerRefactorReturnRule` moves off the
+`new` onto the statement after it, and `RectorCheaperGuardsFirstRule` from "access path outside the
+vocabulary: self::ABSTRACT_RECTOR_CLASS" to "is not a string constant of this rule" — which is accurate, since
+that constant's value is `AbstractRector::class` rather than a written string.
+
+##### Both halves of the route question, and no corpus
+
+The analyzer accepts either a `#[Route]` attribute or a `@Route` docblock, and they reach the answer through
+different helpers — so the pairs carry both, and the stub gained the attribute class for it. Breaking
+`hasAttributeNamed()` turns both rules red and drops exactly the attribute-side findings, leaving the docblock
+ones: the two halves are separately load-bearing.
+
+No corpus exercises either rule. `extends AbstractController` appears **0** times across hihaho, finconnect,
+rector-src and mijntp — all four are Laravel or Rector, and a Symfony corpus is not among the projects this
+repository has to hand. The gate is the evidence, and this file says so.

@@ -507,6 +507,18 @@ final class TranslationContext
     public bool $reportTaken = false;
 
     /**
+     * Collaborators a helper builds for itself, by local variable name.
+     *
+     * `$attributeFinder = new AttributeFinder();` is the same handle as an injected one, one line later
+     * instead of one constructor away — and two rules in the corpus reach their analyzer that way. Kept apart
+     * from {@see $collaborators} because the key is a local rather than a property, and the two are looked up
+     * from different receiver shapes.
+     *
+     * @var array<string, string>
+     */
+    public array $localCollaborators = [];
+
+    /**
      * Constructor-injected objects whose class this package can read, by property name.
      *
      * A rule package puts a small analyzer on its own class and delegates to it — `$this->enumAnalyzer->

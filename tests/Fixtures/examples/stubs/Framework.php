@@ -327,3 +327,16 @@ namespace Examples\Stubs\Domain\Plain;
 
 /** Neither `\Document\` nor `\Entity\` in the name, so the rule never asks what kind of class it is. */
 class Note {}
+
+namespace Symfony\Component\Routing\Attribute;
+
+/**
+ * The attribute half of the route question. `SymfonyControllerAnalyzer` accepts either this or a `@Route`
+ * docblock, and the two reach the answer through different helpers — so an example carrying only the docblock
+ * leaves the attribute one unexercised.
+ */
+#[\Attribute]
+final class Route
+{
+    public function __construct(public string $path = '') {}
+}

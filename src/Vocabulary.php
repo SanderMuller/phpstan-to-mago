@@ -543,6 +543,17 @@ final class Vocabulary
         // the four rules refused inside a method none of them wrote. `receiverType` says the emitted plugin
         // has to ask for it: requirements are opt-in, and without it the helper reads a null receiver and
         // answers false for every method call, silently.
+        // `AttributeFinder::hasAttribute()` walks `attrGroups` two levels deep to reach each attribute's name,
+        // which is the shape the `->attrGroups` mapping deliberately refuses to fake — metadata carries the
+        // names flattened and resolved, so answering `->attrs` and `->name` from that list would be three
+        // mappings pretending the tree has a shape it does not. The *question* maps exactly instead, and the
+        // two Symfony rules that reach the finder through `SymfonyControllerAnalyzer` get it.
+        'Symplify\PHPStanRules\NodeAnalyzer\AttributeFinder::hasAttribute' => [
+            'helper' => 'Support::hasAttributeNamed',
+            'kind' => 'bool',
+            'takes' => 'context',
+            'arguments' => [0, 1],
+        ],
         'PHPStan\Rules\PHPUnit\AssertRuleHelper::isMethodOrStaticCallOnAssert' => [
             'helper' => 'PhpUnitAsserts::isCallOnAssert',
             'kind' => 'bool',
