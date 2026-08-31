@@ -1786,3 +1786,67 @@ Counted before drawing any conclusion from a run: `assertSame(null, …)` appear
 finconnect, mijntp, phpstan-src and rector-src. That is not a gap in the corpora — it is what a rule
 discouraging an idiom looks like once the idiom is gone. The gate is the evidence, and this file does not
 quote an agreeing zero as if it were one.
+
+#### The fixture agreed five times over, and the corpus said 0 of 9
+
+`AvoidFeatureSetAttributeInRectorRule` needed one thing: `$ruleError = RuleErrorBuilder::…;
+$ruleErrors[] = $ruleError;` — one append written in two statements, where the one-statement form was already
+taken. With that arm the rule emitted, and the fires gate passed on the first try: PHPStan reports the bad
+example, the plugin reports it, both silent on the good one, agreeing on line and message.
+
+**Then the corpus differential over `rector-src` read `agree 0, only-original 9, only-port 0`.** The rule's
+own home codebase, and the port found none of it.
+
+That is the strongest instance in this file of "a green run over material you wrote is the weakest evidence
+available". Five variations of the fixture were written trying to reproduce the miss and **all five still
+agreed**: a same-class constant as the key, an untyped one, a constant held on another class, a call inside a
+closure, and a call inside a closure passed as an argument. The gate would have shipped a rule whose only
+real-code behaviour is silence.
+
+##### One cause, controlled, and verified at the granularity it is published
+
+Instrumented rather than reasoned about — a probe plugin over the real file printed what each step of the
+emitted body returns. The class guard passed, the subtree search found the call, the argument was found, and
+the *type* came back plain `string` where PHPStan has a constant string. The declaration is:
+
+    /**
+     * @var string
+     */
+    private const IS_BREAK_IN_SWITCH = 'is_break_in_switch';
+
+A widening `@var` docblock on a class constant. PHPStan's `$scope->getType()` on a constant fetch reads the
+initialiser and ignores it; mago's inferred type honours it. The control is two constants in one class, one
+docblocked and one not: the docblocked one answers null and the bare one answers its literal.
+
+And the population was counted rather than inferred. All **nine** only-original findings were enumerated —
+five keys on `Rector\NodeTypeResolver\Node\AttributeKey` and four `self::` constants in four rules — and every
+one of the nine carries `@var string`. `AttributeKey` docblocks every constant it declares, which is why the
+rate was zero rather than partial.
+
+##### Closed by reading the declaration, which a node hook can do after all
+
+`Support::constantStringAt()` asks the inferred type first — it answers every shape this does not — and falls
+back to the constant's own initialiser. The declaring file is found through the constant's metadata location
+and read from disk: a node hook sees only its own file's *syntax*, which
+`internal/probe-declaring-file-body.php` measured, but a plugin is PHP and the path is real. Tokenised rather
+than matched, because an apostrophe in a trailing comment reads as an opening quote to a scan — the mistake
+that cost the property metric 42 declarations when it was made there. Only a plain quoted string counts;
+a concatenation or an escape answers null and the caller behaves as it did before.
+
+Two probes were needed for the navigation, and the first reading was wrong both times. A `Foo::BAR` reached
+through an argument arrives as the category node `Access`, whose only child is the `ClassConstantAccess` — a
+kind test on the specific case answered "not a constant fetch" for every fetch there was, and the narrow
+differential stayed at 0 until the node was descended into.
+
+**After it: `agree 9, only-original 0, only-port 0` on all 2872 files of `rector-src`,** and that corpus's
+whole run for this package went from `agree 25, only-original 9` to `agree 34, only-original 0`. The example
+pair now carries a docblocked constant, and removing the fallback drops exactly that finding.
+
+##### And the same fix on four rules that already shipped
+
+The emission diff names them: `ReflectedMockedClassRule`, `ForbiddenArrayMethodCallRule`,
+`NoLeadingBackslashInNameRule` and `RequireUniqueEnumConstantRule` each ask "is this a constant string, and
+which one" of an argument or a value, and each was declining a class constant whose type a docblock had
+widened. All four are gated, and the gate is green. On hihaho's 2932 files the run reads `agree 419,
+only-original 3, only-port 0` — the direction that matters for a widening change is `only-port`, and it is
+zero.

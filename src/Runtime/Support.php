@@ -1510,6 +1510,19 @@ final class Support
     }
 
     /**
+     * The same question asked of the *expression*, so a class constant answers with its own initialiser.
+     *
+     * `$scope->getType()` on a constant fetch answers the value PHPStan reads off the declaration, and a
+     * widening `@var` docblock does not take that away. Mago's inferred type honours the docblock, so the
+     * fallback in {@see ConstantStrings} reads the declaration instead. Every other shape is answered by the
+     * inferred type exactly as before.
+     */
+    public static function constantStringAt(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        return ConstantStrings::at($context, $subject);
+    }
+
+    /**
      * Every literal string a type names, which is PHPStan's `Type::getConstantStrings()`.
      *
      * The plural, and the singular above is now the first of these. A union of literal strings names more

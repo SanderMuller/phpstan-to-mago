@@ -5399,6 +5399,10 @@ final readonly class Translator
                 return;
             }
 
+            if ($this->takesThePendingReport($stmt->expr->var, $value)) {
+                return;
+            }
+
             // $someList[] = <a node>  — an accumulator being filled with what the loop kept, rather than
             // with findings. Only a count is read from it today, and `countable()` is what allows that.
             if ($stmt->expr->var instanceof ArrayDimFetch
@@ -7180,6 +7184,41 @@ final readonly class Translator
     }
 
     /**
+     * `$ruleError = RuleErrorBuilder::...; $ruleErrors[] = $ruleError;` — one append written in two statements.
+     *
+     * Several rules in the corpus write it this way, and the one-statement form beside it was already taken.
+     * The message was taken at the assignment and remembered as the pending report; this is the statement that
+     * says the original *collects* it, so the report goes here and the loop carries on — an append rather than
+     * a `return` is what says the rule does not stop at the first finding.
+     *
+     * Without this arm the append fell through to generic resolution and refused with `unknown local
+     * $ruleError`, which names a variable that is not the obstacle.
+     *
+     * @return bool whether the append was taken, so the caller emits nothing for it
+     */
+    private function takesThePendingReport(Expr $target, Expr $value): bool
+    {
+        if (! $target instanceof ArrayDimFetch || $target->dim instanceof Expr) {
+            return false;
+        }
+
+        if (! $value instanceof Variable || $this->context->pendingReport === null) {
+            return false;
+        }
+
+        if ($value->name !== $this->context->pendingReport) {
+            return false;
+        }
+
+        $this->context->lines[] = $this->reportNode();
+        $this->context->reportedInline = true;
+        $this->context->reportTaken = true;
+        $this->context->pendingReport = null;
+
+        return true;
+    }
+
+    /**
      * The runtime helper that stands in for a static collaborator method, or null when none does.
      *
      * The same table {@see resolveCollaboratorCall()} reads, reached from the other kind of call. A helper
@@ -7240,7 +7279,9 @@ final readonly class Translator
                 throw new Refusal('a constant-string type test, which only the PHP target carries', $expr->getStartLine());
             }
 
-            return 'Support::constantStringOf(' . $this->operand($subject) . ') !== null';
+            return isset($subject['of'])
+                ? 'Support::constantStringAt($context, ' . $subject['of'] . ') !== null'
+                : 'Support::constantStringOf(' . $this->operand($subject) . ') !== null';
         }
 
         // `$type instanceof ObjectType` is a *type* test, not a node test.
@@ -8788,6 +8829,10 @@ final readonly class Translator
                 'rust' => self::PHP_ONLY,
                 'kind' => 'type',
                 'php' => 'Support::expressionType($context, ' . $this->operand($of) . ')',
+                // The expression the type was asked of, kept so a question the type cannot answer can be put
+                // to the expression instead. `$context->receiverType` carries none, which is what keeps the
+                // constant-string arms below on their old rendering there.
+                'of' => $this->operand($of),
             ];
         }
 
@@ -8855,7 +8900,9 @@ final readonly class Translator
                 return [
                     'rust' => self::PHP_ONLY,
                     'kind' => 'bytes',
-                    'php' => 'Support::constantStringOf(' . $this->operand($of) . ')',
+                    'php' => isset($of['of'])
+                        ? 'Support::constantStringAt($context, ' . $of['of'] . ')'
+                        : 'Support::constantStringOf(' . $this->operand($of) . ')',
                 ];
             }
 

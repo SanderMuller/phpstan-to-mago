@@ -171,7 +171,7 @@ reaches them and a package holding one can never read as full.
 
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
-| `symplify/phpstan-rules` | 89 | 39 | 49 | 1 |
+| `symplify/phpstan-rules` | 89 | 40 | 48 | 1 |
 | `hihaho/phpstan-rules` | 7 | 6 | 1 | 0 |
 | `tomasvotruba/type-coverage` | 10 | 5 | 5 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
@@ -179,7 +179,7 @@ reaches them and a package holding one can never read as full.
 | `phpstan/phpstan-phpunit` | 13 | 3 | 10 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-That is 68 of the 169 portable rules these seven packages register. A `--status` run counts whatever *your*
+That is 69 of the 169 portable rules these seven packages register. A `--status` run counts whatever *your*
 project installed instead, so its denominator will differ from this one; both are right, and each says which
 it used. No package is complete yet, which is the number that matters for the first workflow above.
 
@@ -188,6 +188,8 @@ narrowing into a binding, membership in a constant set, and comparisons on strin
 pieces:
 
 - Helpers inlined from the rule, from a trait or from a parent class.
+- A class constant used as a value: `$scope->getType(Foo::BAR)` is the constant's own literal, read from the
+  declaration where Mago's inferred type has been widened by a `@var` docblock.
 - The enclosing class: its hierarchy, its namespace, and its own methods with their visibility, attributes
   and docblocks.
 - Reflection at the use site, from Mago's codebase metadata: resolve the class written at a call site, ask
