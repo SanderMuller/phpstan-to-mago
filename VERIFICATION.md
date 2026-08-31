@@ -1570,3 +1570,35 @@ blocking, so the over-count stays and is pinned exactly. Telling the two apart m
 winner out of the `TraitUseAdaptation` node, which is work rather than a condition.
 
 Neither consumer contains the shape, so both metrics still read zero on both.
+
+#### A consumer's larastan crashing our discovery, and where the fix belongs
+
+`hihaho/hihaho@68d09f42` works around larastan 3.10.0: `LarastanStubFilesExtension` reads `LARAVEL_VERSION`
+without a `defined()` guard, and larastan's own bootstrap is allowed to define it never — the boot that
+would is guarded on a trait existing and throws nothing when no branch matches. The workaround is a
+`bootstrapFiles` entry defining the constant from `Application::VERSION`, which needs no application.
+
+**Applied verbatim it would break this repository.** There is no larastan here and no
+`Illuminate\Foundation\Application` to read, so the file would fatal on class-not-found the moment PHPStan
+loaded it — turning a clean run into a broken one to fix a problem this project does not have.
+
+**Where it does apply is `--from-config`,** which runs the *consumer's* PHPStan. Traced rather than assumed:
+`LarastanStubFilesExtension.php:25` in the installed 3.10.0 reads the constant bare, while
+`BuilderHelper.php:80` guards it — so the commit's description is accurate, and one consumer here is on
+3.10.0 and the other on 3.6.1.
+
+Reproduced through this repository's own path, on a control that takes the workaround out of a real
+consumer's configuration without touching it — a scratch config including theirs with `bootstrapFiles!: []`:
+
+    PHPStan could not report its registered rules: Error: Undefined constant "Larastan\Larastan\LARAVEL_VERSION"
+
+That message names the symptom and points at the wrong thing: a reader sees discovery failing to read their
+rules. So the guard goes in `resources/registered-rules.php`, which already runs inside the consumer's
+container bootstrap — with `class_exists()` on top of the `defined()` check, because most projects this is
+pointed at are not Laravel.
+
+After it, the control gets past the constant. It then fails further in on `Container::configPath()`, which
+is the control's own artefact — a scratch project with no real application — not something this fix owes an
+answer to. Both real consumers are unchanged: one discovers 442 rules as before, and the other fails the way
+it already did, on a PHPStan that does not expose its container to bootstrap files at all. That second one
+was checked against the unmodified file before it was called a regression.

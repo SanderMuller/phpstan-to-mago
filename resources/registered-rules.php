@@ -19,7 +19,40 @@ declare(strict_types=1);
  * same from the outside, and reading one as the other is how a survey reports full coverage of nothing.
  */
 
+use Illuminate\Foundation\Application;
 use PHPStan\Rules\Rule;
+
+/*
+|--------------------------------------------------------------------------
+| LARAVEL_VERSION, before larastan's stub collection can read it undefined
+|--------------------------------------------------------------------------
+|
+| Larastan defines this constant in its own bootstrap file, from an
+| application it boots there, and that boot is allowed to produce no
+| application at all — the packages branch is guarded on a trait existing and
+| nothing is thrown when no branch matches (larastan/larastan#2077). The
+| constant is then never defined, silently. `LarastanStubFilesExtension`
+| reads it without a `defined()` guard, so that silence surfaces as a fatal
+| thrown from stub collection before any analysis (larastan/larastan#2480,
+| root-caused in #2534); the one-line guard proposed in #2505 was closed
+| unmerged, so 3.10.0 still crashes.
+|
+| Discovery runs the *consumer's* PHPStan, so the crash lands here rather
+| than in their own run — and it arrives as "PHPStan could not report its
+| registered rules: Undefined constant", which names the symptom and points
+| at the wrong thing. Measured against a project on 3.10 with the workaround
+| taken out.
+|
+| The version does not need an application: it is a constant on the
+| framework's own Application class, which is what `$app->version()` returns.
+| Read only when that class is there, because this tool analyses plenty of
+| projects that are not Laravel — and only when nothing has defined it, so it
+| never fights larastan's own bootstrap.
+|
+*/
+if (! defined('LARAVEL_VERSION') && class_exists(Application::class)) {
+    define('LARAVEL_VERSION', Application::VERSION);
+}
 
 (static function (mixed $container): void {
     $destination = getenv('PHPSTAN_TO_MAGO_RULES_FILE');
