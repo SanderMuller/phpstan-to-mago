@@ -301,6 +301,12 @@ final readonly class TypeCoverage
                 continue;
             }
 
+            // One `Property` statement, not one name. `public $a, $b;` is a single node to the collector,
+            // which takes `count($classLike->getProperties())` off the class, and two entries in the
+            // metadata list. Neither corpus this was measured on holds a grouped declaration, so the
+            // difference never showed: the statement each name belongs to is found in the source instead.
+            $statements = [];
+
             foreach ($metadata->properties as $name) {
                 $property = $context->codebase->getDeclaringProperty($class, $name);
                 if (! $property instanceof PropertyMetadata) {
@@ -323,6 +329,16 @@ final readonly class TypeCoverage
                 if ($property->flags->contains(MetadataFlags::PROMOTED_PROPERTY)) {
                     continue;
                 }
+
+                // The guards below are the statement's, not the name's — the original reads
+                // `$property->props[0]->name` and asks once — so a grouped declaration is decided by its
+                // first name and counted once.
+                $statement = self::statementStart($contents[$file] ?? '', $at->span->start);
+                if (isset($statements[$statement])) {
+                    continue;
+                }
+
+                $statements[$statement] = true;
 
                 ++$total;
 
@@ -369,6 +385,22 @@ final readonly class TypeCoverage
     }
 
     /**
+     * Where the declaration holding this property begins, as an offset into its file.
+     *
+     * `public $a, $b;` is one `Property` node to the collector and two names in the metadata, so the two have
+     * to collapse to one count. Nothing in the metadata says which statement a name belongs to; the source
+     * does, because a declaration starts after the previous one ends.
+     */
+    private static function statementStart(string $contents, int $at): int
+    {
+        $boundary = strrpos(substr($contents, 0, $at), ';');
+        $open = strrpos(substr($contents, 0, $at), '{');
+        $close = strrpos(substr($contents, 0, $at), '}');
+
+        return max($boundary === false ? -1 : $boundary, $open === false ? -1 : $open, $close === false ? -1 : $close);
+    }
+
+    /**
      * Whether the docblock above a property names a type the original gives up on.
      *
      * `PropertyTypeDeclarationCollector::isPropertyDocTyped()` reads the docblock's *text* and answers true
@@ -400,7 +432,10 @@ final readonly class TypeCoverage
             return false;
         }
 
-        $opens = strrpos(substr($before, 0, $closes), '/*');
+        // `/**`, not `/*`. PHPStan reads `getDocComment()`, which is a `Doc` node and never an ordinary
+        // block comment — so a comment mentioning `callable` above an untyped property is typed here and
+        // missing there unless the opening token is checked.
+        $opens = strrpos(substr($before, 0, $closes), '/**');
         if ($opens === false) {
             return false;
         }

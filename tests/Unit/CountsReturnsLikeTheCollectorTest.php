@@ -84,6 +84,27 @@ final class CountsReturnsLikeTheCollectorTest extends TestCase
     }
 
     /**
+     * A second control that is meant to disagree, and it is the only over-count left.
+     *
+     * A class that documents a name two traits declare and picks one with `insteadof` counts 1 to the real
+     * rule and 2 here. The `@method` line makes the codebase resolve the name to the docblock, so asking
+     * where the name lands says "not the trait" for the winner as well as the loser, and the fallback that
+     * rescues a documented trait method rescues both.
+     *
+     * Refusing the fallback wherever an adaptation block appears was tried and is worse — it takes the winner
+     * out too and reads 0 against 1. Telling them apart means reading the `insteadof` winner out of the
+     * `TraitUseAdaptation` node, which is work rather than a condition. Pinned exactly, because a bound
+     * nobody pins is how +1 becomes +400, and neither consumer this was measured on contains the shape.
+     */
+    public function test_a_documented_insteadof_is_the_known_over_count(): void
+    {
+        [$original, $port] = (new CoverageControl(self::CONTROLS . '/documented-insteadof', 'returns'))->totals();
+
+        $this->assertSame(1, $original);
+        $this->assertSame(2, $port);
+    }
+
+    /**
      * The one control that is *meant* to disagree, and it is a known under-count rather than a new cause.
      *
      * A class declared twice in one file behind a version guard is counted by PHPStan and by neither body

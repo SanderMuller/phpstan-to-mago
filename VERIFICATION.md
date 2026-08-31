@@ -1542,3 +1542,31 @@ One test had to change for a reason worth keeping. `test_an_aggregate_with_no_st
 asked about `returns` — and `returns` stopped being an unmeasured metric the day its differential passed. A
 test whose subject can graduate out from under it quietly stops checking anything, so it now asks about
 `constants`, the one metric with no runtime implementation at all.
+
+###### What a second reader found that two corpora could not
+
+Three findings from a Codex review of the aggregate work. Two were real and neither corpus contained the
+input that would have shown them — which is the argument for a reader as well as a differential.
+
+- **A grouped declaration counted twice.** `public $first, $second;` is one `Property` node to the collector
+  and two entries in the metadata list, and the guards apply to the statement rather than to each name.
+  Reproduced on a two-property control: the real rule counts 2 and this counted 3. Neither consumer holds a
+  grouped declaration — measured, not assumed: 134 statements against 134 names on one and 465 against 465
+  on the other — so the differential had nothing to catch it with.
+- **An ordinary block comment read as a docblock.** PHPStan reads `getDocComment()`, which is a `Doc` node
+  and never a `/* */`. A comment mentioning `callable` above an untyped property was typed here and missing
+  there. The opening token is checked now.
+- The third — that the documented-name fallback is unconditional — is real and is **not fixed**, because the
+  fix that suggested itself is worse. See below.
+
+**A control that is meant to disagree, and the fix that was tried and reverted.** A class that documents a
+name two traits declare and picks one with `insteadof` counts 1 to the real rule and 2 here. The `@method`
+line makes the codebase resolve the name to the docblock, so asking where the name lands says "not the
+trait" for the winner as well as the loser, and the fallback rescues both.
+
+Refusing the fallback wherever an adaptation block appears reads 0 against 1 — it takes the winner out too.
+Both directions are wrong, and an over-count is the direction the gate treats as bounded rather than
+blocking, so the over-count stays and is pinned exactly. Telling the two apart means reading the `insteadof`
+winner out of the `TraitUseAdaptation` node, which is work rather than a condition.
+
+Neither consumer contains the shape, so both metrics still read zero on both.
