@@ -198,14 +198,22 @@ final class TraitUsers
         // the real rule counts 2 and a visited-set walk counted 1. Deduplicating here was the last
         // divergence in the return metric on a real consumer, and one of the parameter metric's.
         //
-        // PHP forbids a circular `use` between traits, so a walk with no visited set terminates.
+        // Each path carries the traits already on it. PHP rejects a circular `use` at runtime, but a static
+        // analyser reads files that never run, and a walk with no guard at all would not terminate on one —
+        // so a path that revisits a trait stops rather than the whole walk carrying a visited set, which
+        // would collapse the two paths this counts.
         $reached = [];
-        $queue = $uses[$from] ?? [];
+        $queue = array_map(static fn (string $trait): array => [$trait, []], $uses[$from] ?? []);
         while ($queue !== []) {
-            $trait = array_pop($queue);
+            [$trait, $seen] = array_pop($queue);
+            if (isset($seen[$trait])) {
+                continue;
+            }
+
             $reached[$trait] = ($reached[$trait] ?? 0) + 1;
+            $seen[$trait] = true;
             foreach ($uses['trait:' . $trait] ?? [] as $further) {
-                $queue[] = $further;
+                $queue[] = [$further, $seen];
             }
         }
 

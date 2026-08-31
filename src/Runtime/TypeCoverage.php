@@ -270,13 +270,26 @@ final readonly class TypeCoverage
         $total = 0;
         $typed = 0;
         $missing = [];
+        // Read once per file rather than searched per property: the docblock test needs the source text, and
+        // looking it up by walking the file list each time is one pass over every analysed file for every
+        // untyped property.
+        $contents = [];
+        foreach ($context->analysis->files as $analysed) {
+            $contents[$analysed->file] = $analysed->getSourceFile()->contents;
+        }
+
         foreach (self::classNames($context) as $class) {
             $metadata = $context->codebase->getClassLike($class);
             if (! $metadata instanceof ClassMetadata) {
                 continue;
             }
 
+            // Without a file there is nothing to compare a declaration's own location against, so every
+            // property would read as arriving from somewhere else.
             $file = $metadata->location->file;
+            if (! is_string($file)) {
+                continue;
+            }
 
             // A trait's properties are counted **zero** times, which is the opposite of its methods.
             // `ReturnTypeDeclarationCollector` visits `ClassMethod` nodes, so a trait's method is visited in
@@ -320,7 +333,7 @@ final readonly class TypeCoverage
                 // real rule read 93.3 % on one consumer with the counts already exact.
                 if ($property->declaredType instanceof TypeMetadata
                     || self::guardedByParent($context, $metadata, $name)
-                    || self::docblockDefersTyping($context, $property)
+                    || self::docblockDefersTyping($contents[$file] ?? '', $property)
                 ) {
                     ++$typed;
 
@@ -365,40 +378,36 @@ final readonly class TypeCoverage
      *
      * Read from the source rather than from metadata, because metadata answers a different question: mago
      * sets `type` for any `@var`, and the original does not count a `@var int` as typed at all.
+     *
+     * @param string $contents the declaring file's source, read once by the caller
      */
-    private static function docblockDefersTyping(AfterAnalysisContext $context, PropertyMetadata $property): bool
+    private static function docblockDefersTyping(string $contents, PropertyMetadata $property): bool
     {
         $at = $property->nameLocation;
         if (! $at instanceof SourceLocation) {
             return false;
         }
 
-        foreach ($context->analysis->files as $file) {
-            if ($file->file !== $at->file) {
-                continue;
-            }
-
-            $before = substr($file->getSourceFile()->contents, 0, $at->span->start);
-            $closes = strrpos($before, '*/');
-            if ($closes === false) {
-                return false;
-            }
-
-            // Everything between the comment and the property must be modifiers, attributes and whitespace.
-            // A `;` or a brace means the comment belongs to whatever came before, not to this declaration.
-            $between = substr($before, $closes + 2);
-            if (preg_match('/[;{}]/', $between) === 1) {
-                return false;
-            }
-
-            $opens = strrpos(substr($before, 0, $closes), '/*');
-
-            return $opens !== false
-                && (str_contains(substr($before, $opens, $closes - $opens), 'callable')
-                    || str_contains(substr($before, $opens, $closes - $opens), 'resource'));
+        $before = substr($contents, 0, $at->span->start);
+        $closes = strrpos($before, '*/');
+        if ($closes === false) {
+            return false;
         }
 
-        return false;
+        // Everything between the comment and the property must be modifiers, attributes and whitespace. A
+        // `;` or a brace means the comment belongs to whatever came before, not to this declaration.
+        if (preg_match('/[;{}]/', substr($before, $closes + 2)) === 1) {
+            return false;
+        }
+
+        $opens = strrpos(substr($before, 0, $closes), '/*');
+        if ($opens === false) {
+            return false;
+        }
+
+        $docblock = substr($before, $opens, $closes - $opens);
+
+        return str_contains($docblock, 'callable') || str_contains($docblock, 'resource');
     }
 
     /**
