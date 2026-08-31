@@ -1512,3 +1512,33 @@ should have.
 That last pair is the shape worth keeping. Two readings bracketed the right answer — one too strict at 63 %,
 one too generous at 94.9 % — and neither is nearer being correct than the other. A number that is close is
 not a number that is nearly right.
+
+###### The return metric passes too, on a diamond nobody had drawn
+
+`ReturnTypeCoverageRule` emits. Coverage 63 of 169 portable to **64**, and `tomasvotruba/type-coverage`
+reads 4 of 10 — three of its four now carried by measurements rather than by argument.
+
+Both consumers agree exactly, count and percentage: 18307 of 18307 and 8526 of 8526.
+
+The last divergence was one declaration in 18307, and finding it took the instrument rather than the eye.
+Every subdirectory of `app` agreed on its own while `app` as a whole was −1, which is the signature of an
+interaction rather than a construct. Leave-one-out over `app/Concerns` closed it, then over that directory's
+six files — and **three of the six individually made the delta zero**, which is what said the cause was a
+combination.
+
+`HasIframeLinkValidation` and `HasLinkValidation` both use `PrefixesUrlWithProtocol`, and one class uses
+both. So it reaches the third trait through **two paths**, and PHPStan analyses that body once for each. The
+walk that builds the trait-user index carried a visited set, so it counted the class once.
+
+Reproduced before it was fixed, on a four-file control: one trait, two traits using it, one class using both
+— the real rule counts 2 and the port counted 1, **for the parameter metric as well**. That is a divergence
+in a rule that ships, found while chasing one in a rule that does not.
+
+The fix counts paths rather than traits, which terminates because PHP forbids a circular `use`. It moved the
+parameter metric on one consumer from +81 to +82, inside its stated ceiling, and the return metric from −1 to
+zero.
+
+One test had to change for a reason worth keeping. `test_an_aggregate_with_no_stated_divergence_carries_no_note`
+asked about `returns` — and `returns` stopped being an unmeasured metric the day its differential passed. A
+test whose subject can graduate out from under it quietly stops checking anything, so it now asks about
+`constants`, the one metric with no runtime implementation at all.

@@ -65,6 +65,11 @@ final class CountsReturnsLikeTheCollectorTest extends TestCase
         // A `@method` line takes no name away from a trait, so both users reach the declaration. The
         // codebase resolves the name to the documented one, which said the documenting class did not.
         yield 'a class documenting the trait method it uses' => ['documented-trait-method', 2];
+        // One class, two traits, both using a third: the body of the third is analysed once per path, so it
+        // counts twice. A walk carrying a visited set counted it once, which was the last divergence in this
+        // metric on a real consumer — one class using two validation traits that both use a URL-prefixing
+        // one, and a -1 in 18307.
+        yield 'a class reaching one trait through two' => ['trait-diamond', 2];
     }
 
     #[DataProvider('controls')]

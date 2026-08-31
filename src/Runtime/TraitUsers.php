@@ -118,8 +118,10 @@ final class TraitUsers
 
         $users = [];
         foreach ($classes as $key => $user) {
-            foreach (array_keys(self::reachableTraits($uses, $key)) as $trait) {
-                $users[$trait][] = $user;
+            foreach (self::reachableTraits($uses, $key) as $trait => $paths) {
+                for ($i = 0; $i < $paths; ++$i) {
+                    $users[$trait][] = $user;
+                }
             }
         }
 
@@ -187,19 +189,21 @@ final class TraitUsers
      *
      * @param array<string, list<string>> $uses
      *
-     * @return array<string, true>
+     * @return array<string, int> how many distinct `use` paths reach each trait
      */
     private static function reachableTraits(array $uses, string $from): array
     {
+        // Counted per *path*, not per trait. A class that uses two traits which both use a third reaches
+        // that third one twice, and PHPStan analyses its body once for each — measured on a control where
+        // the real rule counts 2 and a visited-set walk counted 1. Deduplicating here was the last
+        // divergence in the return metric on a real consumer, and one of the parameter metric's.
+        //
+        // PHP forbids a circular `use` between traits, so a walk with no visited set terminates.
         $reached = [];
         $queue = $uses[$from] ?? [];
         while ($queue !== []) {
             $trait = array_pop($queue);
-            if (isset($reached[$trait])) {
-                continue;
-            }
-
-            $reached[$trait] = true;
+            $reached[$trait] = ($reached[$trait] ?? 0) + 1;
             foreach ($uses['trait:' . $trait] ?? [] as $further) {
                 $queue[] = $further;
             }

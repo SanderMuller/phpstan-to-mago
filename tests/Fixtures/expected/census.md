@@ -375,7 +375,7 @@ REFUSE  UnvalidatedFormRequestFieldRule  (the package registers it nowhere)
 NEVER   WriteNamedArgumentManifestRule
         this rule reports nothing: it writes a file and returns no findings, so there is nothing for a plugin to report. An analyzer plugin's only output is report(), and agreement has no meaning for a build artefact
 
-## tomasvotruba/type-coverage — 3 of 10 portable rules the package registers emit, 0 covered by the engine, 7 refuse, 0 unportable in principle, 0 it registers nowhere
+## tomasvotruba/type-coverage — 4 of 10 portable rules the package registers emit, 0 covered by the engine, 6 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ConstantTypeCoverageRule
         no aggregate mapped for the collector ConstantTypeDeclarationCollector
@@ -403,8 +403,7 @@ REFUSE  PropertyTypeDeclarationCollector
         needs: access path outside the vocabulary: Expr_ArrayDimFetch
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: cannot render a accumulator as a message argument
-REFUSE  ReturnTypeCoverageRule
-        no aggregate mapped for the collector ReturnTypeDeclarationCollector
+EMIT    ReturnTypeCoverageRule
 REFUSE  ReturnTypeDeclarationCollector
         if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Expression
         needs: if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Expression

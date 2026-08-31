@@ -163,14 +163,20 @@ final class AggregatesTypeCoverageTest extends TestCase
      *
      * Without this the docblock could be unconditional and every test above would still pass, which would put
      * a bound on an aggregate nobody measured — the opposite of the point.
+     *
+     * Asked about `constants`, which is the one metric with no runtime implementation and so no measurement
+     * to state. It used to ask about `returns`, and that stopped being an unmeasured metric the day its
+     * differential passed — a test whose subject can graduate out from under it is one that quietly stops
+     * checking anything.
      */
     public function test_an_aggregate_with_no_stated_divergence_carries_no_note(): void
     {
         $note = new ReflectionMethod(Transpiler::class, 'divergenceNote');
 
+        $this->assertArrayNotHasKey('constants', Vocabulary::ACCEPTED_DIVERGENCE);
         $this->assertSame('', $note->invoke(new Transpiler(
             dirname(__DIR__, 2) . '/vendor/tomasvotruba/type-coverage/src/Rules/ParamTypeCoverageRule.php',
-        ), 'returns'));
+        ), 'constants'));
     }
 
     /**

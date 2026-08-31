@@ -76,6 +76,9 @@ final class CountsParametersLikeTheCollectorTest extends TestCase
         // the return metric, which is where the case was found: the codebase resolves the name to the
         // documented declaration, and asking where it lands said the documenting class did not reach it.
         yield 'a class documenting the trait method it uses' => ['documented-trait-method', 2];
+        // The same path counting, shared through `TraitUsers`: a class reaching one trait through two has
+        // that trait's body analysed twice.
+        yield 'a class reaching one trait through two' => ['trait-diamond', 2];
     }
 
     #[DataProvider('controls')]

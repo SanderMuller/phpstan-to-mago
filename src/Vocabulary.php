@@ -493,6 +493,7 @@ final class Vocabulary
         'ParamTypeDeclarationCollector' => 'parameters',
         'DeclareCollector' => 'declares',
         'PropertyTypeDeclarationCollector' => 'properties',
+        'ReturnTypeDeclarationCollector' => 'returns',
     ];
 
     /**
@@ -678,6 +679,19 @@ final class Vocabulary
                 . 'also *under*-count, by a separate cause: a class declared twice in one file behind a version '
                 . 'guard is counted by PHPStan and by neither body here, which is -7 on nikic/php-parser. '
                 . 'Reproduce either with `php tests/Support/run-coverage-corpus.php <consumer-root>`.',
+        ],
+        'returns' => [
+            'ceiling' => 0.0,
+            'note' => 'Counted exactly on the two Laravel consumers it was measured on: 18307 of 18307 and '
+                . '8526 of 8526, agreeing on the percentage as well as the count. A zero ceiling is the '
+                . 'measurement rather than an absence of one. Four things had to hold and each was measured '
+                . 'first: a trait\'s methods are counted once for every class that reaches them and not once '
+                . 'each, with a class reaching a trait through two traits counting twice; a class that '
+                . 'declares the method itself does not reach the trait\'s, and a `@method` docblock takes no '
+                . 'name away from it; magic methods are skipped by php-parser\'s list of seventeen names and '
+                . 'not by mago\'s flag; and neither a `@method` entry nor an enum\'s `cases()`, `from()` and '
+                . '`tryFrom()` is a declaration the collector can see. Reproduce with '
+                . '`php tests/Support/run-coverage-corpus.php <consumer-root> --metric=returns`.',
         ],
         'properties' => [
             'ceiling' => 0.0,
