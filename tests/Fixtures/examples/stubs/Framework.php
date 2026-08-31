@@ -340,3 +340,12 @@ final class Route
 {
     public function __construct(public string $path = '') {}
 }
+
+namespace Symfony\Component\Security\Http\Attribute;
+
+/** The attribute `RequireIsGrantedEnumRule` fires on. Its first argument is what the rule reads. */
+#[\Attribute]
+final class IsGranted
+{
+    public function __construct(public mixed $attribute = null) {}
+}

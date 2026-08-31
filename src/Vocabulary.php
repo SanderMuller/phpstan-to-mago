@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago;
 
+use PhpParser\Node\Attribute;
 use PhpParser\Node\AttributeGroup;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -100,6 +101,10 @@ final class Vocabulary
         // `Fetch`. Registered on the specific kind, never on the `Access` category node above it, for the same
         // reason the partial-application rows are: a hook taking both reports twice.
         PropertyFetch::class => ['trait' => 'PropertyAccessHook', 'method' => 'after_property_access', 'node' => 'PropertyAccess', 'kind' => 'PropertyAccess', 'phpOnly' => true],
+        // An attribute as the node a rule fires on, rather than one reached from a declaration. Mago gives it
+        // a kind of its own, and the two children a rule reads — the name and the argument list — are the ones
+        // the `attribute` part row already reads, so the fields are the same navigation from the hook's node.
+        Attribute::class => ['trait' => 'AttributeHook', 'method' => 'after_attribute', 'node' => 'Attribute', 'kind' => 'Attribute', 'phpOnly' => true],
         StaticPropertyFetch::class => ['trait' => 'StaticPropertyAccessHook', 'method' => 'after_static_property_access', 'node' => 'StaticPropertyAccess', 'kind' => 'StaticPropertyAccess', 'phpOnly' => true],
         StaticMethodCallableNode::class => ['trait' => 'StaticMethodPartialApplicationHook', 'method' => 'after_static_method_partial_application', 'node' => 'StaticMethodPartialApplication', 'kind' => 'StaticMethodPartialApplication', 'phpOnly' => true],
         // PHPStan's virtual per-method node, the method-level counterpart of `InClassNode`. Mapped to the same
@@ -299,6 +304,12 @@ final class Vocabulary
         // a `ClassLikeMemberSelector` and a `PartialArgumentList`, in that order.
         // A property access reads its name the way the `Expr` family does — through `namePart()`, which covers
         // both the written and the computed spelling — and its receiver as the first expression child.
+        // The attribute hook's own node. `attributeName()` takes a part, and the hook hands over a `Node`, so
+        // the conversion happens here rather than by widening a signature every emitted plugin already calls.
+        'Attribute' => [
+            'name' => [self::PHP_ONLY, 'bytes', 'Support::attributeName($context, Support::asPart($context, {base}))'],
+            'args' => [self::PHP_ONLY, 'args', 'Support::argumentList($context, {base})'],
+        ],
         'PropertyAccess' => [
             'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
             'name' => [self::PHP_ONLY, 'name-part', 'Support::namePart($context, {base})'],

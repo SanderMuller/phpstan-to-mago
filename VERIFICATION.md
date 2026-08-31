@@ -2078,3 +2078,31 @@ nothing only-port; the identifier covers `VariableMethodCallRule` and the new `V
 together, so it is a joint result rather than one for the new rule alone. The static and property identifiers
 report nothing on either side of both corpora, and the instrument names them rather than counting them as
 agreement.
+
+#### An attribute as the node a rule fires on
+
+`RequireIsGrantedEnumRule` reads the role in `#[IsGranted('ROLE_ADMIN')]` and asks for an enum constant
+instead. It refused on the hook, and everything under it was already in the vocabulary: an attribute reached
+*from a declaration* has had a field row since the attribute helpers were written, and the hook's own node
+needs the same two readings.
+
+Probed rather than assumed, on a file holding a positional argument and a named one:
+
+- `attributeName()` answers the **resolved** name — `Probe\IsGranted` for an imported `#[IsGranted]` — which
+  is what `$node->name->toString()` gives a rule after PHPStan's own name resolution.
+- The arguments are a `PartialArgumentList`, which the ordinary argument helpers already navigate, and
+  `positionalArgAt(0)` answers the value of a *named* first argument too — which is what `$node->args[0]` does
+  on the other side.
+
+`symplify/phpstan-rules` reads **43 of 89**, and the total 77 of 169.
+
+The good example carries a near miss the gate would otherwise not have: an attribute of a different name
+holding the same string. The rule gates on the resolved attribute name, so without that case the pair would
+pass whether or not the gate does anything.
+
+`NoBareAndSecurityIsGrantedContentsRule` is the other rule on this hook and did not come with it. It moves off
+the hook onto `preg_split()`, which needs a list-producing runtime value and an iteration over it — a
+descriptor kind this vocabulary does not have, rather than one more accessor.
+
+No corpus exercises it. `#[IsGranted` appears in none of the four projects to hand, which are Laravel and
+Rector; the gate is the evidence.

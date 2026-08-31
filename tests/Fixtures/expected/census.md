@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 42 of 89 portable rules the package registers emit, 1 covered by the engine, 46 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 43 of 89 portable rules the package registers emit, 1 covered by the engine, 45 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -126,9 +126,8 @@ REFUSE  NoAbstractControllerConstructorRule
 EMIT    NoArrayMapWithArrayCallableRule
 EMIT    NoAssertFuncCallInTestsRule
 REFUSE  NoBareAndSecurityIsGrantedContentsRule
-        no hook mapping for node type PhpParser\Node\Attribute
-        needs: in_array() over a expr
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_ArrayDimFetch
+        assignment value outside the vocabulary: access path outside the vocabulary: preg_split()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: preg_split()
 EMIT    NoBundleResourceConfigRule
 EMIT    NoClassLevelRouteRule
 REFUSE  NoClassReflectionStaticReflectionRule
@@ -297,10 +296,7 @@ REFUSE  RequireAttributeNamespaceRule
         needs: method call outside the vocabulary ->isAttributeClass()
 EMIT    RequireExceptionNamespaceRule
 EMIT    RequireInvokableControllerRule
-REFUSE  RequireIsGrantedEnumRule
-        no hook mapping for node type PhpParser\Node\Attribute
-        needs: in_array() over a expr
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_ArrayDimFetch
+EMIT    RequireIsGrantedEnumRule
 REFUSE  RequireQueryBuilderOnRepositoryRule
         statement in isValidRepositoryObjectType() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Foreach, which is a decision tree rather than a guard that exits
         needs: statement in isValidRepositoryObjectType() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Foreach, which is a decision tree rather than a guard that exits
