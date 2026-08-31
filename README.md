@@ -175,11 +175,11 @@ reaches them and a package holding one can never read as full.
 | `hihaho/phpstan-rules` | 7 | 6 | 1 | 0 |
 | `tomasvotruba/type-coverage` | 10 | 5 | 5 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
-| `phpstan/phpstan-strict-rules` | 45 | 12 | 33 | 0 |
+| `phpstan/phpstan-strict-rules` | 45 | 16 | 29 | 0 |
 | `phpstan/phpstan-phpunit` | 13 | 4 | 9 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-That is 72 of the 169 portable rules these seven packages register. A `--status` run counts whatever *your*
+That is 76 of the 169 portable rules these seven packages register. A `--status` run counts whatever *your*
 project installed instead, so its denominator will differ from this one; both are right, and each says which
 it used. No package is complete yet, which is the number that matters for the first workflow above.
 
@@ -211,7 +211,9 @@ plugin carries it too, so a reader of the emitted file finds it without finding 
 exact on both consumers they were measured against; the parameter one states a ceiling and the cause behind
 it. `tests/Support/run-coverage-corpus.php <project> --metric=<name>` reproduces any of them.
 
-`$obj?->m(..)` is a separate hook, because Mago makes it a separate node. Anything not covered is refused by
+`$obj?->m(..)` is a separate hook, because Mago makes it a separate node. So is `$obj->m(...)`: PHPStan gives
+first-class callable syntax a virtual node of its own and Mago gives it a node kind of its own, and the two
+agree on what it holds. Anything not covered is refused by
 name.
 
 ## How far this is verified

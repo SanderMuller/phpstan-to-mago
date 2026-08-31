@@ -51,6 +51,8 @@ use PHPStan\Node\CollectedDataNode;
 use PHPStan\Node\FileNode;
 use PHPStan\Node\InClassMethodNode;
 use PHPStan\Node\InClassNode;
+use PHPStan\Node\MethodCallableNode;
+use PHPStan\Node\StaticMethodCallableNode;
 
 /**
  * The tables that say what a rule may be made of.
@@ -85,6 +87,21 @@ final class Vocabulary
         // that does not narrow to `Class_` is refused rather than silently missing interfaces and traits.
         InClassNode::class => ['trait' => 'ClassDeclarationHook', 'method' => 'on_enter_class', 'node' => 'Class', 'kind' => 'Class', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classOnly' => true, 'classFrom' => 'metadata'],
         ClassMethod::class => ['trait' => 'ClassLikeMemberHook', 'method' => 'on_method', 'node' => 'Method', 'kind' => 'Method', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata'],
+        // First-class callable syntax. PHPStan gives `$o->m(...)` a virtual node of its own rather than a
+        // `MethodCall`, and Mago gives it a node kind of its own rather than a `MethodCall` — the two agree,
+        // which is what makes the mapping exact. Probed: `MethodPartialApplication` carries the same three
+        // children a call does, in the same order, under a `PartialApplication` category node that is *not*
+        // registered here — a hook taking both would report every finding twice.
+        //
+        // PHP target only, for the reason the nullsafe row gives: nothing in the corpus pins down which Rust
+        // hook trait fires for these, and registering against a guess is worse than a refusal that names it.
+        MethodCallableNode::class => ['trait' => 'MethodPartialApplicationHook', 'method' => 'after_method_partial_application', 'node' => 'MethodPartialApplication', 'kind' => 'MethodPartialApplication', 'phpOnly' => true],
+        // The two member accesses the `VariableVariables` family reads, which Mago spells `Access` rather than
+        // `Fetch`. Registered on the specific kind, never on the `Access` category node above it, for the same
+        // reason the partial-application rows are: a hook taking both reports twice.
+        PropertyFetch::class => ['trait' => 'PropertyAccessHook', 'method' => 'after_property_access', 'node' => 'PropertyAccess', 'kind' => 'PropertyAccess', 'phpOnly' => true],
+        StaticPropertyFetch::class => ['trait' => 'StaticPropertyAccessHook', 'method' => 'after_static_property_access', 'node' => 'StaticPropertyAccess', 'kind' => 'StaticPropertyAccess', 'phpOnly' => true],
+        StaticMethodCallableNode::class => ['trait' => 'StaticMethodPartialApplicationHook', 'method' => 'after_static_method_partial_application', 'node' => 'StaticMethodPartialApplication', 'kind' => 'StaticMethodPartialApplication', 'phpOnly' => true],
         // PHPStan's virtual per-method node, the method-level counterpart of `InClassNode`. Mapped to the same
         // hook as `ClassMethod`, because that is the declaration it stands for: PHPStan copies the original
         // node's attributes onto it, so `getDocComment()` and the line a finding lands on are the method's.
@@ -277,6 +294,26 @@ final class Vocabulary
         'StaticMethodCall' => [
             'class' => ['node.class', 'name-expr', 'Support::classPart($context, {base})'],
             'name' => ['&node.method', 'name-selector', 'Support::selector($context, {base})'],
+        ],
+        // The same children a call has, which the CST probe confirmed rather than assumed: an `Expression`,
+        // a `ClassLikeMemberSelector` and a `PartialArgumentList`, in that order.
+        // A property access reads its name the way the `Expr` family does — through `namePart()`, which covers
+        // both the written and the computed spelling — and its receiver as the first expression child.
+        'PropertyAccess' => [
+            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
+            'name' => [self::PHP_ONLY, 'name-part', 'Support::namePart($context, {base})'],
+        ],
+        'StaticPropertyAccess' => [
+            'class' => [self::PHP_ONLY, 'name-expr', 'Support::classPart($context, {base})'],
+            'name' => [self::PHP_ONLY, 'name-part', 'Support::namePart($context, {base})'],
+        ],
+        'MethodPartialApplication' => [
+            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
+            'name' => [self::PHP_ONLY, 'name-selector', 'Support::selector($context, {base})'],
+        ],
+        'StaticMethodPartialApplication' => [
+            'class' => [self::PHP_ONLY, 'name-expr', 'Support::classPart($context, {base})'],
+            'name' => [self::PHP_ONLY, 'name-selector', 'Support::selector($context, {base})'],
         ],
         'Assignment' => [
             // Both sides are an `Expression` child, told apart only by position.

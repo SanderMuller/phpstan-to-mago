@@ -8863,7 +8863,10 @@ final readonly class Translator
             // hardcoded path, so a hook whose receiver is reached differently cannot pass by accident. The
             // receiver arrives ready-made under `ReceiverType`, so it is preferred where it applies.
             $receiver = Vocabulary::FIELDS[$this->context->nodeKind]['var'][2] ?? null;
-            if ($receiver !== null && ($of['php'] ?? null) === $receiver) {
+            if ($receiver !== null
+                && ($of['php'] ?? null) === $receiver
+                && ! in_array($this->context->nodeKind, self::KINDS_WITHOUT_A_RECEIVER_TYPE, true)
+            ) {
                 $this->context->usesReceiverType = true;
 
                 return ['rust' => self::PHP_ONLY, 'kind' => 'type', 'php' => '$context->receiverType'];
@@ -8875,7 +8878,12 @@ final readonly class Translator
             // needed. An array element of `[$this, 'handle']` answers `Fixture\Handler`.
             // A member name is a sub-expression like any other where it is computed — `$o->$n` names it with a
             // variable, and asking its type is how a rule tells a callable apart from a plain string.
-            if (! in_array($of['kind'], ['expr', 'found-node', 'argument', 'const-item', 'name-part'], true)) {
+            // `name-expr` is the class position of a static access, which is a written name *or* an
+            // expression — `Foo::$m(...)` against `$class::$m(...)`. Asking its inferred type is only
+            // meaningful in the second case, and the rules that ask have already guarded the first with
+            // `instanceof Name`: `VariableStaticMethodCallableRule` resolves a written name and describes a
+            // type, in the two arms of one `if`.
+            if (! in_array($of['kind'], ['expr', 'found-node', 'argument', 'const-item', 'name-part', 'name-expr'], true)) {
                 throw new Refusal("the inferred type of a {$of['kind']}", $line);
             }
 
@@ -10011,6 +10019,22 @@ final readonly class Translator
             return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
         }
 
+        // `$node->getName()`, `$node->getVar()` and `$node->getClass()` on one of PHPStan's virtual call
+        // nodes. `MethodCallableNode` carries the same children an ordinary call does and exposes them
+        // through getters where a `MethodCall` has properties, so the reading is the field table's under the
+        // name the property would have had. Rewritten into that fetch rather than duplicated, so a field row
+        // added for one shape is available to the other without a second table.
+        if ($expr instanceof MethodCall
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'node'
+            && isset(self::VIRTUAL_NODE_GETTERS[$this->memberName($expr->name, $expr->getStartLine())])
+            && isset(Vocabulary::FIELDS[$this->context->nodeKind][self::VIRTUAL_NODE_GETTERS[$this->memberName($expr->name, $expr->getStartLine())]])
+        ) {
+            $field = self::VIRTUAL_NODE_GETTERS[$this->memberName($expr->name, $expr->getStartLine())];
+
+            return $this->resolve(new PropertyFetch($expr->var, new Identifier($field)), $line);
+        }
+
         if ($expr instanceof MethodCall
             // `getFileDescription()` is the same path for our purposes: PHPStan uses it for messages, and a
             // rule that tests it against a suffix is asking about the file either way.
@@ -10426,6 +10450,34 @@ final readonly class Translator
 
         throw new Refusal("could not resolve {$alias}::{$constant}", $line);
     }
+
+    /**
+     * Hook kinds whose receiver does *not* arrive under `ReceiverType`.
+     *
+     * The shortcut above is right for an ordinary call and wrong for a first-class callable: probed on
+     * `$o->run(...)` and `$o->$n(...)`, `$context->receiverType` is null there with the requirement declared,
+     * while `Support::expressionType()` on the same child answers the receiver's class. Taking the shortcut
+     * anyway rendered the message as the description of nothing, which is a plugin that reports on the right
+     * line and tells the reader the wrong type.
+     *
+     * @var list<string>
+     */
+    private const array KINDS_WITHOUT_A_RECEIVER_TYPE = ['MethodPartialApplication'];
+
+    /**
+     * The field a virtual node's getter stands for.
+     *
+     * PHPStan's `MethodCallableNode` and `StaticMethodCallableNode` hold what an ordinary call holds and hand
+     * it back through getters rather than properties. The names are the only difference, so they are a
+     * mapping rather than a second reading.
+     *
+     * @var array<string, string>
+     */
+    private const array VIRTUAL_NODE_GETTERS = [
+        'getName' => 'name',
+        'getVar' => 'var',
+        'getClass' => 'class',
+    ];
 
     /** Node kinds that carry an argument list. */
     private const array ARGUMENT_LIST_KINDS = ['MethodCall', 'FunctionCall', 'StaticMethodCall', 'NullSafeMethodCall', 'Instantiation'];

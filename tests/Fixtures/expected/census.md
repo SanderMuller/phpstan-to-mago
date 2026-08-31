@@ -413,7 +413,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 12 of 45 portable rules the package registers emit, 0 covered by the engine, 33 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 16 of 45 portable rules the package registers emit, 0 covered by the engine, 29 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
@@ -464,9 +464,7 @@ REFUSE  DisallowedLooseComparisonRule
         needs: message expression outside the vocabulary: Expr_Ternary
 EMIT    DisallowedShortTernaryRule
 REFUSE  DynamicCallOnStaticMethodsCallableRule
-        no hook mapping for node type PHPStan\Node\MethodCallableNode
-        needs: access path outside the vocabulary: ->getName()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getName()
+        assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
         needs: assignment value outside the vocabulary: unknown local $type
 REFUSE  DynamicCallOnStaticMethodsRule
@@ -554,26 +552,14 @@ REFUSE  UselessCastRule
         needs: no PHP navigation for node.expr (kind expr) on a Cast node
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return
 EMIT    VariableMethodCallRule
-REFUSE  VariableMethodCallableRule
-        no hook mapping for node type PHPStan\Node\MethodCallableNode
-        needs: access path outside the vocabulary: ->getName()
-        needs: access path outside the vocabulary: ->getVar()
+EMIT    VariableMethodCallableRule
 REFUSE  VariablePropertyFetchRule
-        no hook mapping for node type PhpParser\Node\Expr\PropertyFetch
-        needs: no node predicate for instanceof PhpParser\Node\Identifier on a expr
+        trinary tail on an unsupported query ->isLiteralString()
         needs: trinary tail on an unsupported query ->isLiteralString()
-        needs: no PHP navigation for node.var (kind expr) on a PropertyFetch node
-REFUSE  VariableStaticMethodCallRule
-        the inferred type of a name-expr
-        needs: the inferred type of a name-expr
-REFUSE  VariableStaticMethodCallableRule
-        no hook mapping for node type PHPStan\Node\StaticMethodCallableNode
-        needs: access path outside the vocabulary: ->getName()
-        needs: access path outside the vocabulary: ->getClass()
-REFUSE  VariableStaticPropertyFetchRule
-        no hook mapping for node type PhpParser\Node\Expr\StaticPropertyFetch
-        needs: no node predicate for instanceof PhpParser\Node\Identifier on a expr
-        needs: resolveName() over something other than a written name
+        needs: is() on something other than the scope class
+EMIT    VariableStaticMethodCallRule
+EMIT    VariableStaticMethodCallableRule
+EMIT    VariableStaticPropertyFetchRule
 EMIT    VariableVariablesRule
 REFUSE  WrongCaseOfInheritedMethodRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getMethodReflection()

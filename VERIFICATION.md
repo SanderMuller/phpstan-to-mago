@@ -2027,3 +2027,54 @@ ones: the two halves are separately load-bearing.
 No corpus exercises either rule. `extends AbstractController` appears **0** times across hihaho, finconnect,
 rector-src and mijntp — all four are Laravel or Rector, and a Symfony corpus is not among the projects this
 repository has to hand. The gate is the evidence, and this file says so.
+
+#### The dynamic-name family, four rules at once
+
+`phpstan-strict-rules` ships five rules about names a program computes rather than writes, and one of them
+emitted. All four of the others refused on a hook mapping rather than on anything they do, and all four are
+the same three lines: guard on the name being written, then report with the receiver described.
+
+Mago has an exact counterpart for each node PHPStan gives them, which is what makes the mapping a mapping
+rather than an approximation — probed in one file before any of it was written:
+
+| PHPStan | Mago | children |
+|:--|:--|:--|
+| `MethodCallableNode` | `MethodPartialApplication` | `Expression` + `ClassLikeMemberSelector` + `PartialArgumentList` |
+| `StaticMethodCallableNode` | `StaticMethodPartialApplication` | the same three |
+| `PropertyFetch` | `PropertyAccess` | receiver + selector |
+| `StaticPropertyFetch` | `StaticPropertyAccess` | class + name |
+
+The probe settled two things that reading could not. A `PartialApplication` **category** node fires as well,
+carrying the specific kind as its only child — the same shape as `Access` over `ClassConstantAccess` — so a
+hook registering both would report every finding twice, and only the specific kinds are registered. And
+`getName()`/`getVar()`/`getClass()` on a virtual node are the fields an ordinary call has under different
+names, so they are rewritten into that fetch rather than given a second reading.
+
+`phpstan-strict-rules` reads **16 of 45** now, and the total 76 of 169. `VariablePropertyFetchRule` is the one
+that did not come with them: it asks `->isLiteralString()` of a type and takes the universal-object-crates
+parameter, so it moves onto those rather than emitting.
+
+##### The message described nothing, and the gate said so
+
+`$context->receiverType` is null for a `MethodPartialApplication` — probed, with the requirement declared —
+while `Support::expressionType()` on the same child answers the receiver's class. The receiver shortcut is
+keyed on the field table's own navigation, which the new row spells identically to an ordinary call's, so it
+matched and the message rendered as `Variable method call on .` — the description of nothing, on the right
+line. Excluded by kind, with the probe in the comment; putting the exclusion back turns the pair red with
+exactly that message.
+
+##### A near miss another rule of the package catches
+
+The good example first held an ordinary `$holder->$name()` beside the written callable, to show the rule is
+silent on a different node kind. PHPStan reported it — under the *same* identifier, `method.dynamicName`,
+because `VariableMethodCallRule` catches it and the gate registers the package's own neon as well as the rule
+under test. A near miss that a sibling rule reports makes the pair say nothing about this one, so it is out,
+and the reason is written in the example.
+
+##### Corpus
+
+`method.dynamicName` agrees **2 of 2** on hihaho and **7 of 7** on finconnect, with nothing only-original and
+nothing only-port; the identifier covers `VariableMethodCallRule` and the new `VariableMethodCallableRule`
+together, so it is a joint result rather than one for the new rule alone. The static and property identifiers
+report nothing on either side of both corpora, and the instrument names them rather than counting them as
+agreement.
