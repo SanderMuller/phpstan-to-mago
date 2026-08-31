@@ -1602,3 +1602,71 @@ is the control's own artefact — a scratch project with no real application —
 answer to. Both real consumers are unchanged: one discovers 442 rules as before, and the other fails the way
 it already did, on a PHPStan that does not expose its container to bootstrap files at all. That second one
 was checked against the unmodified file before it was called a regression.
+
+#### The constant metric: three collectors in one package, three answers about a trait
+
+`ConstantTypeCoverageRule` was the last `type-coverage` consumer still refused, on `no aggregate mapped for
+the collector ConstantTypeDeclarationCollector`. It is mapped now, and the package reads 5 of 10.
+
+The question every member collector has to answer is what a trait's members are worth, and the three in this
+package answer it three different ways. `ReturnTypeDeclarationCollector` counts a trait's method once per
+class that *reaches* it, so a class redeclaring the name takes it away. `PropertyTypeDeclarationCollector`
+counts a trait's property **zero** times. This one counts a trait's constant once per using class **whether
+or not the class redeclares it**. Nothing in the sources says so; each was a measurement.
+
+The measurement that settled it is a trait with one constant used by one class that redeclares the same
+constant. The real rule counts **2** — the trait's, analysed in that class's context, plus the class's own —
+where the `reachedAs()` test the return metric needs reads 1. Beside it, a trait nobody uses counts **0**,
+which is the half that stops "count each declaration once" from reaching the same total by cancelling two
+errors. Both are controls, and putting the properties model in place (`$times = 0` for a trait) turns them
+red at 7 against 9 and 1 against 2 — which is what says the counting is load-bearing rather than incidental.
+
+An enum's cases are not constants the collector can see: they are `EnumCase` nodes and it visits `ClassConst`
+ones. A fixture holding an enum with two cases and one constant counts 1, and that is what pinned it.
+
+##### A grouped declaration, and the over-count the property metric still carries
+
+The first whole-corpus run read **+1 of 715** on one consumer. Bisected by directory to one file, which
+writes:
+
+    private const string
+        DYNAMIC_TEXT = 'Welcome {name}',
+        STATIC_TEXT = 'Welcome to this video';
+
+That is one `ClassConst` node to the collector and two entries in mago's metadata. `TypeCoverage::properties()`
+collapses such a pair by scanning the source back to the previous `;` or brace — and the `}` inside
+`'Welcome {name}'` reads as the end of a statement, so the pair counts twice. Blanking string literals before
+that scan was written for the property metric and reverted, because an apostrophe in a comment opens a quote
+that never closes and it cost 42 declarations across two consumers.
+
+The tree answers it outright instead: `NodeKind::ClassLikeConstant` **is** the statement, so there is nothing
+to infer from text. Probed before it was relied on — the node's span is `195..241` where the two names sit at
+208 and 225. A control copies the consumer's shape and reads 1 to the real rule's 1; without the span map it
+reads 2.
+
+The same span is what a finding is anchored on, and that is a second thing it buys. The original reports
+`$classConst->getLine()`, the line the `const` keyword is on, and a declaration written over three lines puts
+its names two lines below. `AggregatesConstantCoverageTest` compares `line: message` against the real rule
+under real PHPStan, through the plugin the transpiler actually emits, and the wrapped declaration is line 13
+on both sides.
+
+##### Where it was measured, and where it could not be
+
+**Exact on both consumers it was measured against: 715 of 715 at 100.0 % typed, and 636 of 636 at 98.4 %.**
+The percentage agreeing matters more than the count here — the second consumer has untyped constants, so the
+typed half (a written type, or a constant a parent *class* already declares — `getParents()` is classes, not
+interfaces) is exercised rather than assumed.
+
+The second consumer is not the one the parameter and return bounds were measured on. That one cannot be
+measured at all right now, on **any** metric: the after-analysis hook dies reading a protocol collection of
+69332 entries against the SDK's limit of 65536. Which call hands it that collection was not traced — the
+count shrinks by about the number of class-likes removed when a directory is excluded, which is consistent
+with the class-like list and is not the same as having watched it. What *was* checked is that it is not this
+change: the return metric fails identically on the unmodified tree, so it is the corpus growing past an SDK
+limit. Naming it rather than quoting two consumers as though they were the two the other bounds name.
+
+Also measured: a trait and its only user in one file. mago lists the trait's constant on the using class with
+the trait's own declaring location, so comparing *files* says the class wrote it and the declaration counts
+twice. Comparing *spans* says it was written in the trait. Neither consumer holds that shape, so it is a
+control rather than a corpus finding — and removing the containment test turns that control red at 2 against 1
+while both consumers stay exact, which is the whole reason it exists.

@@ -491,6 +491,7 @@ final class Vocabulary
      */
     public const array AGGREGATES = [
         'ParamTypeDeclarationCollector' => 'parameters',
+        'ConstantTypeDeclarationCollector' => 'constants',
         'DeclareCollector' => 'declares',
         'PropertyTypeDeclarationCollector' => 'properties',
         'ReturnTypeDeclarationCollector' => 'returns',
@@ -679,6 +680,17 @@ final class Vocabulary
                 . 'also *under*-count, by a separate cause: a class declared twice in one file behind a version '
                 . 'guard is counted by PHPStan and by neither body here, which is -7 on nikic/php-parser. '
                 . 'Reproduce either with `php tests/Support/run-coverage-corpus.php <consumer-root>`.',
+        ],
+        'constants' => [
+            'ceiling' => 0.0,
+            'note' => 'Counted exactly on the two consumers it was measured on: 715 of 715 at 100.0 % typed '
+                . 'and 636 of 636 at 98.4 % typed, agreeing on the percentage as well as the count. Three '
+                . "things had to hold and each was measured first: a trait's constants are counted once for "
+                . 'every class that uses it, and unlike its methods an override does not take them away; an '
+                . "enum's cases are not constants the collector can see; and a grouped `const A = 1, B = 2;` "
+                . 'is one declaration, found from the tree rather than by scanning the source, because one '
+                . 'consumer writes a grouped constant whose default holds a brace. Reproduce with '
+                . '`php tests/Support/run-coverage-corpus.php <consumer-root> --metric=constants`.',
         ],
         'returns' => [
             'ceiling' => 0.0,

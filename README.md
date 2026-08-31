@@ -173,13 +173,13 @@ reaches them and a package holding one can never read as full.
 |:--|--:|--:|--:|--:|
 | `symplify/phpstan-rules` | 89 | 39 | 49 | 1 |
 | `hihaho/phpstan-rules` | 7 | 6 | 1 | 0 |
-| `tomasvotruba/type-coverage` | 10 | 4 | 6 | 0 |
+| `tomasvotruba/type-coverage` | 10 | 5 | 5 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
 | `phpstan/phpstan-strict-rules` | 45 | 12 | 33 | 0 |
 | `phpstan/phpstan-phpunit` | 13 | 0 | 13 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-That is 64 of the 169 portable rules these seven packages register. A `--status` run counts whatever *your*
+That is 65 of the 169 portable rules these seven packages register. A `--status` run counts whatever *your*
 project installed instead, so its denominator will differ from this one; both are right, and each says which
 it used. No package is complete yet, which is the number that matters for the first workflow above.
 
@@ -198,11 +198,11 @@ pieces:
   record produced *inside* a loop becomes one local per field, so it can be read after the loop.
 - A collector-and-consumer pair, where PHPStan gathers a fact per file and a second rule reduces the
   collection. There is no collector in Mago, so the pair becomes one whole-project pass and the *measurement*
-  is reimplemented rather than the collector's body. Four of `type-coverage`'s metrics are mapped this way.
+  is reimplemented rather than the collector's body. Five of `type-coverage`'s metrics are mapped this way.
 
 An aggregate is mapped only once its numbers agree with the real rule on a real project — the parameter,
-return, property and declare metrics each carry the bound they were measured at, and the generated plugin
-carries it too, so a reader of the emitted file finds it without finding this one. Three of the four are
+return, property, constant and declare metrics each carry the bound they were measured at, and the generated
+plugin carries it too, so a reader of the emitted file finds it without finding this one. Four of the five are
 exact on both consumers they were measured against; the parameter one states a ceiling and the cause behind
 it. `tests/Support/run-coverage-corpus.php <project> --metric=<name>` reproduces any of them.
 

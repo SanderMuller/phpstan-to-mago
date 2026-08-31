@@ -118,7 +118,7 @@ final readonly class TypeCoverage
         $missing = [];
         $traitUsers = TraitUsers::of($context);
 
-        foreach (self::classNames($context) as $class) {
+        foreach (Analysed::classNames($context) as $class) {
             $metadata = $context->codebase->getClassLike($class);
             if (! $metadata instanceof ClassMetadata) {
                 continue;
@@ -278,7 +278,7 @@ final readonly class TypeCoverage
             $contents[$analysed->file] = $analysed->getSourceFile()->contents;
         }
 
-        foreach (self::classNames($context) as $class) {
+        foreach (Analysed::classNames($context) as $class) {
             $metadata = $context->codebase->getClassLike($class);
             if (! $metadata instanceof ClassMetadata) {
                 continue;
@@ -363,6 +363,20 @@ final readonly class TypeCoverage
         }
 
         return new self($total, $typed, $missing);
+    }
+
+    /**
+     * Class constant type coverage, counted the way `ConstantTypeDeclarationCollector` counts.
+     *
+     * The counting lives in {@see DeclaredConstants}, for the reason {@see DeclaredParameters} exists: the
+     * collector is not the few lines it looks like. It needs the trait-user index, a statement map read from
+     * the tree, and a parent-class guard, and this class is over its complexity limit with them inline.
+     */
+    public static function constants(AfterAnalysisContext $context): self
+    {
+        $counted = DeclaredConstants::of($context);
+
+        return new self($counted['total'], $counted['typed'], $counted['missing']);
     }
 
     /**
@@ -523,32 +537,5 @@ final readonly class TypeCoverage
         }
 
         return new self($total, $typed, $missing);
-    }
-
-    /**
-     * The class-likes declared in the analysed files, rather than every class Mago knows.
-     *
-     * The codebase includes every stub it scanned — 669 of them on an empty project — and a coverage
-     * percentage over the standard library is not what the rule means.
-     *
-     * @return list<string>
-     */
-    private static function classNames(AfterAnalysisContext $context): array
-    {
-        $analysed = [];
-        foreach ($context->analysis->files as $file) {
-            $analysed[$file->file] = true;
-        }
-
-        $names = [];
-        foreach ($context->codebase->getClassLikeNames() as $name) {
-            $metadata = $context->codebase->getClassLike($name);
-            $file = $metadata?->location->file;
-            if ($file !== null && isset($analysed[$file])) {
-                $names[] = $name;
-            }
-        }
-
-        return $names;
     }
 }

@@ -164,19 +164,22 @@ final class AggregatesTypeCoverageTest extends TestCase
      * Without this the docblock could be unconditional and every test above would still pass, which would put
      * a bound on an aggregate nobody measured — the opposite of the point.
      *
-     * Asked about `constants`, which is the one metric with no runtime implementation and so no measurement
-     * to state. It used to ask about `returns`, and that stopped being an unmeasured metric the day its
+     * Asked about a name that is deliberately not a metric, because every metric is measured now. It asked
+     * about `returns` and then about `constants`, and each stopped being an unmeasured metric the day its
      * differential passed — a test whose subject can graduate out from under it is one that quietly stops
-     * checking anything.
+     * checking anything, so the subject is one that cannot graduate.
+     *
+     * The pair of assertions is what keeps it honest: the first says the name really is unmeasured, so the
+     * second is not passing because the note happens to be empty for a measured one.
      */
     public function test_an_aggregate_with_no_stated_divergence_carries_no_note(): void
     {
         $note = new ReflectionMethod(Transpiler::class, 'divergenceNote');
 
-        $this->assertArrayNotHasKey('constants', Vocabulary::ACCEPTED_DIVERGENCE);
+        $this->assertArrayNotHasKey('never-measured', Vocabulary::ACCEPTED_DIVERGENCE);
         $this->assertSame('', $note->invoke(new Transpiler(
             dirname(__DIR__, 2) . '/vendor/tomasvotruba/type-coverage/src/Rules/ParamTypeCoverageRule.php',
-        ), 'constants'));
+        ), 'never-measured'));
     }
 
     /**
