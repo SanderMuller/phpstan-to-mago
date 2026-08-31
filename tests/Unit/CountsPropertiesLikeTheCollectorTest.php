@@ -35,4 +35,26 @@ final class CountsPropertiesLikeTheCollectorTest extends TestCase
         $this->assertSame(3, $original, 'The real rule no longer counts this control as 3.');
         $this->assertSame($original, $port);
     }
+
+    /**
+     * And the four shapes the typed half turns on, held together in one project.
+     *
+     * A property counts as typed when it is written with a type, when a parent class already declares it, or
+     * when its docblock mentions `callable` or `resource`. The middle one is a *guard* rather than a type
+     * test and is the easiest to miss: leaving it out read 63 % against the real rule's 100 % on a consumer
+     * where the counts were already exact. And `isPropertyDocTyped()` does not mean "has a `@var`" — it is a
+     * substring test for the two types the original gives up on, so a `@var int` is untyped to it.
+     *
+     * This asserts the count, because `CoverageControl` compares totals. The typed *split* is pinned by the
+     * corpus differential, which compares the percentage as well and reads 100 % and 93.3 % against the real
+     * rule's own on the two consumers. Said plainly rather than left to look like more than it is.
+     */
+    public function test_holds_every_shape_the_typed_half_turns_on(): void
+    {
+        [$original, $port] = (new CoverageControl(self::CONTROLS . '/property-typing', 'properties'))->totals();
+
+        // Four in `Subject` and the one it inherits, which is declared in `Base` and counted there.
+        $this->assertSame(5, $original, 'The real rule no longer counts this control as 5.');
+        $this->assertSame($original, $port);
+    }
 }

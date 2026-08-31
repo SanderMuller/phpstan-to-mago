@@ -302,22 +302,26 @@ final readonly class TypeCoverage
                 }
 
                 // A constructor-promoted property is a `Param` to php-parser and the collector visits
-                // `Property` nodes, so the original never counts one. `location` is how they are told apart
-                // here: it is set for a promoted property and null for every ordinary declaration, which is
-                // the reverse of what the field name suggests and was measured before it was relied on.
-                if ($property->location instanceof SourceLocation) {
+                // `Property` nodes, so the original never counts one. Asked of the flag rather than of
+                // `location`: a non-null `location` looked like the promoted marker on every fixture, and it
+                // is set for an interface's own property declarations too — PHP 8.4 lets an interface declare
+                // one, and four of them in a single file were the whole of a -4 corpus delta. The flag says
+                // promoted and nothing else does.
+                if ($property->flags->contains(MetadataFlags::PROMOTED_PROPERTY)) {
                     continue;
                 }
 
                 ++$total;
 
-                // `type`, not `declaredType`. The original counts a property as typed when it has a written
-                // type *or* a `@var` docblock — `isPropertyDocTyped()` is a second check beside the node one
-                // — and `declaredType` holds only the written one. Probed on four properties before it was
-                // relied on: a bare property answers no to both, a `@var`-only property answers no to
-                // `declaredType` and yes to `type`, and a property with only a default value answers no to
-                // both, so this is not picking up an inference.
-                if ($property->type instanceof TypeMetadata) {
+                // A written type, or a docblock the original treats as one. `isPropertyDocTyped()` is not
+                // what its name says: it does not ask whether a `@var` is present, it asks whether the
+                // docblock text contains `callable` or `resource` — the two the original skips as "unable to
+                // type". So `type`, which mago sets for any `@var`, is too generous: it read 94.9 % where the
+                // real rule read 93.3 % on one consumer with the counts already exact.
+                if ($property->declaredType instanceof TypeMetadata
+                    || self::guardedByParent($context, $metadata, $name)
+                    || self::docblockDefersTyping($context, $property)
+                ) {
                     ++$typed;
 
                     continue;
@@ -330,6 +334,71 @@ final readonly class TypeCoverage
         }
 
         return new self($total, $typed, $missing);
+    }
+
+    /**
+     * Whether a parent class already declares this property, which takes it out of the missing list.
+     *
+     * The original's third exclusion, beside a written type and the callable-or-resource docblock, and the
+     * one that is easiest to miss because it is a *guard* rather than a type test: a property the parent also
+     * declares stays in the total and never counts as missing. Leaving it out read 63 % where the real rule
+     * read 100 % with the counts already exact.
+     */
+    private static function guardedByParent(AfterAnalysisContext $context, ClassMetadata $metadata, string $name): bool
+    {
+        foreach ($metadata->parentClasses as $parent) {
+            if ($context->codebase->getDeclaringProperty($parent, $name) instanceof PropertyMetadata) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether the docblock above a property names a type the original gives up on.
+     *
+     * `PropertyTypeDeclarationCollector::isPropertyDocTyped()` reads the docblock's *text* and answers true
+     * when it contains `callable` or `resource`, which it treats as covered because neither can be written as
+     * a native type. A substring test on the whole comment, so a description mentioning either word counts —
+     * faithful means reproducing that, not improving on it.
+     *
+     * Read from the source rather than from metadata, because metadata answers a different question: mago
+     * sets `type` for any `@var`, and the original does not count a `@var int` as typed at all.
+     */
+    private static function docblockDefersTyping(AfterAnalysisContext $context, PropertyMetadata $property): bool
+    {
+        $at = $property->nameLocation;
+        if (! $at instanceof SourceLocation) {
+            return false;
+        }
+
+        foreach ($context->analysis->files as $file) {
+            if ($file->file !== $at->file) {
+                continue;
+            }
+
+            $before = substr($file->getSourceFile()->contents, 0, $at->span->start);
+            $closes = strrpos($before, '*/');
+            if ($closes === false) {
+                return false;
+            }
+
+            // Everything between the comment and the property must be modifiers, attributes and whitespace.
+            // A `;` or a brace means the comment belongs to whatever came before, not to this declaration.
+            $between = substr($before, $closes + 2);
+            if (preg_match('/[;{}]/', $between) === 1) {
+                return false;
+            }
+
+            $opens = strrpos(substr($before, 0, $closes), '/*');
+
+            return $opens !== false
+                && (str_contains(substr($before, $opens, $closes - $opens), 'callable')
+                    || str_contains(substr($before, $opens, $closes - $opens), 'resource'));
+        }
+
+        return false;
     }
 
     /**

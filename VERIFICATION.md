@@ -1483,3 +1483,32 @@ One regression, caught by the suite and worth recording. Replacing `$total += $t
 matched the first occurrence in the file, which is in `returns()`, not the one being edited. Four trait
 controls failed immediately; without them a metric that had just been made exact would have gone back to
 counting a trait once.
+
+###### The property metric passes, and the typed half was three rules rather than one
+
+`PropertyTypeCoverageRule` emits. Coverage 62 of 169 portable to **63**, and
+`tomasvotruba/type-coverage` reads 3 of 10.
+
+Both consumers agree **exactly**, on the count and on the percentage: 866 of 866 at 100 %, and 1443 of 1443
+at 93.3 %. `ACCEPTED_DIVERGENCE['properties']` states a ceiling of zero and the emitted plugin carries it.
+
+Four things had to hold together, and the last two were each found by a number that did not move the way it
+should have.
+
+- **A trait's properties are counted zero times**, unlike its methods. Two collectors in one package, one
+  shape apart.
+- **A promoted property is not counted at all** — and it is told apart by `MetadataFlags::PROMOTED_PROPERTY`,
+  not by a non-null `location`. `location` looked like the promoted marker on every fixture and is set for an
+  interface's own property declarations too, which PHP 8.4 allows: four of them in one file were the whole of
+  a −4 corpus delta.
+- **A declaration is taken where it is written**, which `nameLocation` answers and `location` does not.
+- **And typed is three tests, not one.** Written with a type, *or* declared by a parent class, *or* a
+  docblock mentioning `callable` or `resource`. The parent guard is the easy one to miss because it is a
+  guard rather than a type test: leaving it out read 63 % against 100 % with the counts already exact. And
+  `isPropertyDocTyped()` does not do what its name says — it is a substring test for the two types the
+  original gives up on, so a `@var int` is **untyped** to it. Reading mago's `type`, which any `@var`
+  populates, read 94.9 % against 93.3 %: closer than the truth and wrong in the other direction.
+
+That last pair is the shape worth keeping. Two readings bracketed the right answer — one too strict at 63 %,
+one too generous at 94.9 % — and neither is nearer being correct than the other. A number that is close is
+not a number that is nearly right.

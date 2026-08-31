@@ -492,6 +492,7 @@ final class Vocabulary
     public const array AGGREGATES = [
         'ParamTypeDeclarationCollector' => 'parameters',
         'DeclareCollector' => 'declares',
+        'PropertyTypeDeclarationCollector' => 'properties',
     ];
 
     /**
@@ -677,6 +678,18 @@ final class Vocabulary
                 . 'also *under*-count, by a separate cause: a class declared twice in one file behind a version '
                 . 'guard is counted by PHPStan and by neither body here, which is -7 on nikic/php-parser. '
                 . 'Reproduce either with `php tests/Support/run-coverage-corpus.php <consumer-root>`.',
+        ],
+        'properties' => [
+            'ceiling' => 0.0,
+            'note' => 'Counted exactly on the two Laravel consumers it was measured on: 866 of 866 and 1443 '
+                . 'of 1443, agreeing on the percentage as well as the count. A zero ceiling is the '
+                . 'measurement rather than an absence of one. Four things had to hold together and each was '
+                . 'measured before it was relied on: a trait\'s properties are counted zero times, unlike '
+                . 'its methods; a promoted property is not counted at all; a property is typed when it is '
+                . 'written with a type, when a parent class declares it, or when its docblock mentions '
+                . '`callable` or `resource`; and a declaration is taken where it is written, which '
+                . '`nameLocation` says and `location` does not. Reproduce with '
+                . '`php tests/Support/run-coverage-corpus.php <consumer-root> --metric=properties`.',
         ],
         'declares' => [
             'ceiling' => 0.0,
