@@ -2,10 +2,9 @@
 
 Transpile PHPStan rules into [Mago](https://github.com/carthage-software/mago) analyzer plugins.
 
-A PHPStan rule reaches into thousands of classes (`Type`, `TypeCombinator`, `ReflectionProvider`) that Mago
-does not expose to PHP, so you cannot hand it a rule at runtime. But a rule's *decisions* usually reduce to
-guards over the syntax tree plus a few questions about the enclosing class, and that much translates. This
-tool reads a rule's PHP source and writes a Mago SDK plugin.
+A PHPStan rule reaches into thousands of classes Mago does not expose to PHP, so you cannot hand it a rule at
+runtime. But a rule's *decisions* usually reduce to guards over the syntax tree plus a few questions about the
+enclosing class, and that much translates.
 
 ```bash
 composer require --dev sandermuller/phpstan-to-mago
@@ -14,35 +13,18 @@ vendor/bin/phpstan-to-mago --survey vendor/hihaho/phpstan-rules/src
 ```
 
 ```
---target=php       a Mago SDK plugin, an ordinary composer library, the default
---target=analyzer  a Rust analyzer plugin, which has to be compiled into Mago
---target=linter    a Rust lint rule, which has to be compiled into Mago
---out=DIR          the root to write under, defaulting to the current directory
---examples=DIR     PHP files the linter target reads its good and bad examples from
---survey           report what each rule would need, writing nothing
---from-config=DIR  work on the rules a project's own PHPStan registers, not the ones its
-                   packages ship. Takes a project directory or a config file
---unverified       also emit an aggregate rule whose numbers do not yet agree with the
-                   original. Refused by default
+--target=php|analyzer|linter  a Mago SDK plugin (default), or Rust to compile into Mago
+--out=DIR                     where to write, defaulting to the current directory
+--survey                      report what each rule would need, writing nothing
+--from-config=DIR             the rules a project's PHPStan registers, not the ones its
+                              packages ship
 ```
 
-Each target writes into its own subdirectory of `--out`: `generated-php/`, `generated/` for the analyzer,
-`generated-lint/` for the linter. Every target except the linter also writes `generated/manifest.json`,
-mapping each rule to its identifier, its message formats and its constructor defaults. A directory is walked
-for rules, skipping traits and abstract bases; a file you name yourself is refused if it is not a rule.
+`--help` lists the rest.
 
-```
-  TARGET  php
-
-  EMIT    ForbiddenStaticConstFetchRule
-
-emitted: 1, refused: 0 (target: php)
-```
-
-Every count names its target, because a rule can render as Rust and be refused as PHP.
-
-An emitted plugin has two dependencies: this package, for the `Support` runtime it calls, and
-`carthage-software/mago`, for the SDK types it implements.
+Each target writes into its own subdirectory of `--out`, plus a `generated/manifest.json` naming each rule's
+identifier, message formats and constructor defaults. Counts name their target: a rule can render as Rust and
+be refused as PHP. A plugin depends on this package and on `carthage-software/mago`:
 
 ```php
 final class ForbiddenStaticConstFetchRule implements Plugin, NodeAnalysisHook
@@ -66,29 +48,22 @@ final class ForbiddenStaticConstFetchRule implements Plugin, NodeAnalysisHook
 
 ## What this is for
 
-A Mago project that wants rules from the PHPStan ecosystem. Mago cannot run a PHPStan rule, so those packages
-are simply unavailable to it. A transpiled rule is the same check, running natively.
+Mago cannot run a PHPStan rule. A transpiled rule is the same check, running natively:
 
-Two workflows follow from that:
+- **A package that transpiles completely** — no PHPStan anywhere. `tomasvotruba/cognitive-complexity` and
+  `phpstan/phpstan-deprecation-rules` are each one rule short.
+- **A fast pre-filter** — transpiled rules on save and on push, full PHPStan on merge or nightly.
 
-- **A package that transpiles completely.** A Mago-only project gets its checks with no PHPStan anywhere.
-  `tomasvotruba/cognitive-complexity` and `phpstan/phpstan-deprecation-rules` are each one rule short of this.
-- **A fast pre-filter, with PHPStan deferred.** Run the transpiled rules on save and on push, and the full
-  PHPStan on merge or nightly. The inner loop stops paying for PHPStan.
+It does not make an existing PHPStan run cheaper: dropping rules does not drop the parsing and type inference
+underneath.
 
-It does not make an existing PHPStan run cheaper. Dropping rules from a config does not drop the parsing and
-type inference underneath, and nobody has measured what it saves, so treat that as unknown rather than small.
-Run both on every commit and you have added a tool, not replaced one.
-
-The pre-filter also has a real cost. A Mago-clean commit can still fail the deferred PHPStan run, because a
-refused rule still lives only in PHPStan. Both gaps are silent: a refused rule reports nothing, and a
-translated rule that under-reports reports nothing either. Only the deferred run finds them. It filters; it
-does not gate.
+**The pre-filter filters; it does not gate.** A Mago-clean commit can still fail the deferred PHPStan run,
+because a refused rule lives only in PHPStan. Both gaps are silent — a refused rule reports nothing, and a
+translated rule that under-reports reports nothing either.
 
 ## Running a generated plugin
 
-Mago runs PHP extensions as worker processes. Write a worker that registers the generated plugins, then point
-`mago.toml` at it:
+Mago runs PHP extensions as worker processes. Register the plugins in a worker and point `mago.toml` at it:
 
 ```php
 <?php // worker.php
@@ -115,18 +90,12 @@ require __DIR__ . '/build/generated-php/ForbiddenStaticConstFetchRule.php';
 command = ["php", "worker.php"]
 ```
 
-A generated plugin lives in the `Transpiled` namespace and is enabled by default, so `analyzer.plugins` needs
-no entry. `mago analyze` reports under both the plugin identifier and the rule's own PHPStan identifier:
-
-```
-src/Bad.php:9:16: error[transpiled/forbidden-static-const-fetch-rule/fixture.forbiddenStaticConstFetch]: Avoid static access of constants
-```
+Generated plugins live in the `Transpiled` namespace and are enabled by default, so `analyzer.plugins` needs
+no entry.
 
 ## Configured rules
 
-A rule that takes values through its constructor gets a constructor on the generated plugin, carrying the rule
-package's own defaults. Those come from its `extension.neon`, found through `composer.json`'s
-`extra.phpstan.includes`:
+A rule taking constructor values gets them on the generated plugin, at the package's own defaults:
 
 ```php
 public function __construct(
@@ -135,12 +104,8 @@ public function __construct(
 ) {}
 ```
 
-A rule taking a PHPStan service is refused, naming it, because no worker can supply a `ReflectionProvider`.
-
-Nothing from a consuming project is baked in. Construct the plugin with no arguments and it behaves like
-PHPStan at package defaults; to override, pass your own values in the worker, which `manifest.json` names. A
-constructor that *derives* a value is carried too, on the PHP target only, so long as the derivation touches
-only configured values, literals and pure array and string functions.
+Nothing from a consuming project is baked in; override in the worker, which `manifest.json` names. A rule
+taking a PHPStan service is refused, naming it — no worker can supply a `ReflectionProvider`.
 
 ## It refuses rather than approximates
 
@@ -150,24 +115,15 @@ A rule using a construct outside the vocabulary is refused, naming the construct
   REFUSE  IllegalConstructorStaticCallRule: access path outside the vocabulary: ->getFunction() (line 46)
 ```
 
-That is the design. A plausible-but-wrong rule is worse than no rule, because you would trust it. So
-`emitted` on its own means nothing: the generator refuses what it cannot translate, and the backend refuses
-any operand it could not render.
-
-Some refusals are the right answer. A node hook receives inferred types only at the positions it asks for
-through `FileAnalysisRequirement`, while a PHPStan rule can ask about any sub-expression.
+A plausible-but-wrong rule is worse than no rule, because you would trust it. So `emitted` on its own means
+nothing: the generator refuses what it cannot translate, and the backend refuses any operand it could not
+render. `--unverified` lifts one of those refusals — an aggregate whose numbers do not yet agree with the
+original — and the refusal it replaces says by how much.
 
 ## What it can translate
 
-Seven rule packages, surveyed with the tool rather than from memory. Each is pinned rule by rule in
-`tests/Fixtures/expected/census.md`, which a test regenerates, so upstream drift lands as a diff there instead
-of a stale table here. That file also lists what each refused body `needs:`, not only the obstacle that
-stopped it first.
-
-The denominator is the *portable* rules each package registers. A rule it ships but wires nowhere cannot run
-for anybody. Three rules across the seven are excluded as well: they report nothing a plugin could carry,
-writing a build artefact or handing a synthesised node back to PHPStan's own analysis, so no vocabulary entry
-reaches them and a package holding one can never read as full.
+Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md`, which a test regenerates — so
+upstream drift lands as a diff there rather than as a stale table here.
 
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
@@ -179,57 +135,47 @@ reaches them and a package holding one can never read as full.
 | `phpstan/phpstan-phpunit` | 13 | 4 | 9 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-That is 77 of the 169 portable rules these seven packages register. A `--status` run counts whatever *your*
-project installed instead, so its denominator will differ from this one; both are right, and each says which
-it used. No package is complete yet, which is the number that matters for the first workflow above.
+That is 77 of the 169 **portable** rules — the ones each package registers, minus three that report nothing a
+plugin could carry. `--status` counts whatever *your* project installed instead.
 
-The vocabulary covers guard chains, `foreach` with an inline report, `sprintf` messages, `instanceof`
-narrowing into a binding, membership in a constant set, and comparisons on strings and integers. The larger
-pieces:
+<details>
+<summary>What the vocabulary covers</summary>
 
-- Helpers inlined from the rule, from a trait or from a parent class.
-- A class constant used as a value: `$scope->getType(Foo::BAR)` is the constant's own literal, read from the
-  declaration where Mago's inferred type has been widened by a `@var` docblock.
-- The enclosing class: its hierarchy, its namespace, and its own methods with their visibility, attributes
-  and docblocks.
-- Reflection at the use site, from Mago's codebase metadata: resolve the class written at a call site, ask
-  whether it is known, ask for a method's parameter at a position.
-- Closures, with their declared parameters and the types written on them.
-- A subtree search for every node of a given kind, with the count in the message.
-- A producer handing a `{...}` record to a consumer: the producer's guards become the rule's guards. A
-  record produced *inside* a loop becomes one local per field, so it can be read after the loop.
-- A collaborator that decides *and* builds the findings, where there is no message to read and no question
-  to turn into a guard. The rule's own guards still come from its source; only the reporting is a runtime
-  pass, under the identifier read out of the collaborator.
-- A collector-and-consumer pair, where PHPStan gathers a fact per file and a second rule reduces the
-  collection. There is no collector in Mago, so the pair becomes one whole-project pass and the *measurement*
-  is reimplemented rather than the collector's body. Five of `type-coverage`'s metrics are mapped this way.
+Guard chains, `foreach` with an inline report, `sprintf` messages, `instanceof` narrowing, membership in a
+constant set, comparisons on strings and integers, closures with their declared types, and a subtree search
+with its count. The larger pieces:
 
-An aggregate is mapped only once its numbers agree with the real rule on a real project — the parameter,
-return, property, constant and declare metrics each carry the bound they were measured at, and the generated
-plugin carries it too, so a reader of the emitted file finds it without finding this one. Four of the five are
-exact on both consumers they were measured against; the parameter one states a ceiling and the cause behind
-it. `tests/Support/run-coverage-corpus.php <project> --metric=<name>` reproduces any of them.
+- Helpers inlined from the rule, a trait or a parent class.
+- The enclosing class: hierarchy, namespace, and its methods with visibility, attributes and docblocks.
+- Reflection at the use site, from Mago's codebase metadata.
+- A producer handing a `{...}` record to a consumer, including one produced inside a loop.
+- A collaborator that decides *and* builds the findings: the guards still come from the rule, only the
+  reporting becomes a runtime pass.
+- A collector-and-consumer pair. Mago has no collector, so the pair becomes one whole-project pass and the
+  *measurement* is reimplemented. Five of `type-coverage`'s metrics are mapped this way.
 
-`$obj?->m(..)` is a separate hook, because Mago makes it a separate node. So is `$obj->m(...)`: PHPStan gives
-first-class callable syntax a virtual node of its own and Mago gives it a node kind of its own, and the two
-agree on what it holds. Anything not covered is refused by
-name.
+`$obj?->m(..)` and `$obj->m(...)` are separate hooks, because Mago makes each a separate node.
+
+</details>
+
+An aggregate is mapped only once its numbers agree with the real rule on a real project, and both it and the
+generated plugin carry the bound they were measured at: four of the five are exact on both consumers, and the
+parameter one states a ceiling and its cause. Reproduce any with
+`tests/Support/run-coverage-corpus.php <project> --metric=<name>`.
 
 ## How far this is verified
 
-Per-rule agreement is proven and gated. For each emitted rule, CI starts the real `mago` binary with a worker
-registering only that rule, and compares its findings against PHPStan running the original over the same two
-files, on line and message text. A rule that emits and reports nothing fails.
+Per-rule agreement is gated: for each emitted rule CI runs the real `mago` binary against real PHPStan over
+the same two files and compares line and message. A rule that emits and reports nothing fails.
 
-Corpus-scale agreement is not proven, and no number here claims it. [VERIFICATION.md](VERIFICATION.md) has
-the differential runs over eight corpora, their traced gaps, and the six real defects they found. The largest
-is a 9199-file Symfony application at **1901 agreeing, 0 original-only, 0 port-only**.
+Corpus-scale agreement is not proven, and no number here claims it. [VERIFICATION.md](VERIFICATION.md) has the
+differential runs over eight corpora, their traced gaps, and the six real defects they found — the largest a
+9199-file Symfony application at **1901 agreeing, 0 original-only, 0 port-only**.
 
 ## Performance
 
-The same 20 rules on both engines, so this measures what the port costs rather than whether to keep PHPStan.
-Best of three, one machine, the same 1090 files and the same 64 findings:
+The same 20 rules on both engines, so this measures what the port costs. Best of three, one machine, the same
+1090 files and 64 findings:
 
 | | wall | CPU |
 |:--|--:|--:|
@@ -238,24 +184,20 @@ Best of three, one machine, the same 1090 files and the same 64 findings:
 | PHPStan, cold | 5.86s | 33.13s |
 | PHPStan, warm result cache | 0.59s | 0.56s |
 
-Against a **cold** run it is 23x faster on wall clock and 29x cheaper on CPU. Against a **warm** PHPStan it is
-still 2.4x faster on wall clock but costs roughly twice the CPU, because `mago analyze` has no result cache.
-Any claim that does not say which of the two it means is overstating the case.
+Against a **cold** run: 23x faster on wall clock, 29x cheaper on CPU. Against a **warm** PHPStan: 2.4x faster
+on wall clock, but roughly twice the CPU — `mago analyze` has no result cache. A claim that does not say which
+it means is overstating the case.
+
+## Requirements
+
+PHP 8.4 for the transpiler — the floor the rule packages themselves set. Generated plugins run under Mago
+1.47.1 or later; 1.47.0 is skipped because its release carries no Linux binary, so it installs and then cannot
+run.
 
 ## Contributing
 
 `composer qa-check` runs the lot. Two invariants matter most, both in `CLAUDE.md`: the emitted output is the
 contract, snapshotted per target, and anything the vocabulary does not cover is refused.
-
-The Rust targets only run compiled inside Mago's own crate and cannot ship as a package. They are kept because
-both share the whole body translation, so emitting all three is a useful check that a change there has not
-altered behaviour.
-
-## Requirements
-
-PHP 8.4 for the transpiler. That is the floor the rule packages themselves set. Generated plugins run under
-Mago 1.47.1 or later. 1.47.0 is skipped because its release carries no Linux binary, so the package installs and
-then cannot run.
 
 ## Credits
 
