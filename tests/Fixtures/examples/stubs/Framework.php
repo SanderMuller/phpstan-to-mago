@@ -37,7 +37,25 @@ abstract class Command
 
 namespace PHPUnit\Framework;
 
-abstract class TestCase
+/**
+ * The class the assert rules ask about, and the reason `TestCase` now has a parent.
+ *
+ * `AssertRuleHelper::isMethodOrStaticCallOnAssert()` asks whether a call's receiver is a
+ * `PHPUnit\Framework\Assert`, which the stub could not answer while `TestCase` extended nothing — PHPStan
+ * resolved the stub, found no `assertSame()` at all, and the rule could not fire in the sandbox.
+ */
+abstract class Assert
+{
+    public static function assertSame(mixed $expected, mixed $actual, string $message = ''): void {}
+
+    public static function assertNull(mixed $actual, string $message = ''): void {}
+
+    public static function assertCount(int $expectedCount, mixed $haystack, string $message = ''): void {}
+
+    public static function assertEquals(mixed $expected, mixed $actual, string $message = ''): void {}
+}
+
+abstract class TestCase extends Assert
 {
     public function createMock(string $class): MockObject
     {

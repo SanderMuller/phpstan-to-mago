@@ -588,23 +588,18 @@ REFUSE  WrongCaseOfInheritedMethodRule
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
         needs: access path outside the vocabulary: ->getInterfaces()
 
-## phpstan/phpstan-phpunit — 2 of 13 portable rules the package registers emit, 0 covered by the engine, 11 refuse, 1 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-phpunit — 3 of 13 portable rules the package registers emit, 0 covered by the engine, 10 refuse, 1 unportable in principle, 0 it registers nowhere
 
 REFUSE  AssertEqualsIsDiscouragedRule
-        statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
-        needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+        guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: trinary tail on an unsupported query ->isScalar()
 REFUSE  AssertSameBooleanExpectedRule
-        statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
-        needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+        a second identifier before the first was reported
         needs: a second identifier before the first was reported
-REFUSE  AssertSameNullExpectedRule
-        statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
-        needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+EMIT    AssertSameNullExpectedRule
 REFUSE  AssertSameWithCountRule
-        statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
-        needs: statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
+        no argument list on a expr node
         needs: no argument list on a expr node
         needs: no node predicate for instanceof PhpParser\Node\Identifier on a bytes
 REFUSE  AttributeRequiresPhpVersionRule

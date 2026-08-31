@@ -2163,6 +2163,12 @@ final readonly class Translator
             $this->context->runtimeHelpers['Support'] = true;
         }
 
+        // A capability the ported helper needs of the analysis. Opt-in, like every other requirement: unset,
+        // the helper reads a null receiver type and answers the same thing for every call.
+        if ($entry['receiverType'] ?? false) {
+            $this->context->usesReceiverType = true;
+        }
+
         // A container parameter the ported helper's answer depends on. Declared as a configured value so the
         // emitted plugin takes it in its constructor at PHPStan's own default, which is what lets a consumer
         // pass the value its own project runs rather than inherit whichever corpus was measured last.
@@ -7157,13 +7163,53 @@ final readonly class Translator
             return $this->inlineMethod($this->context->currentClass, $method, $args, $expr->getStartLine(), $this->context->useMap);
         }
 
-        // Any other static helper whose source we can find is inlined rather than hand-translated.
+        // Any other static helper whose source we can find is inlined rather than hand-translated — unless a
+        // runtime helper stands in for it. Asked here rather than at the call site because the table is keyed
+        // on the fully qualified name, and only the index knows which file a short name resolved to.
         $helperClass = $this->findClassByName($helper);
         if ($helperClass !== null) {
+            $stood = $this->staticHelperStandIn($helperClass, $method, $expr->getStartLine());
+            if ($stood !== null) {
+                return $stood;
+            }
+
             return $this->inlineMethod($helperClass['class'], $method, $args, $expr->getStartLine(), $helperClass['uses']);
         }
 
         throw new Refusal("unknown static helper {$helper}::{$method}()", $expr->getStartLine());
+    }
+
+    /**
+     * The runtime helper that stands in for a static collaborator method, or null when none does.
+     *
+     * The same table {@see resolveCollaboratorCall()} reads, reached from the other kind of call. A helper
+     * stands in for exactly the methods whose statements do not translate, so this has to be asked *before*
+     * the inliner runs — otherwise the refusal names a statement inside a file the rule under test does not
+     * even declare.
+     *
+     * Only the PHP target. The Rust targets have no runtime to call, and refusing by name here leaves them
+     * saying what is missing rather than inlining a body that will refuse a few lines further in.
+     *
+     * @param array{class: ClassLike, uses: array<string, string>, namespace: string|null} $helperClass
+     */
+    private function staticHelperStandIn(array $helperClass, string $method, int $line): ?string
+    {
+        $entry = Vocabulary::COLLABORATOR_CALLS[$this->fullyQualified($helperClass) . '::' . $method] ?? null;
+        if ($entry === null) {
+            return null;
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal("{$method}() is answered by a runtime helper, which only the PHP target carries", $line);
+        }
+
+        if ($entry['receiverType'] ?? false) {
+            $this->context->usesReceiverType = true;
+        }
+
+        $this->context->runtimeHelpers[explode('::', $entry['helper'])[0]] = true;
+
+        return $entry['helper'] . '($context, $node)';
     }
 
     private function instanceofPredicate(Instanceof_ $expr): string
@@ -8510,6 +8556,19 @@ final readonly class Translator
      */
     private function nameEquals(array $subject, string $literal, int $line, bool $foldingCase = false): string
     {
+        // A comparison the rule folded, against something that is already a string: a constant name, a loop
+        // item, a helper's parameter. The `bytes` arm below compares with `===`, which is case-sensitive, so
+        // the fold the rule wrote was dropped — `AssertSameNullExpectedRule` writes
+        // `->toLowerString() === 'null'` and the port was silent on `assertSame(NULL, $x)` where PHPStan
+        // reports. The same defect the selector arm below records, one kind along.
+        if ($foldingCase && in_array($subject['kind'], ['bytes', 'class-name'], true)) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a case-folded string comparison, which only the PHP target carries', $line);
+            }
+
+            return 'Support::nameIs(' . $this->operand($subject) . ', ' . $this->context->backend->bytes($literal) . ')';
+        }
+
         // The one arm that compares as written. `nameIs()` over the selector's text is the same comparison the
         // other arms make, so a rule that wrote the fold gets it.
         if ($foldingCase && $subject['kind'] === 'name-selector') {

@@ -1731,3 +1731,58 @@ them. `phpstan-src` has 202 files using `#[DataProvider]`
 and **0** using `@dataProvider` — the ecosystem has moved to attributes, so the shape these two rules exist
 to catch is disappearing from real code. The positive half of the claim is the gate, on examples written for
 it, and this file says so rather than quoting an agreeing zero.
+
+#### One guard four rules open with, and a case fold that was being dropped
+
+`AssertRuleHelper::isMethodOrStaticCallOnAssert()` is the first line of four `phpstan-phpunit` rules, and the
+inliner could not take it: its body assigns a type in each branch of a decision tree rather than exiting from
+a chain of guards. All four refused *inside a method none of them wrote*, which is a refusal that points at
+the wrong file.
+
+`COLLABORATOR_CALLS` now stands a runtime helper in for it, reached from the static-call side as well as the
+method-call side and keyed on the fully qualified name either way. **One rule emits from that**:
+`AssertSameNullExpectedRule`. The other three move onto the obstacle each of them actually has — a guard
+body that is an expression, a second identifier, an argument list on an expression node — which is a better
+refusal even where it is still one. `phpstan-phpunit` reads 3 of 13, and the seven-package total 68 of 169.
+
+The ported question keeps the original's `->yes()`, which is the load-bearing word: for a union receiver
+*every* member must be an `Assert`, so a nullable one is not. `Support::objectClasses()` already answers that
+way — the empty list rather than a partial one as soon as an atomic is not a named object — which is why the
+strict reading is used and never the `IgnoringNull` variant. `self`, `static` and `parent` all resolve to the
+enclosing class, because the original's `parent` branch builds an `ObjectType` of
+`$scope->getClassReflection()->getName()` rather than of the parent. A static call on an *expression*
+(`$class::assertSame(..)`) is not answered: mago leaves `receiverType` null there, so the port is silent, and
+the runtime docblock says so rather than leaving it to look measured.
+
+##### The stub could not answer the question, and PHPStan said so first
+
+`tests/Fixtures/examples/stubs/Framework.php` declared `abstract class TestCase` with no parent, where the
+real `TestCase extends Assert`. Run against that, PHPStan reported `Call to an undefined method
+BadAssertSame::assertSame()` and the rule could not fire at all — so a green pair would have proved nothing.
+The stub gained an `Assert` with the four assertions the family names, and `TestCase` now extends it. That is
+a shared file, so the whole gate was re-run after it: 424 tests, all passing.
+
+The discriminating example is the good one. It holds a class that is **not** an `Assert` and declares an
+`assertSame()` of its own; PHPStan is silent on `$other->assertSame(null, $value)` and a port that skips the
+receiver question reports it. Making `isCallOnAssert()` return true unconditionally turns exactly that
+example red, at exactly that line.
+
+##### A shipped rule was silently dropping the fold the rule wrote
+
+Translating `$x->name->toLowerString() === 'null'` emitted `Support::constantNameText($x) === 'null'`, a
+case-sensitive comparison. The fold was already carried for a *member selector* — the comment there records
+`IllegalConstructorMethodCallRule` being silent on `$subject->__CONSTRUCT()` — and the same defect was still
+open one descriptor kind along, for anything that is already a string.
+
+Found by the new rule and fixed for both: the emission diff over seven packages and three targets shows one
+existing file changed, `NoOnlyNullReturnInRefactorRule`, whose source writes `->toLowerString() !== 'null'`.
+It was missing a `refactor()` whose returns are written `NULL`. Its bad example now writes one, and
+disabling the fold turns that pair red with "the plugin ran and found nothing" — the failure static checks
+cannot see.
+
+##### Nobody writes the thing this rule catches
+
+Counted before drawing any conclusion from a run: `assertSame(null, …)` appears **0** times in hihaho,
+finconnect, mijntp, phpstan-src and rector-src. That is not a gap in the corpora — it is what a rule
+discouraging an idiom looks like once the idiom is gone. The gate is the evidence, and this file does not
+quote an agreeing zero as if it were one.

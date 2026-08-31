@@ -530,7 +530,7 @@ final class Vocabulary
      * constructor parameters on the emitted plugin.
      *
      * @var array<string, array{helper: string, kind: string, takes: string, arguments: list<int>,
-     *      types?: list<int>, flags?: list<string>}>
+     *      types?: list<int>, flags?: list<string>, receiverType?: bool}>
      */
     public const array COLLABORATOR_CALLS = [
         // `kind: 'reports'` is the one entry that is not an answer. `AnnotationHelper::processDocComment()`
@@ -538,6 +538,18 @@ final class Vocabulary
         // turn into guards or into a message — so the pass reports for itself, at the node the rule fired
         // for, under the identifier read out of the collaborator. Both rules using it keep their own
         // `TestCase` guard and their own choice of whose docblock is read.
+        // The guard four of `phpstan-phpunit`'s assert rules open with. Its body assigns a type in each branch
+        // of a decision tree rather than exiting from a chain of guards, so the inliner cannot take it — and
+        // the four rules refused inside a method none of them wrote. `receiverType` says the emitted plugin
+        // has to ask for it: requirements are opt-in, and without it the helper reads a null receiver and
+        // answers false for every method call, silently.
+        'PHPStan\Rules\PHPUnit\AssertRuleHelper::isMethodOrStaticCallOnAssert' => [
+            'helper' => 'PhpUnitAsserts::isCallOnAssert',
+            'kind' => 'bool',
+            'takes' => 'context-node',
+            'arguments' => [],
+            'receiverType' => true,
+        ],
         'PHPStan\Rules\PHPUnit\AnnotationHelper::processDocComment' => [
             'helper' => 'PhpUnitAnnotations::report',
             'kind' => 'reports',
