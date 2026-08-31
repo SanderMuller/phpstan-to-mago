@@ -41,6 +41,8 @@ final class RustBackend implements Backend
         switch ($s->kind) {
             case 'raw':
                 return $a['text'];
+            case 'pass-call':
+                throw new Refusal('a reporting runtime pass has no Rust rendering: ' . trim($a['call']));
             case 'continue':
                 return $pad . "continue;\n";
             case 'bail':

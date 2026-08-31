@@ -90,6 +90,16 @@ final class TranslationContext
      */
     public array $afterChecks = [];
 
+    /**
+     * Whether the rule's finding is produced by a runtime pass rather than by a message this transpiler read.
+     *
+     * A collaborator that decides *and* builds the findings has no message for the emitter to take, and
+     * without this the rule refuses on "could not find the reported message" — a sentence about this
+     * transpiler's state rather than about the rule. False for every rule that reports the ordinary way,
+     * which is what keeps those files byte-identical.
+     */
+    public bool $reportsThroughPass = false;
+
     /** @var array<string, string> the rule's own string constants, by name */
     public array $constants = [];
 

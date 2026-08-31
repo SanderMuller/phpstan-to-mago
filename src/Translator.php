@@ -2172,6 +2172,15 @@ final readonly class Translator
             $arguments[] = '$this->' . $flag;
         }
 
+        // A helper that reports for itself needs the identifier the original reports under, and that is read
+        // out of the collaborator rather than named here: the message and the identifier are the two things a
+        // reader checks a port against, and a table holding either would drift from the package silently.
+        if ($entry['kind'] === 'reports') {
+            $identifier = $this->reportedIdentifierIn($declaring['class'], $line);
+            $arguments[] = $this->context->backend->bytes($identifier);
+            $this->context->identifiers[] = $identifier;
+        }
+
         $call = $entry['helper'] . '(' . implode(', ', $arguments) . ')';
         $this->context->runtimeHelpers[explode('::', $entry['helper'])[0]] = true;
 
@@ -3596,6 +3605,34 @@ final readonly class Translator
         $arguments[] = $this->context->backend->bytes($identifier);
         $this->context->afterChecks[] = $entry['pass'] . '(' . implode(', ', $arguments) . ')';
         $this->context->identifiers[] = $identifier;
+
+        return true;
+    }
+
+    /**
+     * Emit a collaborator call that reports for itself, where the rule hands it the whole decision.
+     *
+     * `Vocabulary::COLLABORATOR_CALLS` marks such an entry `reports`: the collaborator decides *and* builds
+     * the findings, so there is no message to take and no question to turn into a guard. The call is emitted
+     * where the rule made it, with every guard above it already translated from the rule's own source — which
+     * is what keeps the rule's own reading of "whose docblock, and for which classes" rather than moving it
+     * into the pass.
+     *
+     * The Rust targets fall through: `resolveCollaboratorCall()` answers null for them, so they keep the
+     * refusal that names the real obstacle instead of quietly losing the check.
+     *
+     * @return bool whether the pass was emitted, so the caller stops here
+     */
+    private function takeReportingPass(MethodCall $call): bool
+    {
+        $pass = $this->resolveCollaboratorCall($call, $call->getStartLine());
+        if (($pass['kind'] ?? null) !== 'reports' || ! is_string($pass['php'] ?? null)) {
+            return false;
+        }
+
+        $this->context->lines[] = new Stm('pass-call', ['call' => $pass['php']], $this->context->indent);
+        $this->context->reportedInline = true;
+        $this->context->reportsThroughPass = true;
 
         return true;
     }
@@ -5302,6 +5339,11 @@ final readonly class Translator
             //
             // Refused where it happens instead. A rule whose message *is* found elsewhere would otherwise emit
             // a plugin missing whatever the helper decides, which is the silent-narrowing shape.
+            // Unless a runtime pass stands in for that helper.
+            if ($stmt->expr instanceof MethodCall && $this->takeReportingPass($stmt->expr)) {
+                return;
+            }
+
             if ($stmt->expr instanceof MethodCall && $this->isOwnMethodCall($stmt->expr)) {
                 throw new Refusal(sprintf(
                     'the rule returns whatever %s() decides, and that helper builds the findings rather than '

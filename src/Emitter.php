@@ -432,6 +432,21 @@ RUST;
     }
 
     /**
+     * The message the trailing report renders, or a placeholder where there is no trailing report.
+     *
+     * @return array{string, bool}
+     */
+    private function messageToRender(): array
+    {
+        // A rule whose finding a runtime pass builds has no message here to render, and the trailing report
+        // is skipped for it — `reportsThroughPass` is set only where the pass was emitted inline. Asked with
+        // `message === null` beside it, so a rule that also reports the ordinary way still has to have one.
+        return $this->context->message === null && $this->context->reportsThroughPass
+            ? ["''", false]
+            : $this->reportableMessage();
+    }
+
+    /**
      * The rule's message, and whether it is already an expression rather than a quoted literal.
      *
      * A missing message means nothing found the report; one that is neither a literal nor a `sprintf()` is a
@@ -551,7 +566,7 @@ PHP;
             return $this->emitAfterOnly($className);
         }
 
-        [$reported, $isFormatted] = $this->reportableMessage();
+        [$reported, $isFormatted] = $this->messageToRender();
 
         $body = $this->gate($hook) . $this->renderAll();
 

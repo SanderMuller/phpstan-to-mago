@@ -49,6 +49,10 @@ final class EmittedRuleFiresTest extends TestCase
         // Added when `FetchingDeprecatedConstRule` emitted, for the reason above: an emitted rule outside
         // these corpora is counted by the census and run by nothing.
         __DIR__ . '/../../vendor/phpstan/phpstan-deprecation-rules/src',
+        // Added when the two annotation rules emitted. The package had nothing to gate until then, which is
+        // the only reason it was absent — and leaving it out now would recreate exactly the silence the two
+        // notes above record.
+        __DIR__ . '/../../vendor/phpstan/phpstan-phpunit/src',
         // `tomasvotruba/type-coverage` is deliberately absent, and this is the one exclusion. Every rule it
         // emits is an aggregate: PHPStan reduces a *collection* rather than deciding per node, so registering
         // one here would need a collector service this gate cannot add and a threshold, and the per-file

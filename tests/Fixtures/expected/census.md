@@ -582,13 +582,13 @@ REFUSE  VariableStaticPropertyFetchRule
         needs: resolveName() over something other than a written name
 EMIT    VariableVariablesRule
 REFUSE  WrongCaseOfInheritedMethodRule
-        no hook mapping for node type PHPStan\Node\InClassMethodNode
+        assignment value outside the vocabulary: access path outside the vocabulary: ->getMethodReflection()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getMethodReflection()
         needs: assignment value outside the vocabulary: unknown local $methodReflection
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
         needs: access path outside the vocabulary: ->getInterfaces()
 
-## phpstan/phpstan-phpunit — 0 of 13 portable rules the package registers emit, 0 covered by the engine, 13 refuse, 1 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-phpunit — 2 of 13 portable rules the package registers emit, 0 covered by the engine, 11 refuse, 1 unportable in principle, 0 it registers nowhere
 
 REFUSE  AssertEqualsIsDiscouragedRule
         statement in isMethodOrStaticCallOnAssert() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Expression, which is a decision tree rather than a guard that exits
@@ -608,8 +608,7 @@ REFUSE  AssertSameWithCountRule
         needs: no argument list on a expr node
         needs: no node predicate for instanceof PhpParser\Node\Identifier on a bytes
 REFUSE  AttributeRequiresPhpVersionRule
-        no hook mapping for node type PHPStan\Node\InClassMethodNode
-        needs: null comparison against Expr_Variable, which resolved to a class-reflection
+        assignment value outside the vocabulary: access path outside the vocabulary: ->getTestMethodReflection()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getTestMethodReflection()
 REFUSE  ClassAttributeRequiresPhpVersionRule
         could not find the reported message
@@ -634,15 +633,10 @@ REFUSE  MockMethodCallRule
         count() of something other than an argument list
         needs: count() of something other than an argument list
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getMethodReflection()
-REFUSE  NoMissingSpaceInClassAnnotationRule
-        could not find the reported message
-REFUSE  NoMissingSpaceInMethodAnnotationRule
-        no hook mapping for node type PHPStan\Node\InClassMethodNode
-        needs: null comparison against Expr_Variable, which resolved to a class-reflection
+EMIT    NoMissingSpaceInClassAnnotationRule
+EMIT    NoMissingSpaceInMethodAnnotationRule
 REFUSE  ShouldCallParentMethodsRule
-        no hook mapping for node type PHPStan\Node\InClassMethodNode
-        needs: assignment value outside the vocabulary: no PHP navigation for node.name (kind expr) on a InClassMethodNode node
-        needs: null comparison against ->getClassReflection(), which resolved to a class-reflection
+        assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
         needs: method call outside the vocabulary ->hasNativeMethod()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeMethod()

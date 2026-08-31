@@ -1670,3 +1670,64 @@ the trait's own declaring location, so comparing *files* says the class wrote it
 twice. Comparing *spans* says it was written in the trait. Neither consumer holds that shape, so it is a
 control rather than a corpus finding — and removing the containment test turns that control red at 2 against 1
 while both consumers stay exact, which is the whole reason it exists.
+
+#### The package that transpiled nothing, and the collaborator shape that was in the way
+
+`phpstan/phpstan-phpunit` read **0 of 13** — the only one of the seven at zero. Two of its rules emit now.
+
+`NoMissingSpaceInClassAnnotationRule` and `NoMissingSpaceInMethodAnnotationRule` are the same rule at two
+levels: gate on the class being a `TestCase`, take the declaration's docblock, and hand it to
+`AnnotationHelper::processDocComment()`. That helper decides *and* builds the findings, which is the shape
+the transpiler had no answer for — the class rule refused on "could not find the reported message", a
+sentence about this transpiler's state rather than about the rule.
+
+`COLLABORATOR_CALLS` gained a `kind` for it. `reports` means the call is not an answer: it is emitted where
+the rule made it, and the identifier comes from `RuleErrorBuilder::identifier()` inside the collaborator
+rather than from a table, because the message and the identifier are the two things a reader checks a port
+against. Everything above the call is still the rule's own source — which is what keeps the two rules
+different from each other, since the only thing that separates them is whose docblock is read.
+
+##### Four things measured before anything was written
+
+Each was a probe, and each could have killed the approach.
+
+- **`TestCase` resolves without PHPUnit in mago's source paths.** `Support::enclosingClassIs()` answers
+  `true` for a class writing `extends TestCase` in an analysed file, with no `includes` entry. Had it
+  answered `false`, the guard would have failed closed, the rule would have reported nothing, and it would
+  have looked like a clean project.
+- **A docblock needs `FileAnalysisRequirement::SourceText`.** Without it `getTrivia()` returns an empty list
+  and `Support::docblockText()` answers null for every declaration — silently. The emitter already puts
+  `SourceText` on every node hook, so nothing had to change; the probe is what says so.
+- **An ordinary `/* */` block comment is not a docblock on either side.** PHPStan reads `getDocComment()`,
+  which is only ever a `Doc` node, and mago records the two as different trivia kinds. Both good examples
+  hold a block comment with a bad annotation in it, and both engines stay silent.
+- **The finding lands on the declaration, not on the annotation.** Real PHPStan over a fixture whose bad
+  annotations sit on lines 8, 9, 14 and 15 reports on lines **11** and **17** — the `class` and `function`
+  lines. Two bad annotations in one docblock are two findings on one line with different messages, which the
+  gate compares as `line: message` and keeps both of.
+
+Mapping `InClassMethodNode` to the same hook `ClassMethod` uses was the other half. Beside the rule it let
+emit, it moved **three** still-refused rules off "no hook mapping for node type PHPStan\Node\InClassMethodNode"
+onto the reflection accessor each of them actually needs — `WrongCaseOfInheritedMethodRule`,
+`AttributeRequiresPhpVersionRule` and `ShouldCallParentMethodsRule`. Counted off the census diff rather than
+off the four rules the old reason named, one of which is the rule that now emits.
+
+##### The gate proves them and no corpus can
+
+Both pairs pass the fires gate: real PHPStan reports on the bad example, the emitted plugin reports on it,
+both are silent on the good one, and the two agree on line and message. Removing `covers` and `dataProvider`
+from the ported list turns the comparison red and names the finding that vanishes, which is what says the
+list is load-bearing rather than decorative.
+
+**No corpus here exercises these rules, and the instrument says so itself rather than reporting a zero as
+agreement.** Both consumers install `phpstan-phpunit` and both run 2932 and 1895 files through it:
+
+    exercised: 0 of 1 identifiers; 1 reported nothing on either side, so this corpus says nothing about them
+
+That is the correct output, not a gap in the run. Counted before the runs rather than after: hihaho writes
+**0** docblock annotations from the thirteen names across 893 `TestCase` files, finconnect **1** across 197,
+and mijntp's 566 `@uses` are outside its 3 `TestCase` files, which hold none of the thirteen names between
+them. `phpstan-src` has 202 files using `#[DataProvider]`
+and **0** using `@dataProvider` — the ecosystem has moved to attributes, so the shape these two rules exist
+to catch is disappearing from real code. The positive half of the claim is the gate, on examples written for
+it, and this file says so rather than quoting an agreeing zero.

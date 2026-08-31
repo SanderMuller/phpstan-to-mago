@@ -72,6 +72,10 @@ final class PhpBackend implements Backend
                 return "{$pad}\${$this->name($a['target'])}[] = {$this->checked($a['value'])};\n";
             case 'check-call':
                 return "{$pad}\$this->{$a['name']}({$a['arguments']});\n";
+            case 'pass-call':
+                // A runtime pass that decides *and* reports, so there is no message here to render. The
+                // call arrives already written, because only the transpiler knows what the rule handed it.
+                return "{$pad}{$a['call']};\n";
             case 'blank':
                 return "\n";
             case 'report':

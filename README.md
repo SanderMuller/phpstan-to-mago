@@ -176,10 +176,10 @@ reaches them and a package holding one can never read as full.
 | `tomasvotruba/type-coverage` | 10 | 5 | 5 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
 | `phpstan/phpstan-strict-rules` | 45 | 12 | 33 | 0 |
-| `phpstan/phpstan-phpunit` | 13 | 0 | 13 | 0 |
+| `phpstan/phpstan-phpunit` | 13 | 2 | 11 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-That is 65 of the 169 portable rules these seven packages register. A `--status` run counts whatever *your*
+That is 67 of the 169 portable rules these seven packages register. A `--status` run counts whatever *your*
 project installed instead, so its denominator will differ from this one; both are right, and each says which
 it used. No package is complete yet, which is the number that matters for the first workflow above.
 
@@ -196,6 +196,9 @@ pieces:
 - A subtree search for every node of a given kind, with the count in the message.
 - A producer handing a `{...}` record to a consumer: the producer's guards become the rule's guards. A
   record produced *inside* a loop becomes one local per field, so it can be read after the loop.
+- A collaborator that decides *and* builds the findings, where there is no message to read and no question
+  to turn into a guard. The rule's own guards still come from its source; only the reporting is a runtime
+  pass, under the identifier read out of the collaborator.
 - A collector-and-consumer pair, where PHPStan gathers a fact per file and a second rule reduces the
   collection. There is no collector in Mago, so the pair becomes one whole-project pass and the *measurement*
   is reimplemented rather than the collector's body. Five of `type-coverage`'s metrics are mapped this way.

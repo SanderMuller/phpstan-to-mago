@@ -49,6 +49,7 @@ use PhpParser\Node\Stmt\Trait_;
 use PhpParser\Node\Stmt\While_;
 use PHPStan\Node\CollectedDataNode;
 use PHPStan\Node\FileNode;
+use PHPStan\Node\InClassMethodNode;
 use PHPStan\Node\InClassNode;
 
 /**
@@ -84,6 +85,12 @@ final class Vocabulary
         // that does not narrow to `Class_` is refused rather than silently missing interfaces and traits.
         InClassNode::class => ['trait' => 'ClassDeclarationHook', 'method' => 'on_enter_class', 'node' => 'Class', 'kind' => 'Class', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classOnly' => true, 'classFrom' => 'metadata'],
         ClassMethod::class => ['trait' => 'ClassLikeMemberHook', 'method' => 'on_method', 'node' => 'Method', 'kind' => 'Method', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata'],
+        // PHPStan's virtual per-method node, the method-level counterpart of `InClassNode`. Mapped to the same
+        // hook as `ClassMethod`, because that is the declaration it stands for: PHPStan copies the original
+        // node's attributes onto it, so `getDocComment()` and the line a finding lands on are the method's.
+        // Measured rather than assumed — the real rule anchors a bad method annotation on the `function` line,
+        // which is the node this hook fires for.
+        InClassMethodNode::class => ['trait' => 'ClassLikeMemberHook', 'method' => 'on_method', 'node' => 'Method', 'kind' => 'Method', 'extra' => ', {metadata}: &ClassLikeMetadata', 'classFrom' => 'metadata'],
         // `FunctionLike` is an interface, so a rule naming it asks for every function-like there is and
         // branches on the concrete one. The primary kind is `Method` because that is the shape the fields are
         // keyed by; `HOOK_KINDS` says which targets the plugin registers.
@@ -526,6 +533,18 @@ final class Vocabulary
      *      types?: list<int>, flags?: list<string>}>
      */
     public const array COLLABORATOR_CALLS = [
+        // `kind: 'reports'` is the one entry that is not an answer. `AnnotationHelper::processDocComment()`
+        // decides *and* builds the findings, and a rule returning that has nothing for this transpiler to
+        // turn into guards or into a message — so the pass reports for itself, at the node the rule fired
+        // for, under the identifier read out of the collaborator. Both rules using it keep their own
+        // `TestCase` guard and their own choice of whose docblock is read.
+        'PHPStan\Rules\PHPUnit\AnnotationHelper::processDocComment' => [
+            'helper' => 'PhpUnitAnnotations::report',
+            'kind' => 'reports',
+            'takes' => 'context-node',
+            'arguments' => [],
+        ],
+
         'TomasVotruba\CognitiveComplexity\AstCognitiveComplexityAnalyzer::analyzeFunctionLike' => [
             'helper' => 'CognitiveComplexity::forFunctionLike',
             'kind' => 'int',
