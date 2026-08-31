@@ -50,6 +50,10 @@ abstract class Assert
 
     public static function assertNull(mixed $actual, string $message = ''): void {}
 
+    public static function assertTrue(mixed $condition, string $message = ''): void {}
+
+    public static function assertFalse(mixed $condition, string $message = ''): void {}
+
     public static function assertCount(int $expectedCount, mixed $haystack, string $message = ''): void {}
 
     public static function assertEquals(mixed $expected, mixed $actual, string $message = ''): void {}

@@ -587,15 +587,13 @@ REFUSE  WrongCaseOfInheritedMethodRule
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
         needs: access path outside the vocabulary: ->getInterfaces()
 
-## phpstan/phpstan-phpunit — 3 of 13 portable rules the package registers emit, 0 covered by the engine, 10 refuse, 1 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-phpunit — 4 of 13 portable rules the package registers emit, 0 covered by the engine, 9 refuse, 1 unportable in principle, 0 it registers nowhere
 
 REFUSE  AssertEqualsIsDiscouragedRule
         guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: trinary tail on an unsupported query ->isScalar()
-REFUSE  AssertSameBooleanExpectedRule
-        a second identifier before the first was reported
-        needs: a second identifier before the first was reported
+EMIT    AssertSameBooleanExpectedRule
 EMIT    AssertSameNullExpectedRule
 REFUSE  AssertSameWithCountRule
         no argument list on a expr node

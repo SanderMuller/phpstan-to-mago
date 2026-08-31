@@ -1948,3 +1948,31 @@ Both causes are silence, which is the safe direction, and both populations are f
 disagreement they produce: 1292 `mixed` and 442 untyped conditions in one directory against 151
 `only-original` over the whole corpus. Counted at flags all-false, which is what makes those two rows
 comparable — the nullable rows move with the level and are not quoted here.
+
+#### A branch that reported and did not say so
+
+`AssertSameBooleanExpectedRule` is `AssertSameNullExpectedRule` with two branches, each carrying its own
+message *and* its own identifier — `phpunit.assertTrue` and `phpunit.assertFalse`. It refused on "a second
+identifier before the first was reported", and that sentence was false: the first branch had reported, two
+lines above the refusal.
+
+The guard is right and the bookkeeping was one arm short. `takeMessage()` refuses a second identifier only
+when the first was never reported under, because then the second would be an overwrite nobody sees. Three
+paths set `reportTaken` to say a report has been emitted; the fourth — a `return [RuleErrorBuilder…]` inside
+an `if`, reported inline because the trailing report would run whichever way the branch went — emitted the
+report and never set it. The `$errors[] = RuleErrorBuilder…` arm beside it already did.
+
+`phpstan-phpunit` reads **4 of 13** now, and the seven-package total 70 of 169. The emission diff over seven
+packages and three targets names one new file and no changed one, so no rule that already shipped is affected
+by the correction.
+
+##### One branch is not evidence for two
+
+The example pair reports under both identifiers, and that is the point of it: a port that took the last
+identifier for both branches would pass a one-branch pair unchanged. Confirmed against real PHPStan on the bad
+example rather than inferred from the emission — three findings, lines 17, 18 and 21, two distinct identifiers
+and two distinct messages, the third being `TRUE` in the other case, which the rule folds.
+
+No corpus exercises it: `assertSame(true, …)` and `assertSame(false, …)` appear **0** times across hihaho,
+finconnect, rector-src and mijntp — the same answer the `null` sibling got, and for the same reason. The gate
+is the evidence, and this file does not quote an agreeing zero as if it were one.

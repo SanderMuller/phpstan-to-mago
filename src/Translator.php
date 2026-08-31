@@ -5332,6 +5332,12 @@ final readonly class Translator
                             $this->context->lines[] = $this->reportNode();
                             $this->context->lines[] = new Stm('bail', [], $this->context->indent);
                             $this->context->reportedInline = true;
+                            // And the message is now accounted for, so the *next* branch may take another one.
+                            // Without this a rule with two branches that each report their own thing refused
+                            // on "a second identifier before the first was reported" — which was false: the
+                            // first had been reported, two lines up. The `$errors[] =` arm beside this one
+                            // already said so; this arm did not.
+                            $this->context->reportTaken = true;
                         }
                     }
                 }
