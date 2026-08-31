@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 44 of 89 portable rules the package registers emit, 1 covered by the engine, 44 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 45 of 89 portable rules the package registers emit, 1 covered by the engine, 43 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -271,9 +271,7 @@ REFUSE  PhpUpgradeImplementsMinPhpVersionInterfaceRule
 REFUSE  PreferAutowireAttributeOverConfigParamRule
         not a resolvable list of strings
         needs: not a resolvable list of strings
-REFUSE  PreferDirectIsNameRule
-        isAbstract() outside a declaration hook
-        needs: isAbstract() outside a declaration hook
+EMIT    PreferDirectIsNameRule
 REFUSE  PreferredClassRule
         PhpParser\Node covers several node kinds, and this rule narrows to 5 of them with `instanceof`: New_, InClassNode, StaticCall, Instanceof_, Name. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
         needs: guard body is neither `return []` nor `continue`, but Stmt_Return

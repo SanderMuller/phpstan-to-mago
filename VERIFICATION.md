@@ -2171,3 +2171,37 @@ run for the package stays at `agree 422, only-original 0, only-port 0`.
 The first version of this paragraph said the classes appear nowhere, which was written from the shape of the
 previous few rules rather than from a grep. It is the same mistake this file keeps recording: a count is
 cheap, and an absence asserted without one is not a measurement.
+
+#### Two questions that look like one, and the corpus that answers for 45 sites
+
+`PreferDirectIsNameRule` asks whether the Rector rule *around* a call is the abstract base of a family, so it
+can skip it. It refused on `isAbstract()`, and the arm that already answers `isAbstract()` was right to: the
+existing one reads the `abstract` modifier off the declaration a class-like hook fired for, and this rule
+registers `MethodCall`. There is no `abstract` token anywhere near that node.
+
+Two questions with one spelling. The declaration one stays where it is; the enclosing one is answered from the
+class-like's metadata flag, and only `isAbstract` is widened — the five predicates beside it (`isClass`,
+`isInterface`, `isTrait`, `isEnum`, `isAnonymous`) are about *which hook fired*, and asking them of an
+enclosing class means something else.
+
+`symplify/phpstan-rules` reads **45 of 89**, and the total 79 of 169.
+
+##### The strongest corpus result of the session
+
+`rector-src` is where this rule lives, and it reads **`agree 45, only-original 0, only-port 0`** — the
+package's whole run there goes from 34 agreeing to 79, with nothing on either side of the ledger. hihaho stays
+at `agree 422, only-original 0, only-port 0` and reports nothing under this identifier, which is what a
+Laravel application should do with a rule about Rector rules.
+
+Measured, not inferred — the correction two sections up is why that distinction is now written down every
+time.
+
+##### The good example is three near misses
+
+The direct `$this->isName()` the rule asks for; the abstract base of a family, where the fetched service
+legitimately lives; and a plain class that is not a Rector rule at all. Making `enclosingClassIsAbstract()`
+answer false reports the abstract one at line 31, which is exactly the guard it stands for.
+
+`Runtime\Declares` went one point over its complexity limit when the helper landed there, so it sits in
+`Reflect` instead — the class that already asks the codebase about a class-like. A new baseline entry for a
+runtime class is the thing that split is there to avoid.

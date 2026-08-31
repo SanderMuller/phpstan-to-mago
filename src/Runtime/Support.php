@@ -1298,6 +1298,12 @@ final class Support
         return Declares::declarationIsAbstract($context, $subject);
     }
 
+    /** Whether the class-like *around* this node is abstract — `$scope->getClassReflection()->isAbstract()`. */
+    public static function enclosingClassIsAbstract(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Reflect::enclosingClassIsAbstract($context, $subject);
+    }
+
     /**
      * The written name of a class-like or method declaration, short and unqualified.
      *

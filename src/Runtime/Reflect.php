@@ -10,6 +10,7 @@ use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\Metadata\MetadataFlags;
 use Mago\Sdk\Analyzer\Metadata\ParameterMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
+use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
 
 /**
@@ -322,5 +323,21 @@ final class Reflect
         }
 
         return $out;
+    }
+
+    /**
+     * Whether the class-like *around* this node is abstract — `$scope->getClassReflection()->isAbstract()`.
+     *
+     * Read from metadata rather than from a modifier, because the node a hook fired for is not the
+     * declaration: a rule registered for `MethodCall` asks this of the class the call sits in, and there is no
+     * `abstract` token anywhere near it. {@see declarationIsAbstract()} is the other question — the modifier
+     * on a declaration the hook itself received — and the two are kept apart for that reason.
+     */
+    public static function enclosingClassIsAbstract(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        $className = Declares::enclosingClassName($context, $subject);
+
+        return $className !== null
+            && $context->codebase->getClassLike($className)?->flags->contains(MetadataFlags::ABSTRACT) === true;
     }
 }

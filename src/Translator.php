@@ -7994,6 +7994,20 @@ final readonly class Translator
                 );
             }
 
+            // `isAbstract()` asked of the *enclosing* class from a hook that fired on something inside it —
+            // `PreferDirectIsNameRule` registers `MethodCall` and asks whether the Rector rule around the call
+            // is the abstract base. There is no `abstract` token near that node, so the answer comes from the
+            // enclosing class-like's metadata flag rather than from a modifier. Only `isAbstract`: the other
+            // five below are about *which hook fired*, and asking them of an enclosing class means something
+            // else.
+            if ($method === 'isAbstract' && $this->context->classFrom !== 'metadata') {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal('an enclosing class\'s abstractness, which only the PHP target carries', $expr->getStartLine());
+                }
+
+                return 'Support::enclosingClassIsAbstract($context, $node)';
+            }
+
             if ($this->context->classFrom !== 'metadata') {
                 throw new Refusal("{$method}() outside a declaration hook", $expr->getStartLine());
             }
