@@ -401,6 +401,44 @@ final readonly class TypeCoverage
     }
 
     /**
+     * The text with every `#[..]` attribute group removed, brackets balanced.
+     *
+     * An attribute sits between a property's docblock and the property, and its arguments are arbitrary
+     * expressions: `#[Assert(message: 'a;b')]` holds a semicolon and a closure argument holds braces. Read
+     * as source they look like the end of the previous statement, which would detach the docblock the
+     * original attaches.
+     */
+    private static function withoutAttributes(string $text): string
+    {
+        while (($start = strpos($text, '#[')) !== false) {
+            $depth = 0;
+            $end = null;
+            for ($i = $start + 1, $length = strlen($text); $i < $length; ++$i) {
+                if ($text[$i] === '[') {
+                    ++$depth;
+                } elseif ($text[$i] === ']') {
+                    --$depth;
+                    if ($depth === 0) {
+                        $end = $i;
+
+                        break;
+                    }
+                }
+            }
+
+            // An unbalanced `#[` is not an attribute this can reason about, so nothing is removed and the
+            // caller sees the text as written.
+            if ($end === null) {
+                return $text;
+            }
+
+            $text = substr($text, 0, $start) . substr($text, $end + 1);
+        }
+
+        return $text;
+    }
+
+    /**
      * Whether the docblock above a property names a type the original gives up on.
      *
      * `PropertyTypeDeclarationCollector::isPropertyDocTyped()` reads the docblock's *text* and answers true
@@ -427,8 +465,10 @@ final readonly class TypeCoverage
         }
 
         // Everything between the comment and the property must be modifiers, attributes and whitespace. A
-        // `;` or a brace means the comment belongs to whatever came before, not to this declaration.
-        if (preg_match('/[;{}]/', substr($before, $closes + 2)) === 1) {
+        // `;` or a brace means the comment belongs to whatever came before, not to this declaration —
+        // except inside an attribute, whose arguments can hold either in a string or a closure, so those are
+        // taken out before the test rather than read as the end of a statement.
+        if (preg_match('/[;{}]/', self::withoutAttributes(substr($before, $closes + 2))) === 1) {
             return false;
         }
 
