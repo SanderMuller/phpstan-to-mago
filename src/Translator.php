@@ -2489,18 +2489,35 @@ final readonly class Translator
             throw new Refusal('a method looked up by name, which only the PHP target carries', $line);
         }
 
-        $named = $this->resolve($expr->getArgs()[0]->value, $line);
-        if (! in_array($named['kind'], ['bytes', 'message'], true)) {
-            throw new Refusal("getMethod() of a {$named['kind']}", $line);
-        }
+        // A written name as readily as a computed one. The first rule to reach here looked a method up by a
+        // name it read out of a docblock, so only the computed shape was resolved — and
+        // `$node->getMethod('__construct')` then refused on its own string literal.
+        $named = $expr->getArgs()[0]->value instanceof String_
+            ? $this->context->backend->bytes($expr->getArgs()[0]->value->value)
+            : $this->operand($this->resolvedName($expr->getArgs()[0]->value, $line));
 
         return [
             'rust' => self::PHP_ONLY,
             // Not plain `method-decl`: a lookup by name answers null when the class declares no such method,
             // and `instanceof ClassMethod` on the result is the rule asking exactly that.
             'kind' => 'maybe-method-decl',
-            'php' => 'Support::methodNamed($context, ' . $this->operand($base) . ', ' . $this->operand($named) . ')',
+            'php' => 'Support::methodNamed($context, ' . $this->operand($base) . ', ' . $named . ')',
         ];
+    }
+
+    /**
+     * A computed method name for {@see resolveMethodLookup()}, refused when it is not one.
+     *
+     * @return Descriptor
+     */
+    private function resolvedName(Expr $expr, int $line): array
+    {
+        $named = $this->resolve($expr, $line);
+        if (! in_array($named['kind'], ['bytes', 'message'], true)) {
+            throw new Refusal("getMethod() of a {$named['kind']}", $line);
+        }
+
+        return $named;
     }
 
     /**
@@ -8149,6 +8166,14 @@ final readonly class Translator
         $ported = $this->resolveCollaboratorCall($expr, $expr->getStartLine());
         if ($ported !== null) {
             return $this->operand($ported);
+        }
+
+        // `if (! $node->getMethod('__construct'))` — the same lookup the value path already resolves, asked as
+        // a truthiness test. php-parser answers the declaration or null, so the condition is the null check;
+        // without this the predicate path refused a call the resolver two hundred lines up already knows.
+        $lookup = $this->resolveMethodLookup($expr, $expr->getStartLine());
+        if ($lookup !== null) {
+            return $this->operand($lookup) . ' !== null';
         }
 
         // A collaborator that does not declare this method is not a collaborator for this call, and saying so

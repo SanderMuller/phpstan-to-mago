@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 43 of 89 portable rules the package registers emit, 1 covered by the engine, 45 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 44 of 89 portable rules the package registers emit, 1 covered by the engine, 44 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -120,9 +120,7 @@ REFUSE  NewWithFollowingSettersCollector
         needs: access path outside the vocabulary: Expr_Cast_Array
         needs: empty-array comparison against a accumulator
         needs: collector returns something other than a list of values
-REFUSE  NoAbstractControllerConstructorRule
-        method call outside the vocabulary ->getMethod()
-        needs: method call outside the vocabulary ->getMethod()
+EMIT    NoAbstractControllerConstructorRule
 EMIT    NoArrayMapWithArrayCallableRule
 EMIT    NoAssertFuncCallInTestsRule
 REFUSE  NoBareAndSecurityIsGrantedContentsRule
@@ -134,8 +132,7 @@ REFUSE  NoClassReflectionStaticReflectionRule
         early return from a helper that is not a boolean literal
         needs: early return from a helper that is not a boolean literal
 REFUSE  NoConstructorAndRequiredTogetherRule
-        method call outside the vocabulary ->getMethod()
-        needs: method call outside the vocabulary ->getMethod()
+        a foreach in an inlined helper whose body is not a single guard
         needs: a foreach in an inlined helper whose body is not a single guard
 REFUSE  NoConstructorOverrideRule
         function call outside the vocabulary fast_has_parent_constructor()
@@ -186,8 +183,8 @@ REFUSE  NoInstanceOfStaticReflectionRule
         needs: no node predicate for instanceof PhpParser\Node\Expr\Instanceof_ on a hook-node
         needs: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  NoIntegerRefactorReturnRule
-        assignment value outside the vocabulary: access path outside the vocabulary: Scalar_String
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_String
+        no mapping for ->returnType on a maybe-method-decl
+        needs: early return from a helper that is not a boolean literal
         needs: statement outside the vocabulary: Stmt_Expression
         needs: assignment value outside the vocabulary: access path outside the vocabulary: array_diff()
 REFUSE  NoJustPropertyAssignRule
@@ -197,8 +194,7 @@ REFUSE  NoJustPropertyAssignRule
         needs: assignment value outside the vocabulary: no PHP navigation for node.var (kind expr) on a Expression node
 EMIT    NoLeadingBackslashInNameRule
 REFUSE  NoListenerWithoutContractRule
-        access path outside the vocabulary: Scalar_String
-        needs: access path outside the vocabulary: Scalar_String
+        a foreach in an inlined helper whose body is not a guard chain: Stmt_If
         needs: a foreach in an inlined helper whose body is not a guard chain: Stmt_If
         needs: no iteration mapped for ->attrGroups, which resolved to a expr, in an inlined helper
         needs: no iteration mapped for ->params, which resolved to a expr, in an inlined helper

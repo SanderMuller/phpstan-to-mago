@@ -2134,3 +2134,32 @@ false — the package wires it, to something this transpiler cannot read.
 equals its own name, and there is none; the emission diff over seven packages and three targets changes not
 one byte. The census records the new refusal, which is what keeps the two vocabulary additions honest: they
 are not carried by any emitted plugin, and reverting either changes that entry.
+
+#### A lookup the resolver already knew, asked as a question
+
+`NoAbstractControllerConstructorRule` is four guards and a report, and it refused on
+`$node->getMethod('__construct')` — a call `resolveMethodLookup()` has resolved for a long time. Two things
+were missing, and both are one shape short of what was there:
+
+- **In predicate position.** The resolver answers the declaration or null, so `if (! $node->getMethod(…))` is
+  the null check. Only the value path consulted it, so a rule asking the same call as a *condition* was
+  refused by the generic arm underneath.
+- **With a written name.** The first rule to reach the lookup found its method by a name read out of a
+  docblock, so only the computed shape was resolved — and a plain `'__construct'` then refused on its own
+  string literal.
+
+`symplify/phpstan-rules` reads **44 of 89**, and the total 78 of 169. Three further rules move off
+`->getMethod()` or the string literal onto the obstacle each actually has — a `foreach` in an inlined helper,
+and `->returnType` on a looked-up method.
+
+The mutation check is the gate's own: removing the predicate arm does not make a test fail by disagreeing, it
+makes `test_every_example_pair_has_a_rule_that_emits` fail, because the pair is left with no rule behind it.
+That test exists for exactly this — a rule that stops emitting takes its evidence with it and nothing else
+notices.
+
+The good example carries all three near misses the rule's guards turn on: an abstract `*Controller` with no
+constructor, a concrete one with a constructor, and an abstract class with a constructor whose name does not
+end in `Controller`.
+
+No corpus exercises it — `extends AbstractController` and abstract `*Controller` classes appear in none of the
+four projects to hand, which are Laravel and Rector.
