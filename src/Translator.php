@@ -1042,6 +1042,15 @@ final readonly class Translator
             ];
         }
 
+        if (isset($this->context->unresolvedParameters[$property])) {
+            throw new Refusal(
+                "\${$property} is wired to the container parameter %{$this->context->unresolvedParameters[$property]}%, "
+                . "which the package's own neon does not declare — so there is no value to carry, and the "
+                . 'name of the parameter is not one',
+                $line,
+            );
+        }
+
         if (isset($this->context->derived[$property])) {
             throw new Refusal(
                 "\${$property} is computed in the constructor and {$this->context->derived[$property]}",
@@ -7736,6 +7745,19 @@ final readonly class Translator
             );
         }
 
+        // `$type->isLiteralString()->yes()` — whether every part of the type is a written string. The same
+        // refinement `getConstantStrings()` reads, so a rule that asks both questions gets consistent answers.
+        if ($name === 'isLiteralString' && $args === []) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a literal-string test, which only the PHP target carries', $line);
+            }
+
+            return $this->negateUnless(
+                $tail === 'yes',
+                $this->context->backend->call('type_is_literal_string', [$this->operand($this->resolve($inner->var, $line))]),
+            );
+        }
+
         if ($name === 'isInstanceOf' && count($args) === 1) {
             $literal = $this->classLiteral($args[0]->value, $line);
 
@@ -7879,6 +7901,20 @@ final readonly class Translator
         // $classReflection->is($type) — the enclosing class, against a literal or a loop variable
         if ($method === 'is' && count($args) === 1) {
             $subject = $this->resolve($expr->var, $expr->getStartLine());
+
+            // The same question asked of a class the rule *named* rather than of the scope's. A reflection
+            // handle taken from `getClass($name)` inside a loop is just the name here, and descent is what
+            // `is()` means either way — `VariablePropertyFetchRule` asks it of each class its receiver type
+            // names, to let a universal object crate through.
+            if (in_array($subject['kind'], ['named-class', 'class-name'], true)) {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal('is() on a named class, which only the PHP target carries', $expr->getStartLine());
+                }
+
+                return 'Support::classDescendsFrom($context, ' . $this->operand($subject) . ', '
+                    . $this->bytesValue($args[0]->value, $expr->getStartLine()) . ')';
+            }
+
             if ($subject['kind'] !== 'class-reflection') {
                 throw new Refusal('is() on something other than the scope class', $expr->getStartLine());
             }

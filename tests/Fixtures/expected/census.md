@@ -550,9 +550,8 @@ REFUSE  UselessCastRule
 EMIT    VariableMethodCallRule
 EMIT    VariableMethodCallableRule
 REFUSE  VariablePropertyFetchRule
-        trinary tail on an unsupported query ->isLiteralString()
-        needs: trinary tail on an unsupported query ->isLiteralString()
-        needs: is() on something other than the scope class
+        $universalObjectCratesClasses is wired to the container parameter %universalObjectCratesClasses%, which the package's own neon does not declare — so there is no value to carry, and the name of the parameter is not one
+        needs: $universalObjectCratesClasses is wired to the container parameter %universalObjectCratesClasses%, which the package's own neon does not declare — so there is no value to carry, and the name of the parameter is not one
 EMIT    VariableStaticMethodCallRule
 EMIT    VariableStaticMethodCallableRule
 EMIT    VariableStaticPropertyFetchRule

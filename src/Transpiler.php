@@ -739,9 +739,18 @@ PHP;
                 continue;
             }
 
-            $default = $configuration instanceof PackageConfiguration && $configuration->hasParameter($argument['reference'])
-                ? $configuration->defaultFor($argument['reference'])
-                : $argument['reference'];
+            // A `%parameter%` the package's own neon does not declare. PHPStan's core declares
+            // `universalObjectCratesClasses`, so the value exists at analysis time and nowhere this
+            // transpiler can read — and the fallback below would take the *parameter's name* as the default,
+            // emitting a rule whose `string[]` option is the string `'universalObjectCratesClasses'`. That
+            // rule loads, runs, and iterates the characters of its own parameter name.
+            if (! $configuration instanceof PackageConfiguration || ! $configuration->hasParameter($argument['reference'])) {
+                $this->context->unresolvedParameters[$name] = $argument['reference'];
+
+                continue;
+            }
+
+            $default = $configuration->defaultFor($argument['reference']);
 
             $this->context->configured[$name] = [
                 'parameter' => $argument['reference'],

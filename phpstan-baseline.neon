@@ -68,7 +68,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 2077, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 2086, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Translator.php
@@ -104,13 +104,13 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::methodPredicate()" is 86, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::methodPredicate()" is 90, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::trinaryTailPredicate()" is 31, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::trinaryTailPredicate()" is 35, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
@@ -188,7 +188,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 180, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 179, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php

@@ -156,6 +156,23 @@ final class Types
         return true;
     }
 
+    /**
+     * Whether every part of a type is a literal string — PHPStan's `Type::isLiteralString()->yes()`.
+     *
+     * Every atomic has to be one, which is what `yes` means: `'a'|int` is a `maybe` there and is not one here
+     * either, and an empty type is not a literal string. Answered from the same refinement
+     * {@see constantStringsOf()} reads, so the two cannot drift — including the `ClassLikeString` a `::class`
+     * expression produces, which PHPStan also calls a constant string.
+     */
+    public static function typeIsLiteralString(?Type $type): bool
+    {
+        if (! $type instanceof Type || $type->atomicTypes === []) {
+            return false;
+        }
+
+        return count(self::constantStringsOf($type)) === count($type->atomicTypes);
+    }
+
     /** Whether the inferred type is a single named object rather than a union, scalar or mixed. */
     public static function typeIsNamedObject(?Type $type): bool
     {

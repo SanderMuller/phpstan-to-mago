@@ -2106,3 +2106,31 @@ descriptor kind this vocabulary does not have, rather than one more accessor.
 
 No corpus exercises it. `#[IsGranted` appears in none of the four projects to hand, which are Laravel and
 Rector; the gate is the evidence.
+
+#### A rule that would have shipped iterating the characters of its own parameter name
+
+`VariablePropertyFetchRule` is the fifth of the dynamic-name family and the one the last step left behind. Two
+vocabulary additions get it to the emitter — `$type->isLiteralString()->yes()`, answered from the same
+refinement `getConstantStrings()` reads, and `$classReflection->is($name)` asked of a class the rule *named*
+rather than of the scope's, which is `classDescendsFrom()` one receiver along.
+
+**And then it must not be emitted.** The rule takes `string[] $universalObjectCratesClasses`, and the package
+wires it `universalObjectCratesClasses: %universalObjectCratesClasses%` — a container parameter **PHPStan's
+own core declares**, not the package. The default lookup asked the package's neon, found nothing, and fell
+back to the parameter's *name*, so the emitted constructor read:
+
+    public readonly string $universalObjectCratesClasses = 'universalObjectCratesClasses',
+
+A `string[]` option defaulted to a string, which `Support::anyOf()` would then iterate character by character.
+That plugin parses, loads, runs, and is wrong — the exact failure the generator exists to refuse, and it took
+making the rule reach the emitter to see it.
+
+An unresolvable `%parameter%` is recorded now and refused where it is read, naming the parameter and why there
+is no value behind it. Ordered before the derived-value check, so the message is the cause rather than the
+symptom: reached in the other order it said "the package wires no configured values for this rule", which is
+false — the package wires it, to something this transpiler cannot read.
+
+**No rule that already ships is affected.** Every emitted manifest was scanned for a parameter whose default
+equals its own name, and there is none; the emission diff over seven packages and three targets changes not
+one byte. The census records the new refusal, which is what keeps the two vocabulary additions honest: they
+are not carried by any emitted plugin, and reverting either changes that entry.

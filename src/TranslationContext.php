@@ -507,6 +507,19 @@ final class TranslationContext
     public bool $reportTaken = false;
 
     /**
+     * Constructor parameters wired to a container parameter the package's own neon does not declare.
+     *
+     * `%universalObjectCratesClasses%` is PHPStan core's, so its value exists at analysis time and in no file
+     * this transpiler reads. Recorded rather than defaulted, because the fallback is the parameter's *name*:
+     * a rule carrying that would load, run, and iterate the characters of the string
+     * `'universalObjectCratesClasses'` — a plausible-but-wrong plugin, which is the failure mode the
+     * generator is built to refuse.
+     *
+     * @var array<string, string>
+     */
+    public array $unresolvedParameters = [];
+
+    /**
      * Collaborators a helper builds for itself, by local variable name.
      *
      * `$attributeFinder = new AttributeFinder();` is the same handle as an injected one, one line later

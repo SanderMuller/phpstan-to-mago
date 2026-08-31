@@ -1515,6 +1515,12 @@ final class Support
         return Types::constantStringOf($type);
     }
 
+    /** Whether every part of a type is a literal string — PHPStan's `Type::isLiteralString()->yes()`. */
+    public static function typeIsLiteralString(?Type $type): bool
+    {
+        return Types::typeIsLiteralString($type);
+    }
+
     /**
      * The same question asked of the *expression*, so a class constant answers with its own initialiser.
      *
