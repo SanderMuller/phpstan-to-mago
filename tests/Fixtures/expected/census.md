@@ -246,9 +246,7 @@ REFUSE  NoTestMocksRule  (the package registers it nowhere)
         needs: access path outside the vocabulary: Expr_New
         needs: access path outside the vocabulary: ->getClassName()
         needs: $errorMessage is not a message built in this rule
-REFUSE  NoValueObjectInServiceConstructorRule  (the package registers it nowhere)
-        no mapping for ->params on a hook-node
-        needs: no iteration mapped for ->params, which resolved to a expr
+EMIT    NoValueObjectInServiceConstructorRule  (the package registers it nowhere)
 EMIT    NoWithOnStubRule
 REFUSE  ParamNameToTypeConventionRule  (the package registers it nowhere)
         no hook mapping for node type PhpParser\Node\Param

@@ -375,6 +375,12 @@ final class EmittedRuleFiresTest extends TestCase
             . 'node kind, which a search for classes, interfaces, traits and enums never returns',
             // Proof by construction: PHP has no method outside a class-like, so no example can hold the case.
             'a declaration hook fires inside a class-like, so there is always an enclosing class',
+            // The same proof reached from the *scope* rather than the declaration.
+            // `NoValueObjectInServiceConstructorRule` registers `ClassMethod` and writes `$scope->isInClass()`,
+            // and the hook kinds this fold covers are the four class-likes and `Method` — every one of which
+            // PHP only lets exist inside a class-like. A function, closure or arrow function is deliberately
+            // not among them, because those genuinely may sit outside one.
+            'this hook fires only on a class-like or one of its members, so the scope it carries is always in a class',
             // The guards ahead of it establish the index; the good examples hold each case they filter — a
             // named argument, a spread, a non-bool, a call past the end of the parameter list.
             'an index produced behind guards is never null once those guards have run',

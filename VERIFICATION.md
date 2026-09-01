@@ -2308,3 +2308,39 @@ one rule, and every one of them exercises both loops and all four guards.
 A `Request` parameter, which the rule allows by name; a parameterless action; a private method, which the
 visibility guard skips; a magic method that is not `__invoke`; and a class not named `*Controller`. The bad
 one holds two offending parameters, because the rule reports once per parameter rather than once per method.
+
+#### The other spelling of the same loop, and a name that has to be the resolved one
+
+`NoValueObjectInServiceConstructorRule` writes `$node->params` where the rule before it wrote `getParams()`,
+so the list the last step made iterable had one more door into it. Two additions:
+
+- **`->params` on a method hook node**, which is the same list `getParams()` hands back.
+- **A written parameter type read as its *resolved* name.** `$param->type->toString()` gives what PHPStan
+  resolved the name to, and this rule matches it against `#(ValueObject|DataObject|Models)#` — a pattern that
+  only ever matches a *namespace* segment. Reading the name as written answers `Money`, which matches
+  nothing. The mutation says it exactly: swapping `hintName()` for `textOf()` leaves the plugin reporting
+  nothing on its bad example, where PHPStan reports `Examples\ValueObject\Money`.
+
+**The seven-package total does not move: `symplify/phpstan-rules` registers this rule nowhere**, so it is
+outside the portable denominator by the same rule that keeps eight of its rules out. What it gains is a rule a
+consumer can register itself, emitted and gated — and a corpus number, which is the part worth having.
+
+##### 158 agreeing on the same application
+
+hihaho reads `agree 158, only-original 0, only-port 0`, taking the package's whole run there from 721 agreeing
+to **879**, still nothing on either side. Two rules in two steps have added 456 agreeing findings to one
+application, both by iterating parameters — which is the shape that yields sites in bulk, because a service
+constructor has several and each is its own finding.
+
+##### The good example holds the case metadata could have broken
+
+A value object may hold a value object, and the rule skips it by the *enclosing* class's resolved name.
+Metadata lowercases many names, and a lowercased one never matches `ValueObject` — so that example is what
+says the guard reads a name with its case intact. Beside it: a service taking a service, an untyped
+parameter, and a value object as a *method* argument, which is what the rule asks for.
+
+The gate caught one more thing on its own. `$scope->isInClass()` folds away on a `ClassMethod` hook, and the
+sentence it folds with had never been emitted before — so `test_every_dropped_guard_names_why_it_cannot_hold`
+refused it as a drop nobody had proved. It is proof by construction, like the declaration-hook one beside it:
+PHP has no method outside a class-like, and the fold covers the four class-likes and `Method` and deliberately
+not a function, closure or arrow function.

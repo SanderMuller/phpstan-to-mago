@@ -384,6 +384,9 @@ final class Vocabulary
             // The declaration's own name. `declarationName()` reads the first identifier child, which for a
             // method declaration is the method name — modifiers are keywords, not identifiers.
             'name' => ['&node.name', 'local-name', 'Support::declarationName($context, {base})'],
+            // `$node->params`, which is the same list `getParams()` hands back — a rule writes whichever it
+            // prefers and `NoValueObjectInServiceConstructorRule` writes the property.
+            'params' => [self::PHP_ONLY, 'param-decls', 'Support::declaredParams($context, {base})'],
         ],
         'Instantiation' => [
             'class' => ['node.class', 'name-expr', 'Support::classPart($context, {base})'],

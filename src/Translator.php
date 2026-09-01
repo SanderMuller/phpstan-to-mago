@@ -3270,6 +3270,11 @@ final readonly class Translator
         return match ($subject['kind']) {
             'bytes', 'class-name', 'config-bytes', 'resolved-name' => $this->operand($subject),
             'local-name', 'name-selector', 'name-expr' => $this->context->backend->call('text_of', [$this->operand($subject)]),
+            // A written parameter type, read as the *resolved* name. `->toString()` on a php-parser `Name`
+            // gives what PHPStan resolved it to, and `hintName()` answers the same way — which is what a rule
+            // comparing a parameter type against a namespace fragment needs. `text_of` would give the name as
+            // written, so an imported `Money` would miss a `#(ValueObject)#` match the original makes.
+            'hint', 'hint-option' => 'Support::hintName($context, ' . $this->operand($subject) . ')',
             default => throw new Refusal("cannot read a {$subject['kind']} as a name", $line),
         };
     }
