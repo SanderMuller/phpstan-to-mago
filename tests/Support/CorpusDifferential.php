@@ -449,6 +449,13 @@ final class CorpusDifferential
      * cannot walk that chain and the port reports nothing for those classes: 13 of 31 exception findings, all
      * of them classes extending a framework exception. That is engine blindness, not a narrow port, and the
      * fix belongs in the configuration rather than in the agreement math.
+     *
+     * The consumer's *own* root is there for the same reason, one level in, and it only matters when `--paths`
+     * measures a subset. PHPStan's autoloader does not stop at the analysed directories: a rule asking whether
+     * `($this->resolve)(..)` invokes something with `__invoke` gets an answer even when the class lives in a
+     * directory the run does not analyse. Measured on `--paths=tests` over one consumer, where
+     * `symplify.noDynamicName` reported 29 sites the original does not, every one of them an invokable class
+     * declared under `app/`. The port was not wider than the rule; mago had never read the class.
      */
     public function writeMagoConfig(): string
     {
@@ -469,7 +476,7 @@ final class CorpusDifferential
         file_put_contents($this->sandbox . '/mago.toml', strtr(<<<TOML
             [source]
             paths = [{$this->join($paths)}]
-            includes = ["{$this->consumerRoot}/vendor"]
+            includes = ["{$this->consumerRoot}/vendor", "{$this->consumerRoot}"]
             excludes = [{$this->join($excludes)}]
 
             [extension-hosts.differential]

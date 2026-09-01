@@ -76,27 +76,41 @@ the safe direction.
 
 
 On `nikic/php-parser`'s 270 files of library source — a tree this repository installs, so the number can be
-re-run — the differential is **1086 agreeing, 1 original-only, 34 port-only**. Reproduce with
+re-run — the differential is **1248 agreeing, 1 original-only, 409 port-only**. Reproduce with
 `php tests/Support/run-corpus-differential.php . --paths=vendor/nikic/php-parser/lib`.
 
 | identifier | agree | only-original | only-port |
 |:--|--:|--:|--:|
+| `typeCoverage.paramTypeCoverage` | 1053 | 1 | 0 |
+| `typeCoverage.returnTypeCoverage` | 120 | 0 | 0 |
+| `typeCoverage.constantTypeCoverage` | 0 | 0 | 375 |
 | `complexity.functionLike` | 11 | 0 | 28 |
 | `complexity.classLike` | 4 | 0 | 6 |
-| `typeCoverage.paramTypeCoverage` | 1053 | 1 | 0 |
 | `symplify.noDynamicName` | 13 | 0 | 0 |
+| `symplify.explicitAbstractPrefixName` | 19 | 0 | 0 |
+| `typeCoverage.propertyTypeCoverage` | 8 | 0 | 0 |
+| `symplify.requiredInterfaceContractNamespace` | 8 | 0 | 0 |
+| `symplify.explicitInterfaceSuffixName` | 7 | 0 | 0 |
+| `symplify.forbiddenStaticClassConstFetch` | 2 | 0 | 0 |
+| `symplify.requireExceptionNamespace` | 2 | 0 | 0 |
+| `symplify.multipleClassLikeInFile` | 1 | 0 | 0 |
 
-All 34 are a configured threshold against a package default, and the numbers say so: this project's
-`phpstan.neon.dist` sets `class: 80, function: 20`, and the package ships `class: 40, function: 9`. A generated
-plugin deliberately carries its own package's defaults so that a generated project stands alone, so the port's
-threshold is lower and it reports more. The same decision is why the aggregate's message differs at every site
-it agrees on.
+All 409 are a configured threshold against a package default, and the configurations say so. This project's
+`phpstan.neon.dist` sets `class: 80, function: 20` where the package ships `class: 40, function: 9`, and it
+sets `constant: 0` — which switches the constant metric off for the original — where the package ships
+`constant_type: 99`. A generated plugin deliberately carries its own package's defaults so that a generated
+project stands alone, so the port's threshold is lower or present and it reports more. The same decision is why
+the aggregate's message differs at every site it agrees on.
 
-**Read the denominator before the agreement.** Of 49 identifiers under test, `php-parser` exercises **7** — 42
+This table was 1086 / 1 / 34 over 49 identifiers when it was first written, and the corpus has gained emitting
+rules since. The number moved because more rules run, not because the port drifted: every row added is a `0 0`
+row or the constant metric this section now names.
+
+**Read the denominator before the agreement.** Of 73 identifiers under test, `php-parser` exercises **13** — 60
 report nothing on either side, and a `0 0 0` row reads exactly like a clean agreement. Every Laravel- and
-PHPUnit-shaped rule is in that 41, because a parser library contains nothing for them to find. The runner names
-them now rather than leaving them in the total, so a reader can see that 1086 agreements come from seven rules
-and choose a corpus that reaches the rest.
+PHPUnit-shaped rule is in that 60, because a parser library contains nothing for them to find. The runner names
+them now rather than leaving them in the total, so a reader can see which rules the agreements come from and
+choose a corpus that reaches the rest.
 
 A second corpus, run for the same reason the first one is here — a green result on one tree says little.
 `league/commonmark`'s 302 files: **34 agreeing, 1 original-only, 23 port-only**. The 23 are the same threshold
@@ -2475,3 +2489,42 @@ stubs; the pair resolves against those rather than a real Symfony install, like 
 `NoWithOnStubRule` is the one emitted file that changed, and its behaviour did not: the guard the first fix
 repaired is followed by `! $var instanceof Variable && ! $var instanceof PropertyFetch`, which already
 excluded the case the broken guard let through.
+
+#### A subset measurement that described the harness
+
+The two steps before this one changed how every emitted plugin navigates, so the evidence that matters is a
+run over code nobody wrote for us. `../hihaho`, the whole project, `symplify/phpstan-rules`: **912 agreeing, 0
+original-only, 0 port-only** over 2932 files, against **912 / 0 / 0** for the commit before them. The
+per-identifier tables are identical apart from one new `0 0 0` row for `NoRoutingPrefixRule`.
+
+That comparison took two attempts. The first ran the old commit from a `git worktree` with this repository's
+`vendor/` symlinked in — and composer's autoloader resolves `__DIR__` through the symlink, so both sides loaded
+the *same* `src/`. The tell was `emitted: 52` on both, where the old commit emits 51. It is the shape
+`CLAUDE.md` already records for a no-op `git stash`: a BEFORE run that is silently the AFTER one. The second
+attempt used a self-contained copy, and `emitted: 51` against `emitted: 52` is what says the two sides differ.
+
+`rector.noClassReflectionStaticReflection` reads **33 agreeing, 0, 0** there — the first outside evidence for
+the rule two steps back, whose only check until now was its own example pair. `symfony.noRoutingPrefix` reads
+`0 0 0`: no corpus available here uses Symfony's routing configurators, so the fires gate remains its only
+evidence, and this run says nothing about it.
+
+##### 29 findings that were the source paths, not the port
+
+Narrowing the same corpus to `--paths=tests` reported **only-port 29**, all under `symplify.noDynamicName`, all
+of the shape `($this->handler)(..)` — invoking a property whose class declares `__invoke`. The rule allows
+that; the port reported it.
+
+The cause is the one the mago-config docblock already names, one level in. `includes` carried the consumer's
+`vendor/` so mago could walk a framework ancestry, and nothing else. PHPStan's autoloader does not stop at the
+analysed directories: it resolves an `App\` class declared under `app/` while the run analyses only `tests/`.
+Mago had never read the class, so its inferred type is a `ReferenceType` rather than a named object, the
+`__invoke` test could not run, and the guard fell through.
+
+The control settles it rather than the reading: adding the consumer's own root to `includes` takes the same
+corpus, the same 1071 files and the same 9 agreements from **29 port-only to 0**. The full-project run is
+unchanged at 912 / 0 / 0, and so is the `php-parser` table — which is what a fix confined to subset
+measurements should look like.
+
+Two things follow for any number quoted from a `--paths=` run. It was measured with mago reading less of the
+project than PHPStan, so it overstated the port's width; and the direction is one-sided, so a `--paths` run
+that reported **no** divergence was never weakened by this.
