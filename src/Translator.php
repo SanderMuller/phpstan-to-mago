@@ -2157,6 +2157,39 @@ final readonly class Translator
             return null;
         }
 
+        $arguments = $this->collaboratorArguments($entry, $expr->getArgs(), $method, $line);
+
+        // A helper that reports for itself needs the identifier the original reports under, and that is read
+        // out of the collaborator rather than named here: the message and the identifier are the two things a
+        // reader checks a port against, and a table holding either would drift from the package silently.
+        if ($entry['kind'] === 'reports') {
+            $identifier = $this->reportedIdentifierIn($declaring['class'], $line);
+            $arguments[] = $this->context->backend->bytes($identifier);
+            $this->context->identifiers[] = $identifier;
+        }
+
+        $call = $entry['helper'] . '(' . implode(', ', $arguments) . ')';
+        $this->context->runtimeHelpers[explode('::', $entry['helper'])[0]] = true;
+
+        return ['rust' => self::PHP_ONLY, 'kind' => $entry['kind'], 'php' => $call];
+    }
+
+    /**
+     * The whole argument list a runtime helper is called with, in the order the helper declares it.
+     *
+     * Shared by the two call shapes, because a helper stands in for one method however that method is
+     * reached: `$this->helper->m(…)` goes through {@see resolveCollaboratorCall()} and `Analyzer::m(…)`
+     * through {@see staticHelperStandIn()}. The static path used to hardcode `($context, $node)`, which was
+     * true of the only entry it had and would have silently dropped the arguments of the next one.
+     *
+     * @param array{helper: string, kind: string, takes: string, arguments: list<int>, types?: list<int>,
+     *     flags?: list<string>, receiverType?: bool} $entry
+     * @param array<Arg> $args
+     *
+     * @return list<string>
+     */
+    private function collaboratorArguments(array $entry, array $args, string $method, int $line): array
+    {
         $arguments = match ($entry['takes']) {
             'context' => ['$context'],
             // A ported helper that navigates from the node the hook fired for rather than over the whole
@@ -2166,7 +2199,7 @@ final readonly class Translator
             'none' => [],
             default => ['$context->source'],
         };
-        $args = $expr->getArgs();
+
         foreach ($entry['arguments'] as $position) {
             $arguments[] = $this->operand($this->resolve($this->collaboratorArgument($args, $position, $method, $line), $line));
         }
@@ -2174,8 +2207,19 @@ final readonly class Translator
         // An argument the helper reads as a *type* rather than as the expression itself. Asked for by node
         // through `ExpressionTypes`, the same route `$scope->getType(<expr>)` takes, so the two cannot drift.
         foreach ($entry['types'] ?? [] as $position) {
-            $this->context->usesExpressionTypes = true;
             $of = $this->resolve($this->collaboratorArgument($args, $position, $method, $line), $line);
+
+            // Unless the rule already asked. `$t = $scope->getType($x); Analyzer::m($t)` hands this position
+            // a descriptor that *is* a type, and wrapping it again would ask for the inferred type of an
+            // inferred type. The requirement is registered where that descriptor was made, so it is not
+            // registered a second time here either.
+            if ($of['kind'] === 'type') {
+                $arguments[] = $this->operand($of);
+
+                continue;
+            }
+
+            $this->context->usesExpressionTypes = true;
             $arguments[] = 'Support::expressionType($context, ' . $this->operand($of) . ')';
             $this->context->runtimeHelpers['Support'] = true;
         }
@@ -2195,19 +2239,7 @@ final readonly class Translator
             $arguments[] = '$this->' . $flag;
         }
 
-        // A helper that reports for itself needs the identifier the original reports under, and that is read
-        // out of the collaborator rather than named here: the message and the identifier are the two things a
-        // reader checks a port against, and a table holding either would drift from the package silently.
-        if ($entry['kind'] === 'reports') {
-            $identifier = $this->reportedIdentifierIn($declaring['class'], $line);
-            $arguments[] = $this->context->backend->bytes($identifier);
-            $this->context->identifiers[] = $identifier;
-        }
-
-        $call = $entry['helper'] . '(' . implode(', ', $arguments) . ')';
-        $this->context->runtimeHelpers[explode('::', $entry['helper'])[0]] = true;
-
-        return ['rust' => self::PHP_ONLY, 'kind' => $entry['kind'], 'php' => $call];
+        return $arguments;
     }
 
     /**
@@ -7249,7 +7281,7 @@ final readonly class Translator
         // on the fully qualified name, and only the index knows which file a short name resolved to.
         $helperClass = $this->findClassByName($helper);
         if ($helperClass !== null) {
-            $stood = $this->staticHelperStandIn($helperClass, $method, $expr->getStartLine());
+            $stood = $this->staticHelperStandIn($helperClass, $method, $args, $expr->getStartLine());
             if ($stood !== null) {
                 return $stood;
             }
@@ -7307,8 +7339,9 @@ final readonly class Translator
      * saying what is missing rather than inlining a body that will refuse a few lines further in.
      *
      * @param array{class: ClassLike, uses: array<string, string>, namespace: string|null} $helperClass
+     * @param array<Arg> $args
      */
-    private function staticHelperStandIn(array $helperClass, string $method, int $line): ?string
+    private function staticHelperStandIn(array $helperClass, string $method, array $args, int $line): ?string
     {
         $entry = Vocabulary::COLLABORATOR_CALLS[$this->fullyQualified($helperClass) . '::' . $method] ?? null;
         if ($entry === null) {
@@ -7319,13 +7352,10 @@ final readonly class Translator
             throw new Refusal("{$method}() is answered by a runtime helper, which only the PHP target carries", $line);
         }
 
-        if ($entry['receiverType'] ?? false) {
-            $this->context->usesReceiverType = true;
-        }
-
+        $arguments = $this->collaboratorArguments($entry, $args, $method, $line);
         $this->context->runtimeHelpers[explode('::', $entry['helper'])[0]] = true;
 
-        return $entry['helper'] . '($context, $node)';
+        return $entry['helper'] . '(' . implode(', ', $arguments) . ')';
     }
 
     private function instanceofPredicate(Instanceof_ $expr): string

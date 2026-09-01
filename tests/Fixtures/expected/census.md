@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 47 of 89 portable rules the package registers emit, 1 covered by the engine, 41 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 48 of 89 portable rules the package registers emit, 1 covered by the engine, 40 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -128,9 +128,7 @@ REFUSE  NoBareAndSecurityIsGrantedContentsRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: preg_split()
 EMIT    NoBundleResourceConfigRule
 EMIT    NoClassLevelRouteRule
-REFUSE  NoClassReflectionStaticReflectionRule
-        early return from a helper that is not a boolean literal
-        needs: early return from a helper that is not a boolean literal
+EMIT    NoClassReflectionStaticReflectionRule
 REFUSE  NoConstructorAndRequiredTogetherRule
         a foreach in an inlined helper whose body is not a single guard
         needs: a foreach in an inlined helper whose body is not a single guard

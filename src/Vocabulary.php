@@ -609,6 +609,18 @@ final class Vocabulary
             'takes' => 'context',
             'arguments' => [0, 1],
         ],
+        // Four branches over PHPStan's type classes, which the vocabulary has no statements for — the
+        // refusal it replaces named the shape rather than the cause, "early return from a helper that is not
+        // a boolean literal". `types` because the rule hands it `$scope->getType($argValue)`, so the position
+        // is an inferred type either way; the helper's own docblock carries what each branch was measured to
+        // be, since PHPStan and mago disagree about which shape `Foo::class` and `class-string` produce.
+        'Symplify\PHPStanRules\TypeAnalyzer\RectorAllowedAutoloadedTypeAnalyzer::isAllowedType' => [
+            'helper' => 'RectorAutoloadedTypes::isAllowed',
+            'kind' => 'bool',
+            'takes' => 'context',
+            'arguments' => [],
+            'types' => [0],
+        ],
         'PHPStan\Rules\PHPUnit\AssertRuleHelper::isMethodOrStaticCallOnAssert' => [
             'helper' => 'PhpUnitAsserts::isCallOnAssert',
             'kind' => 'bool',

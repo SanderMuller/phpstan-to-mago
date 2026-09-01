@@ -2344,3 +2344,58 @@ sentence it folds with had never been emitted before — so `test_every_dropped_
 refused it as a drop nobody had proved. It is proof by construction, like the declaration-hook one beside it:
 PHP has no method outside a class-like, and the fold covers the four class-likes and `Method` and deliberately
 not a function, closure or arrow function.
+
+#### A collaborator whose four branches are PHPStan's type classes
+
+`NoClassReflectionStaticReflectionRule` refused with "early return from a helper that is not a boolean
+literal", which named the shape of `RectorAllowedAutoloadedTypeAnalyzer::isAllowedType()` rather than the
+reason it cannot be inlined. The reason is what its branches are: `UnionType`, `ConstantStringType`,
+`ObjectType`, `GenericClassStringType`. Those are PHPStan objects, not statements, so the *question* is ported
+into `Runtime\RectorAutoloadedTypes` and the guards still come from the rule.
+
+Two things had to change beside the table entry.
+
+- **The static call shape had to carry arguments.** `staticHelperStandIn()` emitted `helper($context, $node)`
+  literally, which was true of the one entry it had and would have silently dropped this one's argument. Both
+  call shapes now build the list through one method. Emitting all seven packages plus `tests/Fixtures/Rules`
+  for all three targets before and after gives **zero diff** apart from the output path in `mago.toml.snippet`
+  — so that extraction changed no emitted byte.
+- **A type that arrives already asked for is not asked again.** The rule writes
+  `$t = $scope->getType($argValue)` and passes `$t`, so the `types` position holds a descriptor that already
+  *is* a type; wrapping it a second time would have asked for the inferred type of an inferred type.
+
+##### Every branch was measured, and one of them was wrong first
+
+The two type models disagree about which shape a written expression produces, so each branch came from
+`internal/probe-type-atomics.php` rather than from reading:
+
+| written | PHPStan | mago atomic |
+|:--|:--|:--|
+| `Alpha::class` | `ConstantStringType` | `ClassLikeString`, variant `Literal` |
+| `'TS\Alpha'` | `ConstantStringType` | `String`, `literalValue` on the refinement |
+| `class-string<Alpha>` | `GenericClassStringType` | `ClassLikeString`, variant `OfType`, `constraint` |
+| `class-string` | `ClassStringType` | `ClassLikeString`, variant `Any` |
+| a class outside the analysed set | `ObjectType` | **`ReferenceType`**, kind `Symbol` |
+
+The last row is the one the gate found rather than the probe. A first version read only `NamedObjectType`, and
+the good example failed on `new \ReflectionClass($type)` with a `PHPStan\Type\ObjectType $type` parameter: the
+port reported where PHPStan is silent. Probing that position gives `ReferenceType{Symbol,
+PHPStan\Type\ObjectType}` — mago spells an *unresolved* class differently from a resolved one, and the
+analysed set there is one example file. PHPStan gives an `ObjectType` either way, so reading only the resolved
+shape is wider than the rule, not narrower.
+
+That failure is also the mutation check: the branch went in because the gate was red without it and is green
+with it, over the real rule under real PHPStan against the real emitted plugin.
+
+Two smaller facts came out of the same probes and are recorded on the methods that depend on them:
+`getClassAncestors()` carries implemented interfaces as well as parents, and it answers **lowercased** — which
+is why the `is_a()` port folds case instead of comparing with `in_array()`.
+
+##### What the pair covers
+
+Bad, all four agreeing with PHPStan on line and message: a `::class` of the file's own class, the same name as
+a plain string, a `class-string<T>` narrowed to it, and a bare `class-string`. Good: a php-parser `::class`, a
+PHPStan class reached as an object, a `class-string<Node>`, a two-argument `ReflectionMethod`, and a
+one-argument `ReflectionObject` — the last two for the rule's count and class-name guards.
+
+`symplify/phpstan-rules` goes to **48 of 89**, and the seven-package total to **82 of 169 portable**.
