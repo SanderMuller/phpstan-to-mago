@@ -2399,3 +2399,79 @@ PHPStan class reached as an object, a `class-string<Node>`, a two-argument `Refl
 one-argument `ReflectionObject` — the last two for the rule's count and class-name guards.
 
 `symplify/phpstan-rules` goes to **48 of 89**, and the seven-package total to **82 of 169 portable**.
+
+#### A guard that read the wrong node, and a negation that only half applied
+
+`NoRoutingPrefixRule` refused on `no node predicate for instanceof Identifier on a bytes`. The subject was the
+alarm rather than the obstacle: `$parentCaller->name`, where the rule had just narrowed `$parentCaller` to a
+`MethodCall`, resolved through the `ConstFetch` arm and rendered `Support::constantNameText()` about a method
+call. Had the rule written only `$parentCaller->name->toString() !== 'import'`, that would have *translated* —
+null compared against `'import'`, so every `@FrameworkBundle` import the original allows would have been
+reported. The refusal is what stopped a plausible-but-wrong rule shipping.
+
+Four defects came out of it, each measured before it was fixed.
+
+##### 1. A narrowing the predicate inliner threw away
+
+`rememberRefined()` records what an `instanceof` guard established, and it never reaches a helper the inliner
+takes as a *predicate*: there the guard becomes a conjunct of one boolean expression, no binding statement is
+emitted, and nothing records the test. The narrowed kind is now recorded on its own, and the descriptor
+carries it as `as` — the key `Vocabulary::FIELDS` is already indexed by, so the field navigation and the
+argument-list path both read it without a second mechanism.
+
+That closed `no argument list on a expr node` for three rules besides this one.
+
+##### 2. `!(a) || !(b)` was unwrapped as though the parentheses paired
+
+`PhpBackend::conditional()` folds `!(c) ? false : rest` into `(c) && (rest)` by taking `!(` off the front and
+`)` off the back. Those are not always the same pair. `!(a) || !(b)` passes both tests, and unwrapping gave
+`a) || !(b`, rebuilt as `(a) || !(b) && (rest)` — De Morgan applied to one operand with the connective left
+alone, which is the opposite guard for every subject where `a` holds.
+
+Measured, not assumed: no rule emitting at the time hit it, so the fix changes no emitted byte. That is
+exactly why `NegatesAWholeGuardTest` pins it rather than a snapshot — the shape is one vendor release away
+from a rule that does emit, and it fails silently. Reverting the fix reproduces `(a()) || !(b()) && (rest)`
+and turns two of its six cases red.
+
+##### 3. An exiting statement hoisted out of an expression
+
+An inlined predicate folds to one expression, so anything it appends to the statement list lands at the
+*caller's* position. For a statement that exits, that inverts the helper: a binding which cannot be made
+should make the helper answer false — the finding stands — while the hoisted form returned from the hook and
+reported nothing. This rule hoisted an argument binding whose bail fired on every `prefix()` whose receiver is
+not a call at all, which is the ordinary case the rule exists for.
+
+An argument read inside a predicate is now the expression itself. `argumentList()` and `positionalArgAt()`
+both answer null for a subject with no arguments and every question asked of the value is null-tolerant, so a
+missing argument makes the chain false — which is what the helper's own `return false` says.
+
+`refuseAHoistedExit()` stays behind it for the statement kinds that have no inline form. It is a net with no
+live case today, and that is stated rather than implied: with the inline binding taken out it fires, and the
+census records the refusal for `NoRoutingPrefixRule` and `NoGetRepositoryOutsideServiceRule`. That is its
+mutation check, and it is the only evidence for it.
+
+##### 4. Navigating from a nested call found nothing, silently
+
+The gate caught the last one, and only the gate could have. With the three fixes in place the bad example
+agreed with PHPStan and the good example was reported twice — the allowed-bundle test never held. Probing each
+step: mago wraps a *nested* call in a `Call` category node with the concrete `MethodCall` as its only child.
+`isMethodCall()` already went through that wrapper; `selector()`, `argumentList()` and `nthExpression()` did
+not. So the kind test answered yes and every navigation off the same part searched the wrapper's children,
+found none, and answered null.
+
+The hook's own node is the concrete call, which is why nothing had needed the unwrap and why no emitted rule
+was wrong about its *own* node. A rule reaching a call through a field was the shape that had never been
+gated.
+
+##### What the pair covers
+
+Bad: two `import(...)->prefix(...)` calls on this project's own controllers, agreeing with PHPStan on line and
+message. Good: the two allowed bundle prefixes, a `collection(...)->prefix(...)` — `CollectionConfigurator`
+declares `prefix()` too, so only the receiver's type declines it, which is what says the type guard does the
+work rather than the name — and a `prefix()` on an unrelated object. The two configurators joined the shared
+stubs; the pair resolves against those rather than a real Symfony install, like every pair beside it.
+
+`symplify/phpstan-rules` goes to **49 of 89**, and the seven-package total to **83 of 169 portable**.
+`NoWithOnStubRule` is the one emitted file that changed, and its behaviour did not: the guard the first fix
+repaired is followed by `! $var instanceof Variable && ! $var instanceof PropertyFetch`, which already
+excluded the case the broken guard let through.

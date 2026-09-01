@@ -68,13 +68,13 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 2102, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 2115, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 66, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 71, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
@@ -116,13 +116,13 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolve()" is 89, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveDescriptor()" is 89, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveReflection()" is 337, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveReflection()" is 338, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
@@ -134,7 +134,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::translateMethodAsPredicate()" is 34, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::predicateFrom()" is 34, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php

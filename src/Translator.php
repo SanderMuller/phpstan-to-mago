@@ -1997,6 +1997,56 @@ final readonly class Translator
     /** The accepted helper shapes, as one Rust expression. */
     private function translateMethodAsPredicate(ClassMethod $method, int $line): string
     {
+        // A helper folds to one expression, so anything it appends to the statement list lands *before* the
+        // whole condition, at the caller's position. For a statement that exits, that inverts the helper: a
+        // binding which cannot be made makes the helper answer false — the finding stands — while the hoisted
+        // form returns from the hook and the rule reports nothing. Measured on `NoRoutingPrefixRule`, where
+        // `$parentCaller->getArgs()[0]->value` hoisted an argument binding whose bail fired on every call
+        // whose receiver is not a call at all, which is the ordinary case the rule exists for.
+        $before = count($this->context->lines);
+        ++$this->context->predicateDepth;
+
+        try {
+            $predicate = $this->predicateFrom($method, $line);
+        } finally {
+            --$this->context->predicateDepth;
+        }
+
+        // After the body, not in a `finally`: a refusal raised in there replaces whatever the body was
+        // refusing on, and the hoist is the less specific of the two reasons.
+        $this->refuseAHoistedExit($before, $method, $line);
+
+        return $predicate;
+    }
+
+    /**
+     * Refuses when translating a predicate helper left an exiting statement at the caller's position.
+     *
+     * The check rather than the fix, deliberately: expressing the exit inside the expression means deciding
+     * what the helper answers when the binding fails, and that answer is the helper's own — `return false`
+     * here, but a helper that bails to `true` reads the other way. A refusal that names the statement is the
+     * honest outcome until a rule needs the other shape.
+     */
+    private function refuseAHoistedExit(int $before, ClassMethod $method, int $line): void
+    {
+        foreach (array_slice($this->context->lines, $before) as $statement) {
+            if ($statement instanceof Stm && in_array($statement->kind, self::EXITING_STATEMENTS, true)) {
+                throw new Refusal(sprintf(
+                    '%s() needs a %s statement, which an inlined predicate has no position for',
+                    $method->name->toString(),
+                    $statement->kind,
+                ), $line);
+            }
+        }
+    }
+
+    /**
+     * The body of {@see translateMethodAsPredicate()}, which wraps it to check what it emitted.
+     *
+     * @return string a PHP or Rust expression
+     */
+    private function predicateFrom(ClassMethod $method, int $line): string
+    {
         $memoised = $this->memoisedExpression($method);
         if ($memoised instanceof Expr) {
             return '(' . $this->translateCondition($memoised) . ')';
@@ -6816,6 +6866,31 @@ final readonly class Translator
         $argIndex = $this->argIndexOf($value);
         if ($argIndex !== null) {
             [$index, $unwrapped, $list] = $argIndex;
+
+            // Inside a predicate helper the binding is the expression itself, because there is no statement
+            // position to bail from — see {@see refuseAHoistedExit()} for what the hoisted form did instead.
+            // Sound rather than convenient: `argumentList()` and `positionalArgAt()` both answer null for a
+            // subject that has no arguments, and every question the helper then asks of the value is
+            // null-tolerant, so a missing argument makes the guard chain false. That is what the helper's own
+            // `return false` says.
+            if ($this->context->predicateDepth > 0) {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal(
+                        'an argument read inside a predicate helper, which only the PHP target carries',
+                        $line,
+                    );
+                }
+
+                $this->context->locals[$name] = [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => $unwrapped ? 'expr' : 'arg',
+                    'key' => 'arg' . $index,
+                    'php' => 'Support::positionalArgAt(' . $this->operand($list) . ', ' . $index . ')',
+                ];
+
+                return;
+            }
+
             $bind = 'arg' . ($index === 0 ? '' : (string) $index) . '_value';
             $pad = str_repeat(' ', $this->context->indent);
             $this->context->lines[] = new Stm('bind-arg', ['bind' => $bind, 'args' => $this->operand($list), 'index' => (string) $index], $this->context->indent);
@@ -7693,7 +7768,39 @@ final readonly class Translator
             throw new Refusal("no node predicate for instanceof {$wanted} on a {$subject['kind']}", $expr->getStartLine());
         }
 
+        $this->rememberNarrowedKind($expr->expr, $subject, $wanted);
+
         return $this->nodePredicate(Vocabulary::NODE_PREDICATES[$wanted], $subject, $wanted, $expr->getStartLine());
+    }
+
+    /**
+     * Records that an expression has been tested for a node kind, so later reads of its fields navigate it.
+     *
+     * {@see rememberRefined()} is the same idea for a guard that *binds*, and it does not reach a helper the
+     * inliner takes as a predicate: there the guard becomes a conjunct of a boolean expression, no binding
+     * statement is emitted, and nothing records what the test established. `NoRoutingPrefixRule` is the shape
+     * — `! $methodCall->var instanceof MethodCall` and then `$parentCaller->name` — and without this the field
+     * read falls through to the `ConstFetch` arm, which answers `Support::constantNameText()` about a method
+     * call.
+     *
+     * That mis-resolution is worse than it looks. The rule's own `instanceof Identifier` is what refused; had
+     * the rule written only `$parentCaller->name->toString() !== 'import'`, the comparison would have
+     * translated and compared null against `'import'`, so every `@FrameworkBundle` import the original allows
+     * would have been reported. The narrowing is the fix; the refusal was the alarm.
+     *
+     * Kept as the node kind rather than a field map, because {@see Vocabulary::FIELDS} is already keyed by one
+     * and the `as` lookup already consults it — this only says which key to use.
+     *
+     * @param Descriptor $descriptor
+     */
+    private function rememberNarrowedKind(Expr $subject, array $descriptor, string $wanted): void
+    {
+        $kind = Vocabulary::HOOKS[$wanted]['kind'] ?? null;
+        if ($descriptor['kind'] !== 'expr' || $kind === null || ! isset(Vocabulary::FIELDS[$kind])) {
+            return;
+        }
+
+        $this->context->narrowedKinds[$this->exprKey($subject)] = $kind;
     }
 
     /**
@@ -8991,6 +9098,11 @@ final readonly class Translator
             // hardcoded path, so a hook whose receiver is reached differently cannot pass by accident. The
             // receiver arrives ready-made under `ReceiverType`, so it is preferred where it applies.
             $receiver = Vocabulary::FIELDS[$this->context->nodeKind]['var'][2] ?? null;
+            // The table holds a template, and the hook's own node is what fills it here. Compared after the
+            // substitution rather than before: the templates read `{base}` so a call the rule narrowed to
+            // navigates itself, and comparing the unsubstituted form silently stopped matching — every rule
+            // asking about its receiver moved off `$context->receiverType` and onto an expression lookup.
+            $receiver = $receiver === null ? null : str_replace('{base}', '$node', $receiver);
             if ($receiver !== null
                 && ($of['php'] ?? null) === $receiver
                 && ! in_array($this->context->nodeKind, self::KINDS_WITHOUT_A_RECEIVER_TYPE, true)
@@ -9883,7 +9995,9 @@ final readonly class Translator
             // Keyed on what the node *is*, not on what the hook fired for. A descriptor carries `as` when its
             // node kind is known from where it came — every node a subtree search found is of the kind that was
             // searched for — and the hook's own node is the kind the hook targets.
-            $navigating = $base['kind'] === 'hook-node' ? $this->context->nodeKind : ($base['as'] ?? null);
+            $navigating = $base['kind'] === 'hook-node'
+                ? $this->context->nodeKind
+                : ($base['as'] ?? $this->context->narrowedKinds[$baseKey] ?? null);
             if ($navigating !== null && isset(Vocabulary::FIELDS[$navigating][$property])) {
                 [$rust, $kind] = Vocabulary::FIELDS[$navigating][$property];
                 $descriptor = ['rust' => $rust, 'kind' => $kind, 'key' => $key];
@@ -10102,6 +10216,29 @@ final readonly class Translator
     }
 
     /**
+     * The descriptor for a PHP expression, carrying whatever an earlier `instanceof` established about it.
+     *
+     * Split from {@see resolveDescriptor()} so the stamp happens once. `as` says what node kind the
+     * descriptor *is*, and the consumers that read it — the field navigation and the argument-list path —
+     * ask the descriptor rather than the map, so a narrowing recorded by
+     * {@see rememberNarrowedKind()} has to arrive on the descriptor to reach them.
+     *
+     * A descriptor that already knows its own kind keeps it: a node a subtree search returned is of the kind
+     * that was searched for, which is a stronger fact than a test the rule wrote.
+     *
+     * @return Descriptor
+     */
+    private function resolve(Expr $expr, int $line): array
+    {
+        $descriptor = $this->resolveDescriptor($expr, $line);
+        $narrowed = $this->context->narrowedKinds[$descriptor['key'] ?? ''] ?? null;
+
+        return $narrowed !== null && ($descriptor['as'] ?? null) === null
+            ? $descriptor + ['as' => $narrowed]
+            : $descriptor;
+    }
+
+    /**
      * The descriptor for a PHP expression: how to say it in the target, and what kind of thing it is.
      *
      * `rust` and `php` are the same expression rendered for each target. A descriptor with no `php` key
@@ -10109,7 +10246,7 @@ final readonly class Translator
      *
      * @return Descriptor
      */
-    private function resolve(Expr $expr, int $line): array
+    private function resolveDescriptor(Expr $expr, int $line): array
     {
         if ($expr instanceof Variable && is_string($expr->name)) {
             // Locals first, then the hook's node. A helper is free to call its parameter `$node` —
@@ -10643,6 +10780,14 @@ final readonly class Translator
 
     /** Node predicates only the PHP runtime carries; the Rust backends have no counterpart. */
     private const array PHP_ONLY_PREDICATES = ['is_dir_constant', 'is_literal_string'];
+
+    /**
+     * Statement kinds that leave the hook, which is why an inlined predicate cannot hoist one.
+     *
+     * {@see refuseAHoistedExit()} names them rather than testing the rendered text, so a backend free to
+     * spell `return` differently cannot make the check pass by accident.
+     */
+    private const array EXITING_STATEMENTS = ['guard', 'bail', 'bind-arg', 'bind-adapter'];
 
     /** Node predicates that answer from the node's kind, and so have to look it up. */
     private const array CONTEXT_PREDICATES = ['is_literal_string'];

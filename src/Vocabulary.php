@@ -284,13 +284,16 @@ final class Vocabulary
         // of navigating to a child that does not exist.
         'ConstantAccess' => ['name' => [self::PHP_ONLY, 'expr', '{base}']],
         'MethodCall' => [
-            'var' => ['node.object', 'expr', 'Support::nthExpression($context, $node, 0)'],
+            // `{base}` rather than `$node`, so a call the rule narrowed to with `instanceof` navigates itself
+            // rather than the hook's node. For the hook's own node `{base}` renders as `$node`, which is what
+            // makes the change byte-neutral for everything already emitted.
+            'var' => ['node.object', 'expr', 'Support::nthExpression($context, {base}, 0)'],
             'name' => ['&node.method', 'name-selector', 'Support::selector($context, {base})'],
         ],
         // The same three children in the same order, which the CST probe confirmed rather than assumed: there
         // is no extra node for the `?->` token to shift the positions.
         'NullSafeMethodCall' => [
-            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
+            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
             'name' => [self::PHP_ONLY, 'name-selector', 'Support::selector($context, {base})'],
         ],
         'FunctionCall' => [

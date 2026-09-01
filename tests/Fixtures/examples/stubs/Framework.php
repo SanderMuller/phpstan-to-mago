@@ -360,3 +360,34 @@ final class Request
         return null;
     }
 }
+
+namespace Symfony\Component\Routing\Loader\Configurator;
+
+/**
+ * The two configurators `NoRoutingPrefixRule` tells apart.
+ *
+ * Both declare `prefix()`, deliberately: the rule gates on the *type* of the thing prefixed, and a stub with
+ * only the import side would let a name test pass for the type test.
+ */
+class ImportConfigurator
+{
+    public function prefix(string|array $prefix, bool $trailingSlashOnRoot = true): void {}
+}
+
+class CollectionConfigurator
+{
+    public function prefix(string|array $prefix, bool $trailingSlashOnRoot = true): void {}
+}
+
+class RoutingConfigurator
+{
+    public function import(string|array $resource, ?string $type = null): ImportConfigurator
+    {
+        return new ImportConfigurator();
+    }
+
+    public function collection(string $name = ''): CollectionConfigurator
+    {
+        return new CollectionConfigurator();
+    }
+}

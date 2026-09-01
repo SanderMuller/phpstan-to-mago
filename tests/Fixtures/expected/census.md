@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 48 of 89 portable rules the package registers emit, 1 covered by the engine, 40 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 49 of 89 portable rules the package registers emit, 1 covered by the engine, 39 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -145,13 +145,12 @@ EMIT    NoDoubleConsecutiveTestMockRule
 REFUSE  NoDuplicateArgAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
-        needs: no argument list on a expr node
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return
 REFUSE  NoDuplicateArgsAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
-        needs: no iteration mapped for ->items, which resolved to a expr
+        needs: NamingHelper::isNames() over a expr
 EMIT    NoDynamicNameRule
 REFUSE  NoEntityMockingRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getAttributes()
@@ -220,14 +219,12 @@ REFUSE  NoReturnSetterMethodRule
         needs: comparison outside the vocabulary: Expr_Variable against Scalar_String
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
 EMIT    NoRouteTrailingSlashPathRule
-REFUSE  NoRoutingPrefixRule
-        no node predicate for instanceof PhpParser\Node\Identifier on a bytes
-        needs: no node predicate for instanceof PhpParser\Node\Identifier on a bytes
+EMIT    NoRoutingPrefixRule
 REFUSE  NoServiceAutowireDuplicateRule
         if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Continue
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Continue
 REFUSE  NoServiceSameNameSetClassRule
-        assignment value outside the vocabulary: no mapping for ->class on a expr
+        assignment value outside the vocabulary: guard body is neither `return []` nor `continue`, but Stmt_Return
         needs: assignment value outside the vocabulary: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  NoSetClassServiceDuplicationRule
         expected a string literal
@@ -557,9 +554,9 @@ REFUSE  AssertEqualsIsDiscouragedRule
 EMIT    AssertSameBooleanExpectedRule
 EMIT    AssertSameNullExpectedRule
 REFUSE  AssertSameWithCountRule
-        no argument list on a expr node
-        needs: no argument list on a expr node
-        needs: no node predicate for instanceof PhpParser\Node\Identifier on a bytes
+        method call outside the vocabulary ->yes()
+        needs: method call outside the vocabulary ->yes()
+        needs: no node predicate for instanceof PhpParser\Node\Identifier on a name-expr
 REFUSE  AttributeRequiresPhpVersionRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getTestMethodReflection()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getTestMethodReflection()
