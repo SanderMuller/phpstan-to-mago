@@ -2528,3 +2528,60 @@ measurements should look like.
 Two things follow for any number quoted from a `--paths=` run. It was measured with mago reading less of the
 project than PHPStan, so it overstated the port's width; and the direction is one-sided, so a `--paths` run
 that reported **no** divergence was never weakened by this.
+
+#### A parent class, and a differential that answered about the wrong file
+
+`ForbiddenExtendOfNonAbstractClassRule` refused on `->getParentClass()`. Every question it asks after that is
+a field of `ClassLikeMetadata`, probed rather than read across: `directParentClass` for the parent,
+`ABSTRACT` and `BUILTIN` on its flags, `location->file` for the path the `vendor` guard tests. A vendor class
+is `BUILTIN false` and a `\ArrayObject` is `BUILTIN true`, so the rule's two consecutive guards stay two
+questions rather than collapsing into one.
+
+`getParentClass()` answers a *named class*, which is a kind the vocabulary already had — so
+`! $parent instanceof ClassReflection` becomes the existence test and `isAbstract()` goes to the codebase with
+no new arm. Only `isBuiltin()`, the declaring file and a `=== null` on that kind were missing.
+`ShouldCallParentMethodsRule` moves past the same obstacle to `->hasNativeMethod()`.
+
+##### The gate was green and the corpus was not
+
+`../hihaho`, whole project: **89 agreeing, 0 original-only, 119 port-only**. Every divergent site was a
+`FormRequest` subclass — a class extending a concrete framework base, which the rule skips because the parent
+is declared under `vendor/`.
+
+The cause was in the harness, and specifically in the previous step's fix to it. Adding the consumer's whole
+root to mago's `includes` also adds `_ide_helper.php`, which a Laravel project keeps there and which
+redeclares framework classes. Probed in the differential's own configuration:
+`Illuminate\Foundation\Http\FormRequest` resolves to `/…/hihaho/_ide_helper.php`, not to the vendor copy, so
+the `vendor` guard could not hold. The control is the previous configuration: with `includes` back to the
+vendor tree alone, the same rule reads **89 / 0 / 0**.
+
+PHPStan does not have the problem because it resolves through the autoloader, which names one file per class.
+So the fix follows that map rather than excluding stub files by name: `ResolutionRoots` reads the consumer's
+`composer.json` and includes its `psr-4`, `psr-0`, `classmap` and `files` entries.
+
+##### And the first version of that fix was worse than the bug
+
+Including every autoload root took the same corpus to **35 agreeing and 966 original-only**. An `includes`
+entry is scanned rather than analysed, and `app` and `tests` were in both lists, so most of the corpus stopped
+being reported on at all. A root already covered by `--paths` is therefore left out, which is what makes the
+list add context for what the run does *not* analyse — the case a subset creates and the only case the roots
+exist for.
+
+Both runs now read what they should: the whole project **1001 / 0 / 0** with the new rule at 89 / 0 / 0, and
+`--paths=tests` **128 / 0 / 0**, keeping the 29 the previous step closed.
+
+##### Two things the pair cannot show, said rather than implied
+
+The vendor branch has no sandbox: there is no vendor tree in the example directories, so the pair covers the
+abstract parent, no parent, a builtin parent and an interface-only class, and the vendor guard is exercised
+only by the differential above. And the file test compares mago's path against PHPStan's absolute one — mago's
+is relative to the analysed root when the paths are relative — so a project whose own directory has `vendor`
+in its name would diverge, in the narrow direction. No corpus here has one.
+
+##### The refactor that dropped a refusal
+
+Splitting `nullComparison()` to keep it under the complexity limit lost the arm that refuses a null test
+against a kind with no meaning for one. Nothing failed: the emitted output was unchanged and the suite was
+green apart from the census, whose single moved line — `StrictFunctionCallsRule` no longer needing
+`null comparison against Expr_Variable, which resolved to a hook-node` — was the whole evidence that a
+load-bearing refusal had gone. A refusal that stops existing is invisible in every direction except that one.

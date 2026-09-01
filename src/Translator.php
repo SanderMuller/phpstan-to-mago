@@ -711,6 +711,75 @@ final readonly class Translator
     }
 
     /**
+     * `<a navigated value> === null` for the fields php-parser makes nullable, or null when this is not one.
+     *
+     * Split out of {@see nullComparison()} to keep it under the limit, and the group is a real one: every arm
+     * here is a *field of the tree* the rule reads as possibly absent, where the arms left behind are about
+     * values a helper produced. The comments on each say what the absence means.
+     *
+     * @param Descriptor $subject
+     */
+    private function nullTestOfANavigatedValue(array $subject, int $line): ?string
+    {
+        // `$docComment === null` is `instanceof Doc` the other way round, and the descriptor is already the text.
+        if ($subject['kind'] === 'docblock') {
+            return $this->operand($subject) . ' === null';
+        }
+
+        // `$parameters[$i] ?? null === null` asks whether the method declares a parameter at that position at
+        // all, which a call passing more arguments than the method takes does not.
+        if ($subject['kind'] === 'parameter') {
+            return '! ' . $this->parameterQuestion('has_parameter_at', $subject, $line);
+        }
+
+        // `$node->stmts === null` on a method declaration is *whether it has a body*: an abstract method and
+        // an interface method have none, and php-parser spells that absence as a null statement list.
+        // {@see Support::bodyOf} answers the same null, and its comment records what had to be measured to
+        // make it do so.
+        if ($subject['kind'] === 'subtree') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a body test, which only the PHP target carries', $line);
+            }
+
+            return $this->operand($subject) . ' === null';
+        }
+
+        // `$node->if === null` on a ternary is *whether it has a middle arm*: an elvis has none, and php-parser
+        // spells that absence as a null. {@see Support::conditionalThen} answers the same null, by counting the
+        // arms rather than reading a position — see its comment for why position cannot tell the two apart.
+        //
+        // Gated on the field, not on the `expr` kind: most navigations that resolve to one always find
+        // something, and letting every `expr` compare to null would emit guards that can never hold.
+        if ($subject['kind'] === 'expr'
+            && ($subject['key'] ?? null) === '$node->if'
+            && $this->context->nodeKind === 'Conditional'
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a ternary middle-arm test, which only the PHP target carries', $line);
+            }
+
+            return $this->operand($subject) . ' === null';
+        }
+
+        // A record materialised across a loop is null exactly when its fields are, because they are declared
+        // null before the loop and assigned together inside it. Asked of one materialised field rather than
+        // of a separate flag: a second variable tracking the same fact is a second thing that can disagree
+        // with it. See {@see foldRecordInLoop}.
+        if ($subject['kind'] === 'record') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a record materialised across a loop, which only the PHP target carries', $line);
+            }
+
+            /** @var RecordFields $fields */
+            $fields = $subject['record'] ?? [];
+
+            return $this->materialisedWitness($fields, $line) . ' === null';
+        }
+
+        return null;
+    }
+
+    /**
      * `Strings::match($subject, $pattern)` or `preg_match($pattern, $subject)` as a boolean, or null.
      *
      * Only the yes-or-no half. A caller reading a capture — `$match[1]` — is asking a second question this
@@ -796,59 +865,24 @@ final readonly class Translator
             );
         }
 
-        // `$docComment === null` is `instanceof Doc` the other way round, and the descriptor is already the text.
-        if ($subject['kind'] === 'docblock') {
-            return $this->operand($subject) . ' === null';
+        // A navigated value that is absent rather than empty: each of these is a php-parser field the rule
+        // reads as nullable, and each resolves to a descriptor whose helper answers the same null.
+        $absence = $this->nullTestOfANavigatedValue($subject, $line);
+        if ($absence !== null) {
+            return $absence;
         }
 
-        // `$parameters[$i] ?? null === null` asks whether the method declares a parameter at that position at
-        // all, which a call passing more arguments than the method takes does not.
-        if ($subject['kind'] === 'parameter') {
-            return '! ' . $this->parameterQuestion('has_parameter_at', $subject, $line);
-        }
-
-        // `$node->stmts === null` on a method declaration is *whether it has a body*: an abstract method and
-        // an interface method have none, and php-parser spells that absence as a null statement list.
-        // {@see Support::bodyOf} answers the same null, and its comment records what had to be measured to
-        // make it do so.
-        if ($subject['kind'] === 'subtree') {
+        // `$parentClass === null` on a class the rule reached through `getParentClass()`. The descriptor is a
+        // name and the helper behind it answers null for a class-like that extends nothing, so the test is the
+        // literal one. Not the same question as `instanceof ClassReflection` on a named class, which asks
+        // whether the codebase *knows* the name: PHPStan's `getParentClass()` returns null in both cases and
+        // the two rules asking spell it the two ways.
+        if ($subject['kind'] === 'named-class') {
             if (Transpiler::$target !== 'php') {
-                throw new Refusal('a body test, which only the PHP target carries', $line);
+                throw new Refusal('a parent-class null test, which only the PHP target carries', $line);
             }
 
             return $this->operand($subject) . ' === null';
-        }
-
-        // `$node->if === null` on a ternary is *whether it has a middle arm*: an elvis has none, and php-parser
-        // spells that absence as a null. {@see Support::conditionalThen} answers the same null, by counting the
-        // arms rather than reading a position — see its comment for why position cannot tell the two apart.
-        //
-        // Gated on the field, not on the `expr` kind: most navigations that resolve to one always find
-        // something, and letting every `expr` compare to null would emit guards that can never hold.
-        if ($subject['kind'] === 'expr'
-            && ($subject['key'] ?? null) === '$node->if'
-            && $this->context->nodeKind === 'Conditional'
-        ) {
-            if (Transpiler::$target !== 'php') {
-                throw new Refusal('a ternary middle-arm test, which only the PHP target carries', $line);
-            }
-
-            return $this->operand($subject) . ' === null';
-        }
-
-        // A record materialised across a loop is null exactly when its fields are, because they are declared
-        // null before the loop and assigned together inside it. Asked of one materialised field rather than
-        // of a separate flag: a second variable tracking the same fact is a second thing that can disagree
-        // with it. See {@see foldRecordInLoop}.
-        if ($subject['kind'] === 'record') {
-            if (Transpiler::$target !== 'php') {
-                throw new Refusal('a record materialised across a loop, which only the PHP target carries', $line);
-            }
-
-            /** @var RecordFields $fields */
-            $fields = $subject['record'] ?? [];
-
-            return $this->materialisedWitness($fields, $line) . ' === null';
         }
 
         if (! in_array($subject['kind'], ['bytes', 'class-name'], true)) {
@@ -8115,14 +8149,18 @@ final readonly class Translator
         // plugin only knows while it runs, so it goes to the codebase instead of to the hook's own node. Kept
         // ahead of the declaration arm and matched on the subject's kind, so that arm's folds — which are
         // about *which hook fired* — cannot be widened onto a subject they do not describe.
-        if (in_array($method, ['isAbstract', 'isInterface'], true) && $args === []) {
+        if (in_array($method, ['isAbstract', 'isInterface', 'isBuiltin'], true) && $args === []) {
             $subject = $this->resolve($expr->var, $expr->getStartLine());
             if ($subject['kind'] === 'named-class') {
                 if (Transpiler::$target !== 'php') {
                     throw new Refusal("{$method}() of a named class, which only the PHP target carries", $expr->getStartLine());
                 }
 
-                $helper = $method === 'isAbstract' ? 'named_class_is_abstract' : 'named_class_is_interface';
+                $helper = [
+                    'isAbstract' => 'named_class_is_abstract',
+                    'isInterface' => 'named_class_is_interface',
+                    'isBuiltin' => 'named_class_is_builtin',
+                ][$method];
 
                 return $this->context->backend->call($helper, ['$context', $this->operand($subject)]);
             }
@@ -9402,6 +9440,56 @@ final readonly class Translator
 
                 return ['kind' => 'parameter', 'indexPhp' => $this->operand($index)] + $list;
             }
+        }
+
+        // `getParentClass()` — the class a class-like extends, which metadata answers directly with
+        // `directParentClass`. The *direct* parent, not the chain: `parentClasses` holds every ancestor and
+        // the rules that ask this ask about the one the declaration names.
+        //
+        // The answer is a named class, so the questions that follow it are the ones a named class already
+        // takes — `instanceof ClassReflection` becomes the existence test, `isAbstract()` goes to the
+        // codebase — and null flows through all of them, which is what a class with no parent gives.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getParentClass'
+            && $expr->args === []
+        ) {
+            $subject = $this->resolve($expr->var, $line);
+            $named = match ($subject['kind']) {
+                'class-reflection' => 'Support::enclosingClassName($context, $node)',
+                'named-class' => $this->operand($subject),
+                default => null,
+            };
+
+            if ($named !== null) {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal('a parent class, which only the PHP target carries', $line);
+                }
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'named-class',
+                    'php' => 'Support::parentClassName($context, ' . $named . ')',
+                ];
+            }
+        }
+
+        // `getFileName()` on a named class is the *path*, which metadata carries and which is all a rule
+        // testing for a `vendor` segment needs. Ahead of the refusal below because that one is about parsing
+        // another file's tree, which is a different question and a different obstacle.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getFileName'
+            && $expr->args === []
+            && $this->resolve($expr->var, $line)['kind'] === 'named-class'
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a declaring file path, which only the PHP target carries', $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'bytes',
+                'php' => 'Support::namedClassFile($context, ' . $this->operand($this->resolve($expr->var, $line)) . ')',
+            ];
         }
 
         // `getFileName()` on a class the rule resolved — asking where *another* file is so its source can be

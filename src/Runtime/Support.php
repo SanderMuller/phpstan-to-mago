@@ -60,6 +60,24 @@ final class Support
         return Reflect::namedClassIsAbstract($context, $name);
     }
 
+    /** The direct parent of a class named by a value. {@see Reflect::parentClassName} */
+    public static function parentClassName(NodeAnalysisContext $context, ?string $name): ?string
+    {
+        return Reflect::parentClassName($context, $name);
+    }
+
+    /** Whether a class named by a value is one PHP itself ships. {@see Reflect::namedClassIsBuiltin} */
+    public static function namedClassIsBuiltin(NodeAnalysisContext $context, ?string $name): bool
+    {
+        return Reflect::namedClassIsBuiltin($context, $name);
+    }
+
+    /** The file a class named by a value is declared in. {@see Reflect::namedClassFile} */
+    public static function namedClassFile(NodeAnalysisContext $context, ?string $name): ?string
+    {
+        return Reflect::namedClassFile($context, $name);
+    }
+
     /** Whether a class named by a value is an interface. {@see namedClassIsAbstract} says why this is separate. */
     public static function namedClassIsInterface(NodeAnalysisContext $context, ?string $name): bool
     {

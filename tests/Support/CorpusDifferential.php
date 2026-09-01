@@ -450,12 +450,8 @@ final class CorpusDifferential
      * of them classes extending a framework exception. That is engine blindness, not a narrow port, and the
      * fix belongs in the configuration rather than in the agreement math.
      *
-     * The consumer's *own* root is there for the same reason, one level in, and it only matters when `--paths`
-     * measures a subset. PHPStan's autoloader does not stop at the analysed directories: a rule asking whether
-     * `($this->resolve)(..)` invokes something with `__invoke` gets an answer even when the class lives in a
-     * directory the run does not analyse. Measured on `--paths=tests` over one consumer, where
-     * `symplify.noDynamicName` reported 29 sites the original does not, every one of them an invokable class
-     * declared under `app/`. The port was not wider than the rule; mago had never read the class.
+     * The consumer's own autoload roots are there for the same reason, one level in, and only when `--paths`
+     * measures a subset. {@see ResolutionRoots} holds that list and the two wrong numbers that shaped it.
      */
     public function writeMagoConfig(): string
     {
@@ -476,7 +472,7 @@ final class CorpusDifferential
         file_put_contents($this->sandbox . '/mago.toml', strtr(<<<TOML
             [source]
             paths = [{$this->join($paths)}]
-            includes = ["{$this->consumerRoot}/vendor", "{$this->consumerRoot}"]
+            includes = [{$this->join(ResolutionRoots::of($this->consumerRoot, $this->analysedPaths()))}]
             excludes = [{$this->join($excludes)}]
 
             [extension-hosts.differential]
@@ -485,6 +481,16 @@ final class CorpusDifferential
             TOML, ['{extraHosts}' => MagoHosts::render($this->extensionHosts)]));
 
         return $this->sandbox . '/mago.toml';
+    }
+
+    /**
+     * The directories this run analyses, absolute, which is what an autoload root is checked against.
+     *
+     * @return list<string>
+     */
+    private function analysedPaths(): array
+    {
+        return array_map(fn (string $path): string => $this->absolute($path), $this->paths);
     }
 
     /**

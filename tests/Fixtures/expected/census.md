@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 49 of 89 portable rules the package registers emit, 1 covered by the engine, 39 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 50 of 89 portable rules the package registers emit, 1 covered by the engine, 38 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -90,11 +90,7 @@ REFUSE  FileNameMatchesExtensionRule
         needs: statement outside the vocabulary: Stmt_Expression
         needs: assignment value outside the vocabulary: access path outside the vocabulary: basename()
 EMIT    ForbiddenArrayMethodCallRule
-REFUSE  ForbiddenExtendOfNonAbstractClassRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
-        needs: method call outside the vocabulary ->isBuiltin()
-        needs: assignment value outside the vocabulary: the file another class is declared in, so its source can be parsed
+EMIT    ForbiddenExtendOfNonAbstractClassRule
 REFUSE  ForbiddenFuncCallRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->normalizeConfig()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->normalizeConfig()
@@ -586,8 +582,7 @@ REFUSE  MockMethodCallRule
 EMIT    NoMissingSpaceInClassAnnotationRule
 EMIT    NoMissingSpaceInMethodAnnotationRule
 REFUSE  ShouldCallParentMethodsRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
+        method call outside the vocabulary ->hasNativeMethod()
         needs: method call outside the vocabulary ->hasNativeMethod()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeMethod()
         needs: access path outside the vocabulary: ->getStmts()
