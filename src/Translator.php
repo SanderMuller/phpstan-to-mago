@@ -8547,8 +8547,10 @@ final readonly class Translator
             }
 
             // A list the rule built is as emptiable as one the vocabulary produced; it is absent from `ITERABLES`
-            // only because nothing iterates it back.
-            if (isset(Vocabulary::ITERABLES[$subject['kind']]) || $subject['kind'] === 'list') {
+            // only because nothing iterates it back. `param-decls` is the same case one step along: the
+            // `foreach` over it is mapped where the loop is opened rather than through that table, so asking
+            // whether a method takes no parameters at all had no reading.
+            if (isset(Vocabulary::ITERABLES[$subject['kind']]) || in_array($subject['kind'], ['list', 'param-decls'], true)) {
                 if (Transpiler::$target === 'php') {
                     return $this->operand($subject) . ' === []';
                 }
@@ -9128,9 +9130,13 @@ final readonly class Translator
         if ($expr instanceof MethodCall
             && $this->memberName($expr->name, $expr->getStartLine()) === 'getParams'
         ) {
+            // Or of a method the rule reached in a loop over the class's own methods. `declaredParams()`
+            // navigates a `Part` as readily as the hook's `Node` — the hardcoded `$node` was the only thing
+            // holding it to the declaration under analysis, and `NoControllerMethodInjectionRule` walks
+            // `getMethods()` and asks each one.
             $of = $this->resolve($expr->var, $line);
-            if ($of['kind'] !== 'hook-node') {
-                throw new Refusal("getParams() of a {$of['kind']} rather than of the declaration under analysis", $line);
+            if (! in_array($of['kind'], ['hook-node', 'method-decl', 'maybe-method-decl'], true)) {
+                throw new Refusal("getParams() of a {$of['kind']} rather than of a declaration", $line);
             }
 
             if (Transpiler::$target !== 'php') {
@@ -9140,7 +9146,7 @@ final readonly class Translator
             return [
                 'rust' => self::PHP_ONLY,
                 'kind' => 'param-decls',
-                'php' => 'Support::declaredParams($context, $node)',
+                'php' => 'Support::declaredParams($context, ' . ($of['kind'] === 'hook-node' ? '$node' : $this->operand($of)) . ')',
             ];
         }
 

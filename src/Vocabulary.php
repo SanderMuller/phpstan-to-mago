@@ -501,6 +501,10 @@ final class Vocabulary
         'subtree' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => 'Support::statementsOf($context, {rust})'],
         // The method declarations of a class-like body, one `method-decl` each.
         'method-members' => ['iter' => self::PHP_ONLY, 'item' => 'method-decl', 'phpIter' => '{rust}'],
+        // The parameters a declaration writes, one `param-decl` each. The list was produced and asked for its
+        // emptiness before it was iterable: `NoControllerMethodInjectionRule` walks a controller's methods and
+        // then each method's parameters, and the second loop is the one that had no reading.
+        'param-decls' => ['iter' => self::PHP_ONLY, 'item' => 'param-decl', 'phpIter' => '{rust}'],
         // php-parser models attributes in two levels: a declaration carries attribute *groups*, each holding
         // attributes. Both levels are iterables here because a rule asking "does it carry this attribute" writes
         // both loops, and flattening them would be inventing a shape the source does not have.

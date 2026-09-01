@@ -2276,3 +2276,35 @@ The failure is silent in both directions at once, which is why it survived: the 
 reads as agreeing, and the rule that loses one reads as under-reporting, and neither says anything is wrong.
 It was found only because a rule shipped whose identifier happened to be the longer half of a pair, and
 because the number it produced was chased rather than accepted.
+
+#### A second loop, and 298 agreeing findings on a Laravel application
+
+`NoControllerMethodInjectionRule` walks a controller's methods and then each method's *parameters*, and the
+second loop was the one with no reading. Three steps, each narrower than the last:
+
+1. **`getParams()` of a looped method.** `Support::declaredParams()` navigates a `Part` as readily as the
+   hook's `Node`; a hardcoded `$node` was the only thing holding it to the declaration under analysis.
+2. **`getParams() === []`** — whether a method takes parameters at all. The list was produced and iterated
+   nowhere, so the emptiness test had no arm.
+3. **`foreach` over it**, which is one row in `ITERABLES`.
+
+`symplify/phpstan-rules` reads **47 of 89**, and the total 81 of 169. Two other rules moved past the same
+obstacles onto what each actually needs.
+
+##### The corpus result
+
+hihaho reads **`agree 298, only-original 0, only-port 0`** — the package's whole run there goes from 423
+agreeing to **721**, still with nothing on either side of the ledger. The rule is filed under Symfony, but it
+fires on any class named `*Controller` whose public method takes a class-typed parameter that is not Symfony's
+`Request`, which is what a Laravel controller does 298 times in that application. rector-src is unchanged at
+`agree 79, 0, 0` and reports nothing under the identifier, having no controllers.
+
+That is the largest single-rule agreement measured in this repository outside the aggregates, and it is worth
+saying why it was available: the rule reports per *parameter*, so one application yields hundreds of sites for
+one rule, and every one of them exercises both loops and all four guards.
+
+##### The good example is five near misses
+
+A `Request` parameter, which the rule allows by name; a parameterless action; a private method, which the
+visibility guard skips; a magic method that is not `__invoke`; and a class not named `*Controller`. The bad
+one holds two offending parameters, because the rule reports once per parameter rather than once per method.

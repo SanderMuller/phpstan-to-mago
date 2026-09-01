@@ -349,3 +349,14 @@ final class IsGranted
 {
     public function __construct(public mixed $attribute = null) {}
 }
+
+namespace Symfony\Component\HttpFoundation;
+
+/** The one parameter type `NoControllerMethodInjectionRule` allows an action to take. */
+final class Request
+{
+    public function get(string $key): mixed
+    {
+        return null;
+    }
+}
