@@ -348,13 +348,13 @@ final class CorpusDifferential
             '--configuration=' . $this->sandbox . '/phpstan-differential.neon',
         ], $this->consumerRoot);
 
+        // Collected once against every identifier, then bucketed by the *longest* one each finding belongs
+        // to. Asked per identifier with a prefix test, a rule whose identifier is a strict prefix of another's
+        // claims that other rule's findings as well — and the shorter rule then reads as under-reporting,
+        // because the port side files each finding once. {@see PhpstanReport::owner()} carries the rule.
         $findings = [];
-        foreach (array_keys($this->identifiers()) as $identifier) {
-            foreach (PhpstanReport::findings($output, $identifier, $identifier, $this->consumerRoot) as $file => $lines) {
-                foreach ($lines as $line) {
-                    $findings[$identifier][] = $file . ':' . $line;
-                }
-            }
+        foreach (PhpstanReport::findingsByOwner($output, array_keys($this->identifiers()), 'the originals', $this->consumerRoot) as $identifier => $files) {
+            $findings[$identifier] = $this->sites($files);
         }
 
         return $this->sorted($findings);
@@ -630,13 +630,56 @@ final class CorpusDifferential
      */
     private function identifierIn(string $code): ?string
     {
-        foreach (array_keys($this->identifiers()) as $identifier) {
-            if (str_contains($code, '/' . $identifier)) {
-                return $identifier;
+        return self::identifierFor($code, array_keys($this->identifiers()));
+    }
+
+    /**
+     * `file:line: message` for every finding in a per-file list, which is the shape a comparison keys on.
+     *
+     * @param array<string, list<string>> $files
+     *
+     * @return list<string>
+     */
+    private function sites(array $files): array
+    {
+        $sites = [];
+        foreach ($files as $file => $lines) {
+            foreach ($lines as $line) {
+                $sites[] = $file . ':' . $line;
             }
         }
 
-        return null;
+        return $sites;
+    }
+
+    /**
+     * Which identifier under test a reported code belongs to, or null when it belongs to none.
+     *
+     * The *longest* match, not the first. One identifier can be a strict prefix of another —
+     * `symplify.requireAttributeName` and `symplify.requireAttributeNamespace` are both real, and so are four
+     * `phpunit.covers*` pairs — and a substring test is true of the shorter one for a code carrying the
+     * longer. Taking the first match filed `RequireAttributeNamespaceRule`'s finding under
+     * `requireAttributeName`, where it landed on the same site as *that* rule's own finding and read as an
+     * **agreement**: one rule's number standing on another rule's work, with the real rule showing the same
+     * finding as `only-original`.
+     *
+     * A substring test rather than a tail one, because a rule may compute its code:
+     * `'hihaho.debug.noDebugIn' . $namespace` reports under a code its identifier only starts.
+     *
+     * @param list<string> $identifiers
+     */
+    public static function identifierFor(string $code, array $identifiers): ?string
+    {
+        $longest = null;
+        foreach ($identifiers as $identifier) {
+            if (str_contains($code, '/' . $identifier)
+                && ($longest === null || strlen($identifier) > strlen($longest))
+            ) {
+                $longest = $identifier;
+            }
+        }
+
+        return $longest;
     }
 
     /**

@@ -37,6 +37,48 @@ final readonly class PhpstanReport
      */
     public static function findings(string $output, string|array $identifier, string $context = 'the rule', ?string $relativeTo = null): array
     {
+        return self::sorted(self::collect(self::messagesOf($output, $context), $identifier, $relativeTo));
+    }
+
+    /**
+     * The same findings, bucketed by which identifier under test owns each one.
+     *
+     * {@see findings()} is asked one identifier at a time, and its prefix test then counts a finding for every
+     * identifier that starts it — so a rule whose identifier is a strict prefix of another's claims that
+     * other's findings too. Here each message is filed once, under {@see owner()}.
+     *
+     * @param list<string> $identifiers
+     *
+     * @return array<string, array<string, list<string>>> identifier, then file, then `line: message`
+     */
+    public static function findingsByOwner(string $output, array $identifiers, string $context, ?string $relativeTo = null): array
+    {
+        $owned = [];
+        foreach (self::messagesOf($output, $context) as $path => $messages) {
+            foreach ($messages as $message) {
+                $owner = self::owner((string) ($message['identifier'] ?? ''), $identifiers);
+                if ($owner === null) {
+                    continue;
+                }
+
+                $owned[$owner][self::name($path, $relativeTo)][] = ($message['line'] ?? 0) . ': ' . ($message['message'] ?? '');
+            }
+        }
+
+        foreach ($owned as $identifier => $files) {
+            $owned[$identifier] = self::sorted($files);
+        }
+
+        return $owned;
+    }
+
+    /**
+     * The messages PHPStan reported, keyed by file, whichever envelope carried them.
+     *
+     * @return array<string, list<array{line?: int, identifier?: string, message?: string}>>
+     */
+    private static function messagesOf(string $output, string $context): array
+    {
         $start = strpos($output, '{');
         /** @var array<string, mixed>|null $decoded */
         $decoded = $start === false ? null : json_decode(substr($output, $start), true);
@@ -55,7 +97,7 @@ final readonly class PhpstanReport
                 $byFile[$path] = $file['messages'] ?? [];
             }
 
-            return self::sorted(self::collect($byFile, $identifier, $relativeTo));
+            return $byFile;
         }
 
         // A wrapping envelope may *cap* how many errors it lists, and one measured here declared 1160 while
@@ -86,7 +128,7 @@ final readonly class PhpstanReport
             /** @var array<string, list<array{line?: int, identifier?: string, message?: string}>> $details */
             $details = $decoded['error_details'];
 
-            return self::sorted(self::collect($details, $identifier, $relativeTo));
+            return $details;
         }
 
         // A clean run genuinely found nothing, and says so rather than leaving it to be inferred.
@@ -176,6 +218,42 @@ final readonly class PhpstanReport
      *
      * @param array<string, list<array{line?: int, identifier?: string, message?: string}>> $byFile
      * @param string|list<string>                                                             $identifier
+     *
+     * @return array<string, list<string>>
+     */
+    /**
+     * Which of several identifiers under test owns a reported one — the longest it starts with, or null.
+     *
+     * The mirror of {@see CorpusDifferential::identifierFor()}, and it exists for the same reason: one
+     * identifier can be a strict prefix of another. `symplify.requireAttributeName` is a prefix of
+     * `symplify.requireAttributeNamespace`, so a prefix test asked per identifier counted the namespace rule's
+     * finding for *both* — the shorter one then read as under-reporting, because the port files it under one
+     * bucket and this filed it under two.
+     *
+     * Still a prefix test rather than equality, because a rule may report under a computed code:
+     * `NoDebugInNamespaceRule` writes `'hihaho.debug.noDebugIn' . $namespace`, and the identifier the manifest
+     * carries is what every code it can report begins with.
+     *
+     * @param list<string> $identifiers
+     */
+    public static function owner(string $found, array $identifiers): ?string
+    {
+        $longest = null;
+        foreach ($identifiers as $identifier) {
+            if ($identifier !== ''
+                && str_starts_with($found, $identifier)
+                && ($longest === null || strlen($identifier) > strlen($longest))
+            ) {
+                $longest = $identifier;
+            }
+        }
+
+        return $longest;
+    }
+
+    /**
+     * @param array<string, list<array{line?: int, identifier?: string, message?: string}>> $byFile
+     * @param string|list<string> $identifier
      *
      * @return array<string, list<string>>
      */

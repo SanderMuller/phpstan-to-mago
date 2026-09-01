@@ -2236,6 +2236,43 @@ not:
   `final readonly class` — is in the example pair now and the gate is green on it, line and message.
 - So the emitted plugin does report this shape, and the number is not reproduced by anything I could build.
 
-I did not settle where the differential loses it. It may be the instrument's site matching rather than the
-rule, and saying which would need work this measurement did not do — so it is recorded as untraced rather than
-attributed. The direction is silence, and the gate is the standard this repository holds a per-node rule to.
+That number is traced now, and it was the instrument. See the section below.
+
+#### The instrument was filing one rule's findings under another rule's name
+
+The section above left an `only-original 1` it could not account for: the port reported the finding when mago
+was run by hand over the differential's own sandbox, and the differential still counted it as missing. The
+cause is in the instrument, on **both** sides, and it is worse than a lost finding.
+
+Identifiers are matched by substring, because a rule may report under a code it computes —
+`NoDebugInNamespaceRule` writes `'hihaho.debug.noDebugIn' . $namespace`, so the identifier the manifest
+carries is only the start of every code it can report. But one identifier can be a strict prefix of another,
+and `symplify.requireAttributeName` is a strict prefix of `symplify.requireAttributeNamespace`.
+
+- **Port side.** `identifierIn()` returned the *first* identifier the code contained, so
+  `RequireAttributeNamespaceRule`'s finding was filed under `requireAttributeName` — where it landed on the
+  same site as that rule's own finding and was counted as an **agreement**. One rule's corpus number stood on
+  another rule's work.
+- **Original side.** `PhpstanReport::collect()` was asked one identifier at a time, and `str_starts_with`
+  matched the namespace finding for the *name* identifier too. So the same finding was counted twice, once in
+  each bucket.
+
+Both now file each finding under the longest identifier that claims it, which keeps the computed-code case
+working and settles the prefix one. `PhpstanReport::owner()` is the original side's half; both are pinned by
+`AttributesAFindingToTheRightRuleTest`, whose mutation — first match instead of longest — turns it red with
+exactly the wrong attribution.
+
+##### How much was at risk, and what actually moved
+
+Five identifier pairs across the seven corpora are prefixes of one another: four `phpunit.covers*` pairs and
+the `symplify` one. Only the `symplify` pair could fire, because no `phpunit.covers*` rule emits.
+
+Every corpus number quoted in this session was re-run against the corrected instrument. **`rector-src`
+`symplify/phpstan-rules` is unchanged at `agree 79, only-original 0, only-port 0`**, with
+`rector.preferDirectIsName` still `agree 45`. **hihaho moves from `agree 423, only-original 1` to `agree 423,
+only-original 0, only-port 0`** — the one disagreement was the misattribution and nothing else.
+
+The failure is silent in both directions at once, which is why it survived: the rule that gains a finding
+reads as agreeing, and the rule that loses one reads as under-reporting, and neither says anything is wrong.
+It was found only because a rule shipped whose identifier happened to be the longer half of a pair, and
+because the number it produced was chased rather than accepted.
