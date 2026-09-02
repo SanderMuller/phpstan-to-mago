@@ -3587,8 +3587,8 @@ final readonly class Translator
                 'a dispatch onto ' . implode(' and ', array_unique($kinds)) . ', where mago types operand '
                 . "{$position} of `{$kind}` as the value the expression produces rather than as the operand "
                 . 'itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and '
-                . '`mixed` for a null. The two arms navigate the same children, so the dispatch is not the '
-                . 'obstacle — the operand type is',
+                . '`mixed` for a null. Both kinds hold their operands in the same two positions, so the '
+                . 'dispatch is not the obstacle — the operand type is',
                 $stmt->getStartLine(),
             );
         }

@@ -3193,7 +3193,10 @@ the refusal invariant exists for.
 ##### So the outcome is a named refusal, and the mechanism is what names it
 
 `Translator::refuseAnOperatorDispatch()` recognises the shape and refuses it, naming the kind and the operand
-position. The census now carries that sentence under all six rules instead of "if statement that is not a
+position. The sentence it prints says the two *kinds* hold their operands in the same positions, not that the
+two *arms* navigate the same children: the agreement check left with the positive path, so the shipped
+recogniser reads the arms' conditions and not their bodies. The kind-level fact is the measured one, and it
+holds for any rule matching the shape rather than only for these six. The census now carries that sentence under all six rules instead of "if statement that is not a
 single-statement guard, but a chain of 1 elseif and an else" — which pointed at the `elseif` while the
 obstacle was two levels away, and would have sent the next reader to build the dispatch that turned out to be
 free.
