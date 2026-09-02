@@ -129,9 +129,17 @@ final class Declares
     /**
      * The name of the function or method the node sits in, or null outside one.
      *
-     * What `$scope->getFunctionName()` gives a rule. A closure and an arrow function are anonymous, so a node
-     * inside one has no enclosing *name* — the walk stops there rather than continuing to the method around it,
-     * which is what PHPStan answers too.
+     * What `$scope->getFunctionName()` gives a rule, which is the *named* function a node sits in however
+     * many closures deep.
+     *
+     * The walk used to stop at a closure, on the belief that PHPStan answers null there. It does not, and the
+     * source says so in two places: `MutatingScope::getFunctionName()` is `$this->function?->getName()`, and
+     * `enterAnonymousFunction()` builds the closure's scope by passing `$scope->getFunction()` straight
+     * through. So a closure inherits the enclosing function rather than replacing it.
+     *
+     * `NoDynamicNameRule` is where that cost a finding: it exempts a dynamic name whose enclosing function is
+     * `__get` or `__set`, and a closure written inside one was reported by the port and not by PHPStan. The
+     * pair under `examples/NoDynamicNameRule` holds that case.
      */
     public static function enclosingFunctionName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
@@ -143,10 +151,6 @@ final class Declares
         [$file, $located] = Tree::locate($context, $node);
 
         foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
-            if ($ancestor->kind === NodeKind::Closure || $ancestor->kind === NodeKind::ArrowFunction) {
-                return null;
-            }
-
             if ($ancestor->kind !== NodeKind::Method && $ancestor->kind !== NodeKind::Function) {
                 continue;
             }

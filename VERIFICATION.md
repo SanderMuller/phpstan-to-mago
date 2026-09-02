@@ -3845,3 +3845,58 @@ guidelines describe, measured again rather than assumed.
 Suite 930/930, up from 922 — eight of those are the two new pairs. PHPStan 0 errors with no new baseline entry. Emit-all adds the two
 fixture rules to the `php` manifest and changes no existing generated file; both refuse for `analyzer` and
 `linter`, which is correct — the fields are PHP-only.
+
+### A closure does not end the enclosing function, and the port thought it did
+
+`Runtime\Declares::enclosingFunctionName()` stopped its walk at a `Closure` or `ArrowFunction` and answered
+null, with a docblock saying that is what PHPStan answers too. It is not. Two lines of
+`MutatingScope` settle it:
+
+    public function getFunctionName(): ?string
+    {
+        return $this->function !== null ? $this->function->getName() : null;
+    }
+
+and `enterAnonymousFunction()`, which builds the closure's scope by handing `$scope->getFunction()` straight
+through. So a closure *inherits* the enclosing function rather than replacing it, and
+`getFunctionName()` inside one still answers the method around it.
+
+`NoDynamicNameRule` is the shipped rule that pays for the difference: it exempts a dynamic name whose
+enclosing function is `__get` or `__set`, so a dynamic name written inside a closure inside `__get` is quiet
+in PHPStan and was reported by the port. Measured, not argued — the fires gate on the pair, with the closure
+as the only change:
+
+    'GoodMagicAccessorIsExempt.php' => [ 0 => '19: Use explicit names over dynamic ones' ]
+
+against a PHPStan side that reports nothing in that file. Removing the two-line early return makes the gate
+green.
+
+#### The first two attempts to reproduce it were invalid, and a control is what said so
+
+The first test put `$this->$name` in a *non-exempt* method of the good file and read the resulting failure as
+the closure bug. It was not: that line is a real violation, so the good example simply stopped being good.
+The port-only assertion (`stays silent on the good example`) fails either way, which is exactly why it cannot
+be read as evidence about a cause.
+
+The control that caught it was moving the same closure into a plainly non-exempt method and expecting PHPStan
+to *report*. PHPStan stayed silent, which is impossible if the exemption were doing the work — and impossible
+for the reason first assumed. Stripping back to one change at a time, with nothing added to the good file but
+the closure, produced the run quoted above, where the PHPStan side is empty and the port's line is the only
+entry.
+
+Two attempts, two wrong causes, and the same lesson each time: a failing test is evidence that something is
+wrong, never evidence of what.
+
+#### How the walk reached the wrong shape
+
+The docblock asserted PHPStan's behaviour rather than citing it, and the assertion was plausible — a closure
+*is* anonymous, and `getFunctionName()` sounds like it should answer about the nearest function-like. The
+question the name invites and the question the field answers are different, and only reading
+`enterAnonymousFunction()` separates them. Reachability again: `getFunctionName()` exists and answers, and
+what it answers about is a second claim.
+
+#### Verification
+
+Fires gate 564/564 with the new case in the pair. Suite green. PHPStan 0 errors. Emit-all across all three
+targets unchanged — the fix is runtime, and no emitted byte reads differently for it. No census line moves and
+no count moves; what moves is one shipped rule agreeing with PHPStan where it did not.
