@@ -461,3 +461,12 @@ final class FormEvents
 {
     public const string PRE_SUBMIT = 'form.pre_submit';
 }
+
+namespace Doctrine\ORM\Mapping;
+
+/** The attribute `NoEntityMockingRule` reads through `DoctrineEntityDocumentAnalyser`. */
+#[\Attribute(\Attribute::TARGET_CLASS)]
+final class Entity
+{
+    public function __construct(public ?string $repositoryClass = null) {}
+}

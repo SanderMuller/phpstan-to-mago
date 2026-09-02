@@ -755,6 +755,16 @@ final class Vocabulary
             'flags' => ['checkNullables', 'checkUnionTypes', 'checkThisOnly'],
         ],
 
+        // `DoctrineEntityDocumentAnalyser::isEntityClass()`, ported because half of it cannot be asked:
+        // metadata carries a class's attributes and not its docblock. {@see Runtime\DoctrineEntities} states
+        // which half and which direction the divergence goes.
+        'Symplify\PHPStanRules\Doctrine\DoctrineEntityDocumentAnalyser::isEntityClass' => [
+            'helper' => 'DoctrineEntities::isEntityClass',
+            'kind' => 'bool',
+            'takes' => 'context',
+            'arguments' => [0],
+        ],
+
         // Every rule in `phpstan-deprecation-rules` opens with this, so that deprecated code using
         // deprecated things does not warn. The helper is a loop over injected `DeprecatedScopeResolver`s and
         // the package ships exactly one, which asks whether the enclosing class, trait or function carries a

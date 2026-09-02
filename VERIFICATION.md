@@ -3611,3 +3611,41 @@ than a fact to record.
 
 Nothing was raised upstream, and nothing should be: the ask that looked warranted for a day would have
 requested an API that already exists.
+
+#### Half a Doctrine check, and the half that is missing is stated
+
+`NoEntityMockingRule` emits, taking `symplify/phpstan-rules` to 59 of 89. It refused on
+`->getAttributes()`, which named the accessor rather than the problem: the rule delegates to
+`DoctrineEntityDocumentAnalyser::isEntityClass()`, and that helper asks two questions of a class.
+
+**One is exact.** Its `ENTITY_ATTRIBUTES` are `Doctrine\ORM\Mapping\Entity` and
+`Doctrine\ODM\MongoDB\Mapping\Annotations\Document`, and mago's `ClassLikeMetadata->attributes` carries a
+resolved name per attribute. So the attribute half is a metadata read.
+
+**The other cannot be asked.** The helper also looks for `@Entity`, `@ORM\Entity`, `@Document` or
+`@ORM\Document` in the class's docblock, and `ClassLikeMetadata` carries no docblock text — read field by
+field, it holds flags, hierarchy, members, attributes and template information, and nothing the marker could
+be found in. So `Runtime\DoctrineEntities` ports the attribute half and says which half it is not.
+
+The divergence is an *under-report*: an entity mapped by annotation is invisible to the port, so the rule
+answers no and the finding is not made. That is the direction this repository picks when one must be picked,
+and the pair therefore holds no annotation-mapped entity — a pair asserts agreement, and that case is one
+where the two disagree by construction. Attribute mapping has been Doctrine's documented default since ORM
+2.9, so the missed population is the older one; nothing here measures how large it is.
+
+##### Measured on the pair
+
+| the plugin | findings |
+|:--|:--|
+| as emitted | the mocked entity only |
+| with every known class treated as an entity | that, plus the mocked service — a false positive on a good example |
+
+The good example also mocks a name the codebase does not know, which the rule skips on `hasClass()` before
+it asks anything about attributes.
+
+One thing worth noting about the port's shape: this is the fourth collaborator carried as a runtime port
+rather than translated — after `RuleLevel`, `RectorAutoloadedTypes` and `PhpUnitAnnotations` — and all four
+have the same reason. The helper's body reads something PHPStan exposes and Mago either models differently
+or does not model at all, so a statement-by-statement translation would refuse on its first line while the
+*question* it asks is answerable. The table of a package's own constants comes with the port in each case,
+which is the exception to reading such literals out of the rule's own source.
