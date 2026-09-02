@@ -117,8 +117,8 @@ A rule using a construct outside the vocabulary is refused, naming the construct
 
 A plausible-but-wrong rule is worse than no rule, because you would trust it. So `emitted` on its own means
 nothing: the generator refuses what it cannot translate, and the backend refuses any operand it could not
-render. `--unverified` lifts one refusal — an aggregate whose numbers do not yet agree with the original —
-and says by how much.
+render. One refusal is opt-out rather than absolute — `--unverified`, for an aggregate whose numbers do not
+yet agree — and nothing is behind it today.
 
 ## What it can translate
 
