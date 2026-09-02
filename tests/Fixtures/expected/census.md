@@ -446,24 +446,24 @@ EMIT    OperandInArithmeticPreIncrementRule
 EMIT    OperandInArithmeticUnaryMinusRule
 EMIT    OperandInArithmeticUnaryPlusRule
 REFUSE  OperandsInArithmeticAdditionRule
-        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
-        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null. The two arms navigate the same children, so the dispatch is not the obstacle — the operand type is
+        needs: a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null
         needs: access path outside the vocabulary: ->getArrays()
 REFUSE  OperandsInArithmeticDivisionRule
-        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
-        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null. The two arms navigate the same children, so the dispatch is not the obstacle — the operand type is
+        needs: a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null
 REFUSE  OperandsInArithmeticExponentiationRule
-        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
-        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null. The two arms navigate the same children, so the dispatch is not the obstacle — the operand type is
+        needs: a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null
 REFUSE  OperandsInArithmeticModuloRule
-        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
-        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null. The two arms navigate the same children, so the dispatch is not the obstacle — the operand type is
+        needs: a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null
 REFUSE  OperandsInArithmeticMultiplicationRule
-        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
-        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null. The two arms navigate the same children, so the dispatch is not the obstacle — the operand type is
+        needs: a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null
 REFUSE  OperandsInArithmeticSubtractionRule
-        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
-        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null. The two arms navigate the same children, so the dispatch is not the obstacle — the operand type is
+        needs: a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null
 REFUSE  OverwriteVariablesWithForLoopInitRule
         no hook mapping for node type PhpParser\Node\Stmt\For_
         needs: no iteration mapped for ->init, which resolved to a expr

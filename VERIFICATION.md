@@ -3143,3 +3143,74 @@ interpolating the type renders `array` where PHPStan renders `array<int, string>
 parameters rather than `Runtime\Describe` losing them, which is why the row sits in
 `internal/probe-arithmetic-atomics.php` next to the atomics rather than in the renderer's own census. The
 bad examples take a plain `array` for that reason.
+
+#### The binary family: the dispatch dissolved, and what was behind it does not
+
+The six binary arithmetic rules were single-blocker after the helper was ported: only the opening dispatch
+stood, and it reads like the hardest shape in the corpus.
+
+```php
+if ($node instanceof BinaryOpDiv) { $left = $node->left; $right = $node->right; }
+elseif ($node instanceof AssignOpDiv) { $left = $node->var; $right = $node->expr; }
+else { return []; }
+```
+
+Two node classes, two pairs of field names, one body. `internal/handoff-multi-kind-hook-is-not-a-redesign.md`
+had measured the same shape for the call kinds and found it dissolved — the children were identical in the
+same order, so two php-parser names were one navigation — so the first thing to do was ask the same question
+here. `internal/probe-binary-operands.php` answers it: a `Binary` holds
+`Expression | BinaryOperator | Expression` and an `Assignment` holds
+`Expression | AssignmentOperator | Expression`. The dispatch is a *target-set declaration*, not a per-branch
+binding, and the mechanism written for it confirmed that on the rules themselves — both arms resolved to
+`nthExpression(0)` and `nthExpression(1)`, compared after rendering.
+
+All six emitted. Then the pairs disagreed with PHPStan on exactly one finding each, and that finding is why
+this section ends where it does.
+
+##### Mago types a compound assignment's right operand as the assignment's result
+
+The pair's fourth case is `$count /= $nothing` with `null $nothing`: PHPStan reports it and the port did not.
+The same probe, extended to print what the analysis knows about each operand:
+
+| expression | operand 0 | operand 1 |
+|:--|:--|:--|
+| `$a / $b`, `bool $b` | `int` | `bool` |
+| `$a /= $b`, `bool $b` | `int` | **`int\|float`** |
+| `$a /= $n`, `null $n` | `int` | **`mixed`** |
+| `$a /= $s`, `string $s` | `int` | **`mixed`** |
+| `$b /= $a`, `bool $b` | `bool` | `int\|float` |
+
+`ExpressionTypes` embeds "every expression type in the file", and for a compound assignment the type
+recorded against the right-hand operand is the value the assignment *produces*. One level down, on the
+`DirectVariable` inside the `Expression`, answers the same, so there is no navigation that recovers it. The
+left operand is unaffected.
+
+Every one of `int|float`, `mixed` passes an arithmetic check. So a plugin registering `Assignment` reports on
+`$a / $b` and goes silently quiet on `$a /= $b`, and registering `Binary` alone is the same silence with the
+target list admitting it. Both are a rule that looks like the original and covers half of it, which is what
+the refusal invariant exists for.
+
+##### So the outcome is a named refusal, and the mechanism is what names it
+
+`Translator::refuseAnOperatorDispatch()` recognises the shape and refuses it, naming the kind and the operand
+position. The census now carries that sentence under all six rules instead of "if statement that is not a
+single-statement guard, but a chain of 1 elseif and an else" — which pointed at the `elseif` while the
+obstacle was two levels away, and would have sent the next reader to build the dispatch that turned out to be
+free.
+
+Both halves are load-bearing, measured by breaking each:
+
+| the transpiler | what the census says under the six rules |
+|:--|:--|
+| as committed | the dispatch, the kind, and the operand position |
+| with the recogniser removed | `if statement that is not a single-statement guard` |
+| with `Assignment` off `KINDS_WITHOUT_OPERAND_TYPES` | `if statement that is not a single-statement guard` |
+
+The positive path — narrowing the hook's target list to the arms and binding the operands once — was written,
+run, and then removed with the emissions it produced. No rule in the corpus can take it while the operand
+type is unanswerable, and machinery nothing exercises is what this repository deletes rather than keeps. What
+stayed is the pair of tables the refusal reads and the recognition that fills them in.
+
+**No count moves.** `phpstan-strict-rules` stays at 22 of 45 and the total at 95 of 169. What the step
+produced is a measurement that closes a line of work rather than opening one: the six rules are not waiting
+on a transpiler feature, they are waiting on mago typing an operand it currently types as a result.

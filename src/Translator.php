@@ -60,6 +60,7 @@ use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Continue_;
 use PhpParser\Node\Stmt\Else_;
+use PhpParser\Node\Stmt\ElseIf_;
 use PhpParser\Node\Stmt\Expression;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
@@ -3275,6 +3276,12 @@ final readonly class Translator
             return;
         }
 
+        // `if ($node instanceof BinaryOpDiv) { .. } elseif ($node instanceof AssignOpDiv) { .. } else {
+        // return []; }` — a rule saying which node kinds it is about. Refused for the kind whose operands
+        // mago does not type as themselves, and named, because the generic guard-shape refusal points at the
+        // `elseif` and the obstacle is somewhere else entirely.
+        $this->refuseAnOperatorDispatch($stmt);
+
         // A branch handling one of several node kinds the plugin registers for, with its own guards and its own
         // report. Its own method, so `return []` inside it declines that branch rather than the whole rule.
         if ($this->context->checkMode && $this->context->inlineDepth === 0 && $this->isBranchCheck($stmt)) {
@@ -3520,6 +3527,102 @@ final readonly class Translator
     }
 
     /** Emits `if (COND) { report(..); }`, with the block's own statements inside it. */
+    /**
+     * A leading dispatch onto two operator classes, refused for the one of them mago cannot answer about.
+     *
+     * The six binary arithmetic rules in `phpstan-strict-rules` open with
+     *
+     * ```php
+     * if ($node instanceof BinaryOpDiv) { $left = $node->left; $right = $node->right; }
+     * elseif ($node instanceof AssignOpDiv) { $left = $node->var; $right = $node->expr; }
+     * else { return []; }
+     * ```
+     *
+     * and it reads like the hardest shape in the corpus: two node classes, each with its own field names.
+     * Measured, it is not. `internal/probe-binary-operands.php` shows a `Binary` holding
+     * `Expression | BinaryOperator | Expression` and an `Assignment` holding
+     * `Expression | AssignmentOperator | Expression`, so the two arms are one pair of navigations under two
+     * names, and the dispatch is a *target-set declaration* rather than a per-branch binding.
+     *
+     * What blocks the family is one level further in, and the same probe found it: mago types the right-hand
+     * operand of a compound assignment as the value the assignment *produces*. With `bool $b`, the right
+     * operand of `$a /= $b` answers `int|float`; with `null` or `string` it answers `mixed`. Every one of
+     * those passes an arithmetic check, so a plugin registering `Assignment` would report on `$a / $b` and go
+     * silently quiet on `$a /= $b` — and registering `Binary` alone would be the same silence with the target
+     * list admitting it.
+     *
+     * So this refuses, and names which kind and which operand. {@see Vocabulary::KINDS_WITHOUT_OPERAND_TYPES}
+     * holds the measurement; a dispatch whose arms are all kinds that *do* answer would fall through to the
+     * ordinary guard translation, and the refusal below is what tells the next reader which kind stopped it.
+     */
+    private function refuseAnOperatorDispatch(If_ $stmt): void
+    {
+        $else = $stmt->else;
+        if ($this->context->inlineDepth !== 0 || ! $else instanceof Else_ || ! $this->returnsNothing($else->stmts)) {
+            return;
+        }
+
+        $arms = [$stmt->cond, ...array_map(static fn (ElseIf_ $elseif): Expr => $elseif->cond, $stmt->elseifs)];
+        if (count($arms) < 2) {
+            return;
+        }
+
+        $kinds = [];
+        foreach ($arms as $condition) {
+            $kind = $this->operatorKindOf($condition);
+            if ($kind === null) {
+                return;
+            }
+
+            $kinds[] = $kind;
+        }
+
+        foreach ($kinds as $kind) {
+            $position = Vocabulary::KINDS_WITHOUT_OPERAND_TYPES[$kind] ?? null;
+            if ($position === null) {
+                continue;
+            }
+
+            throw new Refusal(
+                'a dispatch onto ' . implode(' and ', array_unique($kinds)) . ', where mago types operand '
+                . "{$position} of `{$kind}` as the value the expression produces rather than as the operand "
+                . 'itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and '
+                . '`mixed` for a null. The two arms navigate the same children, so the dispatch is not the '
+                . 'obstacle — the operand type is',
+                $stmt->getStartLine(),
+            );
+        }
+    }
+
+    /**
+     * The Mago node kind a `$node instanceof <operator class>` condition names, or null for anything else.
+     */
+    private function operatorKindOf(Expr $condition): ?string
+    {
+        if (! $condition instanceof Instanceof_
+            || ! $condition->expr instanceof Variable
+            || $condition->expr->name !== 'node'
+            || ! $condition->class instanceof Name
+        ) {
+            return null;
+        }
+
+        return Vocabulary::OPERATOR_KINDS[$this->resolveClassName($condition->class)] ?? null;
+    }
+
+    /**
+     * Whether a branch's whole body is `return [];` — the rule declining, with nothing to emit.
+     *
+     * @param array<Stmt> $statements
+     */
+    private function returnsNothing(array $statements): bool
+    {
+        return count($statements) === 1
+            && $statements[0] instanceof Return_
+            && $statements[0]->expr instanceof Array_
+            && $statements[0]->expr->items === [];
+    }
+
     private function translateConditionalReport(If_ $stmt): void
     {
         if (Transpiler::$target !== 'php') {

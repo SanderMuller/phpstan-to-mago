@@ -296,8 +296,12 @@ final class EmittedRuleFiresTest extends TestCase
         // — by emitting, once a record folded across a loop became locals rather than expressions. Their
         // pairs had been running nothing until then, which is what this check exists to say out loud.
         //
-        // What is left was written before the rule that would use it, and is still waiting: the arithmetic
-        // family needs the operand-binding shape as well as the ported helper.
+        // What is left was written before the rule that would use it, and what it is waiting for has been
+        // measured since. Not the operand-binding shape, which dissolved — a `Binary` and an `Assignment`
+        // hold their operands in the same two positions. Mago types the right-hand operand of a compound
+        // assignment as the value the assignment produces, so the rule's second check cannot be asked, and
+        // `Translator::refuseAnOperatorDispatch()` says so by name. `internal/probe-binary-operands.php`
+        // prints the measurement.
         $expected = [
             'OperandsInArithmeticDivisionRule',
         ];

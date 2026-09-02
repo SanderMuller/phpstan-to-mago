@@ -10,6 +10,8 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\AssignOp;
+use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
@@ -981,6 +983,48 @@ final class Vocabulary
         // which of these fired, so all three have to arrive or the question has one answer.
         Variable::class => ['DirectVariable', 'IndirectVariable', 'NestedVariable'],
     ];
+
+    /**
+     * The Mago node kind each arithmetic operator class belongs to, in both spellings.
+     *
+     * php-parser has a class per operator and Mago has one kind per *shape* with the operator in a child, so
+     * `$a / $b` is a `Binary` and `$a /= $b` an `Assignment` — measured in
+     * `internal/probe-binary-operands.php`, where both hold `Expression | <operator> | Expression` in that
+     * order. Read by {@see Translator::refuseAnOperatorDispatch()}, which is where a rule covering both
+     * spellings in one body is recognised.
+     *
+     * `Concat` is deliberately absent: its hook entry in {@see self::HOOKS} covers the one rule that reaches
+     * it, and a row here would say a second thing about the same class.
+     */
+    public const array OPERATOR_KINDS = [
+        BinaryOp\Div::class => 'Binary',
+        BinaryOp\Minus::class => 'Binary',
+        BinaryOp\Mul::class => 'Binary',
+        BinaryOp\Mod::class => 'Binary',
+        BinaryOp\Pow::class => 'Binary',
+        BinaryOp\Plus::class => 'Binary',
+        AssignOp\Div::class => 'Assignment',
+        AssignOp\Minus::class => 'Assignment',
+        AssignOp\Mul::class => 'Assignment',
+        AssignOp\Mod::class => 'Assignment',
+        AssignOp\Pow::class => 'Assignment',
+        AssignOp\Plus::class => 'Assignment',
+    ];
+
+    /**
+     * Kinds whose operands mago does not type as themselves, and which operand position that is.
+     *
+     * `ExpressionTypes` embeds "every expression type in the file", and for a compound assignment the type
+     * recorded against the right-hand operand is the one the assignment *produces*, not the one the operand
+     * has. Measured in `internal/probe-binary-operands.php`: with `bool $b`, the right operand of `$a /= $b`
+     * answers `int|float`, and with `null $n` or `string $s` it answers `mixed`. One level down, on the
+     * `DirectVariable` inside, answers the same. The left operand is unaffected — `$b /= $a` answers `bool`
+     * there.
+     *
+     * So a rule asking about the right-hand operand of `$a /= $b` cannot be answered, and a port that asked
+     * anyway would pass every non-numeric one in silence.
+     */
+    public const array KINDS_WITHOUT_OPERAND_TYPES = ['Assignment' => 1];
 
     public const array EXPRESSION_KINDS = [
         ClassConstFetch::class => 'ClassConstantAccess',
