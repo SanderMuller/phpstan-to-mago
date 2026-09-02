@@ -3382,3 +3382,26 @@ The protected-member case also cost a fixture correction worth recording: the fi
 example declared the grandparent's protected method on a *concrete* class, and both engines reported that
 declaration — correctly, since it is exactly what the rule is about. A good example that contains a real
 violation is not a good example, and the gate said so on the first run.
+
+#### The key was never what stopped it
+
+`DataProviderDeclarationRule` refused with `foreach with a key`, and that sentence would have sent the next
+reader to build keyed iteration. The loop is
+
+```php
+foreach ($this->dataProviderHelper->getDataProviderMethods($scope, $node, $classReflection)
+    as $dataProviderValue => [$reflection, $methodName, $lineNumber]) {
+```
+
+and the key is the third thing wrong with it. `getDataProviderMethods()` is a generator that `yield from`s two
+other generators — one reading `@dataProvider` annotations, one reading `#[DataProvider]` attributes — and the
+second is gated on `$this->PHPUnitVersion->supportsDataProviderAttribute()`, a service the plugin has no
+equivalent for. The loop body then hands everything to `processDataProvider()`, which builds the findings.
+
+So the keyed-foreach refusal now resolves the iterable first and lets its own refusal surface. The census
+moves from `foreach with a key` to `access path outside the vocabulary: ->getDataProviderMethods()`, which is
+still a label rather than a capability — the census header's own warning — but it names the thing that has to
+be built rather than the loop that would have been built for nothing.
+
+Nothing else moved: one census line, no emitted byte, and the mutation is the census itself — without the
+resolution the message goes straight back to `foreach with a key`.

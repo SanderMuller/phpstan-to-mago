@@ -537,8 +537,8 @@ REFUSE  ClassMethodCoversExistsRule
 NEVER   DataProviderDataRule
         this rule reports nothing: its whole output is $scope->invokeNodeCallback(), which synthesises a node with inferred argument types and hands it back to PHPStan's own analysis so that *other* rules fire on it. An analyzer plugin's only output is report(), and there is no equivalent of feeding a node back into Mago, so no node hook and no vocabulary entry can make this one portable
 REFUSE  DataProviderDeclarationRule
-        foreach with a key
-        needs: foreach with a key
+        access path outside the vocabulary: ->getDataProviderMethods()
+        needs: access path outside the vocabulary: ->getDataProviderMethods()
 REFUSE  MockMethodCallRule
         count() of something other than an argument list
         needs: count() of something other than an argument list

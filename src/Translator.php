@@ -6711,6 +6711,13 @@ final readonly class Translator
                 return;
             }
 
+            // The key is the shallowest thing wrong with the loop, and often not what stops the rule. So the
+            // iterable is resolved first and its own refusal is allowed to surface: `DataProviderDeclarationRule`
+            // loops over a collaborator's keyed map, and "foreach with a key" sent a reader to the loop's shape
+            // when the obstacle was the helper being looped over. Nothing is kept from the resolution — the
+            // rule is refused either way, and this only decides which sentence it is refused with.
+            $this->resolve($stmt->expr, $stmt->getStartLine());
+
             // Otherwise the only keyed iteration modelled is over collected data, whose key is the file path.
             throw new Refusal('foreach with a key', $stmt->getStartLine());
         }
