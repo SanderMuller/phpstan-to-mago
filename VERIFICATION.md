@@ -3771,3 +3771,77 @@ covering every branching shape, `getSubNodeNames()` returns exactly the public p
 `attributes`, with no extras and none missing.
 
 No count moves. The census gets 86 more lines about the same 80 refusals.
+
+### A foreach's key and value, and the half of a rule that is not the obstacle
+
+`OverwriteVariablesWithForeachRule` refused with `no mapping for ->keyVar on a hook-node`, and after the
+descent shipped above it named `->valueVar` as well. Both are the same capability, and neither is why the rule
+cannot be ported.
+
+**Two things were checked before building, and one of them contradicted what had already been said out loud.**
+
+The rule's other question is `$scope->hasVariableType($name)->yes()`. `Translator` handles it — it sets
+`readsPriorScope` so the rule runs on the pre hook and calls `variable_is_undefined`. That reads as solved,
+and it was reported as solved. It is not, for the target every count uses: the emitted PHP refused with
+
+    operand is still Rust and has no PHP rendering yet:
+    !(!(support::variable_is_undefined(context, support::direct_variable_name(/* PHP target only */)...)))
+
+so the query renders for `analyzer` and `linter` and not for `php`. Reading the mapping said the opposite of
+what running it said, which is the reachability trap CLAUDE.md names: the method answers, and the answer is
+about a different target.
+
+The second is the self-recursive helper. `checkValueVar()` calls itself for each item of a `list()` target,
+and `Translator::enterInline()` refuses a helper that reaches its own name. So the rule needs three things
+this transpiler does not have, of which the census named one.
+
+#### The CST, probed rather than assumed
+
+`internal/probe-foreach-target.php` dumps the children of every `Foreach` over the three shapes a loop is
+written in. The structure is exact and it maps onto php-parser's nullable `keyVar` without approximating:
+
+| written | `ForeachTarget` holds | expressions under it |
+|:--|:--|:--|
+| `as $v` | `ForeachValueTarget` | one — the value |
+| `as $k => $v` | `ForeachKeyValueTarget` | two — key first, value second |
+| `as [$a, $b]` | `ForeachValueTarget` | one — the array, which is what php-parser answers too |
+
+So "does this loop bind a key" is the target's own kind, the same shape `Calls::arrayElementKey()` already
+reads one level up. The first version of this probe printed nothing at the level that mattered and the
+conclusion drawn from it — that the targets have no children — was wrong; the edit that added the level had
+silently failed to apply. It was caught by checking that the probe contained the code whose output was being
+read, which is worth doing every time a probe answers "nothing".
+
+#### What the navigation moves, and what it does not
+
+Exactly one census line. `OverwriteVariablesWithForeachRule` stops saying `no mapping for ->keyVar` and starts
+saying `guard body is neither `return []` nor `continue`, but Stmt_Foreach` — the destructuring branch, which
+is the first of the three real obstacles rather than the one that was never an obstacle. **No rule emits, and
+no count moves.**
+
+That leaves runtime code no corpus rule exercises, which is how a helper ships wrong. So the two halves are
+measured by two fixture rules with example pairs, and the fires gate runs each against real PHPStan:
+`ForeachKeyOverwritesRule` reports every keyed loop, `ForeachValueDestructuresRule` every destructured value.
+Both examples carry a keyed *and* an unkeyed case on purpose — a port reading a fixed child position answers
+the key for a keyed loop, and the key is a plain variable, so a pair built only from unkeyed loops would agree
+either way.
+
+#### Mutation checks
+
+| mutation | what the fires gate said |
+|:--|:--|
+| `foreachValue` reads expression 0 on a keyed target | `Bad.php` line 26 goes silent — the key sits there and it is a plain variable |
+| `foreachKey` accepts a `ForeachValueTarget` as well | `Good.php` line 23 is reported — the destructuring loop has children, and a port asking "are there children" rather than "which kind" reports it |
+
+Both are the failure the example pairs were built to catch, and both restored from a copy.
+
+#### Verification
+
+`Runtime\Calls` reached 87 against a limit of 80, so the three methods moved to `Runtime\Loops`, split on the
+call graph: they reach `Calls::nthExpression()` and nothing reaches back. `Support` keeps the shipped names,
+and the emit-all diff across all three targets before and after the split is empty — the facade result the
+guidelines describe, measured again rather than assumed.
+
+Suite 930/930, up from 922 — eight of those are the two new pairs. PHPStan 0 errors with no new baseline entry. Emit-all adds the two
+fixture rules to the `php` manifest and changes no existing generated file; both refuse for `analyzer` and
+`linter`, which is correct — the fields are PHP-only.

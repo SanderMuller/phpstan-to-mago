@@ -532,9 +532,8 @@ REFUSE  OverwriteVariablesWithForLoopInitRule
         no hook mapping for node type PhpParser\Node\Stmt\For_
         needs: no iteration mapped for ->init, which resolved to a expr
 REFUSE  OverwriteVariablesWithForeachRule
-        no mapping for ->keyVar on a hook-node
-        needs: no PHP navigation for node.keyVar (kind expr) on a Foreach node
-        needs: no PHP navigation for node.valueVar (kind expr) on a Foreach node
+        guard body is neither `return []` nor `continue`, but Stmt_Foreach
+        needs: guard body is neither `return []` nor `continue`, but Stmt_Foreach
 REFUSE  RequireParentConstructCallRule
         guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression

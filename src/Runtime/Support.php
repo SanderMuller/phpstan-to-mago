@@ -198,6 +198,18 @@ final class Support
         return Calls::arrayElementKey($context, $subject);
     }
 
+    /** A foreach's key variable, or null when it binds none. */
+    public static function foreachKey(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        return Loops::foreachKey($context, $subject);
+    }
+
+    /** A foreach's value variable. */
+    public static function foreachValue(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        return Loops::foreachValue($context, $subject);
+    }
+
     /** The class side of a class-constant access or static call. */
     public static function classPart(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {

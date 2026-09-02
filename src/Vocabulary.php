@@ -294,6 +294,12 @@ final class Vocabulary
         'While' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
         'DoWhile' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
         'Switch' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        // `keyVar` is nullable on php-parser's `Foreach_` and the null is the whole question two rules ask, so
+        // the helper answers it from mago's own kinds rather than from a position. {@see Runtime\Calls::foreachKey}.
+        'Foreach' => [
+            'keyVar' => [self::PHP_ONLY, 'expr', 'Support::foreachKey($context, {base})'],
+            'valueVar' => [self::PHP_ONLY, 'expr', 'Support::foreachValue($context, {base})'],
+        ],
         // `if` is php-parser's name for the middle arm, which an elvis does not have. Not `nthExpression(.., 1)`:
         // that is the middle arm of a full ternary and the *else* arm of an elvis, so the two would be
         // indistinguishable and the null test the rule opens with could never hold.
