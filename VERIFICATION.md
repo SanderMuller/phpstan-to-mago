@@ -2739,3 +2739,48 @@ classes:
 So the guards were reached nine times and the exit fired nine times, on code nobody wrote for this. That is
 the difference between a `0 0 0` row that is a pass and one that is silence — and the only thing that
 separates them is having checked that the guards ran.
+
+#### A loop whose two guards mean "or", and a constant on the next class along
+
+`NoDoctrineListenerWithoutContractRule` refused on `a foreach in an inlined helper whose body is not a guard
+chain: Stmt_If`. The body is two membership tests, either of which answers the loop:
+
+```php
+foreach ($class->getMethods() as $classMethod) {
+    if (in_array($classMethod->name->toString(), DoctrineEvents::ORM_LIST)) { return true; }
+    if (in_array($classMethod->name->toString(), DoctrineEvents::ODM_LIST)) { return true; }
+}
+```
+
+The inliner read a leading `if` as a `continue` guard, which is a *conjunct* — "this item does not match" —
+and refused anything else. A leading `if` that returns the loop's match value is the opposite: the item
+matches and the rest of the body is not reached, so it is a **disjunct**. A body mixing the two is refused by
+name rather than folded, because a `continue` only guards what follows it and the answer nests rather than
+joins.
+
+Two smaller gaps behind it:
+
+- **An array constant on a named class.** `DoctrineEvents::ORM_LIST` is a plain list of strings, known at
+  transpile time exactly as a `self::` one is; the resolver only read the current class's. It goes through the
+  same index the static-helper inliner uses, into a scratch constant scope so a same-named constant on the two
+  classes cannot shadow.
+- **`in_array()` over a method declaration's name.** The byte helpers already reach it through
+  `Support::methodName()` for `str_ends_with`; a membership test over the same text asks the same question.
+
+##### The pair proves the fold, and the mutation says so
+
+No corpus on hand holds a Doctrine lifecycle listener — `hihaho` reads `0 / 0 / 0` for it and says nothing —
+so the example pair is the evidence, and it is built to carry the fold: `BadProductListener` declares only an
+ORM event and `BadDocumentListener` only an ODM one, so each bad case satisfies exactly one of the two
+disjuncts.
+
+| the emitted plugin over the pair | findings |
+|:--|--:|
+| as emitted | 2 |
+| with the disjunction flipped to a conjunction | 0 |
+
+A conjunction would need both lists to match at once, which neither class does. That is what makes the two
+bad cases a test of the fold rather than of the rule around it.
+
+`NoListenerWithoutContractRule`, the Symfony sibling with the same helper, moves past the same obstacle to
+`->attrGroups on a hook-node` — the class-like attribute walk this vocabulary refuses deliberately.

@@ -501,6 +501,12 @@ final readonly class Translator
             'name-expr' => $this->nameExprIsOneOf($subject, $list),
             'extends' => "support::extends_is_one_of(context, node, &{$list})",
             'bytes', 'class-name' => $this->context->backend->call('bytes_is_one_of', [$this->operand($subject), Transpiler::$target === 'php' ? $list : '&' . $list]),
+            // A method declaration's own name, once the rule has read its text. The same route the byte
+            // helpers already take for it — `str_ends_with($classMethod->name->toString(), ..)` goes through
+            // `Support::methodName()` — so a membership test over the same text asks the same question.
+            'method-name' => Transpiler::$target === 'php'
+                ? $this->context->backend->call('bytes_is_one_of', ['Support::methodName(' . $this->operand($subject) . ')', $list])
+                : throw new Refusal("{$asked} over a method name, which only the PHP target carries", $line),
             default => throw new Refusal("{$asked} over a {$subject['kind']}", $line),
         };
     }
@@ -1429,6 +1435,48 @@ final readonly class Translator
     }
 
     /**
+     * `SomeClass::A_LIST` where the class is one the index can find and the constant is a list of strings.
+     *
+     * Read by collecting that class's own constants into a scratch scope rather than by reaching into the
+     * current one: a constant of the same name on both classes must not shadow, and the collector already
+     * walks a hierarchy nearest-first for exactly that reason.
+     *
+     * @return list<string>|null null when the expression is not that shape, so the caller carries on
+     */
+    private function namedClassStringList(Expr $expr, int $line): ?array
+    {
+        if (! $expr instanceof ClassConstFetch
+            || ! $expr->class instanceof Name
+            || in_array($expr->class->toString(), ['self', 'static', 'parent'], true)
+        ) {
+            return null;
+        }
+
+        $found = $this->findClassByName($expr->class->getLast());
+        if ($found === null) {
+            return null;
+        }
+
+        $constant = $this->memberName($expr->name, $line);
+        $saved = $this->context->arrayConstants;
+        $savedConstants = $this->context->constants;
+        $savedInts = $this->context->intConstants;
+        $this->context->arrayConstants = [];
+        $this->context->constants = [];
+        $this->context->intConstants = [];
+
+        try {
+            $this->collectConstants($found['class']);
+
+            return $this->context->arrayConstants[$constant] ?? null;
+        } finally {
+            $this->context->arrayConstants = $saved;
+            $this->context->constants = $savedConstants;
+            $this->context->intConstants = $savedInts;
+        }
+    }
+
+    /**
      * A list of string literals, written inline or as one of the rule's own constants.
      *
      * @return list<string>
@@ -1441,6 +1489,15 @@ final readonly class Translator
             && isset($this->context->arrayConstants[$this->memberName($expr->name, $expr->getStartLine())])
         ) {
             return $this->context->arrayConstants[$this->memberName($expr->name, $expr->getStartLine())];
+        }
+
+        // The same constant on a *named* class in the same package. `DoctrineEvents::ORM_LIST` is the shape:
+        // a plain array of strings, known at transpile time exactly as `self::` one is, and the only reason it
+        // was refused is that the arm above reads the constants the current class collected. Resolved through
+        // the same index the static-helper inliner uses, so a name that resolves to no file still refuses.
+        $named = $this->namedClassStringList($expr, $line);
+        if ($named !== null) {
+            return $named;
         }
 
         if ($expr instanceof Array_) {
@@ -1778,6 +1835,7 @@ final readonly class Translator
 
         $last = array_pop($body);
         $conditions = [];
+        $matches = [];
         foreach ($body as $statement) {
             // A binding the final condition reads. Bound rather than emitted: this is one expression.
             if ($statement instanceof Expression && $statement->expr instanceof Assign) {
@@ -1798,15 +1856,55 @@ final readonly class Translator
                 continue;
             }
 
+            // `if (<cond>) { return true; }` before the last statement says the opposite of a `continue`: this
+            // item matches, and the rest of the body is not reached. So it is a *disjunct*, where a `continue`
+            // guard is a conjunct. `DoctrineEventSubscriberAnalyzer::detect()` is the shape — two membership
+            // tests, either of which answers the loop — and the old refusal named the statement rather than
+            // the mix.
+            if ($this->isMatchingReturnGuard($statement)) {
+                /** @var If_ $statement */
+                $matches[] = $this->stripOuterParentheses($this->translateCondition($statement->cond));
+
+                continue;
+            }
+
             throw new Refusal(
                 'a foreach in an inlined helper whose body is not a guard chain: ' . $this->describe($statement),
                 $statement->getStartLine(),
             );
         }
 
-        $conditions[] = $this->anyBody($last, $depth);
+        // Both kinds in one body is not a flat combination: a `continue` after a matching return only guards
+        // what comes *after* it, so the answer nests rather than joins. Refused by name until a rule needs it.
+        if ($conditions !== [] && $matches !== []) {
+            throw new Refusal(
+                'a foreach in an inlined helper mixing `continue` guards with returns that match, which do not '
+                . 'combine flatly: the `continue` guards only what follows it',
+            );
+        }
+
+        $reached = $this->anyBody($last, $depth);
+        if ($matches !== []) {
+            $matches[] = $reached;
+
+            return '(' . implode(' || ', $matches) . ')';
+        }
+
+        $conditions[] = $reached;
 
         return count($conditions) === 1 ? $conditions[0] : '(' . implode(' && ', $conditions) . ')';
+    }
+
+    /** `if (<cond>) { return <a boolean literal>; }` — an item that matches, ending the loop. */
+    private function isMatchingReturnGuard(Stmt $statement): bool
+    {
+        if (! $statement instanceof If_ || $statement->elseifs !== [] || $statement->else instanceof Else_) {
+            return false;
+        }
+
+        $returned = $this->soleReturn($statement->stmts);
+
+        return $returned instanceof Expr && $this->isBooleanLiteral($returned) !== null;
     }
 
     /**

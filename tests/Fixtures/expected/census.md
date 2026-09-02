@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 51 of 89 portable rules the package registers emit, 1 covered by the engine, 37 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 52 of 89 portable rules the package registers emit, 1 covered by the engine, 36 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -133,9 +133,7 @@ REFUSE  NoConstructorOverrideRule
         needs: function call outside the vocabulary fast_has_parent_constructor()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->findFirst()
 EMIT    NoControllerMethodInjectionRule
-REFUSE  NoDoctrineListenerWithoutContractRule
-        a foreach in an inlined helper whose body is not a guard chain: Stmt_If
-        needs: a foreach in an inlined helper whose body is not a guard chain: Stmt_If
+EMIT    NoDoctrineListenerWithoutContractRule
 EMIT    NoDocumentMockingRule
 EMIT    NoDoubleConsecutiveTestMockRule
 REFUSE  NoDuplicateArgAutowireByTypeRule
@@ -185,8 +183,7 @@ REFUSE  NoJustPropertyAssignRule
         needs: assignment value outside the vocabulary: no PHP navigation for node.var (kind expr) on a Expression node
 EMIT    NoLeadingBackslashInNameRule
 REFUSE  NoListenerWithoutContractRule
-        a foreach in an inlined helper whose body is not a guard chain: Stmt_If
-        needs: a foreach in an inlined helper whose body is not a guard chain: Stmt_If
+        no mapping for ->attrGroups on a hook-node
         needs: no iteration mapped for ->attrGroups, which resolved to a expr, in an inlined helper
         needs: no iteration mapped for ->params, which resolved to a expr, in an inlined helper
 ENGINE  NoMissingVariableDimFetchRule  (mago reports undefined-variable)
