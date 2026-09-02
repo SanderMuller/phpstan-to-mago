@@ -2979,3 +2979,70 @@ rather than at the class — which is what the anchor being the member and not t
 **The headline counts do not move.** `symplify/phpstan-rules` registers this rule nowhere, so it is one of
 the eight the census excludes from the denominator: the package stays at 55 of 89 and the total at 89 of 169.
 What the step adds is the capability, the two defects above, and one more gated emission.
+
+#### The arithmetic operand helper, ported from a real run rather than from its source
+
+The `phpstan-strict-rules` arithmetic family — thirteen rules — all ask
+`OperatorRuleHelper::isValidForArithmeticOperation()`, and `Runtime\RuleLevel`'s own docblock had said why it
+was not ported: the helper reaches `RuleLevelHelper::findTypeToCheck()`, which takes a criteria closure. That
+part was already solved for the boolean family. What was left was the criteria, and the source could not be
+read for it: PHPStan ships as a phar here, so `toNumber()` cannot be traced.
+
+So it was measured instead. One file holds a unary `+` per operand shape, and the real rule ran over it at
+each flag combination:
+
+| operand | reports when |
+|:--|:--|
+| `bool`, `null` | always |
+| `int\|bool` | `checkUnionTypes` |
+| `?int` | `checkNullables` **and** `checkUnionTypes` |
+| `int`, `float`, `string`, `numeric-string`, `array`, a named object, a bare `object`, `mixed`, `int\|string`, `int\|float` | never |
+
+`checkThisOnly` at its level-0 default silences the whole family: the same run reports 0 errors. That is why
+the gate sets it false for these two rules, exactly as it already did for the six boolean ones.
+
+Two of the original's four branches turned out not to need porting, and the table is what says so rather than
+a reading of the code:
+
+- **`toNumber() instanceof ErrorType` returns a *pass*** — its own comment says "already reported by PHPStan
+  core". Every type that cannot coerce at all is therefore silent, which is the whole "never" row above. In
+  the port that is one test: a candidate is a type whose every atomic is `int`, `float`, `bool` or `null`.
+- **The operator-overloading branch is unreachable.** It asks whether an object accepts `+ 1`, and an object
+  never gets past the branch above. A named object and a bare `object` are silent on the real run at every
+  flag setting, which is the measurement rather than the inference.
+
+`numeric-string` needs no accessory type either. PHPStan rejects a plain `string` through `toNumber()`, so
+both spellings are silent — and `internal/probe-arithmetic-atomics.php` shows mago drops the accessory
+regardless: a `numeric-string` parameter and the literal `'12'` both arrive as a bare `ScalarType(string)`.
+Passing every string agrees with the original on both, and there is no third string to disagree about.
+
+##### What the pair measures, and what it cannot
+
+`OperandInArithmeticUnaryPlusRule` and `OperandInArithmeticUnaryMinusRule` emit, taking
+`phpstan-strict-rules` from 16 to 18. Mutations against the committed pair:
+
+| the emitted plugin | good-example findings |
+|:--|--:|
+| as emitted | 0 |
+| with the coercion test removed | 5 — `string` twice, `array`, `stdClass`, `object` |
+| with the union gate removed | 1 — `bool\|int`, named whole, as the original names it |
+| with the null strip removed | 0 |
+
+The last row is the honest one: the gate runs at the level-0 defaults, so `checkNullables` and
+`checkUnionTypes` are both false and the null strip changes no answer there. It is load-bearing at
+`checkNullables: true, checkUnionTypes: true`, where `?int` reports — and that is what
+`PortsTheArithmeticOperandHelperTest` pins, row by row, against the table above. A pair cannot reach it,
+because the flags are constructor parameters and the gate builds one worker per rule at the defaults.
+
+##### The census under-sizes what a refusal costs, and this is the measurement
+
+The four increment and decrement rules refuse with `no PHP navigation for node.var`, and their `needs:` line
+in the census says only that. Adding the hook moved the refusal to the field row; adding the field row moved
+it to a node predicate; the unported `isValidForIncrement()` sits behind all three. So the list names the
+first obstacle and one more, not the set — three obstacles deep on these rules, and the helper it does not
+mention is the expensive one.
+
+That matters for the census's own purpose, which is sizing work before doing it: grepping
+`isValidForArithmeticOperation` in the census before this step returned nothing, while the capability gated
+seven rules. The header already warns that a shared label is not a shared capability; this is the other
+direction, and the same warning has to be read into a `needs:` line that looks complete.

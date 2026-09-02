@@ -85,6 +85,12 @@ use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
  */
 final class RuleLevel
 {
+    /** The scalar kinds the accepted type `int|float|numeric-string` covers, once mago has dropped the accessory. */
+    private const array NUMERIC = [ScalarTypeKind::Integer, ScalarTypeKind::Float];
+
+    /** Those, plus the one other scalar kind that coerces to a number: `bool`. `null` is not a scalar here. */
+    private const array NUMERIC_OR_COERCIBLE = [ScalarTypeKind::Integer, ScalarTypeKind::Float, ScalarTypeKind::Boolean];
+
     /**
      * Whether an expression's type passes as a boolean, the way `BooleanRuleHelper` decides it.
      */
@@ -124,6 +130,108 @@ final class RuleLevel
         }
 
         return Types::typeIsBoolean($found);
+    }
+
+    /**
+     * Whether an expression's type is a valid arithmetic operand, the way `OperatorRuleHelper` decides it.
+     *
+     * The sibling of {@see passesAsBoolean()}, and a shorter port than the original reads, because two of
+     * PHPStan's four branches never engage. The whole answer was measured on a real PHPStan run over one
+     * operand of every shape — `internal/probe-arithmetic-atomics.php` has the mago side, and the run that
+     * produced the table is reproducible with the neon in that file's docblock:
+     *
+     * | operand                    | reports when                        |
+     * |:---------------------------|:------------------------------------|
+     * | `bool`, `null`             | always                              |
+     * | `int\|bool`                | `checkUnionTypes`                   |
+     * | `?int`                     | `checkNullables` and `checkUnionTypes` |
+     * | everything else measured   | never                               |
+     *
+     * "Everything else" is `int`, `float`, `string`, `numeric-string`, `array`, a named object, a bare
+     * `object`, `mixed`, `int|string` and `int|float`. `checkThisOnly` silences all of it, the same way it
+     * silences the boolean family, which is why the gate sets it false for both.
+     *
+     * ## Why two of the original's branches are not here
+     *
+     * - **`$type->toNumber() instanceof ErrorType` returns *true*, a pass** — the comment on it says "already
+     *   reported by PHPStan core". So every type that cannot coerce at all is silent, which is what makes
+     *   `string`, `array` and every object shape silent above. Here that is one test rather than a port of
+     *   `toNumber()`: a type is a candidate only where every atomic is `int`, `float`, `bool` or `null`.
+     * - **The operator-overloading branch is unreachable.** It asks whether an *object* type accepts `+ 1`,
+     *   and an object never gets past the branch above. Measured rather than reasoned: a named object and a
+     *   bare `object` are both silent on the real run, at every flag setting in the table.
+     *
+     * ## And why `numeric-string` needs no accessory type
+     *
+     * PHPStan accepts `string&numeric-string` and rejects a plain `string` — but it rejects it through
+     * `toNumber()`, so both are silent. Mago drops the accessory anyway: measured, a `numeric-string`
+     * parameter and the literal `'12'` both arrive as a bare `ScalarType(string)`. Treating every string as
+     * a non-candidate agrees with the original on both, and there is no third string to disagree about.
+     */
+    public static function isValidForArithmeticOperation(
+        ?Type $type,
+        bool $checkNullables,
+        bool $checkUnionTypes,
+        bool $checkThisOnly,
+    ): bool {
+        if (! $type instanceof Type || self::isMixed($type)) {
+            return true;
+        }
+
+        if (! self::everyAtomicCoercesToNumber($type)) {
+            return true;
+        }
+
+        // `findTypeToCheck`'s own short-circuit, which silences every subject that is not `$this` at levels 0
+        // and 1. Below the branch above rather than at the top, because the order is the original's: the
+        // coercion test runs before `isSubtypeOfNumber()` is reached, and only that call reads the flag.
+        if ($checkThisOnly && ! self::isThis($type)) {
+            return true;
+        }
+
+        $narrowed = $checkNullables || self::isNullOnly($type) ? $type : self::withoutNull($type);
+
+        // A union is only checked where the flag says to check one, which is `findTypeToCheck` leaving the
+        // members alone and the accepted type then failing to cover them. Measured: `int|bool` is silent
+        // without the flag and reports with it, naming the whole union rather than the failing member.
+        if (! $checkUnionTypes && count($narrowed->atomicTypes) > 1) {
+            return true;
+        }
+
+        return self::everyAtomicIsNumber($narrowed);
+    }
+
+    /**
+     * Whether every part of a type coerces to a number at all — PHPStan's `toNumber()` not answering
+     * `ErrorType`.
+     *
+     * `bool` and `null` coerce and are not numbers, which is the whole population this family reports.
+     */
+    private static function everyAtomicCoercesToNumber(Type $type): bool
+    {
+        foreach ($type->atomicTypes as $atomic) {
+            $coerces = $atomic instanceof SimpleAtomicType
+                ? $atomic->kind === SimpleAtomicTypeKind::Null
+                : $atomic instanceof ScalarType && in_array($atomic->kind, self::NUMERIC_OR_COERCIBLE, true);
+
+            if (! $coerces) {
+                return false;
+            }
+        }
+
+        return $type->atomicTypes !== [];
+    }
+
+    /** Whether every part of a type is `int` or `float`, which is what the accepted type covers. */
+    private static function everyAtomicIsNumber(Type $type): bool
+    {
+        foreach ($type->atomicTypes as $atomic) {
+            if (! $atomic instanceof ScalarType || ! in_array($atomic->kind, self::NUMERIC, true)) {
+                return false;
+            }
+        }
+
+        return $type->atomicTypes !== [];
     }
 
     /**

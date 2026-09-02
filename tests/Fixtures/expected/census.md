@@ -373,7 +373,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 16 of 45 portable rules the package registers emit, 0 covered by the engine, 29 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 18 of 45 portable rules the package registers emit, 0 covered by the engine, 27 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
@@ -455,12 +455,8 @@ REFUSE  OperandInArithmeticPreIncrementRule
         no hook mapping for node type PhpParser\Node\Expr\PreInc
         needs: no PHP navigation for node.var (kind expr) on a PreInc node
         needs: no node predicate for instanceof PhpParser\Node\Expr\PreInc on a hook-node
-REFUSE  OperandInArithmeticUnaryMinusRule
-        no hook mapping for node type PhpParser\Node\Expr\UnaryMinus
-        needs: no PHP navigation for node.expr (kind expr) on a UnaryMinus node
-REFUSE  OperandInArithmeticUnaryPlusRule
-        no hook mapping for node type PhpParser\Node\Expr\UnaryPlus
-        needs: no PHP navigation for node.expr (kind expr) on a UnaryPlus node
+EMIT    OperandInArithmeticUnaryMinusRule
+EMIT    OperandInArithmeticUnaryPlusRule
 REFUSE  OperandsInArithmeticAdditionRule
         if statement that is not a single-statement guard, but a chain of 1 elseif and an else
         needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else

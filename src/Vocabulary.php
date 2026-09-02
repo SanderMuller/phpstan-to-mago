@@ -26,6 +26,8 @@ use PhpParser\Node\Expr\ShellExec;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\StaticPropertyFetch;
 use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\UnaryMinus;
+use PhpParser\Node\Expr\UnaryPlus;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Name;
@@ -196,6 +198,10 @@ final class Vocabulary
         Switch_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'Switch', 'phpOnly' => true],
         Ternary::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'Conditional', 'phpOnly' => true],
         BooleanNot::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '!')", 'phpOnly' => true],
+        // The other two prefix operators a rule hooks by itself. Mago spells all of them `UnaryPrefix`, so the
+        // operator is the gate rather than the node kind — the same shape `BooleanNot` above already takes.
+        UnaryPlus::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '+')", 'phpOnly' => true],
+        UnaryMinus::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '-')", 'phpOnly' => true],
         // A variable, in the three shapes Mago gives one. `$x` is a `DirectVariable`; `$$n` is a
         // `NestedVariable` holding one, and `${expr}` an `IndirectVariable` — probed, with `$$n` producing a
         // `NestedVariable` and then a `DirectVariable` for the inner `$n`. All three registered, because the
@@ -676,6 +682,18 @@ final class Vocabulary
         // because hihaho runs `checkNullables: false` and Shopware `true` and one set cannot serve both.
         'PHPStan\Rules\BooleansInConditions\BooleanRuleHelper::passesAsBoolean' => [
             'helper' => 'RuleLevel::passesAsBoolean',
+            'kind' => 'bool',
+            'takes' => 'none',
+            'arguments' => [],
+            'types' => [1],
+            'flags' => ['checkNullables', 'checkUnionTypes', 'checkThisOnly'],
+        ],
+
+        // The arithmetic counterpart, reaching the same `findTypeToCheck` one level down. Same three flags,
+        // because the same function reads them; {@see Runtime\RuleLevel::isValidForArithmeticOperation()}
+        // carries the measured table of what reports under each.
+        'PHPStan\Rules\Operators\OperatorRuleHelper::isValidForArithmeticOperation' => [
+            'helper' => 'RuleLevel::isValidForArithmeticOperation',
             'kind' => 'bool',
             'takes' => 'none',
             'arguments' => [],

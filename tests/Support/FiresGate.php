@@ -209,6 +209,10 @@ final readonly class FiresGate
         'BooleanInWhileConditionRule' => ['checkThisOnly' => false],
         'BooleanInDoWhileConditionRule' => ['checkThisOnly' => false],
         'BooleanInTernaryOperatorRule' => ['checkThisOnly' => false],
+        // The same flag for the arithmetic family, and for the same reason: `checkThisOnly` silences every
+        // subject that is not `$this` at this gate's level, so both sides would agree on zero.
+        'OperandInArithmeticUnaryPlusRule' => ['checkThisOnly' => false],
+        'OperandInArithmeticUnaryMinusRule' => ['checkThisOnly' => false],
         'ClassLikeCognitiveComplexityRule' => [
             'cognitive_complexity' => ['class' => 3],
         ],
