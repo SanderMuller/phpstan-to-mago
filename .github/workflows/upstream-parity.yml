@@ -82,7 +82,7 @@ jobs:
 
       - name: Upload the census the run produced
         if: always() && failure() && hashFiles('tests/Fixtures/expected/census.md.actual') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: census-${{ matrix.leg }}
           path: tests/Fixtures/expected/census.md.actual
