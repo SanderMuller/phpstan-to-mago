@@ -3351,6 +3351,13 @@ final readonly class Translator
             return;
         }
 
+        // `if (COND) { $flag = true; continue; }` — a flag the loop carries, set and then done with this
+        // item. `NoServiceAutowireDuplicateRule` opens its loop with one: the statement that turns autowiring
+        // on is not itself a finding, and every statement after it is judged differently.
+        if ($this->setsAFlagAndEndsTheIteration($stmt)) {
+            return;
+        }
+
         if ($stmt->elseifs !== [] || count($stmt->stmts) !== 1
             || ($stmt->else instanceof Else_ && ! $this->isFlagAssignment($stmt->stmts[0]))
         ) {
@@ -6665,6 +6672,45 @@ final readonly class Translator
             && is_string($stmt->expr->var->name)
             && ($this->context->locals[$stmt->expr->var->name]['kind'] ?? null) === 'bool'
             && $this->isBooleanLiteral($stmt->expr->expr) !== null;
+    }
+
+    /**
+     * `if (COND) { $flag = <literal>; continue; }` — a flag the loop carries, and the item it was set on.
+     *
+     * The flag machinery already takes `if (COND) { $flag = ..; }`; the `continue` is what makes this a
+     * different statement rather than the same one, because the rest of the body must not run for that item.
+     * Both halves are emitted as written — a boolean local and a `continue` are ordinary PHP, and the loop
+     * carrying state across iterations needs nothing from this transpiler beyond not refusing it.
+     *
+     * Only a bare `continue`, and only in a loop: {@see translateIf()} refuses one outside a loop where it
+     * would leave the hook, and this borrows that check by asking the same question first.
+     */
+    private function setsAFlagAndEndsTheIteration(If_ $stmt): bool
+    {
+        if ($stmt->elseifs !== [] || $stmt->else instanceof Else_ || count($stmt->stmts) !== 2) {
+            return false;
+        }
+
+        [$assignment, $ending] = $stmt->stmts;
+        if (! $this->isFlagAssignment($assignment)
+            || ! $ending instanceof Continue_
+            || $ending->num instanceof Expr
+        ) {
+            return false;
+        }
+
+        if (! $this->context->inLoop) {
+            throw new Refusal('a flag set and a continue outside a loop', $stmt->getStartLine());
+        }
+
+        $this->context->lines[] = new Stm('if-open', ['condition' => $this->translateCondition($stmt->cond)], $this->context->indent);
+        $this->context->indent += 4;
+        $this->translateStatement($assignment);
+        $this->context->lines[] = new Stm('continue', [], $this->context->indent);
+        $this->context->indent -= 4;
+        $this->context->lines[] = new Stm('block-close', [], $this->context->indent);
+
+        return true;
     }
 
     /** `if (COND) { $flag = ..; } else { $other = ..; }` — a branch, not a guard. */

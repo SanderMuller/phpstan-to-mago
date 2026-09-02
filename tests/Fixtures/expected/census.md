@@ -202,8 +202,8 @@ REFUSE  NoReturnSetterMethodRule
 EMIT    NoRouteTrailingSlashPathRule
 EMIT    NoRoutingPrefixRule
 REFUSE  NoServiceAutowireDuplicateRule
-        if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Continue
-        needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Continue
+        assignment value outside the vocabulary: a search filter that is not a narrowing guard followed by one name comparison
+        needs: assignment value outside the vocabulary: a search filter that is not a narrowing guard followed by one name comparison
 EMIT    NoServiceSameNameSetClassRule
 REFUSE  NoSetClassServiceDuplicationRule
         expected a string literal

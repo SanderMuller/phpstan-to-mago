@@ -3405,3 +3405,36 @@ be built rather than the loop that would have been built for nothing.
 
 Nothing else moved: one census line, no emitted byte, and the mutation is the census itself — without the
 resolution the message goes straight back to `foreach with a key`.
+
+#### A flag the loop carries, and the filter shape behind it
+
+`NoServiceAutowireDuplicateRule` refused on `if statement that is not a single-statement guard, but 2
+statements: Stmt_Expression + Stmt_Continue`. The two statements are
+
+```php
+if ($this->hasAutowireDefaultsMethodCall($stmt)) {
+    $hasDefaultsAutowire = true;
+    continue;
+}
+```
+
+which is a flag the loop carries: the statement that turns autowiring on is not itself a finding, and every
+statement after it is judged differently. The flag machinery already took `if (COND) { $flag = ..; }`; the
+`continue` is what made this a different statement, because the rest of the body must not run for that item.
+
+Both halves emit as written — a boolean local and a `continue` are ordinary PHP, and a loop carrying state
+across iterations needs nothing from this transpiler beyond not refusing it. The `continue` is still refused
+outside a loop, where it would leave the hook rather than the iteration.
+
+**The rule does not emit yet, and the census now says why.** The refusal moves to `a search filter that is
+not a narrowing guard followed by one name comparison` — the one-shape limit the closure-filter recogniser
+declares about itself. This rule's two filters are both wider: one asks for a call named `autowire` *whose
+receiver* is a call named `defaults`, and the other for one with no arguments or a literal `true`.
+
+That is the next thing to build, and it wants the general form rather than two more shapes: bind the
+closure's parameter to the found node and translate the rest of its body as a predicate, emitting the search
+as a loop with a break. It would serve both filters here and
+`ServicesExcludedDirectoryMustExistRule`'s `find()`, which walks every match. Left for its own step, because
+it needs statement kinds neither backend has yet.
+
+No emitted byte changes, and one census line moves.
