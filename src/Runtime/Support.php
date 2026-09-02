@@ -1771,6 +1771,12 @@ final class Support
         return Declares::enclosingClassName($context, $subject);
     }
 
+    /** Whether the nearest class-like around a node is a trait. {@see Reflect::isInTrait} */
+    public static function isInTrait(NodeAnalysisContext $context, Part|Node|null $node): bool
+    {
+        return Reflect::isInTrait($context, $node);
+    }
+
     public static function isInClass(NodeAnalysisContext $context, Part|Node|null $node): bool
     {
         return Declares::isInClass($context, $node);

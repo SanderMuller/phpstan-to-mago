@@ -779,6 +779,37 @@ final readonly class Translator
         return null;
     }
 
+    /** Whether an expression is the bare `$scope->getFunction()`. */
+    private function isScopeGetFunction(Expr $expr): bool
+    {
+        return $expr instanceof MethodCall
+            && $expr->args === []
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'scope'
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getFunction';
+    }
+
+    /**
+     * The enclosing function's name, which is what `$scope->getFunction()` reduces to here.
+     *
+     * Null outside a function, the same answer PHPStan gives — so the `=== null` guard a rule opens with
+     * translates through the byte comparison rather than needing a kind of its own.
+     *
+     * @return Descriptor
+     */
+    private function enclosingFunctionNameDescriptor(int $line): array
+    {
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('the enclosing function, which only the PHP target carries', $line);
+        }
+
+        return [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'bytes',
+            'php' => 'Support::enclosingFunctionName($context, $node)',
+        ];
+    }
+
     /**
      * `Strings::match($subject, $pattern)` or `preg_match($pattern, $subject)` as a boolean, or null.
      *
@@ -8091,6 +8122,18 @@ final readonly class Translator
                 : $this->context->backend->call('is_in_class', Transpiler::$target === 'php' ? ['$context', '$node'] : ['context']);
         }
 
+        // `$scope->isInTrait()`, which a rule asks so it can skip a body PHPStan analyses once per using
+        // class. No fold beside the one above: a trait is a class-like, so every hook that always fires
+        // inside one can still be inside a trait, and answering `false` by construction would be wrong for
+        // exactly the bodies the guard exists for.
+        if ($method === 'isInTrait' && $args === [] && $expr->var instanceof Variable && $expr->var->name === 'scope') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a trait-scope test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return 'Support::isInTrait($context, $node)';
+        }
+
         // `$classReflection->isAttributeClass()` — whether the class-like carries PHP's own `#[Attribute]`.
         // That is what the reflection answers, and the attribute is on the declaration, so the question is the
         // one {@see Vocabulary::COLLABORATOR_CALLS} already answers for `AttributeFinder::hasAttribute()`:
@@ -9532,6 +9575,26 @@ final readonly class Translator
                         . ', ' . $this->handlePart($subject, 'methodPhp', $line) . ')',
                 ];
             }
+        }
+
+        // `$scope->getFunction()` — the function or method the node sits in, which a rule asks for so it can
+        // compare the name. Not the same call as the `$reflectionProvider->getFunction($name, $scope)` below,
+        // which resolves a function the code *names*; this one is about where the node is, and
+        // `enclosingFunctionName()` already answers it for the cognitive-complexity port.
+        //
+        // The name rather than a handle, because the name is the whole of what the rules ask: `=== null`
+        // outside a function, and `->getName()` for the comparison. A handle would be a kind with two arms
+        // and no third question behind them.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getName'
+            && $expr->args === []
+            && $this->isScopeGetFunction($expr->var)
+        ) {
+            return $this->enclosingFunctionNameDescriptor($line);
+        }
+
+        if ($this->isScopeGetFunction($expr)) {
+            return $this->enclosingFunctionNameDescriptor($line);
         }
 
         // `$reflectionProvider->getFunction($name, $scope)->getName()` — the name the codebase knows the

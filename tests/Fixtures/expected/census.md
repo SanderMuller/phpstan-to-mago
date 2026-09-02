@@ -448,8 +448,8 @@ REFUSE  DynamicCallOnStaticMethodsRule
         needs: if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Return
 EMIT    IllegalConstructorMethodCallRule
 REFUSE  IllegalConstructorStaticCallRule
-        access path outside the vocabulary: ->getFunction()
-        needs: access path outside the vocabulary: ->getFunction()
+        assignment value outside the vocabulary: access path outside the vocabulary: ->getTraitAliases()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getTraitAliases()
 REFUSE  MatchingTypeInSwitchCaseConditionRule
         no mapping for ->cases on a hook-node
         needs: no iteration mapped for ->cases, which resolved to a expr
@@ -504,7 +504,6 @@ REFUSE  OverwriteVariablesWithForeachRule
 REFUSE  RequireParentConstructCallRule
         guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
-        needs: method call outside the vocabulary ->isInTrait()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
         needs: function call outside the vocabulary property_exists()
 REFUSE  StrictFunctionCallsRule

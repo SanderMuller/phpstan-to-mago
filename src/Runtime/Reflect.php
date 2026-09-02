@@ -105,6 +105,34 @@ final class Reflect
         return $metadata instanceof ClassLikeMetadata ? $metadata->location->file : null;
     }
 
+    /**
+     * Whether the nearest class-like around a node is a trait, which is `Scope::isInTrait()`.
+     *
+     * The *nearest* one, so a class declared inside a trait's method answers no. Walked the same way
+     * {@see Declares::enclosingClassName()} walks and stopping at the first class-like for that reason, and
+     * the node itself counts for the reason recorded there.
+     *
+     * Here rather than beside that walk because `Declares` scores 78 of its 80 and this took it to 84 — the
+     * same reason `enclosingClassIsAbstract()` sits here, and the same measurement.
+     */
+    public static function isInTrait(NodeAnalysisContext $context, Part|Node|null $node): bool
+    {
+        $subject = Tree::node($node);
+        if (! $subject instanceof Node) {
+            return false;
+        }
+
+        [$file, $located] = Tree::locate($context, $subject);
+
+        foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
+            if (in_array($ancestor->kind->value, Tree::CLASS_LIKE_KINDS, true)) {
+                return $ancestor->kind === NodeKind::Trait;
+            }
+        }
+
+        return false;
+    }
+
     /** Whether a class named by a value is an interface. {@see namedClassIsAbstract} says why this is separate. */
     public static function namedClassIsInterface(NodeAnalysisContext $context, ?string $name): bool
     {

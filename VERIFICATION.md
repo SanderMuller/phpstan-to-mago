@@ -2585,3 +2585,26 @@ against a kind with no meaning for one. Nothing failed: the emitted output was u
 green apart from the census, whose single moved line — `StrictFunctionCallsRule` no longer needing
 `null comparison against Expr_Variable, which resolved to a hook-node` — was the whole evidence that a
 load-bearing refusal had gone. A refusal that stops existing is invisible in every direction except that one.
+
+#### A refusal that named the accessor rather than the obstacle
+
+`IllegalConstructorStaticCallRule` refused on `->getFunction()`, which reads as a capability gap and is not
+one. Two small arms close it: `$scope->getFunction()` reduces to the enclosing function's *name*, which
+`enclosingFunctionName()` has answered since the cognitive-complexity port, and `$scope->isInTrait()` walks to
+the nearest class-like and asks its kind. Neither needed a new descriptor kind — the name is bytes, so the
+rule's `=== null` guard translates through the byte comparison it already had.
+
+The refusal now reads `->getTraitAliases()`, and that one is real. `isInRenamedTraitConstructor()` asks PHP's
+trait *alias* table — which name a using class reaches a trait method under after `use T { m as other; }` —
+and mago's metadata carries no counterpart. `TraitUsers::aliases()` reads the same adaptations off the CST for
+the coverage passes, but that is an after-analysis walk over every file, not a question a node hook can ask
+about the class it is standing in.
+
+So the rule does not emit, and the census says why. That is the whole of this step: the previous reason
+pointed at an accessor two other rules use for something else entirely, and a reader sizing the work from it
+would have started in the wrong place.
+
+`RequireParentConstructCallRule` loses `->isInTrait()` from its needs at the same time; it still refuses on
+the `throw` its first guard uses as an assertion.
+
+No emitted byte changed, across all seven packages and all three targets.
