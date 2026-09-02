@@ -48,7 +48,7 @@ final class Calls
      */
     public static function nthExpression(NodeAnalysisContext $context, Part|Node|null $subject, int $index): ?Part
     {
-        $node = Tree::node($subject);
+        $node = self::throughTheCallWrapper($context, $subject);
         if (! $node instanceof Node) {
             return null;
         }
@@ -109,7 +109,7 @@ final class Calls
     /** The member selector of a method call: `->expects(..)` gives `expects`. */
     public static function selector(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $node = Tree::node($subject);
+        $node = self::throughTheCallWrapper($context, $subject);
         if (! $node instanceof Node) {
             return null;
         }
@@ -127,7 +127,7 @@ final class Calls
 
     public static function argumentList(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $node = Tree::node($subject);
+        $node = self::throughTheCallWrapper($context, $subject);
         if (! $node instanceof Node) {
             return null;
         }
@@ -317,6 +317,27 @@ final class Calls
         }
 
         return $part->kind === NodeKind::Access ? $part->firstChild() : $part;
+    }
+
+    /**
+     * The call node itself, through the `Call` category node mago wraps a *nested* call in.
+     *
+     * The hook's own node is the concrete `MethodCall`, so navigating from it needs no unwrap and none of
+     * these helpers had one. A call the rule reached through a field is not: measured on
+     * `$routes->import('..')->prefix('/x')`, where the receiver of `prefix` arrives as `Call` with a single
+     * `MethodCall` child. `isMethodCall()` already went through the wrapper — that is what
+     * {@see concreteCall()} does — so the kind test said yes and every navigation off the same part then
+     * searched the wrapper's children, found none, and answered null. The guard chain read as a rule that
+     * simply never matched.
+     */
+    private static function throughTheCallWrapper(NodeAnalysisContext $context, Part|Node|null $subject): ?Node
+    {
+        $node = Tree::node($subject);
+        if (! $node instanceof Node || $node->kind !== NodeKind::Call) {
+            return $node;
+        }
+
+        return $context->source->getChildren($node)[0] ?? $node;
     }
 
     private static function concreteCall(?Part $part): ?Part

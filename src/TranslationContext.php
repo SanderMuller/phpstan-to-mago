@@ -671,4 +671,23 @@ final class TranslationContext
 
     /** @var array<string, array<string, array{0: string, 1: string, 2?: string}>> expression key -> refined fields */
     public array $refinements = [];
+
+    /**
+     * How many predicate helpers are being translated, so a statement can tell it has no position.
+     *
+     * An inlined predicate folds to one expression. Anything appended to `$lines` from inside one lands at
+     * the caller's statement position instead, which is what {@see Translator::refuseAHoistedExit()} refuses
+     * and what the inline argument binding avoids needing.
+     */
+    public int $predicateDepth = 0;
+
+    /**
+     * Expression key -> the Mago node kind an `instanceof` established for it.
+     *
+     * The counterpart of `$refinements` for a guard the inliner takes as a predicate rather than as a
+     * binding: no binding statement is emitted there, so nothing else records what the test proved.
+     *
+     * @var array<string, string>
+     */
+    public array $narrowedKinds = [];
 }

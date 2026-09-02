@@ -55,6 +55,84 @@ final class Reflect
         return $metadata instanceof ClassLikeMetadata && $metadata->flags->contains(MetadataFlags::ABSTRACT);
     }
 
+    /**
+     * The class a named class extends, or null when it extends nothing the codebase knows.
+     *
+     * `ClassReflection::getParentClass()` in PHPStan, which answers the *direct* parent — so it reads
+     * `directParentClass` rather than the first entry of `parentClasses`, which is the whole chain.
+     *
+     * Lowercased, like every name metadata hands back. That costs nothing here because the questions asked of
+     * the answer — abstract, builtin, which file — are asked of the codebase again rather than compared as
+     * text.
+     */
+    public static function parentClassName(NodeAnalysisContext $context, ?string $name): ?string
+    {
+        $metadata = $name === null || $name === '' ? null : $context->codebase->getClassLike($name);
+
+        return $metadata instanceof ClassLikeMetadata ? $metadata->directParentClass : null;
+    }
+
+    /**
+     * Whether a class named by a value is one PHP itself ships, which is `ClassReflection::isBuiltin()`.
+     *
+     * The flag, not the file. A class mago resolves out of a vendor directory is `BUILTIN false` and
+     * `USER_DEFINED false`, while `ArrayObject` is `BUILTIN true` — measured, because the rule that asks this
+     * asks about vendor separately on the next line and answering either from the other would merge two
+     * guards the original keeps apart.
+     */
+    public static function namedClassIsBuiltin(NodeAnalysisContext $context, ?string $name): bool
+    {
+        $metadata = $name === null || $name === '' ? null : $context->codebase->getClassLike($name);
+
+        return $metadata instanceof ClassLikeMetadata && $metadata->flags->contains(MetadataFlags::BUILTIN);
+    }
+
+    /**
+     * The file a named class is declared in, which is `ClassReflection::getFileName()`.
+     *
+     * The path as mago records it, and that is **relative to the analysed root** — probed with absolute
+     * `paths` as well as relative ones, and relative both times: `src/Fixture.php`, `vendor/acme/lib/X.php`,
+     * and `mago_prelude_extensions/spl.php` for a builtin. PHPStan hands back an absolute path, so a rule
+     * testing for a `vendor` segment agrees with it, while one comparing a whole path would not.
+     *
+     * The one shape where the two disagree is a project whose own directory has `vendor` in its name: PHPStan
+     * sees it in the absolute path and this does not. That is the narrow direction, and no corpus here has it.
+     */
+    public static function namedClassFile(NodeAnalysisContext $context, ?string $name): ?string
+    {
+        $metadata = $name === null || $name === '' ? null : $context->codebase->getClassLike($name);
+
+        return $metadata instanceof ClassLikeMetadata ? $metadata->location->file : null;
+    }
+
+    /**
+     * Whether the nearest class-like around a node is a trait, which is `Scope::isInTrait()`.
+     *
+     * The *nearest* one, so a class declared inside a trait's method answers no. Walked the same way
+     * {@see Declares::enclosingClassName()} walks and stopping at the first class-like for that reason, and
+     * the node itself counts for the reason recorded there.
+     *
+     * Here rather than beside that walk because `Declares` scores 78 of its 80 and this took it to 84 — the
+     * same reason `enclosingClassIsAbstract()` sits here, and the same measurement.
+     */
+    public static function isInTrait(NodeAnalysisContext $context, Part|Node|null $node): bool
+    {
+        $subject = Tree::node($node);
+        if (! $subject instanceof Node) {
+            return false;
+        }
+
+        [$file, $located] = Tree::locate($context, $subject);
+
+        foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
+            if (in_array($ancestor->kind->value, Tree::CLASS_LIKE_KINDS, true)) {
+                return $ancestor->kind === NodeKind::Trait;
+            }
+        }
+
+        return false;
+    }
+
     /** Whether a class named by a value is an interface. {@see namedClassIsAbstract} says why this is separate. */
     public static function namedClassIsInterface(NodeAnalysisContext $context, ?string $name): bool
     {

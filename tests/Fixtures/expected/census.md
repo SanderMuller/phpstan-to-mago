@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 48 of 89 portable rules the package registers emit, 1 covered by the engine, 40 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 55 of 89 portable rules the package registers emit, 1 covered by the engine, 33 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -90,11 +90,7 @@ REFUSE  FileNameMatchesExtensionRule
         needs: statement outside the vocabulary: Stmt_Expression
         needs: assignment value outside the vocabulary: access path outside the vocabulary: basename()
 EMIT    ForbiddenArrayMethodCallRule
-REFUSE  ForbiddenExtendOfNonAbstractClassRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
-        needs: method call outside the vocabulary ->isBuiltin()
-        needs: assignment value outside the vocabulary: the file another class is declared in, so its source can be parsed
+EMIT    ForbiddenExtendOfNonAbstractClassRule
 REFUSE  ForbiddenFuncCallRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->normalizeConfig()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->normalizeConfig()
@@ -123,35 +119,28 @@ REFUSE  NewWithFollowingSettersCollector
 EMIT    NoAbstractControllerConstructorRule
 EMIT    NoArrayMapWithArrayCallableRule
 EMIT    NoAssertFuncCallInTestsRule
-REFUSE  NoBareAndSecurityIsGrantedContentsRule
-        assignment value outside the vocabulary: access path outside the vocabulary: preg_split()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: preg_split()
+EMIT    NoBareAndSecurityIsGrantedContentsRule
 EMIT    NoBundleResourceConfigRule
 EMIT    NoClassLevelRouteRule
 EMIT    NoClassReflectionStaticReflectionRule
-REFUSE  NoConstructorAndRequiredTogetherRule
-        a foreach in an inlined helper whose body is not a single guard
-        needs: a foreach in an inlined helper whose body is not a single guard
+EMIT    NoConstructorAndRequiredTogetherRule
 REFUSE  NoConstructorOverrideRule
         function call outside the vocabulary fast_has_parent_constructor()
         needs: function call outside the vocabulary fast_has_parent_constructor()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->findFirst()
 EMIT    NoControllerMethodInjectionRule
-REFUSE  NoDoctrineListenerWithoutContractRule
-        a foreach in an inlined helper whose body is not a guard chain: Stmt_If
-        needs: a foreach in an inlined helper whose body is not a guard chain: Stmt_If
+EMIT    NoDoctrineListenerWithoutContractRule
 EMIT    NoDocumentMockingRule
 EMIT    NoDoubleConsecutiveTestMockRule
 REFUSE  NoDuplicateArgAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
-        needs: no argument list on a expr node
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return
 REFUSE  NoDuplicateArgsAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
-        needs: no iteration mapped for ->items, which resolved to a expr
+        needs: NamingHelper::isNames() over a expr
 EMIT    NoDynamicNameRule
 REFUSE  NoEntityMockingRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getAttributes()
@@ -189,11 +178,7 @@ REFUSE  NoJustPropertyAssignRule
         needs: no PHP navigation for node.var (kind expr) on a Expression node
         needs: assignment value outside the vocabulary: no PHP navigation for node.var (kind expr) on a Expression node
 EMIT    NoLeadingBackslashInNameRule
-REFUSE  NoListenerWithoutContractRule
-        a foreach in an inlined helper whose body is not a guard chain: Stmt_If
-        needs: a foreach in an inlined helper whose body is not a guard chain: Stmt_If
-        needs: no iteration mapped for ->attrGroups, which resolved to a expr, in an inlined helper
-        needs: no iteration mapped for ->params, which resolved to a expr, in an inlined helper
+EMIT    NoListenerWithoutContractRule
 ENGINE  NoMissingVariableDimFetchRule  (mago reports undefined-variable)
 REFUSE  NoMissnamedDocTagRule
         assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
@@ -220,14 +205,12 @@ REFUSE  NoReturnSetterMethodRule
         needs: comparison outside the vocabulary: Expr_Variable against Scalar_String
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
 EMIT    NoRouteTrailingSlashPathRule
-REFUSE  NoRoutingPrefixRule
-        no node predicate for instanceof PhpParser\Node\Identifier on a bytes
-        needs: no node predicate for instanceof PhpParser\Node\Identifier on a bytes
+EMIT    NoRoutingPrefixRule
 REFUSE  NoServiceAutowireDuplicateRule
         if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Continue
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Continue
 REFUSE  NoServiceSameNameSetClassRule
-        assignment value outside the vocabulary: no mapping for ->class on a expr
+        assignment value outside the vocabulary: guard body is neither `return []` nor `continue`, but Stmt_Return
         needs: assignment value outside the vocabulary: guard body is neither `return []` nor `continue`, but Stmt_Return
 REFUSE  NoSetClassServiceDuplicationRule
         expected a string literal
@@ -259,9 +242,7 @@ REFUSE  PhpUpgradeDowngradeRegisteredInSetRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
         needs: assignment value outside the vocabulary: unknown local $configFilePath
         needs: $errorMessage is not a message built in this rule
-REFUSE  PhpUpgradeImplementsMinPhpVersionInterfaceRule
-        instanceof FullyQualified, which PHPStan answers after its own name resolution: an imported name arrives as one too, so the test is about resolution rather than spelling and the comparison after it would have to read resolved names
-        needs: instanceof FullyQualified, which PHPStan answers after its own name resolution: an imported name arrives as one too, so the test is about resolution rather than spelling and the comparison after it would have to read resolved names
+EMIT    PhpUpgradeImplementsMinPhpVersionInterfaceRule
 REFUSE  PreferAutowireAttributeOverConfigParamRule
         not a resolvable list of strings
         needs: not a resolvable list of strings
@@ -455,8 +436,8 @@ REFUSE  DynamicCallOnStaticMethodsRule
         needs: if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Return
 EMIT    IllegalConstructorMethodCallRule
 REFUSE  IllegalConstructorStaticCallRule
-        access path outside the vocabulary: ->getFunction()
-        needs: access path outside the vocabulary: ->getFunction()
+        assignment value outside the vocabulary: access path outside the vocabulary: ->getTraitAliases()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getTraitAliases()
 REFUSE  MatchingTypeInSwitchCaseConditionRule
         no mapping for ->cases on a hook-node
         needs: no iteration mapped for ->cases, which resolved to a expr
@@ -511,7 +492,6 @@ REFUSE  OverwriteVariablesWithForeachRule
 REFUSE  RequireParentConstructCallRule
         guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
-        needs: method call outside the vocabulary ->isInTrait()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
         needs: function call outside the vocabulary property_exists()
 REFUSE  StrictFunctionCallsRule
@@ -557,9 +537,9 @@ REFUSE  AssertEqualsIsDiscouragedRule
 EMIT    AssertSameBooleanExpectedRule
 EMIT    AssertSameNullExpectedRule
 REFUSE  AssertSameWithCountRule
-        no argument list on a expr node
-        needs: no argument list on a expr node
-        needs: no node predicate for instanceof PhpParser\Node\Identifier on a bytes
+        method call outside the vocabulary ->yes()
+        needs: method call outside the vocabulary ->yes()
+        needs: no node predicate for instanceof PhpParser\Node\Identifier on a name-expr
 REFUSE  AttributeRequiresPhpVersionRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getTestMethodReflection()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getTestMethodReflection()
@@ -589,8 +569,7 @@ REFUSE  MockMethodCallRule
 EMIT    NoMissingSpaceInClassAnnotationRule
 EMIT    NoMissingSpaceInMethodAnnotationRule
 REFUSE  ShouldCallParentMethodsRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getParentClass()
+        method call outside the vocabulary ->hasNativeMethod()
         needs: method call outside the vocabulary ->hasNativeMethod()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeMethod()
         needs: access path outside the vocabulary: ->getStmts()

@@ -60,6 +60,24 @@ final class Support
         return Reflect::namedClassIsAbstract($context, $name);
     }
 
+    /** The direct parent of a class named by a value. {@see Reflect::parentClassName} */
+    public static function parentClassName(NodeAnalysisContext $context, ?string $name): ?string
+    {
+        return Reflect::parentClassName($context, $name);
+    }
+
+    /** Whether a class named by a value is one PHP itself ships. {@see Reflect::namedClassIsBuiltin} */
+    public static function namedClassIsBuiltin(NodeAnalysisContext $context, ?string $name): bool
+    {
+        return Reflect::namedClassIsBuiltin($context, $name);
+    }
+
+    /** The file a class named by a value is declared in. {@see Reflect::namedClassFile} */
+    public static function namedClassFile(NodeAnalysisContext $context, ?string $name): ?string
+    {
+        return Reflect::namedClassFile($context, $name);
+    }
+
     /** Whether a class named by a value is an interface. {@see namedClassIsAbstract} says why this is separate. */
     public static function namedClassIsInterface(NodeAnalysisContext $context, ?string $name): bool
     {
@@ -936,6 +954,16 @@ final class Support
         return Inheritance::extendsIs($context, $subject, $name);
     }
 
+    /**
+     * Whether the extends clause names one of these. {@see Inheritance::extendsIsOneOf}
+     *
+     * @param list<string> $names
+     */
+    public static function extendsIsOneOf(NodeAnalysisContext $context, Part|Node|null $subject, array $names): bool
+    {
+        return Inheritance::extendsIsOneOf($context, $subject, $names);
+    }
+
     public static function bytesContain(?string $haystack, string $needle): bool
     {
         return Text::bytesContain($haystack, $needle);
@@ -1210,6 +1238,16 @@ final class Support
     public static function declaredParamHint(?Part $parameter): ?Part
     {
         return Members::declaredParamHint($parameter);
+    }
+
+    /**
+     * A string split on a pattern, dropping the empty pieces. {@see Text::splitByPattern}
+     *
+     * @return list<string>
+     */
+    public static function splitByPattern(?string $subject, string $pattern): array
+    {
+        return Text::splitByPattern($subject, $pattern);
     }
 
     /** Whether a name is written entirely in upper case, as a constant convention check. */
@@ -1751,6 +1789,12 @@ final class Support
     public static function enclosingClassName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
         return Declares::enclosingClassName($context, $subject);
+    }
+
+    /** Whether the nearest class-like around a node is a trait. {@see Reflect::isInTrait} */
+    public static function isInTrait(NodeAnalysisContext $context, Part|Node|null $node): bool
+    {
+        return Reflect::isInTrait($context, $node);
     }
 
     public static function isInClass(NodeAnalysisContext $context, Part|Node|null $node): bool

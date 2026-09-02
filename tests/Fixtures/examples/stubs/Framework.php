@@ -360,3 +360,67 @@ final class Request
         return null;
     }
 }
+
+namespace Symfony\Component\Routing\Loader\Configurator;
+
+/**
+ * The two configurators `NoRoutingPrefixRule` tells apart.
+ *
+ * Both declare `prefix()`, deliberately: the rule gates on the *type* of the thing prefixed, and a stub with
+ * only the import side would let a name test pass for the type test.
+ */
+class ImportConfigurator
+{
+    public function prefix(string|array $prefix, bool $trailingSlashOnRoot = true): void {}
+}
+
+class CollectionConfigurator
+{
+    public function prefix(string|array $prefix, bool $trailingSlashOnRoot = true): void {}
+}
+
+class RoutingConfigurator
+{
+    public function import(string|array $resource, ?string $type = null): ImportConfigurator
+    {
+        return new ImportConfigurator();
+    }
+
+    public function collection(string $name = ''): CollectionConfigurator
+    {
+        return new CollectionConfigurator();
+    }
+}
+
+namespace Rector\VersionBonding\Contract;
+
+/** The contract `PhpUpgradeImplementsMinPhpVersionInterfaceRule` asks a version-specific rule to carry. */
+interface MinPhpVersionInterface
+{
+    public function provideMinPhpVersion(): int;
+}
+
+namespace Symfony\Component\EventDispatcher\Attribute;
+
+/** The attribute `NoListenerWithoutContractRule` accepts in place of the subscriber contract. */
+#[\Attribute]
+final class AsEventListener
+{
+    public function __construct(public ?string $event = null) {}
+}
+
+namespace Symfony\Component\Security\Http\Firewall;
+
+/** The base `NoListenerWithoutContractRule` allows a security listener to extend. */
+abstract class AbstractListener
+{
+    public function supports(): bool
+    {
+        return true;
+    }
+}
+
+namespace Symfony\Component\Form\Event;
+
+/** A form event, whose parameter type is the last thing the rule accepts. */
+final class PreSubmitEvent {}

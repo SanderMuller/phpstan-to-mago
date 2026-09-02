@@ -118,17 +118,25 @@ final class CorpusDifferential
     ) {}
 
     /**
-     * The consumer's own PHPStan configuration.
+     * The consumer's own PHPStan configuration, in whichever of the three spellings it wrote it.
      *
-     * `phpstan.neon` when it exists, `phpstan.neon.dist` otherwise. Both spellings are ordinary — a project
-     * that gitignores the first and commits the second is the common Laravel skeleton — and hardcoding the
-     * first made every such project unmeasurable, which is most of the ones on hand.
+     * All three are ordinary. A project that gitignores `phpstan.neon` and commits `phpstan.neon.dist` is the
+     * common Laravel skeleton, and hardcoding the first made every such project unmeasurable. Symfony's own
+     * skeleton writes `phpstan.dist.neon` instead, with the suffix in the middle — `symfony/demo` uses it,
+     * and the missing spelling is what made the first Symfony corpus here look like a project with no PHPStan
+     * configuration at all.
+     *
+     * The last candidate is returned unchecked, so a consumer with none of them fails where PHPStan itself
+     * would rather than silently against a default configuration.
      */
     public static function configurationOf(string $consumerRoot): string
     {
-        $candidate = $consumerRoot . '/phpstan.neon';
+        $written = array_values(array_filter(
+            ['/phpstan.neon', '/phpstan.neon.dist', '/phpstan.dist.neon'],
+            static fn (string $spelling): bool => is_file($consumerRoot . $spelling),
+        ));
 
-        return is_file($candidate) ? $candidate : $consumerRoot . '/phpstan.neon.dist';
+        return $consumerRoot . ($written[0] ?? '/phpstan.neon.dist');
     }
 
     /**
@@ -449,6 +457,9 @@ final class CorpusDifferential
      * cannot walk that chain and the port reports nothing for those classes: 13 of 31 exception findings, all
      * of them classes extending a framework exception. That is engine blindness, not a narrow port, and the
      * fix belongs in the configuration rather than in the agreement math.
+     *
+     * The consumer's own autoload roots are there for the same reason, one level in, and only when `--paths`
+     * measures a subset. {@see ResolutionRoots} holds that list and the two wrong numbers that shaped it.
      */
     public function writeMagoConfig(): string
     {
@@ -469,7 +480,7 @@ final class CorpusDifferential
         file_put_contents($this->sandbox . '/mago.toml', strtr(<<<TOML
             [source]
             paths = [{$this->join($paths)}]
-            includes = ["{$this->consumerRoot}/vendor"]
+            includes = [{$this->join(ResolutionRoots::of($this->consumerRoot, $this->analysedPaths()))}]
             excludes = [{$this->join($excludes)}]
 
             [extension-hosts.differential]
@@ -478,6 +489,16 @@ final class CorpusDifferential
             TOML, ['{extraHosts}' => MagoHosts::render($this->extensionHosts)]));
 
         return $this->sandbox . '/mago.toml';
+    }
+
+    /**
+     * The directories this run analyses, absolute, which is what an autoload root is checked against.
+     *
+     * @return list<string>
+     */
+    private function analysedPaths(): array
+    {
+        return array_map(fn (string $path): string => $this->absolute($path), $this->paths);
     }
 
     /**

@@ -112,13 +112,13 @@ taking a PHPStan service is refused, naming it — no worker can supply a `Refle
 A rule using a construct outside the vocabulary is refused, naming the construct and its line:
 
 ```
-  REFUSE  IllegalConstructorStaticCallRule: access path outside the vocabulary: ->getFunction() (line 46)
+  REFUSE  ClosureUsesThisRule: no mapping for ->static on a hook-node (line 26)
 ```
 
 A plausible-but-wrong rule is worse than no rule, because you would trust it. So `emitted` on its own means
 nothing: the generator refuses what it cannot translate, and the backend refuses any operand it could not
-render. `--unverified` lifts one of those refusals — an aggregate whose numbers do not yet agree with the
-original — and the refusal it replaces says by how much.
+render. One refusal is opt-out rather than absolute — `--unverified`, for an aggregate whose numbers do not
+yet agree — and nothing is behind it today.
 
 ## What it can translate
 
@@ -127,7 +127,7 @@ upstream drift lands as a diff there rather than as a stale table here.
 
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
-| `symplify/phpstan-rules` | 89 | 48 | 40 | 1 |
+| `symplify/phpstan-rules` | 89 | 55 | 33 | 1 |
 | `hihaho/phpstan-rules` | 7 | 6 | 1 | 0 |
 | `tomasvotruba/type-coverage` | 10 | 5 | 5 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
@@ -135,7 +135,7 @@ upstream drift lands as a diff there rather than as a stale table here.
 | `phpstan/phpstan-phpunit` | 13 | 4 | 9 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-That is 82 of the 169 **portable** rules — the ones each package registers, minus three that report nothing a
+That is 89 of the 169 **portable** rules — the ones each package registers, minus three that report nothing a
 plugin could carry. `--status` counts whatever *your* project installed instead.
 
 <details>
@@ -158,9 +158,8 @@ with its count. The larger pieces:
 
 </details>
 
-An aggregate is mapped only once its numbers agree with the real rule on a real project, and both it and the
-generated plugin carry the bound they were measured at: four of the five are exact on both consumers, and the
-parameter one states a ceiling and its cause. Reproduce any with
+An aggregate is mapped only once its numbers agree with the real rule on a real project, and it carries the
+bound it was measured at. Reproduce any with
 `tests/Support/run-coverage-corpus.php <project> --metric=<name>`.
 
 ## How far this is verified
@@ -169,8 +168,8 @@ Per-rule agreement is gated: for each emitted rule CI runs the real `mago` binar
 the same two files and compares line and message. A rule that emits and reports nothing fails.
 
 Corpus-scale agreement is not proven, and no number here claims it. [VERIFICATION.md](VERIFICATION.md) has the
-differential runs over eight corpora, their traced gaps, and the six real defects they found — the largest a
-9199-file Symfony application at **1901 agreeing, 0 original-only, 0 port-only**.
+differential runs, their traced gaps, and the defects they found — the largest run a 9199-file Symfony
+application at **1901 agreeing, 0 original-only, 0 port-only**.
 
 ## Performance
 
@@ -185,8 +184,8 @@ The same 20 rules on both engines, so this measures what the port costs. Best of
 | PHPStan, warm result cache | 0.59s | 0.56s |
 
 Against a **cold** run: 23x faster on wall clock, 29x cheaper on CPU. Against a **warm** PHPStan: 2.4x faster
-on wall clock, but roughly twice the CPU — `mago analyze` has no result cache. A claim that does not say which
-it means is overstating the case.
+on wall clock, but roughly twice the CPU — `mago analyze` has no result cache. A figure that does not say
+which baseline it used is overstating the case.
 
 ## Requirements
 
