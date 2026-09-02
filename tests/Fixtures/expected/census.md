@@ -92,8 +92,8 @@ REFUSE  FileNameMatchesExtensionRule
 EMIT    ForbiddenArrayMethodCallRule
 EMIT    ForbiddenExtendOfNonAbstractClassRule
 REFUSE  ForbiddenFuncCallRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->normalizeConfig()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->normalizeConfig()
+        assignment value outside the vocabulary: $forbiddenFunctions is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\ForbiddenFuncCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        needs: assignment value outside the vocabulary: $forbiddenFunctions is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\ForbiddenFuncCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
 EMIT    ForbiddenMultipleClassLikeInOneFileRule
 REFUSE  ForbiddenNewArgumentRule  (the package registers it nowhere)
         $forbiddenTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Complexity\ForbiddenNewArgumentRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself

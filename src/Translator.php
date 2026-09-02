@@ -11832,6 +11832,26 @@ final readonly class Translator
             return ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'php' => $this->context->backend->bytes($literal)];
         }
 
+        // A call the vocabulary does not answer may be standing on a configured value the *package* never
+        // supplies, and then the accessor's name is the shallower of two answers.
+        // `ForbiddenFuncCallRule` reads
+        // `$this->requiredWithMessageFormatter->normalizeConfig($this->forbiddenFunctions)`, where the
+        // argument is a parameter the package's auto-included neon never wires: a permanent answer about the
+        // package, against a to-do about this transpiler.
+        //
+        // Only that argument, and only those three property sets. Resolving *every* argument was written
+        // first and made three other rules worse — a `$scope` argument answers "unknown local $scope", which
+        // names this transpiler's state rather than any obstacle, and a string literal answers with its node
+        // kind. The deeper refusal is not automatically the better one, so the set it may come from is named
+        // rather than trusted.
+        if ($expr instanceof MethodCall || $expr instanceof StaticCall) {
+            foreach ($expr->getArgs() as $argument) {
+                if ($this->readsAnUnsuppliedProperty($argument->value)) {
+                    $this->resolve($argument->value, $line);
+                }
+            }
+        }
+
         throw new Refusal('access path outside the vocabulary: ' . $this->describe($expr), $line);
     }
 
@@ -12009,6 +12029,30 @@ final readonly class Translator
         }
 
         return null;
+    }
+
+    /**
+     * Whether an expression reads a constructor property the package supplies no value for.
+     *
+     * The three sets a property read refuses from: wired to a container parameter the package does not
+     * declare, computed in the constructor from something outside the pure set, or not wired at all. Each is
+     * a fact about the package rather than a gap in this transpiler, which is what makes it worth surfacing
+     * over the accessor that was reaching for it.
+     *
+     * Asked of the property sets rather than of the refusal's text, so a reworded message cannot silently
+     * stop matching.
+     */
+    private function readsAnUnsuppliedProperty(Expr $expr): bool
+    {
+        if (! $expr instanceof PropertyFetch || ! $this->isThis($expr->var)) {
+            return false;
+        }
+
+        $property = $this->memberName($expr->name, $expr->getStartLine());
+
+        return isset($this->context->unresolvedParameters[$property])
+            || isset($this->context->derived[$property])
+            || isset($this->context->unwired[$property]);
     }
 
     private function intLiteral(Node $expr, int $line): int

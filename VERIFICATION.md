@@ -3649,3 +3649,43 @@ have the same reason. The helper's body reads something PHPStan exposes and Mago
 or does not model at all, so a statement-by-statement translation would refuse on its first line while the
 *question* it asks is answerable. The table of a package's own constants comes with the port in each case,
 which is the exception to reading such literals out of the rule's own source.
+
+#### An accessor's name over a permanent answer, and the blunt version of the fix
+
+`ForbiddenFuncCallRule` refused with `access path outside the vocabulary: ->normalizeConfig()`, which reads as
+a to-do for this transpiler. It is not one. The call is
+
+```php
+$requiredWithMessages = $this->requiredWithMessageFormatter->normalizeConfig($this->forbiddenFunctions);
+```
+
+and `$forbiddenFunctions` is a constructor parameter the package's auto-included neon never wires. Measured:
+`symplify/phpstan-rules`' `composer.json` names four files under `extra.phpstan.includes` —
+`services/services.neon`, `ctor-rules.neon`, `mock-rules.neon`, `phpstan-extensions.neon` — and the two
+configs that *do* register this rule with a list of forbidden functions, `configurable-rules.neon` and
+`rector-rules.neon`, are in neither. They are opt-in, which is what `--from-config` exists for.
+
+So the refusal now surfaces the wiring rather than the accessor, and it is a permanent answer about the
+package rather than a gap here: nothing in this transpiler can supply a value the package does not ship.
+
+##### The blunt version was written first, and three rules got worse
+
+Resolving *every* argument before refusing seemed like the same reordering a keyed `foreach` already makes
+for what it iterates. It is not, because the deeper refusal is not automatically the better one:
+
+| rule | before | with every argument resolved |
+|:--|:--|:--|
+| `ForbiddenFuncCallRule` | `->normalizeConfig()` | the wiring answer |
+| `NoSetClassServiceDuplicationRule` | `Strings::match()` | `Scalar_String` |
+| `ClassDependencyTreeRule` | `ParametersAcceptorSelector::selectFromArgs()` | `unknown local $scope` |
+| `DataProviderDeclarationRule`'s second need | `->find()` | `unknown local $resolvedPhpDocBlock` |
+
+`unknown local $scope` names this transpiler's state and no obstacle at all, which is the failure the
+census's own header warns about from the other direction. So the reordering is now conditional on the
+argument reading a property from one of three named sets — wired to an undeclared container parameter,
+computed in the constructor from outside the pure set, or not wired at all. Those three are facts about the
+package; everything else keeps the accessor.
+
+The check asks the property sets rather than matching the refusal's text, so a reworded message cannot
+silently stop matching. Exactly one census line moves, and the mutation is that line: without the condition,
+the four rows above move together.
