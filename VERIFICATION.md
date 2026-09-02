@@ -3312,3 +3312,52 @@ mago's argument reader unwraps the spread's value fine, so the count stayed 7 wi
 So the fix rests on the original's own `continue` rather than on a measurement, and it is marked that way
 here. The refinement binding keeps the bail deliberately: that one is only reached where the guard it
 replaces exits with one, so what the original does is already known there.
+
+#### A closure filter, carried as the question it asks
+
+`NoConstructorOverrideRule` emits, taking `symplify/phpstan-rules` to 57 of 89. Its two needs were both
+things the vocabulary declines by name, and one of them is a shape five rules in the corpus write.
+
+**`fast_has_parent_constructor($scope)`** is three questions in one — the scope is in a class-like, that
+class is not anonymous, and its parent declares `__construct`. All three already had readings, so the helper
+is a composition rather than new machinery. The anonymous case comes for free: mago models an anonymous class
+as its own node kind, so the enclosing-class read answers nothing for one, which is the `false` the original
+returns there with a comment saying so.
+
+**A `findFirst()` whose filter is a closure** is the interesting one. `NodeFinder::find()` and `findFirst()`
+with a closure were refused by name, and rightly — a closure over php-parser nodes is not something an
+emitted plugin can hold. But the *closure* is not what the rule is asking. This one reads
+
+```php
+$nodeFinder->findFirst($node->stmts, function (Node $node): bool {
+    if (! $node instanceof StaticCall) {
+        return false;
+    }
+
+    return fast_node_named($node->name, '__construct');
+});
+```
+
+which is "is there a `parent::__construct()` anywhere in this body". The narrowing guard says which kind to
+search for and the comparison says which name, so both are *read* rather than translated, and the emission is
+one call: `Support::firstNodeNamed($context, Support::bodyOf($context, $node), ['StaticMethodCall'],
+'__construct')`.
+
+The recogniser is deliberately one shape wide — a one-parameter closure with no `use`, a single narrowing
+guard whose body is `return false;`, and a final `fast_node_named()` comparison. Everything else refuses with
+what it saw, and the census shows that working: `ServicesExcludedDirectoryMustExistRule` moves from
+`access path outside the vocabulary: ->find()` to `find() with a closure filter, whose every match the rule
+then walks — only findFirst() reduces to one question`. The first named the accessor; the second names why
+this rule is not the next one.
+
+##### Both halves measured on the committed pair
+
+| the plugin | findings |
+|:--|:--|
+| as emitted | the silent override only |
+| with the search finding nothing | that, plus the override that *does* call the parent |
+| with the parent-constructor test forced true | plus both classes whose parent declares no constructor |
+
+The good examples are the two routes the rule allows and the port has to keep apart: a `parent::__construct()`
+call in the body, and a parent that declares no constructor at all — one class with no parent and one
+extending a marker.

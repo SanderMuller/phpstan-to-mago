@@ -67,6 +67,16 @@ final class Support
     }
 
     /** Whether a class named by a value is one PHP itself ships. {@see Reflect::namedClassIsBuiltin} */
+    /**
+     * Whether the class around this node extends one that declares a constructor.
+     *
+     * The question `fast_has_parent_constructor($scope)` asks. See {@see Reflect::parentHasConstructor()}.
+     */
+    public static function parentHasConstructor(NodeAnalysisContext $context, Part|Node|null $node): bool
+    {
+        return Reflect::parentHasConstructor($context, $node);
+    }
+
     public static function namedClassIsBuiltin(NodeAnalysisContext $context, ?string $name): bool
     {
         return Reflect::namedClassIsBuiltin($context, $name);
@@ -180,6 +190,23 @@ final class Support
     public static function nthExpression(NodeAnalysisContext $context, Part|Node|null $subject, int $index): ?Part
     {
         return Calls::nthExpression($context, $subject, $index);
+    }
+
+    /**
+     * The first node of one of these kinds below this one whose member name is the one written, or null.
+     *
+     * What a `findFirst()` with a closure filter asks, carried as a question. See
+     * {@see Calls::firstNodeNamed()}.
+     *
+     * @param list<string> $kinds
+     */
+    public static function firstNodeNamed(
+        NodeAnalysisContext $context,
+        Part|Node|null $within,
+        array $kinds,
+        string $name,
+    ): ?Part {
+        return Calls::firstNodeNamed($context, $within, $kinds, $name);
     }
 
     /** The class side of a class-constant access or static call. */

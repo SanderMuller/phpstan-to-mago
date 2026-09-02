@@ -28,6 +28,7 @@ use PhpParser\Node\Expr\BinaryOp\Smaller;
 use PhpParser\Node\Expr\BinaryOp\SmallerOrEqual;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\Cast\Bool_;
+use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
@@ -6582,6 +6583,69 @@ final readonly class Translator
         return $this->context->inLoop ? 'continue;' : $this->context->backend->bail();
     }
 
+    /**
+     * The node class and the member name a search closure filters on, or a refusal naming what it saw.
+     *
+     * The one closure shape the vocabulary carries: narrow to a node class, then compare that node's member
+     * name against a literal. `fn (Node $node) => $node instanceof StaticCall && fast_node_named($node->name,
+     * '__construct')` written as two guards is what the corpus writes, so the guards are read rather than
+     * translated — a closure is not something the emitted plugin can hold.
+     *
+     * Anything else refuses. A filter that asks a second question, walks further, or captures a variable by
+     * reference is a different feature, and naming it here is what tells the next reader which.
+     *
+     * @return array{string, string} the php-parser node class the filter narrows to, and the name it compares
+     */
+    private function kindAndNameFilteredFor(Expr $closure, int $line): array
+    {
+        if (! $closure instanceof Closure || count($closure->params) !== 1 || $closure->uses !== []) {
+            throw new Refusal('a search filter that is not a plain one-parameter closure', $line);
+        }
+
+        $statements = $closure->stmts;
+        if (count($statements) !== 2
+            || ! $statements[0] instanceof If_
+            || ! $statements[0]->cond instanceof BooleanNot
+            || ! $statements[0]->cond->expr instanceof Instanceof_
+            || ! $statements[0]->cond->expr->class instanceof Name
+            || ! $this->returnsFalse($statements[0]->stmts)
+            || ! $statements[1] instanceof Return_
+            || ! $statements[1]->expr instanceof Expr
+        ) {
+            throw new Refusal(
+                'a search filter that is not a narrowing guard followed by one name comparison',
+                $line,
+            );
+        }
+
+        $named = $statements[1]->expr;
+        if (! $named instanceof FuncCall
+            || ! $named->name instanceof Name
+            || $named->name->toString() !== 'fast_node_named'
+            || count($named->getArgs()) !== 2
+        ) {
+            throw new Refusal('a search filter whose comparison is not `fast_node_named()`', $line);
+        }
+
+        return [
+            $this->resolveClassName($statements[0]->cond->expr->class),
+            $this->rawStringLiteral($named->getArgs()[1]->value, $line),
+        ];
+    }
+
+    /**
+     * Whether a branch's whole body is `return false;`, which is a search filter declining a node.
+     *
+     * @param array<Stmt> $statements
+     */
+    private function returnsFalse(array $statements): bool
+    {
+        return count($statements) === 1
+            && $statements[0] instanceof Return_
+            && $statements[0]->expr instanceof ConstFetch
+            && strtolower($statements[0]->expr->name->toString()) === 'false';
+    }
+
     /** The variable a statement assigns, when it is a plain assignment to a simple name. */
     private function assignedName(Stmt $stmt): ?string
     {
@@ -9288,6 +9352,17 @@ final readonly class Translator
         // `$node instanceof Identifier || $node instanceof Name ? $node->toString() === $desiredName : false`,
         // which is the question `NamingHelper::isName()` asks and `nameEquals()` already answers. Two call sites
         // in the corpus, and the refusal named it correctly — it just had no row.
+        // `fast_has_parent_constructor($scope)` — the same file's helper for "the class this sits in extends
+        // one with a constructor". Three questions in one, and all three already have readings; the row is
+        // here rather than the vocabulary's collaborator table because it is a global function.
+        if ($name === 'fast_has_parent_constructor' && count($args) === 1) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a parent constructor test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return 'Support::parentHasConstructor($context, $node)';
+        }
+
         if ($name === 'fast_node_named' && count($args) === 2) {
             $literal = $this->stringLiteral($args[1]->value, $expr->getStartLine());
 
@@ -10622,6 +10697,51 @@ final readonly class Translator
                 $descriptor['as'] = $kinds[0];
             } elseif (isset(Vocabulary::FIELD_GROUPS[$searched])) {
                 $descriptor['as'] = Vocabulary::FIELD_GROUPS[$searched];
+            }
+
+            return $descriptor;
+        }
+
+        // `$nodeFinder->findFirst(<subtree>, <closure>)` — a subtree search whose filter is a closure.
+        // Recognised as a question rather than translated as a closure: the filter's own narrowing guard says
+        // which kind to search for and its comparison says which name, and any other closure shape is
+        // refused by name below. `NoConstructorOverrideRule` asks it of a constructor body — "is there a
+        // `parent::__construct()` anywhere in here".
+        if ($expr instanceof MethodCall
+            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['findFirst', 'find'], true)
+            && count($expr->getArgs()) === 2
+        ) {
+            $finder = $this->resolve($expr->var, $line);
+            if ($finder['kind'] !== 'node-finder') {
+                throw new Refusal("findFirst() on a {$finder['kind']} rather than on a node finder", $line);
+            }
+
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a subtree search, which only the PHP target carries', $line);
+            }
+
+            if ($this->memberName($expr->name, $expr->getStartLine()) === 'find') {
+                throw new Refusal(
+                    'find() with a closure filter, whose every match the rule then walks — only findFirst() '
+                    . 'reduces to one question',
+                    $line,
+                );
+            }
+
+            [$searched, $name] = $this->kindAndNameFilteredFor($expr->getArgs()[1]->value, $line);
+            $kinds = Vocabulary::SEARCHABLE[$searched]
+                ?? throw new Refusal("no searchable node kind mapped for {$searched}", $line);
+
+            $within = $this->subtreeArgument($expr->getArgs()[0]->value, $line);
+            $descriptor = [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'found-node',
+                'php' => 'Support::firstNodeNamed($context, ' . $within . ", ['" . implode("', '", $kinds)
+                    . "'], " . $this->context->backend->bytes($name) . ')',
+            ];
+
+            if (count($kinds) === 1) {
+                $descriptor['as'] = $kinds[0];
             }
 
             return $descriptor;

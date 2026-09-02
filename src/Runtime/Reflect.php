@@ -76,6 +76,27 @@ final class Reflect
     }
 
     /**
+     * Whether the class around this node extends one that declares a constructor.
+     *
+     * `fast_has_parent_constructor($scope)` in `symplify/phpstan-rules`, which is three questions in one:
+     * the scope is in a class-like, that class is not anonymous, and its parent declares `__construct`.
+     *
+     * The anonymous case answers false rather than being skipped, because the original returns false there
+     * with a comment saying so — and here it comes for free: mago models an anonymous class as its own node
+     * kind, so the enclosing-class read answers nothing for one.
+     *
+     * The parent's *own* declaration is not the question. `getDeclaringMethod()` walks the hierarchy, so a
+     * grandparent's constructor answers true here, which is what `ClassReflection::hasConstructor()` does on
+     * PHPStan's side: it asks the parent's reflection, and that reflection inherits.
+     */
+    public static function parentHasConstructor(NodeAnalysisContext $context, Part|Node|null $node): bool
+    {
+        $parent = self::parentClassName($context, Declares::enclosingClassName($context, $node));
+
+        return self::methodExists($context, $parent, '__construct');
+    }
+
+    /**
      * Whether a class named by a value is one PHP itself ships, which is `ClassReflection::isBuiltin()`.
      *
      * The flag, not the file. A class mago resolves out of a vendor directory is `BUILTIN false` and
