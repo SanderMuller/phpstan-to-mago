@@ -2917,8 +2917,11 @@ check passing. No rule in the corpus reached it, which is why nothing had said s
 for a hook-node, and the four rules that write it hook a function-like.
 
 `internal/probe-class-members.php` measures the layer instead of assuming it. Every member of a class, a
-trait and an enum sits under exactly one `ClassLikeMember` child of the declaration, holding exactly one of
-`Method`, `Property`, `ClassLikeConstant`, `TraitUse` or `EnumCase`, in source order. `classMembers()`
+trait, an enum and an interface sits under exactly one `ClassLikeMember` child of the declaration, holding
+exactly one of `Method`, `Property`, `ClassLikeConstant`, `TraitUse` or `EnumCase`, in source order. All four
+declarations are in the probe because the emitted hook targets `Class`, `Enum` and `Interface`: this rule
+never reaches an interface, since `declarationKindIs('Class')` guards ahead of the loop, but the next rule
+walking a body will be handed one. `classMembers()`
 unwraps that level and returns all of them, including the trait use the rule then skips through its own
 `continue` — filtering here would make the port skip it for a different reason.
 

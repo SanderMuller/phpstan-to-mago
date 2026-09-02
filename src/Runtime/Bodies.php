@@ -15,9 +15,10 @@ use Mago\Sdk\Syntax\NodeKind;
  * limit. They are a group by the call graph rather than by subject: each walks a class-like's children looking
  * for members, and the only thing any of them calls out to is {@see Members::methodName()}.
  *
- * The layer is measured in `internal/probe-class-members.php`. Every member of a class, a trait or an enum is
- * wrapped in one `ClassLikeMember` holding exactly one declaration, which is why {@see self::classMembers()}
- * unwraps a single level and the kind-specific readers look one deeper.
+ * The layer is measured in `internal/probe-class-members.php`, over a class, a trait, an enum and an
+ * interface. Every member of all four is wrapped in one `ClassLikeMember` holding exactly one declaration,
+ * which is why {@see self::classMembers()} unwraps a single level and the kind-specific readers look one
+ * deeper.
  */
 final class Bodies
 {

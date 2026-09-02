@@ -145,7 +145,8 @@ constant set, comparisons on strings and integers, closures with their declared 
 with its count. The larger pieces:
 
 - Helpers inlined from the rule, a trait or a parent class.
-- The enclosing class: hierarchy, namespace, and its members with visibility, attributes and docblocks.
+- The enclosing class: hierarchy, namespace, its methods with visibility, attributes and docblocks, and the
+  mixed member list a rule walks to ask each member what it is.
 - Reflection at the use site, from Mago's codebase metadata.
 - A producer handing a `{...}` record to a consumer, including one produced inside a loop.
 - A collaborator that decides *and* builds the findings. The guards still come from the rule; only the
