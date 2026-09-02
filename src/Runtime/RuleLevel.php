@@ -23,9 +23,9 @@ use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
  * what makes them the smallest portable unit.
  *
  * Ported for the boolean-condition family. Not for the arithmetic one: this holds `passesAsBoolean` and
- * nothing else, and `OperatorRuleHelper::isValidForArithmeticOperation` is not ported anywhere. Said the
- * other way here until the census was read — those six rules also refuse on a shape, an `if`/`elseif` chain
- * binding two operands per branch, so they need two things rather than this one.
+ * nothing else. `OperatorRuleHelper::isValidForArithmeticOperation` is here too now, and its own docblock
+ * carries the table it was measured from; the six binary rules still refuse on a shape as well, an
+ * `if`/`elseif` chain binding two operands per branch, so the helper alone does not reach them.
  *
  * ## The flags are the behaviour, so they are arguments
  *
@@ -137,18 +137,20 @@ final class RuleLevel
      *
      * The sibling of {@see passesAsBoolean()}, and a shorter port than the original reads, because two of
      * PHPStan's four branches never engage. The whole answer was measured on a real PHPStan run over one
-     * operand of every shape — `internal/probe-arithmetic-atomics.php` has the mago side, and the run that
-     * produced the table is reproducible with the neon in that file's docblock:
+     * operand of every shape. `internal/probe-arithmetic-atomics.php` runs both halves of that measurement —
+     * the atomics mago gives at the position the rule reads, and the real rule over the same file at each
+     * flag setting — and prints this:
      *
-     * | operand                    | reports when                        |
-     * |:---------------------------|:------------------------------------|
-     * | `bool`, `null`             | always                              |
-     * | `int\|bool`                | `checkUnionTypes`                   |
+     * | operand                    | reports when                           |
+     * |:---------------------------|:---------------------------------------|
+     * | `bool`, `true`, `null`     | always                                 |
+     * | `int\|bool`                | `checkUnionTypes`                      |
      * | `?int`                     | `checkNullables` and `checkUnionTypes` |
-     * | everything else measured   | never                               |
+     * | everything else measured   | never                                  |
      *
      * "Everything else" is `int`, `float`, `string`, `numeric-string`, `array`, a named object, a bare
-     * `object`, `mixed`, `int|string` and `int|float`. `checkThisOnly` silences all of it, the same way it
+     * `object`, `mixed`, `int|string` and `int|float`. A literal `true` reports like any other boolean,
+     * because its atomic is a boolean scalar carrying a refinement rather than a kind of its own. `checkThisOnly` silences all of it, the same way it
      * silences the boolean family, which is why the gate sets it false for both.
      *
      * ## Why two of the original's branches are not here

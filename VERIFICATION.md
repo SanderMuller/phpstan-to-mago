@@ -2988,12 +2988,13 @@ was not ported: the helper reaches `RuleLevelHelper::findTypeToCheck()`, which t
 part was already solved for the boolean family. What was left was the criteria, and the source could not be
 read for it: PHPStan ships as a phar here, so `toNumber()` cannot be traced.
 
-So it was measured instead. One file holds a unary `+` per operand shape, and the real rule ran over it at
-each flag combination:
+So it was measured instead, and `internal/probe-arithmetic-atomics.php` runs the measurement rather than
+describing it: one file with a unary `+` per operand shape, the atomics mago gives at the position the rule
+reads, and the real rule over the same file at each flag setting. It prints this:
 
 | operand | reports when |
 |:--|:--|
-| `bool`, `null` | always |
+| `bool`, `true`, `null` | always |
 | `int\|bool` | `checkUnionTypes` |
 | `?int` | `checkNullables` **and** `checkUnionTypes` |
 | `int`, `float`, `string`, `numeric-string`, `array`, a named object, a bare `object`, `mixed`, `int\|string`, `int\|float` | never |

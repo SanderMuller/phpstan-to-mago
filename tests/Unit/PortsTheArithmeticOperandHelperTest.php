@@ -38,6 +38,11 @@ final class PortsTheArithmeticOperandHelperTest extends TestCase
         $this->assertFalse(RuleLevel::isValidForArithmeticOperation(Type::null(), false, false, false));
         $this->assertFalse(RuleLevel::isValidForArithmeticOperation(Type::bool(), true, true, false));
         $this->assertFalse(RuleLevel::isValidForArithmeticOperation(Type::null(), true, true, false));
+
+        // A literal `true` reports as well, and the real run names it `true given`. Its atomic is a boolean
+        // scalar carrying a refinement, so it needs no branch of its own — asserted because that is a fact
+        // about mago's model rather than about this function.
+        $this->assertFalse(RuleLevel::isValidForArithmeticOperation(Type::true(), false, false, false));
     }
 
     /**
