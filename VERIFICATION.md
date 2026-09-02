@@ -3562,3 +3562,52 @@ whose two inner elements have no key, are found by the same search, and are skip
 
 The good examples also hold both class-constant spellings — `FormEvents::PRE_SUBMIT`, which the dead guards
 name, and two of the project's own — because that pair of cases is what the fold asserts.
+
+#### What the two Rust targets are, measured rather than assumed
+
+A peer session read Mago's source at the pinned tag and settled a question this repository had been carrying
+in its table rather than in evidence. The `phpOnly` flag on 33 `Vocabulary::HOOKS` rows was read here as
+"Mago's Rust side has its own hook trait for this and nothing in the corpus has pinned down which" — and the
+`Trait_` row already recorded one case where that suspicion was wrong. It was wrong more widely than that.
+
+**Eight of the trait names in this table do not exist.** Mago 1.47.4 registers thirteen: `ProgramHook`,
+`StatementHook`, `ExpressionHook`, `FunctionCallHook`, `MethodCallHook`, `StaticMethodCallHook`,
+`NullSafeMethodCallHook`, `ClassDeclarationHook`, `InterfaceDeclarationHook`, `TraitDeclarationHook`,
+`EnumDeclarationHook`, `FunctionDeclarationHook`, `IssueFilterHook`. `ForeachHook`, `PropertyAccessHook`,
+`ClosureHook`, `StaticPropertyAccessHook`, `AttributeHook`, `MethodPartialApplicationHook`,
+`StaticMethodPartialApplicationHook` and `ClassLikeMemberHook` are inventions of this table. Two more rows —
+`NullSafeMethodCallHook` and `ProgramHook` — name traits that *do* exist and are flagged PHP-only anyway,
+which is the `Trait_` mistake twice more.
+
+**The hook surface was never the wall.** `after_expression` fires inside `Expression::analyze()` before the
+variant dispatch, so one registration sees every expression at every depth, and this repository's own
+shipping output has been proving it: `tests/Fixtures/expected-rust/ForbiddenStaticConstFetchRule.rs` is a
+non-`phpOnly` `ExpressionHook` that narrows to `Access::ClassConstant`, a variant two levels down. So "one
+Rust hook trait registers one kind", written in this table as the reason the multi-kind rows are PHP-only,
+is contradicted by the snapshot next to it.
+
+**What the wall actually is.** Mago has two plugin systems. `crates/analyzer/src/plugin/` is the internal
+trait registry its four bundled providers use, reached by a compile-time static list, and a rule there ships
+only by being compiled into a fork. `crates/analyzer/src/external/` is the supported external API: it
+dispatches by `NodeKind` over the extension-host protocol, with per-kind data requirements as bitflags. That
+second one is what this tool's PHP target already targets — confirmed from this side, where
+`Mago\Sdk\Analyzer\FileAnalysisRequirement` has exactly the six cases the external API names
+(`ExpressionTypes`, `TargetExpressionTypes`, `ReceiverType`, `ArgumentTypes`, `TargetSubtree`, `SourceText`),
+and an emitted plugin declares `getTargets(): NodeKind[]` beside them.
+
+So the PHP target uses the intended API rather than a fallback, and the two Rust targets aim at a registry
+that was never meant to be reached from outside. That explains, with no deficiency on Mago's side, both of
+the things this repository could not account for: the emitted Rust calls a `support` module nobody has
+written, and the Rust tiers emit no install path where the PHP tier emits a `mago.toml` snippet. One run,
+same rules, `--out` side by side:
+
+    php/      generated/  generated-php/  mago.toml.snippet  worker.php
+    analyzer/ generated/
+
+The README now says which target installs. What has *not* been decided is whether a Rust tier should exist
+at all: since `external/` dispatches by `NodeKind` — the same model the PHP target uses — a Rust tier behind
+a fork would be a second implementation of the same thing, and that is a question for the maintainer rather
+than a fact to record.
+
+Nothing was raised upstream, and nothing should be: the ask that looked warranted for a day would have
+requested an API that already exists.

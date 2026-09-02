@@ -13,7 +13,7 @@ vendor/bin/phpstan-to-mago --survey vendor/hihaho/phpstan-rules/src
 ```
 
 ```
---target=php|analyzer|linter  a Mago SDK plugin (default), or Rust to compile into Mago
+--target=php|analyzer|linter  a Mago plugin (default), or Rust for a fork of Mago itself
 --out=DIR                     where to write, defaulting to the current directory
 --survey                      report what each rule would need, writing nothing
 --from-config=DIR             the rules a project's PHPStan registers, not the ones its
@@ -23,8 +23,14 @@ vendor/bin/phpstan-to-mago --survey vendor/hihaho/phpstan-rules/src
 `--help` lists the rest.
 
 Each target writes into its own subdirectory of `--out`, plus a `generated/manifest.json` naming each rule's
-identifier, message formats and constructor defaults. Counts name their target, because a rule can render as
-Rust and be refused as PHP. A plugin depends on this package and on `carthage-software/mago`:
+identifier, message formats and constructor defaults.
+
+**Only the `php` target installs.** It emits a worker plus the `mago.toml` snippet that registers it, against
+Mago's supported plugin API. The two Rust targets emit source for the registry Mago's own bundled plugins
+use, which has no registration path from outside Mago's tree and calls a `support` module that does not
+exist. Every count here is the `php` target — a rule can render as Rust and be refused as PHP.
+
+A plugin depends on this package and on `carthage-software/mago`:
 
 ```php
 final class ForbiddenStaticConstFetchRule implements Plugin, NodeAnalysisHook
@@ -47,8 +53,6 @@ final class ForbiddenStaticConstFetchRule implements Plugin, NodeAnalysisHook
 ```
 
 ## What this is for
-
-A transpiled rule runs the same check natively:
 
 - A package that transpiles completely needs no PHPStan at all. `tomasvotruba/cognitive-complexity` and
   `phpstan/phpstan-deprecation-rules` are each one rule short of that.
@@ -116,8 +120,7 @@ A rule using a construct outside the vocabulary is refused, naming the construct
 ```
 
 Read the refusals next to the `emitted` count, never the count alone. Two checks produce them: the generator
-refuses a construct it cannot translate, and the backend refuses an operand it could not render. `--unverified`
-opts out of one refusal, for an aggregate whose numbers do not yet agree, and nothing sits behind it today.
+refuses a construct it cannot translate, and the backend refuses an operand it could not render.
 
 ## What it can translate
 
@@ -183,9 +186,8 @@ The same 20 rules on both engines, so this measures what the port costs. Best of
 | PHPStan, cold | 5.86s | 33.13s |
 | PHPStan, warm result cache | 0.59s | 0.56s |
 
-Against a cold run that is 23x faster on wall clock and 29x cheaper on CPU. Against a warm PHPStan it is 2.4x
-faster on wall clock but costs roughly twice the CPU, because `mago analyze` has no result cache. Quote a
-speedup with the baseline it came from.
+Against a cold run: 23x faster on wall clock, 29x cheaper on CPU. Against a warm PHPStan: 2.4x faster on
+wall clock, roughly twice the CPU, because `mago analyze` has no result cache.
 
 ## Requirements
 
