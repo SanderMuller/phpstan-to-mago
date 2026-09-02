@@ -118,17 +118,25 @@ final class CorpusDifferential
     ) {}
 
     /**
-     * The consumer's own PHPStan configuration.
+     * The consumer's own PHPStan configuration, in whichever of the three spellings it wrote it.
      *
-     * `phpstan.neon` when it exists, `phpstan.neon.dist` otherwise. Both spellings are ordinary — a project
-     * that gitignores the first and commits the second is the common Laravel skeleton — and hardcoding the
-     * first made every such project unmeasurable, which is most of the ones on hand.
+     * All three are ordinary. A project that gitignores `phpstan.neon` and commits `phpstan.neon.dist` is the
+     * common Laravel skeleton, and hardcoding the first made every such project unmeasurable. Symfony's own
+     * skeleton writes `phpstan.dist.neon` instead, with the suffix in the middle — `symfony/demo` uses it,
+     * and the missing spelling is what made the first Symfony corpus here look like a project with no PHPStan
+     * configuration at all.
+     *
+     * The last candidate is returned unchecked, so a consumer with none of them fails where PHPStan itself
+     * would rather than silently against a default configuration.
      */
     public static function configurationOf(string $consumerRoot): string
     {
-        $candidate = $consumerRoot . '/phpstan.neon';
+        $written = array_values(array_filter(
+            ['/phpstan.neon', '/phpstan.neon.dist', '/phpstan.dist.neon'],
+            static fn (string $spelling): bool => is_file($consumerRoot . $spelling),
+        ));
 
-        return is_file($candidate) ? $candidate : $consumerRoot . '/phpstan.neon.dist';
+        return $consumerRoot . ($written[0] ?? '/phpstan.neon.dist');
     }
 
     /**

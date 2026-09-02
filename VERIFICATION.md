@@ -2659,3 +2659,40 @@ plugin takes as constructor parameters at PHPStan's own defaults. Forcing both o
 So a number quoted for this family without its flags is not a number. That is why the plugin takes them
 rather than baking them, and why `--parameter=` exists: one corpus run twice answers what two corpora at
 different settings cannot.
+
+##### A fourth corpus, and the first Symfony one
+
+`symfony/demo` at `--depth 1`, 49 files of application code: **70 agreeing, 0 original-only, 0 port-only**.
+Small, and it is the only Symfony application measured here, which is what it is for. Four identifiers get
+outside evidence for the first time — `symfony.noClassLevelRoute` (3), `symfony.requireInvokableController`
+(12), `symfony.requiredIsGrantedEnum` (3) and `phpunit.avoidAnyExpects` (1) — taking the exercised union
+across the four corpora from **33 to 37 of 81**.
+
+`symfony.noRoutingPrefix` still reads nothing. The demo routes by attribute, so it has no
+`import(..)->prefix(..)` for the rule to find, and its example pair remains its only evidence.
+
+Reproducing it takes four config lines and a build step, all in the *corpus*, none in this repository:
+
+```neon
+includes:
+    - vendor/symplify/phpstan-rules/config/services/services.neon
+    - vendor/symplify/phpstan-rules/config/symfony-rules.neon
+    - vendor/symplify/phpstan-rules/config/doctrine-rules.neon
+parameters:
+    excludePaths:
+        - config/reference.php (?)
+```
+
+then `php bin/console cache:warmup`, because `phpstan-symfony` reads the compiled container XML and aborts
+without it. The services file is separate from the family files on purpose in that package, and the
+differential registers every emitted rule as a service — so a consumer that includes some families and not
+the shared collaborators cannot be measured until it includes them.
+
+Two harness gaps surfaced getting there, both real and both fixed:
+
+- **`phpstan.dist.neon` was unreadable.** The resolver knew `phpstan.neon` and `phpstan.neon.dist`; Symfony's
+  own skeleton writes the suffix in the middle. The first Symfony corpus looked like a project with no PHPStan
+  configuration at all.
+- **PHPStan's optional marker crashed the exclusion test.** `config/reference.php (?)` parses as a
+  `Nette\Neon\Entity`, not a string, and `absolute()` took a TypeError. The marker says nothing about the
+  corpus, so the path is unwrapped and kept.
