@@ -74,34 +74,6 @@ final class Calls
         return null;
     }
 
-    /**
-     * The first node of one of these kinds below this one whose member name is the one written, or null.
-     *
-     * `$nodeFinder->findFirst($stmts, fn (Node $node) => $node instanceof StaticCall && $node->name == 'x')`
-     * — a subtree search whose filter is a closure. The closure is not something the vocabulary can carry,
-     * so the *question* is carried instead: the kind comes from the closure's own narrowing guard and the
-     * name from its comparison, and the transpiler refuses any other closure shape by name.
-     *
-     * The name is compared the way {@see selectorIs()} compares one, which is the reading the same rules
-     * already get for `fast_node_named($node->name, ..)`.
-     *
-     * @param list<string> $kinds
-     */
-    public static function firstNodeNamed(
-        NodeAnalysisContext $context,
-        Part|Node|null $within,
-        array $kinds,
-        string $name,
-    ): ?Part {
-        foreach (Tree::findKind($context, $within, $kinds) as $found) {
-            if (self::selectorIs(self::selector($context, $found), $name)) {
-                return $found;
-            }
-        }
-
-        return null;
-    }
-
     /** The class side of a class-constant access or static call. */
     public static function classPart(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {

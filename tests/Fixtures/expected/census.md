@@ -202,8 +202,8 @@ REFUSE  NoReturnSetterMethodRule
 EMIT    NoRouteTrailingSlashPathRule
 EMIT    NoRoutingPrefixRule
 REFUSE  NoServiceAutowireDuplicateRule
-        assignment value outside the vocabulary: a search filter that is not a narrowing guard followed by one name comparison
-        needs: assignment value outside the vocabulary: a search filter that is not a narrowing guard followed by one name comparison
+        assignment value outside the vocabulary: a search filter that needs a bind-arg statement, whose position decides the answer: it would run before the guards written above it
+        needs: assignment value outside the vocabulary: a search filter that needs a bind-arg statement, whose position decides the answer: it would run before the guards written above it
 EMIT    NoServiceSameNameSetClassRule
 REFUSE  NoSetClassServiceDuplicationRule
         expected a string literal

@@ -192,23 +192,6 @@ final class Support
         return Calls::nthExpression($context, $subject, $index);
     }
 
-    /**
-     * The first node of one of these kinds below this one whose member name is the one written, or null.
-     *
-     * What a `findFirst()` with a closure filter asks, carried as a question. See
-     * {@see Calls::firstNodeNamed()}.
-     *
-     * @param list<string> $kinds
-     */
-    public static function firstNodeNamed(
-        NodeAnalysisContext $context,
-        Part|Node|null $within,
-        array $kinds,
-        string $name,
-    ): ?Part {
-        return Calls::firstNodeNamed($context, $within, $kinds, $name);
-    }
-
     /** The class side of a class-constant access or static call. */
     public static function classPart(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {

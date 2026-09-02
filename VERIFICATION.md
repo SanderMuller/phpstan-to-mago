@@ -3438,3 +3438,63 @@ as a loop with a break. It would serve both filters here and
 it needs statement kinds neither backend has yet.
 
 No emitted byte changes, and one census line moves.
+
+#### The general closure filter, and the emission it refused to make
+
+Last step's closure-filter recogniser carried one shape — a narrowing guard and one name comparison — and
+said so in its refusal. The general form replaces it: the first guard is read for the kinds to search, the
+closure's parameter is bound to the found node, and the *rest of the body* goes through the same
+`predicateFromStatements()` that folds an inlined helper's guard chain. That method was extracted from
+`predicateFrom()` for it, and the extraction is byte-neutral across all three targets.
+
+`NoConstructorOverrideRule` now emits the loop rather than a one-shape helper call, and agrees with PHPStan
+on the same pair:
+
+```php
+$found_0 = null;
+foreach (Support::findKind($context, Support::bodyOf($context, $node), ['StaticMethodCall']) as $candidate_0) {
+    if ((Support::selectorIs(Support::selector($context, $candidate_0), '__construct'))) {
+        $found_0 = $candidate_0;
+        break;
+    }
+}
+```
+
+`Support::firstNodeNamed()` went with the shape it existed for. Nothing referenced it once the general form
+landed, and an unexercised helper is what this repository deletes.
+
+##### And then it emitted something wrong, twice
+
+`NoServiceAutowireDuplicateRule` reached the end of the chain and emitted. Reading the emission caught two
+faults in one shape, both of the kind that parses, loads, runs, and answers about the wrong thing.
+
+**The filter's statements landed outside the loop.** Its second filter binds `$node->getArgs()[0]` off its
+own parameter, and the binding was hoisted to the caller's position — where it read `$candidate_0`, the
+*first* search's loop variable, left over from a loop that had already finished. Splicing the statements into
+the loop body fixed that reading and the numbering hid nothing further: the counter no longer goes back, so
+two searches in one rule are `found_0`/`candidate_0` and `found_1`/`candidate_1`.
+
+**And then the position itself was the fault.** The original's filter reads
+
+```php
+if (! NamingHelper::isName($node->name, 'autowire')) { return false; }
+if ($node->getArgs() === []) { return true; }
+$firstArg = $node->getArgs()[0];
+```
+
+so a call with *no* arguments is answered `true` before anything reads argument zero. Inside the loop the
+binding still runs first, and its own null exit answers for that call — the port went silent on `autowire()`
+with no arguments, which is the common case the rule is about. A guard chain folds into an expression, and an
+expression has no place to put a statement that must not run yet.
+
+So the splice was written, run, read, and replaced by a refusal: a filter has to fold to one expression, and
+one that needs a statement is refused with the statement's kind and the reason its position matters. The
+census carries that sentence, and the mutation is the sentence — disabling the check emits the rule again.
+
+The `break` is load-bearing too: without it the loop keeps going and the *last* match wins where the original
+takes the first. It is measured by absence rather than by findings, since no example holds two matching
+nodes in one subtree — stated here rather than claimed.
+
+`NoConstructorOverrideRule` stays the only rule through this path, so the count does not move: 97 of 169.
+What moved is that the next filter shape is a refusal about expression positions rather than about the
+recogniser's own narrowness.

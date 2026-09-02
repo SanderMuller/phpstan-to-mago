@@ -2419,11 +2419,26 @@ final readonly class Translator
             return '(' . $this->translateCondition($memoised) . ')';
         }
 
+        return $this->predicateFromStatements($method->stmts ?? [], $method->name->toString() . '()', $line);
+    }
+
+    /**
+     * A guard chain folded into one boolean expression.
+     *
+     * Split from {@see predicateFrom()} when a *closure* needed the same walk: a search filter is a body of
+     * `if (..) { return false; }` guards ending in a boolean, which is the shape this already folded for an
+     * inlined helper. The label is what a refusal names, and a closure has no name of its own — its caller
+     * supplies one.
+     *
+     * @param array<Stmt> $statements
+     */
+    private function predicateFromStatements(array $statements, string $label, int $line): string
+    {
         /** @var list<array{string, string}> condition and the value returned when it holds */
         $guards = [];
         $final = null;
 
-        foreach ($method->stmts ?? [] as $statement) {
+        foreach ($statements as $statement) {
             if ($final !== null) {
                 throw new Refusal('statements after the return of an inlined helper', $statement->getStartLine());
             }
@@ -2492,8 +2507,8 @@ final readonly class Translator
             // and the file was a different one each time, which cost a reader a wrong conclusion about what
             // the refusal was asking for.
             throw new Refusal(sprintf(
-                'statement in %s() outside the vocabulary: %s',
-                $method->name->toString(),
+                'statement in %s outside the vocabulary: %s',
+                $label,
                 $statement instanceof If_ ? $this->ifShape($statement) : $this->describe($statement),
             ), $statement->getStartLine());
         }
@@ -6591,53 +6606,135 @@ final readonly class Translator
     }
 
     /**
-     * The node class and the member name a search closure filters on, or a refusal naming what it saw.
+     * A subtree search whose filter is a closure, emitted as the loop that filter describes.
      *
-     * The one closure shape the vocabulary carries: narrow to a node class, then compare that node's member
-     * name against a literal. `fn (Node $node) => $node instanceof StaticCall && fast_node_named($node->name,
-     * '__construct')` written as two guards is what the corpus writes, so the guards are read rather than
-     * translated — a closure is not something the emitted plugin can hold.
+     * The closure itself cannot be carried — an emitted plugin holds no php-parser callbacks — but its
+     * *body* is a guard chain, which is the shape {@see predicateFromStatements()} already folds for an
+     * inlined helper. So the first guard is read for the kind to search, the parameter is bound to the found
+     * node, and the rest of the body becomes the loop's condition:
      *
-     * Anything else refuses. A filter that asks a second question, walks further, or captures a variable by
-     * reference is a different feature, and naming it here is what tells the next reader which.
+     * ```php
+     * $found_x = null;
+     * foreach (Support::findKind($context, <within>, ['StaticMethodCall']) as $candidate_x) {
+     *     if (<the rest of the closure>) {
+     *         $found_x = $candidate_x;
+     *         break;
+     *     }
+     * }
+     * ```
      *
-     * @return array{string, string} the php-parser node class the filter narrows to, and the name it compares
+     * The first guard has to be the narrowing one, because that is what says which kinds to search. Anything
+     * else refuses by name — a closure that captures by reference, takes no parameter, or opens with a
+     * question rather than a narrowing is a different feature and says so.
+     *
+     * @return Descriptor
      */
-    private function kindAndNameFilteredFor(Expr $closure, int $line): array
+    private function searchFilteredByAClosure(Expr $closure, string $within, int $line): array
     {
         if (! $closure instanceof Closure || count($closure->params) !== 1 || $closure->uses !== []) {
             throw new Refusal('a search filter that is not a plain one-parameter closure', $line);
         }
 
+        $parameter = $closure->params[0]->var;
+        if (! $parameter instanceof Variable || ! is_string($parameter->name)) {
+            throw new Refusal('a search filter whose parameter is not a simple variable', $line);
+        }
+
         $statements = $closure->stmts;
-        if (count($statements) !== 2
-            || ! $statements[0] instanceof If_
-            || ! $statements[0]->cond instanceof BooleanNot
-            || ! $statements[0]->cond->expr instanceof Instanceof_
-            || ! $statements[0]->cond->expr->class instanceof Name
-            || ! $this->returnsFalse($statements[0]->stmts)
-            || ! $statements[1] instanceof Return_
-            || ! $statements[1]->expr instanceof Expr
+        $narrowing = $statements[0] ?? null;
+        if (! $narrowing instanceof If_
+            || ! $narrowing->cond instanceof BooleanNot
+            || ! $narrowing->cond->expr instanceof Instanceof_
+            || ! $narrowing->cond->expr->class instanceof Name
+            || ! $this->returnsFalse($narrowing->stmts)
         ) {
             throw new Refusal(
-                'a search filter that is not a narrowing guard followed by one name comparison',
+                'a search filter that does not open by narrowing to one node class, which is what says '
+                . 'which kinds to search for',
                 $line,
             );
         }
 
-        $named = $statements[1]->expr;
-        if (! $named instanceof FuncCall
-            || ! $named->name instanceof Name
-            || $named->name->toString() !== 'fast_node_named'
-            || count($named->getArgs()) !== 2
-        ) {
-            throw new Refusal('a search filter whose comparison is not `fast_node_named()`', $line);
+        $searched = $this->resolveClassName($narrowing->cond->expr->class);
+        $kinds = Vocabulary::SEARCHABLE[$searched]
+            ?? throw new Refusal("no searchable node kind mapped for {$searched}", $line);
+
+        // Numbered, and the counter never goes back: two searches in one rule are two loops, and reusing a
+        // name across them hides a leak rather than saving one. A filter may hold a search of its own too.
+        $slot = 'found_' . $this->context->searchDepth;
+        $candidate = 'candidate_' . $this->context->searchDepth;
+        ++$this->context->searchDepth;
+
+        $saved = $this->context->locals[$parameter->name] ?? null;
+        $this->context->locals[$parameter->name] = [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'found-node',
+            'key' => '$' . $candidate,
+            'php' => '$' . $candidate,
+            ...(count($kinds) === 1 ? ['as' => $kinds[0]] : []),
+        ];
+
+        // A filter has to fold to one expression, and this is where that is checked. Its statements cannot
+        // simply be moved into the loop: `NoServiceAutowireDuplicateRule`'s second filter reads
+        // `$node->getArgs()[0]` *after* an earlier guard has already answered `true` for a call with no
+        // arguments, so the binding's own null exit would answer for that call first — the port went silent
+        // on `autowire()` with no arguments, which is the common case. Moving them inside the loop was
+        // written, run, and read before this replaced it.
+        $before = count($this->context->lines);
+
+        try {
+            $condition = $this->predicateFromStatements(
+                array_slice($statements, 1),
+                'a search filter',
+                $line,
+            );
+        } finally {
+            if ($saved === null) {
+                unset($this->context->locals[$parameter->name]);
+            } else {
+                $this->context->locals[$parameter->name] = $saved;
+            }
         }
 
-        return [
-            $this->resolveClassName($statements[0]->cond->expr->class),
-            $this->rawStringLiteral($named->getArgs()[1]->value, $line),
+        foreach (array_slice($this->context->lines, $before) as $statement) {
+            if ($statement instanceof Stm) {
+                throw new Refusal(sprintf(
+                    'a search filter that needs a %s statement, whose position decides the answer: it would '
+                    . 'run before the guards written above it',
+                    $statement->kind,
+                ), $line);
+            }
+        }
+
+        $found = 'Support::findKind($context, ' . $within . ", ['" . implode("', '", $kinds) . "'])";
+        $this->context->lines[] = new Stm('declare-null', ['target' => $slot], $this->context->indent);
+        $this->context->lines[] = new Stm('foreach-open', ['iterable' => $found, 'variable' => $candidate], $this->context->indent);
+        $this->context->indent += 4;
+
+        // `if (<condition>) { .. }` rather than the inverted guard, because a guard is a statement that
+        // *exits* — {@see refuseAHoistedExit()} reads the kind, and a loop hoisted into a predicate position
+        // would have refused on its own filter. The rendering is the same shape either way.
+        $this->context->lines[] = new Stm('if-open', ['condition' => $condition], $this->context->indent);
+        $this->context->indent += 4;
+        $this->context->lines[] = new Stm('assign', ['target' => $slot, 'value' => '$' . $candidate], $this->context->indent);
+        $this->context->lines[] = new Stm('break', [], $this->context->indent);
+        $this->context->indent -= 4;
+        $this->context->lines[] = new Stm('block-close', [], $this->context->indent);
+        $this->context->indent -= 4;
+        $this->context->lines[] = new Stm('block-close', [], $this->context->indent);
+
+        $descriptor = [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'found-node',
+            'key' => '$' . $slot,
+            'php' => '$' . $slot,
         ];
+
+        if (count($kinds) === 1) {
+            $descriptor['as'] = $kinds[0];
+        }
+
+        return $descriptor;
     }
 
     /**
@@ -10781,23 +10878,11 @@ final readonly class Translator
                 );
             }
 
-            [$searched, $name] = $this->kindAndNameFilteredFor($expr->getArgs()[1]->value, $line);
-            $kinds = Vocabulary::SEARCHABLE[$searched]
-                ?? throw new Refusal("no searchable node kind mapped for {$searched}", $line);
-
-            $within = $this->subtreeArgument($expr->getArgs()[0]->value, $line);
-            $descriptor = [
-                'rust' => self::PHP_ONLY,
-                'kind' => 'found-node',
-                'php' => 'Support::firstNodeNamed($context, ' . $within . ", ['" . implode("', '", $kinds)
-                    . "'], " . $this->context->backend->bytes($name) . ')',
-            ];
-
-            if (count($kinds) === 1) {
-                $descriptor['as'] = $kinds[0];
-            }
-
-            return $descriptor;
+            return $this->searchFilteredByAClosure(
+                $expr->getArgs()[1]->value,
+                $this->subtreeArgument($expr->getArgs()[0]->value, $line),
+                $line,
+            );
         }
 
         // `getDocComment()` on a declaration. Mago hands comments back as file-level trivia, so the helper both

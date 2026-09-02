@@ -577,6 +577,14 @@ final class TranslationContext
      */
     public array $hookKinds = [];
 
+    /**
+     * How many closure-filtered searches are open, so their locals do not collide.
+     *
+     * A filter may itself contain one, and both would otherwise bind `$found` — the same reason every
+     * other generated name here carries a counter.
+     */
+    public int $searchDepth = 0;
+
     /** The php-parser class the rule's `getNodeType()` names, which decides how many kinds the hook covers. */
     public string $nodeType = '';
 

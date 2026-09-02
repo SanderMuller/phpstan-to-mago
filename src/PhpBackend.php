@@ -68,6 +68,10 @@ final class PhpBackend implements Backend
                 return "{$pad}\${$this->name($name)} = Support::collectedValue(\$item, {$a['index']});\n";
             case 'declare-list':
                 return "{$pad}\${$this->name($a['target'])} = [];\n";
+            case 'declare-null':
+                return "{$pad}\${$this->name($a['target'])} = null;\n";
+            case 'break':
+                return "{$pad}break;\n";
             case 'append':
                 return "{$pad}\${$this->name($a['target'])}[] = {$this->checked($a['value'])};\n";
             case 'check-call':
