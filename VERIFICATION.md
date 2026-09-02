@@ -2608,3 +2608,54 @@ would have started in the wrong place.
 the `throw` its first guard uses as an assertion.
 
 No emitted byte changed, across all seven packages and all three targets.
+
+#### Three corpora, and the denominator they leave behind
+
+The last several steps added rules whose only evidence was their own example pair. Three differentials, all
+reproducible from projects on the measuring machine:
+
+| corpus | files | identifiers | exercised | agree | only-original | only-port |
+|:--|--:|--:|--:|--:|--:|--:|
+| `hihaho`, symplify | 2932 | 56 | 14 | 1001 | 0 | 0 |
+| `rector-src`, symplify + phpunit + deprecation | 2872 | 61 | 8 | 88 | 0 | 0 |
+| `finconnect`, strict-rules + phpunit + deprecation + complexity + type-coverage | 1895 | 25 | 15 | 1294 | 420 | 1346 |
+
+`rector-src` is worth its own row for what it adds rather than its total: four identifiers no other corpus
+reaches — `rector.avoidFeatureSetAttributeInRector`, `rector.noOnlyNullReturnInRefactor`,
+`rector.preferDirectIsName` and `symplify.stringFileAbsolutePathExists` — all at zero divergence.
+
+**Read the denominator first.** Across the three there are 81 distinct identifiers and **33 are exercised**.
+Of the `symfony.*` and `doctrine.*` rules, exactly one is: `symfony.noControllerMethodInjection`. None of the
+three corpora is a Symfony application, so fifteen Symfony rules and three Doctrine ones have their example
+pair and nothing else — `symfony.noRoutingPrefix`, added two steps ago, among them. A `0 0 0` row for those
+is not agreement.
+
+##### Every divergence on `finconnect` has one of two named causes
+
+**1340 of the 1346 port-only findings are a configured threshold against a package default**, and the
+consumer's own neon says so: `cognitive_complexity: class: 517, function: 484` where the package ships 40 and
+9 (389 findings), and `type_coverage: param: 83.2, property: 86.4` where it ships 99 for both (951). A
+generated plugin carries its own package's defaults deliberately, so it reports more. Same cause as the
+`php-parser` table above, three orders of magnitude louder because this consumer's thresholds are set to
+where its code currently is.
+
+**The remaining 6, and the 420 original-only, are the boolean-condition family.** Traced rather than assumed:
+the port describes `$this->request->get('form')` as `scalar|array|null` and reports, where PHPStan is silent.
+Both directions come from the same gap — PHPStan reaches Laravel through larastan, mago through nothing — and
+`--extension-host=` is the control for it, already measured on another corpus at 33 of 42 false positives
+closed by one fifteen-line return-type provider.
+
+##### The flags are a real axis, measured rather than assumed
+
+`BooleanRuleHelper::passesAsBoolean` depends on `checkNullables` and `checkUnionTypes`, which the emitted
+plugin takes as constructor parameters at PHPStan's own defaults. Forcing both on for *both* engines with
+`--parameter=`, on the same corpus and the same package:
+
+| | agree | only-original | only-port |
+|:--|--:|--:|--:|
+| the family at PHPStan's defaults | 679 | 417 | 6 |
+| the same family, both flags forced on | 853 | 469 | 10 |
+
+So a number quoted for this family without its flags is not a number. That is why the plugin takes them
+rather than baking them, and why `--parameter=` exists: one corpus run twice answers what two corpora at
+different settings cannot.
