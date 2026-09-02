@@ -384,6 +384,13 @@ final class EmittedRuleFiresTest extends TestCase
             // The guards ahead of it establish the index; the good examples hold each case they filter — a
             // named argument, a spread, a non-bool, a call past the end of the parameter list.
             'an index produced behind guards is never null once those guards have run',
+            // Not proof by construction — proof by the pair. The dropped test is
+            // `! $implement instanceof FullyQualified`, and `directInterfaceNames()` answers names the
+            // codebase resolved, so no item can be the unresolved spelling the guard skips.
+            // `GoodPhp81Rector` implements the interface and is silent, `BadPhp80Rector` does not and is
+            // reported, so both sides of the loop the fold sits in are measured against real PHPStan.
+            'every name in this list arrived resolved: the codebase resolved it, and PHPStan resolves names '
+            . 'before a rule sees the tree, so there is no unresolved spelling for the loop to skip',
         ];
 
         $unproven = [];

@@ -941,7 +941,7 @@ final readonly class Translator
      *
      * @param Descriptor $base
      *
-     * @return array{rust: string, kind: string, key?: string, php?: string}|null
+     * @return array{rust: string, kind: string, key?: string, php?: string, as?: string}|null
      */
     private function resolvePropertyDeclaration(array $base, string $property, string $key, int $line): ?array
     {
@@ -1015,6 +1015,10 @@ final readonly class Translator
                 'rust' => self::PHP_ONLY,
                 'kind' => 'class-names',
                 'key' => $key,
+                // The provenance, so a loop over this list can say what its items already are. Metadata
+                // resolved every name here, which is what makes `instanceof FullyQualified` hold for each of
+                // them and what makes the comparison after it fold case.
+                'as' => 'metadata-name',
                 'php' => 'Support::directInterfaceNames($context, $node)',
             ];
         }
@@ -3755,7 +3759,12 @@ final readonly class Translator
             throw new Refusal('an error helper returns something other than null or a built rule error', $stmt->getStartLine());
         }
 
-        if ($this->context->reportConditions === []) {
+        // Inside a loop it is not a fall-through at all: a method's last statement cannot be in a loop body,
+        // so a `return []` there is a real exit and the bail has to be emitted. `PhpUpgradeImplements-
+        // MinPhpVersionInterfaceRule` is the shape — `foreach (..) { ..guards..; return []; }` means "one of
+        // them matched, so there is nothing to report" — and without this the loop body ended up empty and
+        // the rule reported every class the loop existed to let through.
+        if ($this->context->reportConditions === [] || $this->context->loopDepth > 0) {
             $this->context->lines[] = new Stm('bail', [], $this->context->indent);
         }
     }
@@ -5556,6 +5565,16 @@ final readonly class Translator
                     . 'answering a question — so there is nothing here to translate into guards',
                     $this->memberLabel($stmt->expr->name),
                 ), $stmt->getStartLine());
+            }
+
+            // `return [];` inside a loop is not the trailing fall-through this falls through to. A method's
+            // last statement cannot sit in a loop body, so it is a real exit: "one of them matched, stop".
+            // `PhpUpgradeImplementsMinPhpVersionInterfaceRule` writes exactly that, and without the bail the
+            // loop body came out empty and the rule reported every class the loop existed to let through.
+            if ($this->context->loopDepth > 0 && $this->isReturnEmptyArray([$stmt])) {
+                $this->context->lines[] = new Stm('bail', [], $this->context->indent);
+
+                return;
             }
 
             return; // the emitted rule reports once all guards pass
@@ -7814,6 +7833,24 @@ final readonly class Translator
             throw new Refusal("instanceof {$wanted} on an extends clause", $expr->getStartLine());
         }
 
+        // `$implement instanceof FullyQualified` over a list of names the *codebase* resolved. The blanket
+        // refusal below is right about the general case and wrong about this one: the question is whether the
+        // name arrives resolved, and every entry in `directParentInterfaces` does — metadata resolves them,
+        // and so does PHPStan's own name resolution before a rule sees the tree. So the test holds for every
+        // item the loop can see.
+        //
+        // Sound only because the comparison that follows reads the same resolved list. Metadata answers
+        // lowercased, which the name comparison already folds for a metadata-sourced list — that fold is what
+        // keeps this from being the approximation the refusal below warns about.
+        if ($wanted === FullyQualified::class && $subject['kind'] === 'class-name'
+            && ($subject['as'] ?? null) === 'metadata-name'
+        ) {
+            return $this->alwaysHolds(
+                'every name in this list arrived resolved: the codebase resolved it, and PHPStan resolves '
+                . 'names before a rule sees the tree, so there is no unresolved spelling for the loop to skip',
+            );
+        }
+
         // `$node->class instanceof FullyQualified` is *not* a question about the spelling, which is what it
         // reads like. PHPStan resolves names before a rule sees the tree, so an imported `Guard::keep()`
         // arrives as a `FullyQualified` node holding the resolved name — measured, not reasoned about: a
@@ -8991,6 +9028,20 @@ final readonly class Translator
 
             return 'Support::nameIs(Support::textOf(' . $this->operand($subject) . '), '
                 . $this->context->backend->bytes($literal) . ')';
+        }
+
+        // A name metadata handed over is lowercased, so the fold {@see holdsMetadataNames()} applies to a
+        // whole list applies to one item of it too. Without this the comparison read
+        // `$implement === 'Rector\\VersionBonding\\Contract\\MinPhpVersionInterface'` against a
+        // lowercased left side — never true, so the loop it guards never exited and the rule reported every
+        // class the loop existed to let through. The fold is not the rule's own here; it is what makes the
+        // metadata spelling comparable to the written one at all.
+        if ($subject['kind'] === 'class-name' && ($subject['as'] ?? null) === 'metadata-name') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a metadata name comparison, which only the PHP target carries', $line);
+            }
+
+            return $this->context->backend->call('nameIs', [$this->operand($subject), $this->context->backend->bytes($literal)]);
         }
 
         return match ($subject['kind']) {

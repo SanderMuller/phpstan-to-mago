@@ -391,3 +391,11 @@ class RoutingConfigurator
         return new CollectionConfigurator();
     }
 }
+
+namespace Rector\VersionBonding\Contract;
+
+/** The contract `PhpUpgradeImplementsMinPhpVersionInterfaceRule` asks a version-specific rule to carry. */
+interface MinPhpVersionInterface
+{
+    public function provideMinPhpVersion(): int;
+}

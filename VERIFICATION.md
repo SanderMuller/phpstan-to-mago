@@ -2696,3 +2696,46 @@ Two harness gaps surfaced getting there, both real and both fixed:
 - **PHPStan's optional marker crashed the exclusion test.** `config/reference.php (?)` parses as a
   `Nette\Neon\Entity`, not a string, and `absolute()` took a TypeError. The marker says nothing about the
   corpus, so the path is unwrapped and kept.
+
+#### A refusal that was right about the general case and wrong about this one
+
+`PhpUpgradeImplementsMinPhpVersionInterfaceRule` refused on `instanceof FullyQualified`, and that refusal's
+own text says why it could be answered: "the test is about resolution rather than spelling". Its loop walks
+`$node->implements`, which resolves to `directParentInterfaces` — names the *codebase* resolved. So no item
+can be the unresolved spelling the guard skips, and the guard folds.
+
+Sound only because the comparison behind it reads the same resolved list, so the `->implements` descriptor now
+carries its provenance and the name comparison folds case for a metadata-sourced item — the fold
+`holdsMetadataNames()` already applied to a whole list, applied to one item of it.
+
+##### Reading the emission caught two bugs the fold would otherwise have shipped
+
+The first emission was plausible and wrong twice over, and both were latent gaps rather than anything this
+rule introduced:
+
+- **The comparison was case-sensitive against a lowercased left side.** `$implement === 'Rector\Version-
+  Bonding\Contract\MinPhpVersionInterface'` can never hold, so the loop never exited.
+- **`return [];` inside the loop emitted nothing.** A trailing `return []` is the fall-through of collected
+  report conditions and correctly emits no bail; one inside a loop body is a real exit, and a method's last
+  statement cannot sit in a loop. Without the bail the loop body came out empty.
+
+Either one alone makes the rule report every class the loop exists to let through.
+
+##### Measured on real code, not argued
+
+`rules/Php8*` in `rector-src` holds 38 classes that match both of the rule's guards — the fully qualified
+name ends in `Rector` and carries a `\Php80\`-shaped segment — and all 38 implement the contract. Both
+engines are silent on them, so the differential row reads `0 / 0 / 0` and by the usual standard says nothing.
+
+Here it says something, because the mutation says what the row cannot. Over `rules/Php81`, nine of those
+classes:
+
+| the emitted plugin | findings |
+|:--|--:|
+| as emitted | 0 |
+| with the case fold taken out | 9 |
+| with the loop's bail taken out | 9 |
+
+So the guards were reached nine times and the exit fired nine times, on code nobody wrote for this. That is
+the difference between a `0 0 0` row that is a pass and one that is silence — and the only thing that
+separates them is having checked that the guards ran.

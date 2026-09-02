@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 50 of 89 portable rules the package registers emit, 1 covered by the engine, 38 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 51 of 89 portable rules the package registers emit, 1 covered by the engine, 37 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -252,9 +252,7 @@ REFUSE  PhpUpgradeDowngradeRegisteredInSetRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
         needs: assignment value outside the vocabulary: unknown local $configFilePath
         needs: $errorMessage is not a message built in this rule
-REFUSE  PhpUpgradeImplementsMinPhpVersionInterfaceRule
-        instanceof FullyQualified, which PHPStan answers after its own name resolution: an imported name arrives as one too, so the test is about resolution rather than spelling and the comparison after it would have to read resolved names
-        needs: instanceof FullyQualified, which PHPStan answers after its own name resolution: an imported name arrives as one too, so the test is about resolution rather than spelling and the comparison after it would have to read resolved names
+EMIT    PhpUpgradeImplementsMinPhpVersionInterfaceRule
 REFUSE  PreferAutowireAttributeOverConfigParamRule
         not a resolvable list of strings
         needs: not a resolvable list of strings
