@@ -954,6 +954,16 @@ final class Support
         return Inheritance::extendsIs($context, $subject, $name);
     }
 
+    /**
+     * Whether the extends clause names one of these. {@see Inheritance::extendsIsOneOf}
+     *
+     * @param list<string> $names
+     */
+    public static function extendsIsOneOf(NodeAnalysisContext $context, Part|Node|null $subject, array $names): bool
+    {
+        return Inheritance::extendsIsOneOf($context, $subject, $names);
+    }
+
     public static function bytesContain(?string $haystack, string $needle): bool
     {
         return Text::bytesContain($haystack, $needle);

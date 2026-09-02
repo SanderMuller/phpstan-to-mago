@@ -2856,3 +2856,50 @@ package's own constant for both — so `symfony/demo`'s `agree 3, 0, 0` names bo
 Checked rather than assumed: none of the demo's `#[IsGranted]` attributes joins two checks, so all three
 belong to the sibling. The differential prints both rule names for a shared identifier, which is the honest
 rendering; what it cannot do is attribute per rule.
+
+#### An attribute walk that is one question, and the three fields behind it
+
+`NoListenerWithoutContractRule` refused on `->attrGroups on a hook-node`, which the vocabulary declines
+deliberately: metadata carries attribute names flattened and resolved, so answering `->attrs` and `->name`
+from that list would be three mappings pretending the tree has a shape it does not.
+
+The way past it is the one the codebase already prefers — map the *question*, not the fields. The nested walk
+
+```php
+foreach ($class->attrGroups as $attrGroup) {
+    foreach ($attrGroup->attrs as $attr) {
+        if ($attr->name->toString() === <literal>) { return true; }
+    }
+}
+```
+
+is recognised whole and becomes `Support::hasAttributeNamed()`, which `AttributeFinder::hasAttribute()`
+already reaches through the collaborator table. The literal still comes from the rule's own source, so no
+table holds the package's constant. Every part is matched against the source — both field names, the
+single-statement bodies, the `===` against a literal — so a walk asking something *else* of an attribute is
+still refused: `NoEntityOutsideEntityNamespaceRule` reads `->getParts()` off the name and is declined by the
+same recogniser.
+
+Three smaller fields behind it, each the second spelling of something already answered:
+
+- `$classMethod->params` on a method the rule found in a loop — the list `getParams()` gives.
+- `str_starts_with()` on a written type hint, through `hintName()`, which answers the resolved name
+  `$param->type->toString()` gives after PHPStan's name resolution.
+- `in_array($class->extends->toString(), [..])` on the PHP target. The `extends` arm of the membership test
+  had a Rust rendering only, so the rule refused with "operand is still Rust" — the shape the backend's own
+  refusal exists to catch.
+
+##### Both new folds are load-bearing, measured on the good example
+
+The pair carries one good case per accepted route: the attribute, the contract, an `__invoke`, a security
+parent, a form-event parameter, and a Doctrine method the sibling rule owns. Two mutations, each against the
+committed pair:
+
+| the emitted plugin | good-example findings |
+|:--|--:|
+| as emitted | 0 |
+| with the attribute question replaced by `false` | 1 |
+| with the form-event hint test replaced by `false` | 1 |
+
+`symfony/demo` reads `0 / 0 / 0` for both listener rules and says nothing about either: its listeners all
+carry the subscriber contract, which is what the rules ask for.

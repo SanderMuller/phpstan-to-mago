@@ -399,3 +399,28 @@ interface MinPhpVersionInterface
 {
     public function provideMinPhpVersion(): int;
 }
+
+namespace Symfony\Component\EventDispatcher\Attribute;
+
+/** The attribute `NoListenerWithoutContractRule` accepts in place of the subscriber contract. */
+#[\Attribute]
+final class AsEventListener
+{
+    public function __construct(public ?string $event = null) {}
+}
+
+namespace Symfony\Component\Security\Http\Firewall;
+
+/** The base `NoListenerWithoutContractRule` allows a security listener to extend. */
+abstract class AbstractListener
+{
+    public function supports(): bool
+    {
+        return true;
+    }
+}
+
+namespace Symfony\Component\Form\Event;
+
+/** A form event, whose parameter type is the last thing the rule accepts. */
+final class PreSubmitEvent {}

@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 54 of 89 portable rules the package registers emit, 1 covered by the engine, 34 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 55 of 89 portable rules the package registers emit, 1 covered by the engine, 33 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -178,10 +178,7 @@ REFUSE  NoJustPropertyAssignRule
         needs: no PHP navigation for node.var (kind expr) on a Expression node
         needs: assignment value outside the vocabulary: no PHP navigation for node.var (kind expr) on a Expression node
 EMIT    NoLeadingBackslashInNameRule
-REFUSE  NoListenerWithoutContractRule
-        no mapping for ->attrGroups on a hook-node
-        needs: no iteration mapped for ->attrGroups, which resolved to a expr, in an inlined helper
-        needs: no iteration mapped for ->params, which resolved to a expr, in an inlined helper
+EMIT    NoListenerWithoutContractRule
 ENGINE  NoMissingVariableDimFetchRule  (mago reports undefined-variable)
 REFUSE  NoMissnamedDocTagRule
         assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()

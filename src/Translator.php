@@ -500,7 +500,9 @@ final readonly class Translator
                 : "support::local_name_is_one_of({$subject['rust']}, &{$list})",
             'name-selector' => $this->context->backend->call('selector_is_one_of', [$this->operand($subject), Transpiler::$target === 'php' ? $list : '&' . $list]),
             'name-expr' => $this->nameExprIsOneOf($subject, $list),
-            'extends' => "support::extends_is_one_of(context, node, &{$list})",
+            'extends' => Transpiler::$target === 'php'
+                ? $this->context->backend->call('extends_is_one_of', ['$context', '$node', $list])
+                : "support::extends_is_one_of(context, node, &{$list})",
             'bytes', 'class-name' => $this->context->backend->call('bytes_is_one_of', [$this->operand($subject), Transpiler::$target === 'php' ? $list : '&' . $list]),
             // A method declaration's own name, once the rule has read its text. The same route the byte
             // helpers already take for it — `str_ends_with($classMethod->name->toString(), ..)` goes through
@@ -1027,6 +1029,38 @@ final readonly class Translator
                 // them and what makes the comparison after it fold case.
                 'as' => 'metadata-name',
                 'php' => 'Support::directInterfaceNames($context, $node)',
+            ];
+        }
+
+        return $this->resolveMemberField($base, $property, $key, $line);
+    }
+
+    /**
+     * A field of a *member* declaration — a method the rule found, or the property list of the hook's own.
+     *
+     * Split from {@see resolvePropertyDeclaration()} to keep it under the complexity limit, and the group is
+     * a real one: these are fields of a declaration's members, where the arms left behind are fields of the
+     * declaration itself.
+     *
+     * @param Descriptor $base
+     *
+     * @return array{rust: string, kind: string, key?: string, php?: string, as?: string}|null
+     */
+    private function resolveMemberField(array $base, string $property, string $key, int $line): ?array
+    {
+        // `$classMethod->params` on a method the rule reached in a loop. The same list `getParams()` gives —
+        // php-parser exposes both spellings and rules write both, so the field resolves to the same
+        // navigation rather than to a second reading of it.
+        if ($base['kind'] === 'method-decl' && $property === 'params') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal("a found method's parameters, which only the PHP target carries", $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'param-decls',
+                'key' => $key,
+                'php' => 'Support::declaredParams($context, ' . $this->operand($base) . ')',
             ];
         }
 
@@ -1796,6 +1830,18 @@ final readonly class Translator
      */
     private function foreachAsAny(Foreach_ $statement, int $depth = 0): string
     {
+        // `foreach ($x->attrGroups as $g) { foreach ($g->attrs as $a) { if ($a->name->toString() === <lit>) ... } }`
+        // — two loops and a comparison that together ask one question: does the declaration carry that
+        // attribute. Recognised whole rather than mapped field by field, which is what `->attrGroups` refuses
+        // to do and says so: metadata carries the names flattened and resolved, so answering `->attrs` and
+        // `->name` from that list would be three mappings pretending the tree has a shape it does not.
+        //
+        // The literal still comes from the rule's own source, so no table holds the package's constant.
+        $attribute = $this->attributeGroupsAsQuestion($statement);
+        if ($attribute !== null) {
+            return $attribute;
+        }
+
         if ($statement->byRef || $statement->keyVar instanceof Expr) {
             throw new Refusal('a foreach in an inlined helper that binds a key or a reference', $statement->getStartLine());
         }
@@ -1945,6 +1991,86 @@ final readonly class Translator
         $conditions[] = $reached;
 
         return count($conditions) === 1 ? $conditions[0] : '(' . implode(' && ', $conditions) . ')';
+    }
+
+    /**
+     * The nested attribute walk as the one question it asks, or null when the loop is not that shape.
+     *
+     * Every part is matched against the source rather than assumed: the two field names, the single-statement
+     * bodies, and the `===` against a literal. Anything else falls through to the ordinary reading, which
+     * refuses `->attrGroups` by name — so a walk that asks something *else* of an attribute is still refused
+     * rather than answered with this.
+     */
+    private function attributeGroupsAsQuestion(Foreach_ $statement): ?string
+    {
+        $groups = $statement->expr;
+        if (! $groups instanceof PropertyFetch
+            || $this->memberName($groups->name, $statement->getStartLine()) !== 'attrGroups'
+            || count($statement->stmts) !== 1
+        ) {
+            return null;
+        }
+
+        $inner = $statement->stmts[0];
+        if (! $inner instanceof Foreach_
+            || ! $inner->expr instanceof PropertyFetch
+            || $this->memberName($inner->expr->name, $inner->getStartLine()) !== 'attrs'
+            || count($inner->stmts) !== 1
+        ) {
+            return null;
+        }
+
+        $guard = $inner->stmts[0];
+        if (! $guard instanceof If_ || $guard->elseifs !== [] || $guard->else instanceof Else_) {
+            return null;
+        }
+
+        $returned = $this->soleReturn($guard->stmts);
+        if (! $returned instanceof Expr || $this->isBooleanLiteral($returned) === null) {
+            return null;
+        }
+
+        $condition = $guard->cond;
+        if (! $condition instanceof Identical) {
+            return null;
+        }
+
+        $line = $statement->getStartLine();
+        $named = $this->attributeNameRead($condition->left, $inner->valueVar);
+        if ($named === null) {
+            return null;
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('an attribute-name walk, which only the PHP target carries', $line);
+        }
+
+        $subject = $this->resolve($groups->var, $line);
+        if ($subject['kind'] !== 'hook-node') {
+            throw new Refusal("an attribute-name walk over a {$subject['kind']}", $line);
+        }
+
+        return 'Support::hasAttributeNamed($context, ' . $this->operand($subject) . ', '
+            . $this->bytesValue($condition->right, $line) . ')';
+    }
+
+    /** Whether an expression is `<the loop item>->name->toString()`, which is the attribute's resolved name. */
+    private function attributeNameRead(Expr $expr, Expr $item): bool|null
+    {
+        if (! $expr instanceof MethodCall
+            || $this->memberName($expr->name, $expr->getStartLine()) !== 'toString'
+            || $expr->getArgs() !== []
+            || ! $expr->var instanceof PropertyFetch
+            || $this->memberName($expr->var->name, $expr->getStartLine()) !== 'name'
+        ) {
+            return null;
+        }
+
+        return $expr->var->var instanceof Variable
+            && $item instanceof Variable
+            && $expr->var->var->name === $item->name
+            ? true
+            : null;
     }
 
     /** `return <a boolean literal>;` — the loop's answer for an item that reached the end of the body. */
@@ -8683,6 +8809,19 @@ final readonly class Translator
                     : $this->operand($subject);
 
                 return $this->context->backend->call($support, [$value, $needle]);
+            }
+
+            // A written type hint, once the rule has read its text. `hintName()` answers the *resolved* name,
+            // which is what `$param->type->toString()` gives after PHPStan's name resolution — so a rule
+            // testing for a namespace prefix compares against the same string the original does.
+            if (in_array($subject['kind'], ['hint', 'hint-option'], true)) {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal("{$name}() on a type hint, which only the PHP target carries", $expr->getStartLine());
+                }
+
+                $support = ['str_ends_with' => 'bytes_end_with', 'str_starts_with' => 'bytes_start_with', 'str_contains' => 'bytes_contain'][$name];
+
+                return $this->context->backend->call($support, [$this->nameText($subject, $expr->getStartLine()), $needle]);
             }
 
             throw new Refusal("{$name}() on a {$subject['kind']}", $expr->getStartLine());
