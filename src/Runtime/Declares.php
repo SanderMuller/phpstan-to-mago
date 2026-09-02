@@ -30,9 +30,6 @@ final class Declares
      */
     private static array $satisfyingUsers = [];
 
-    /** How far below a class-like to look for its members: body, then member list. */
-    private const int MEMBER_DEPTH = 3;
-
     public static function declarationKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool
     {
         $node = Tree::node($subject);
@@ -164,41 +161,6 @@ final class Declares
         return null;
     }
 
-    /**
-     * The method declarations of a class-like body, in source order.
-     *
-     * Walked rather than read off one level, because a class-like's members sit inside its body node. This is
-     * php-parser's `$classLike->getMethods()`, so it is the methods *written here* — not the ones a trait brings
-     * in, and not the inherited ones a reflection lookup would add.
-     *
-     * @return list<Part>
-     */
-    public static function classMethods(NodeAnalysisContext $context, Part|Node|null $subject): array
-    {
-        $node = Tree::node($subject);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        $out = [];
-        $walk = function (Node $parent, int $depth) use (&$walk, $context, &$out): void {
-            foreach ($context->source->getChildren($parent) as $child) {
-                if ($child->kind === NodeKind::Method) {
-                    $out[] = Tree::part($context, $child);
-
-                    continue;
-                }
-
-                if ($depth < self::MEMBER_DEPTH) {
-                    $walk($child, $depth + 1);
-                }
-            }
-        };
-        $walk($node, 0);
-
-        return $out;
-    }
-
     /** Whether a class-like declaration is written `abstract`, which is a modifier on it. */
     public static function declarationIsAbstract(NodeAnalysisContext $context, Part|Node|null $subject): bool
     {
@@ -214,55 +176,6 @@ final class Declares
         }
 
         return false;
-    }
-
-    /**
-     * One method declaration of a class-like body, by name, or null when it declares none.
-     *
-     * php-parser's `ClassLike::getMethod()`, which a rule uses to reach a method it learned the name of at
-     * analysis time — a data provider named in a docblock. Case insensitive, as PHP method names are.
-     */
-    public static function methodNamed(NodeAnalysisContext $context, Part|Node|null $classLike, ?string $name): ?Part
-    {
-        if ($name === null) {
-            return null;
-        }
-
-        foreach (self::classMethods($context, $classLike) as $method) {
-            if (strcasecmp((string) Members::methodName($method), $name) === 0) {
-                return $method;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * The property declarations of a class-like body.
-     *
-     * @return list<Part>
-     */
-    public static function classProperties(NodeAnalysisContext $context, Part|Node|null $subject): array
-    {
-        $node = Tree::node($subject);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($context->source->getChildren($node) as $member) {
-            if ($member->kind !== NodeKind::ClassLikeMember) {
-                continue;
-            }
-
-            foreach ($context->source->getChildren($member) as $child) {
-                if (in_array($child->kind->value, ['Property', 'PlainProperty', 'HookedProperty'], true)) {
-                    $out[] = Tree::part($context, $child);
-                }
-            }
-        }
-
-        return $out;
     }
 
     /** The enclosing class-like declaration's name, or null at top level. */

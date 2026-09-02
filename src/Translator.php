@@ -1788,9 +1788,21 @@ final readonly class Translator
             }
 
             // `$scope` is the analysis context on both sides, so it needs no descriptor.
-            $bound[$param->var->name] = $argument instanceof Variable && $argument->name === 'scope'
+            $descriptor = $argument instanceof Variable && $argument->name === 'scope'
                 ? ['rust' => 'context', 'kind' => 'scope']
                 : $this->resolve($argument, $line);
+
+            // What the caller's own `instanceof` established travels with the argument. The narrowing is
+            // recorded against the *caller's* variable, and the helper reads a differently named parameter, so
+            // without this the fact stops at the call: `NoProtectedClassStmtRule` tests
+            // `$classStmt instanceof ClassMethod`, hands the member to a helper taking `ClassMethod`, and the
+            // helper's `->name` read is then asked of the mixed member again.
+            $narrowed = $this->context->narrowedKinds[$this->exprKey($argument)] ?? null;
+            if ($narrowed !== null && ! isset($descriptor['as'])) {
+                $descriptor['as'] = $narrowed;
+            }
+
+            $bound[$param->var->name] = $descriptor;
         }
 
         return $bound;
@@ -6002,7 +6014,17 @@ final readonly class Translator
         }
 
         $this->context->unreachableGuard = null;
+
+        // What the guard's condition established while translating survives it only in the classic shape:
+        // `if (! $x instanceof K) { exit; }` exits where the test fails, so the code after it does see a `K`.
+        // A compound condition establishes no single kind — `! A && ! B` leaves "A or B" — and the record is
+        // rolled back to what stood before it. {@see keepNarrowingsOf()} is the same rule inside a condition.
+        $narrowings = $this->context->narrowedKinds;
         $bail = $this->stripOuterParentheses($this->translateCondition($cond));
+        if (! $this->narrowsWhenFalse($cond)) {
+            $this->context->narrowedKinds = $narrowings;
+        }
+
         if ($bail === 'false') {
             // Dropping a guard widens the rule, so it is only allowed where the guard is *provably*
             // unreachable and the translation said which proof applies. Without one, refuse: a silently
@@ -7502,7 +7524,9 @@ final readonly class Translator
         }
 
         if ($cond instanceof BooleanAnd) {
+            $narrowings = $this->context->narrowedKinds;
             $left = $this->parenthesiseDisjunction($cond->left);
+            $this->keepNarrowingsOf($cond->left, '&&', $narrowings);
 
             // Short-circuited at *translation* time, not only in the rendering. A left operand that cannot
             // hold makes the right one unreachable, and translating it anyway refuses on whatever it asks —
@@ -7518,10 +7542,75 @@ final readonly class Translator
         }
 
         if ($cond instanceof BooleanOr) {
-            return $this->combine('||', $this->translateCondition($cond->left), $this->translateCondition($cond->right));
+            $narrowings = $this->context->narrowedKinds;
+            $left = $this->translateCondition($cond->left);
+            $this->keepNarrowingsOf($cond->left, '||', $narrowings);
+
+            return $this->combine('||', $left, $this->translateCondition($cond->right));
         }
 
         return $this->translatePredicate($cond, negated: false);
+    }
+
+    /**
+     * Whether what the left operand of a connective established still holds for the right one.
+     *
+     * Short-circuit decides it. `$x instanceof K && rest` reaches `rest` only where the test held, and
+     * `! $x instanceof K || rest` only where it held as well, so those two carry the narrowing over. Every
+     * other shape rolls the record back to what it was before the left operand was translated.
+     *
+     * Only those two shapes carry, rather than a polarity rule applied recursively. A rollback loses
+     * precision and cannot invent any, and a compound operand is where the reasoning stops being local:
+     * `! A && ! B` establishes "A or B" and neither of them, which is the case this was written for.
+     *
+     * This is not the same question as what holds *after* a guard. `if (! $x instanceof K) { return; }` exits
+     * where the test fails, so the code following it does see a `K` — {@see translateGuard()} keeps that one
+     * and discards the compound conditions for the same reason as here.
+     *
+     * Found through `NoProtectedClassStmtRule`, whose `! $m instanceof ClassMethod && ! $m instanceof
+     * ClassConst && ! $m instanceof Property` guard left `Property` recorded for a member the very next line
+     * reads as a method. The read resolved, against the wrong field table.
+     *
+     * @param array<string, string> $before
+     */
+    private function keepNarrowingsOf(Expr $operand, string $connective, array $before): void
+    {
+        if ($connective === '&&' ? $this->narrowsWhenTrue($operand) : $this->narrowsWhenFalse($operand)) {
+            return;
+        }
+
+        $this->context->narrowedKinds = $before;
+    }
+
+    /**
+     * Whether an operand being *true* means every `instanceof` it recorded held.
+     *
+     * A conjunction is true only when both sides are, so a narrowing anywhere inside one holds. A disjunction
+     * is true when either side is, so neither side's narrowing is guaranteed — and a negation records the kind
+     * the subject is *not*.
+     */
+    private function narrowsWhenTrue(Expr $operand): bool
+    {
+        if ($operand instanceof BooleanAnd) {
+            return $this->narrowsWhenTrue($operand->left) || $this->narrowsWhenTrue($operand->right);
+        }
+
+        return $operand instanceof Instanceof_;
+    }
+
+    /**
+     * Whether an operand being *false* means every `instanceof` it recorded held.
+     *
+     * The mirror of {@see narrowsWhenTrue()}: `! ($x instanceof K)` is false exactly where the subject is a
+     * `K`, and a disjunction is false only when both sides are.
+     */
+    private function narrowsWhenFalse(Expr $operand): bool
+    {
+        if ($operand instanceof BooleanOr) {
+            return $this->narrowsWhenFalse($operand->left) || $this->narrowsWhenFalse($operand->right);
+        }
+
+        return $operand instanceof BooleanNot && $operand->expr instanceof Instanceof_;
     }
 
     /**
@@ -8195,11 +8284,16 @@ final readonly class Translator
     private function rememberNarrowedKind(Expr $subject, array $descriptor, string $wanted): void
     {
         $kind = Vocabulary::HOOKS[$wanted]['kind'] ?? null;
-        if ($descriptor['kind'] !== 'expr' || $kind === null || ! isset(Vocabulary::FIELDS[$kind])) {
+        if (! in_array($descriptor['kind'], self::NARROWABLE_KINDS, true)
+            || $kind === null
+            || ! isset(Vocabulary::FIELDS[$kind])
+        ) {
             return;
         }
 
-        $this->context->narrowedKinds[$this->exprKey($subject)] = $kind;
+        $key = $this->exprKey($subject);
+
+        $this->context->narrowedKinds[$key] = $kind;
     }
 
     /**
@@ -8941,6 +9035,23 @@ final readonly class Translator
         // it is a part, which is what they navigate.
         if ($subject['kind'] === 'hook-node' && $this->context->nodeKind === 'Method') {
             $subject = ['rust' => self::PHP_ONLY, 'kind' => 'method-decl', 'php' => 'Support::asPart($context, $node)'];
+        }
+
+        // A mixed class-like member keeps its modifiers at a level that depends on what it is, so the
+        // declaration helpers above do not answer for one: measured in `internal/probe-class-members.php`, a
+        // property's `Modifier` is a child of the `PlainProperty` inside it and a method's is its own. Only
+        // `protected` is mapped, because it is the only one a rule asks of a mixed member — the others refuse
+        // by name rather than reading the wrong level.
+        if ($subject['kind'] === 'class-member') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal("{$method}() on a class-like member, which only the PHP target carries", $line);
+            }
+
+            if ($method !== 'isProtected') {
+                throw new Refusal("{$method}() on a class-like member, where only isProtected() is mapped", $line);
+            }
+
+            return 'Support::memberIsProtected(' . $this->operand($subject) . ')';
         }
 
         if (! in_array($subject['kind'], ['method-decl', 'maybe-method-decl'], true)) {
@@ -10150,6 +10261,20 @@ final readonly class Translator
                     throw new Refusal('->stmts, which only the PHP target carries', $line);
                 }
 
+                // A class-like keeps members, not statements, and the two are different lists. `bodyOf()`
+                // looks for a body kind — `MethodBody`, `Block`, a loop body — and a class-like has none, so
+                // reading `$classLike->stmts` through it answered the empty list for every class: a rule that
+                // emits, runs, walks nothing and reports nothing. Measured in
+                // `internal/probe-class-members.php`: the members are `ClassLikeMember` children of the
+                // class-like itself, one declaration each.
+                if ($this->context->nodeKind === 'Class') {
+                    return [
+                        'rust' => self::PHP_ONLY,
+                        'kind' => 'class-members',
+                        'php' => 'Support::classMembers($context, ' . $this->operand($base) . ')',
+                    ];
+                }
+
                 return [
                     'rust' => self::PHP_ONLY,
                     'kind' => 'subtree',
@@ -11304,7 +11429,9 @@ final readonly class Translator
     private const array HOOK_KINDS_ALWAYS_IN_A_CLASS = ['Class', 'Interface', 'Trait', 'Enum', 'Method'];
 
     /** Node predicates only the PHP runtime carries; the Rust backends have no counterpart. */
-    private const array PHP_ONLY_PREDICATES = ['is_dir_constant', 'is_literal_string'];
+    private const array PHP_ONLY_PREDICATES = [
+        'is_dir_constant', 'is_literal_string', 'is_class_constant_declaration', 'is_property_declaration',
+    ];
 
     /**
      * Statement kinds that leave the hook, which is why an inlined predicate cannot hoist one.
@@ -11316,4 +11443,13 @@ final readonly class Translator
 
     /** Node predicates that answer from the node's kind, and so have to look it up. */
     private const array CONTEXT_PREDICATES = ['is_literal_string'];
+
+    /**
+     * Descriptor kinds an `instanceof` test narrows, so later field reads navigate the tested kind.
+     *
+     * An `expr` is the general case. A `class-member` is the mixed one: the list a class-like body gives holds
+     * methods, constants, properties and trait uses, and a rule walking it asks each what it is before
+     * reading anything off it — so the test is the only thing that says which fields the member has.
+     */
+    private const array NARROWABLE_KINDS = ['expr', 'class-member'];
 }

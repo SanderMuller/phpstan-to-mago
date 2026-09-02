@@ -22,6 +22,9 @@ use Mago\Sdk\Syntax\NodeKind;
  */
 final class Reflect
 {
+    /** The property node kinds that hold a declaration's modifiers, one level below `Property`. */
+    private const array PROPERTY_VARIANTS = [NodeKind::PlainProperty, NodeKind::HookedProperty];
+
     /**
      * Whether the codebase knows a class-like of this name.
      *
@@ -384,6 +387,46 @@ final class Reflect
     public static function methodIsStatic(?Part $method): bool
     {
         return in_array('static', self::methodModifiers($method), true);
+    }
+
+    /**
+     * Whether a class-like member is written `protected`, wherever that member keeps its modifiers.
+     *
+     * A method and a constant carry their `Modifier` children directly, and a property does not: measured in
+     * `internal/probe-class-members.php`, `protected int $p = 2;` is a `Property` wrapping a `PlainProperty`
+     * whose child the modifier is. Reading the outer node alone answers "not protected" for every protected
+     * property, which is a rule reporting nothing where the original reports.
+     *
+     * Kept apart from {@see methodIsProtected()} rather than replacing it: that one is asked of a method
+     * declaration a hook received, and every emitted plugin calling it stays on it.
+     */
+    public static function memberIsProtected(?Part $member): bool
+    {
+        return in_array('protected', self::memberModifiers($member), true);
+    }
+
+    /**
+     * A class-like member's modifiers, including the ones a property keeps one level down.
+     *
+     * Both levels are read rather than one or the other, because which level holds them is a fact about the
+     * member kind and a union needs no branch on it.
+     *
+     * @return list<string>
+     */
+    private static function memberModifiers(?Part $member): array
+    {
+        if (! $member instanceof Part) {
+            return [];
+        }
+
+        $modifiers = self::methodModifiers($member);
+        foreach ($member->children() as $child) {
+            if (in_array($child->kind, self::PROPERTY_VARIANTS, true)) {
+                $modifiers = [...$modifiers, ...self::methodModifiers($child)];
+            }
+        }
+
+        return $modifiers;
     }
 
     /** @return list<string> */

@@ -112,6 +112,35 @@ final class Members
     }
 
     /**
+     * Whether the node is a constant declaration inside a class-like.
+     *
+     * The counterpart to {@see isPropertyDeclaration()} and {@see isMethodDeclaration()}, for a rule walking
+     * a class-like's members and branching on the kind of each. `ClassLikeConstant` is the declaration —
+     * `protected const string A = 'a';` — and it holds one `ClassLikeConstantItem` per name it declares,
+     * which is the level php-parser calls `$classConst->consts`.
+     */
+    public static function isClassConstantDeclaration(Part|Node|null $subject): bool
+    {
+        $node = Tree::node($subject);
+
+        return $node instanceof Node && $node->kind === NodeKind::ClassLikeConstant;
+    }
+
+    /**
+     * Whether the node is a property declaration inside a class-like.
+     *
+     * `Property` is the outer node a class-like member holds, and the plain, hooked and promoted variants sit
+     * below it. Answering from the outer kind is what matches php-parser's `instanceof Property`, which is
+     * true for all three.
+     */
+    public static function isPropertyDeclaration(Part|Node|null $subject): bool
+    {
+        $node = Tree::node($subject);
+
+        return $node instanceof Node && $node->kind === NodeKind::Property;
+    }
+
+    /**
      * A property declaration's type hint, or null when it has none.
      *
      * The hook is handed a `Property`, which wraps a `PlainProperty` (or a hooked or promoted variant),

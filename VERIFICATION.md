@@ -2903,3 +2903,76 @@ committed pair:
 
 `symfony/demo` reads `0 / 0 / 0` for both listener rules and says nothing about either: its listeners all
 carry the subscriber contract, which is what the rules ask for.
+
+#### A class-like body is a mixed list, and the narrowing that walks it
+
+`NoProtectedClassStmtRule` refused on `no node predicate for instanceof PhpParser\Node\Stmt\ClassConst on a
+expr`, which named the shallowest of three obstacles. Adding the two predicates was five minutes; the two
+below are what the rule actually needed, and both were live defects rather than gaps.
+
+**`->stmts` on a class-like answered the empty list.** The navigation resolved through `bodyOf()`, which looks
+for a body kind — `MethodBody`, `Block`, a loop body — and a class-like has none. So a rule walking
+`$classLike->stmts` would have emitted, loaded, iterated nothing and reported nothing, with every static
+check passing. No rule in the corpus reached it, which is why nothing had said so: `->stmts` is only mapped
+for a hook-node, and the four rules that write it hook a function-like.
+
+`internal/probe-class-members.php` measures the layer instead of assuming it. Every member of a class, a
+trait and an enum sits under exactly one `ClassLikeMember` child of the declaration, holding exactly one of
+`Method`, `Property`, `ClassLikeConstant`, `TraitUse` or `EnumCase`, in source order. `classMembers()`
+unwraps that level and returns all of them, including the trait use the rule then skips through its own
+`continue` — filtering here would make the port skip it for a different reason.
+
+**A property keeps its modifiers one level down.** The same probe: `protected int $uses = 0;` is a `Property`
+wrapping a `PlainProperty`, and the `Modifier` is a child of the inner one, where a method and a constant
+carry theirs directly. `methodIsProtected()` reads the outer node's children, so it answers *not protected*
+for every protected property. `memberIsProtected()` reads both levels, and the mutation below is the
+measurement.
+
+##### The `instanceof` narrowing was recorded without its polarity
+
+The rule's loop opens with
+
+```php
+if (! $classStmt instanceof ClassMethod && ! $classStmt instanceof ClassConst && ! $classStmt instanceof Property) {
+    continue;
+}
+```
+
+Each `instanceof` recorded a narrowing for the subject, so the last one won and the member was navigated as a
+`Property` from there on. What the guard establishes is "one of these three" and neither of them.
+
+Short-circuit is the whole rule, and it was not being applied: `A && rest` and `! A || rest` reach `rest`
+only where `A` held, and `! A && rest` and `A || rest` only where it did not. `keepNarrowingsOf()` now rolls
+the record back for every shape but the two that carry, and `translateGuard()` does the same for what
+survives the guard — `if (! $x instanceof K) { return; }` keeps its narrowing, a compound condition does not.
+
+Only those two shapes carry, rather than a polarity rule applied recursively through every operand. A
+rollback loses precision and cannot invent any, so the failure direction is a refusal that names the mixed
+kind.
+
+Here the stale kind refused rather than mis-read, because `FIELDS['Property']` carries no `name` row for the
+read to land on. That is this rule's luck rather than the mechanism's: `Property` and `Method` both carry a
+`type`, so a rule reading that after the same guard would have got the answer for the wrong member kind with
+nothing to say so.
+
+##### Every new fold is measured on the committed pair
+
+The bad example holds one protected member of each kind, so each mutation moves the count by exactly the
+member it stops answering for. The good examples cover the three routes that must stay silent: an abstract
+class, `setUp()`/`tearDown()`, and a method the parent declares.
+
+| the emitted plugin | bad-example findings |
+|:--|--:|
+| as emitted | 3 |
+| with `classMembers()` returning `[]` | 0 |
+| with `memberIsProtected()` reading the outer node only | 2 |
+| with `is_class_constant_declaration` replaced by `false` | 2 |
+| with `is_property_declaration` replaced by `false` | 2 |
+| with the narrowing rollback removed | refused, so nothing to run |
+
+Both engines report the same three lines — the constant, the property and the method, each at its own line
+rather than at the class — which is what the anchor being the member and not the declaration means.
+
+**The headline counts do not move.** `symplify/phpstan-rules` registers this rule nowhere, so it is one of
+the eight the census excludes from the denominator: the package stays at 55 of 89 and the total at 89 of 169.
+What the step adds is the capability, the two defects above, and one more gated emission.

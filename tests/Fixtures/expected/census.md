@@ -189,9 +189,7 @@ EMIT    NoMockOnlyTestRule
 EMIT    NoOnlyNullReturnInRefactorRule
 EMIT    NoParentRepositoryRule
 EMIT    NoPropertyNodeAssignRule
-REFUSE  NoProtectedClassStmtRule  (the package registers it nowhere)
-        no node predicate for instanceof PhpParser\Node\Stmt\ClassConst on a expr
-        needs: no node predicate for instanceof PhpParser\Node\Stmt\ClassConst on a expr
+EMIT    NoProtectedClassStmtRule  (the package registers it nowhere)
 REFUSE  NoReferenceRule
         PhpParser\Node covers several node kinds, and this rule narrows to 8 of them with `instanceof`: AssignRef, Closure, ArrowFunction, Function_, ClassMethod, Arg, Foreach_, ArrayItem. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
         needs: guard body is neither `return []` nor `continue`, but Stmt_Return

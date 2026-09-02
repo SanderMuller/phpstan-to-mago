@@ -253,6 +253,18 @@ final class Support
         return Members::isFunctionDeclaration($subject);
     }
 
+    /** Whether the node is a constant declaration inside a class-like. */
+    public static function isClassConstantDeclaration(Part|Node|null $subject): bool
+    {
+        return Members::isClassConstantDeclaration($subject);
+    }
+
+    /** Whether the node is a property declaration inside a class-like. */
+    public static function isPropertyDeclaration(Part|Node|null $subject): bool
+    {
+        return Members::isPropertyDeclaration($subject);
+    }
+
     public static function declarationKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool
     {
         return Declares::declarationKindIs($context, $subject, $kind);
@@ -1278,7 +1290,17 @@ final class Support
      */
     public static function classMethods(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        return Declares::classMethods($context, $subject);
+        return Bodies::classMethods($context, $subject);
+    }
+
+    /**
+     * Every member a class-like body writes, in source order — php-parser's `$classLike->stmts`.
+     *
+     * @return list<Part>
+     */
+    public static function classMembers(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        return Bodies::classMembers($context, $subject);
     }
 
     /**
@@ -1361,7 +1383,7 @@ final class Support
      */
     public static function methodNamed(NodeAnalysisContext $context, Part|Node|null $classLike, ?string $name): ?Part
     {
-        return Declares::methodNamed($context, $classLike, $name);
+        return Bodies::methodNamed($context, $classLike, $name);
     }
 
     /** A method declaration's own name. */
@@ -1426,6 +1448,16 @@ final class Support
     public static function methodIsProtected(?Part $method): bool
     {
         return Reflect::methodIsProtected($method);
+    }
+
+    /**
+     * Whether a class-like member is written `protected`, wherever that member keeps its modifiers.
+     *
+     * A property keeps them one level down, so this is not {@see methodIsProtected()}.
+     */
+    public static function memberIsProtected(?Part $member): bool
+    {
+        return Reflect::memberIsProtected($member);
     }
 
     /** Whether the codebase's method is public. A method that is not found is not public. */
@@ -1666,7 +1698,7 @@ final class Support
      */
     public static function classProperties(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        return Declares::classProperties($context, $subject);
+        return Bodies::classProperties($context, $subject);
     }
 
     public static function fileEndsWith(NodeAnalysisContext $context, string $suffix): bool

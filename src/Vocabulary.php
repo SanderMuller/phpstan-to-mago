@@ -507,6 +507,10 @@ final class Vocabulary
         'subtree' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => 'Support::statementsOf($context, {rust})'],
         // The method declarations of a class-like body, one `method-decl` each.
         'method-members' => ['iter' => self::PHP_ONLY, 'item' => 'method-decl', 'phpIter' => '{rust}'],
+        // Every member of a class-like body, one `class-member` each, in source order. Kept apart from
+        // `method-members` because the list is mixed: a rule walking it asks each member what kind it is, and
+        // narrowing to a method is one of the answers rather than the shape of the list.
+        'class-members' => ['iter' => self::PHP_ONLY, 'item' => 'class-member', 'phpIter' => '{rust}'],
         // The parameters a declaration writes, one `param-decl` each. The list was produced and asked for its
         // emptiness before it was iterable: `NoControllerMethodInjectionRule` walks a controller's methods and
         // then each method's parameters, and the second loop is the one that had no reading.
@@ -946,6 +950,10 @@ final class Vocabulary
         // is what makes the same predicate serve every kind the hook registers.
         ClassMethod::class => 'is_method_declaration',
         Function_::class => 'is_function_declaration',
+        // The other two kinds a class-like member can be. Both read the member's own node kind, so both are
+        // PHP-target only, like the member list they are asked of.
+        ClassConst::class => 'is_class_constant_declaration',
+        Property::class => 'is_property_declaration',
         ArrayDimFetch::class => 'is_array_dim_fetch',
         // Both PHP-target only, and both take the context because the answer is a node kind rather than
         // anything readable from the part alone.
