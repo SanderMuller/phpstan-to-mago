@@ -2784,3 +2784,38 @@ bad cases a test of the fold rather than of the rule around it.
 
 `NoListenerWithoutContractRule`, the Symfony sibling with the same helper, moves past the same obstacle to
 `->attrGroups on a hook-node` — the class-like attribute walk this vocabulary refuses deliberately.
+
+#### A loop that ends by matching rather than by guarding
+
+`NoConstructorAndRequiredTogetherRule` refused on `a foreach in an inlined helper whose body is not a single
+guard`. Its helper is four `continue` guards and then `return true`:
+
+```php
+foreach ($class->getMethods() as $classMethod) {
+    if (! $classMethod->isPublic()) { continue; }
+    if (! $docComment instanceof Doc) { continue; }
+    if (! str_contains($docComment->getText(), '@required')) { continue; }
+    if (str_contains($docComment->getText(), 'circular')) { continue; }
+
+    return true;
+}
+```
+
+`anyBody()` required the trailing statement to be a guard of its own, so the refusal named the statement
+rather than the shape. A bare `return <the match value>` after the guards adds no condition: reaching it means
+every guard passed, which the conjunction of their negations already says.
+
+##### Both the fold and each guard behind it are measured
+
+No corpus on hand holds the shape — a `@required` public method beside a constructor — so the pair is the
+evidence, and its `GoodCircularException` exists for the guard that sits directly in front of the trailing
+return:
+
+| the emitted plugin over the pair | findings |
+|:--|--:|
+| as emitted | 2 |
+| with the `circular` conjunct removed | 3 |
+
+The third finding is `GoodCircularException`, which the original allows. So the last of the four guards
+survived the fold, which is the one a wrong reading of "the trailing statement is the guard" would have
+dropped.

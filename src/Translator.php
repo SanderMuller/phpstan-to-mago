@@ -1883,6 +1883,14 @@ final readonly class Translator
             );
         }
 
+        // A bare `return <the match value>;` after the guards: every guard passed, so this item matches and
+        // there is no further condition to add. `NoConstructorAndRequiredTogetherRule::hasAutowiredMethod()`
+        // is the shape — four `continue` guards and then `return true` — and `anyBody()` required the last
+        // statement to be a guard of its own, which named the statement rather than the shape.
+        if ($conditions !== [] && $matches === [] && $this->isMatchingReturn($last)) {
+            return count($conditions) === 1 ? $conditions[0] : '(' . implode(' && ', $conditions) . ')';
+        }
+
         $reached = $this->anyBody($last, $depth);
         if ($matches !== []) {
             $matches[] = $reached;
@@ -1893,6 +1901,14 @@ final readonly class Translator
         $conditions[] = $reached;
 
         return count($conditions) === 1 ? $conditions[0] : '(' . implode(' && ', $conditions) . ')';
+    }
+
+    /** `return <a boolean literal>;` — the loop's answer for an item that reached the end of the body. */
+    private function isMatchingReturn(Stmt $statement): bool
+    {
+        return $statement instanceof Return_
+            && $statement->expr instanceof Expr
+            && $this->isBooleanLiteral($statement->expr) !== null;
     }
 
     /** `if (<cond>) { return <a boolean literal>; }` — an item that matches, ending the loop. */
