@@ -444,3 +444,20 @@ final class ServicesConfigurator
         return $this;
     }
 }
+
+namespace Symfony\Component\EventDispatcher;
+
+/** The contract `NoStringInGetSubscribedEventsRule` narrows to. */
+interface EventSubscriberInterface
+{
+    /** @return array<string, string> */
+    public static function getSubscribedEvents(): array;
+}
+
+namespace Symfony\Component\Form;
+
+/** Named in the rule's own skip list, which the trailing `continue` makes unreachable. */
+final class FormEvents
+{
+    public const string PRE_SUBMIT = 'form.pre_submit';
+}

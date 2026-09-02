@@ -74,6 +74,32 @@ final class Calls
         return null;
     }
 
+    /**
+     * An array element's key, or null when it is written without one.
+     *
+     * php-parser gives every element an `ArrayItem` with a nullable `key`, and Mago splits the two shapes
+     * into `KeyValueArrayElement` and `ValueArrayElement` under the `ArrayElement` category node. So the
+     * question "does this element have a key" is the element's own kind here, and the key itself is the
+     * first of the two `Expression` children.
+     */
+    public static function arrayElementKey(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        $node = Tree::node($subject);
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        foreach ($context->source->getChildren($node) as $child) {
+            if ($child->kind === NodeKind::KeyValueArrayElement) {
+                return self::nthExpression($context, Tree::part($context, $child), 0);
+            }
+        }
+
+        return $node->kind === NodeKind::KeyValueArrayElement
+            ? self::nthExpression($context, $subject, 0)
+            : null;
+    }
+
     /** The class side of a class-constant access or static call. */
     public static function classPart(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {

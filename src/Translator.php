@@ -3366,6 +3366,12 @@ final readonly class Translator
             return;
         }
 
+        // A block every path of which ends the iteration, which is `if (COND) { continue; }` however many
+        // statements it holds.
+        if ($this->alwaysEndsTheIteration($stmt)) {
+            return;
+        }
+
         // `if (COND) { $flag = true; continue; }` — a flag the loop carries, set and then done with this
         // item. `NoServiceAutowireDuplicateRule` opens its loop with one: the statement that turns autowiring
         // on is not itself a finding, and every statement after it is judged differently.
@@ -6772,6 +6778,66 @@ final readonly class Translator
     }
 
     /**
+     * `if (COND) { ..; continue; }` where the block's every path ends the iteration.
+     *
+     * `NoStringInGetSubscribedEventsRule` writes six statements whose net effect is `continue`:
+     *
+     * ```php
+     * if ($arrayItem->key instanceof ClassConstFetch) {
+     *     $classConstFetch = $arrayItem->key;
+     *     if ($classConstFetch->class instanceof Expr) { continue; }
+     *     if ($classConstFetch->class->toString() === SymfonyClass::FORM_EVENTS) { continue; }
+     *     if ($classConstFetch->name instanceof Expr) { continue; }
+     *     if ($classConstFetch->name->toString() === 'class') { continue; }
+     *     continue;
+     * }
+     * ```
+     *
+     * The trailing bare `continue` is unconditional, so the four guards above it decide nothing: every path
+     * through the block ends the iteration whatever they answer. That is an upstream quirk rather than a
+     * shape worth translating — the rule skips *every* class-constant key, and the four tests read as though
+     * it skipped only some.
+     *
+     * This is an exact simplification, not an approximation, and the proof is local: the block ends in an
+     * unconditional `continue`, and every statement before it either binds a local nothing outside the block
+     * reads or is itself a guard whose only body is `continue`. A statement that could report, assign
+     * outside, or exit the rule is not accepted, so the fold cannot swallow one.
+     */
+    private function alwaysEndsTheIteration(If_ $stmt): bool
+    {
+        if ($stmt->elseifs !== [] || $stmt->else instanceof Else_ || count($stmt->stmts) < 2) {
+            return false;
+        }
+
+        $last = $stmt->stmts[count($stmt->stmts) - 1];
+        if (! $last instanceof Continue_ || $last->num instanceof Expr) {
+            return false;
+        }
+
+        foreach (array_slice($stmt->stmts, 0, -1) as $statement) {
+            $binds = $statement instanceof Expression && $statement->expr instanceof Assign;
+            $guards = $statement instanceof If_
+                && $statement->elseifs === []
+                && ! $statement->else instanceof Else_
+                && count($statement->stmts) === 1
+                && $statement->stmts[0] instanceof Continue_
+                && ! $statement->stmts[0]->num instanceof Expr;
+
+            if (! $binds && ! $guards) {
+                return false;
+            }
+        }
+
+        if (! $this->context->inLoop) {
+            throw new Refusal('a block ending in continue outside a loop', $stmt->getStartLine());
+        }
+
+        $this->translateGuard($stmt->cond, 'continue;');
+
+        return true;
+    }
+
+    /**
      * `if (COND) { $flag = <literal>; continue; }` — a flag the loop carries, and the item it was set on.
      *
      * The flag machinery already takes `if (COND) { $flag = ..; }`; the `continue` is what makes this a
@@ -8459,6 +8525,19 @@ final readonly class Translator
             }
 
             return $this->context->backend->call('is_written_name', [$this->operand($subject)]);
+        }
+
+        // `$arrayItem->key instanceof Expr` on a field php-parser types `?Expr`. There the test is the
+        // presence of the value, not its shape: an element written without a key has none, and every other
+        // element's key is an expression by construction. Kept apart from the dynamic-name arm below, which
+        // reads the same source text and asks the opposite question — the first version of this rule went
+        // through that arm and skipped exactly the string keys it exists to report.
+        if ($wanted === Expr::class && $subject['kind'] === 'expr-option') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a nullable field, which only the PHP target navigates', $expr->getStartLine());
+            }
+
+            return $this->operand($subject) . ' !== null';
         }
 
         // `$node->class instanceof Expr` — php-parser types a written class part as `Name` and anything computed

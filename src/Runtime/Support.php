@@ -192,6 +192,12 @@ final class Support
         return Calls::nthExpression($context, $subject, $index);
     }
 
+    /** An array element's key, or null when it is written without one. */
+    public static function arrayElementKey(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        return Calls::arrayElementKey($context, $subject);
+    }
+
     /** The class side of a class-constant access or static call. */
     public static function classPart(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {

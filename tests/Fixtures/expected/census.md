@@ -72,7 +72,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 57 of 89 portable rules the package registers emit, 1 covered by the engine, 31 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 58 of 89 portable rules the package registers emit, 1 covered by the engine, 30 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -212,9 +212,7 @@ REFUSE  NoSetClassServiceDuplicationRule
         needs: access path outside the vocabulary: ->prettyPrintExpr()
         needs: access path outside the vocabulary: Strings::after()
         needs: $errorMessage is not a message built in this rule
-REFUSE  NoStringInGetSubscribedEventsRule
-        assignment value outside the vocabulary: no searchable node kind mapped for PhpParser\Node\ArrayItem
-        needs: assignment value outside the vocabulary: no searchable node kind mapped for PhpParser\Node\ArrayItem
+EMIT    NoStringInGetSubscribedEventsRule
 REFUSE  NoTestMocksRule  (the package registers it nowhere)
         access path outside the vocabulary: Expr_New
         needs: access path outside the vocabulary: Expr_New

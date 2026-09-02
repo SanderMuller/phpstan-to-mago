@@ -3498,3 +3498,67 @@ nodes in one subtree — stated here rather than claimed.
 `NoConstructorOverrideRule` stays the only rule through this path, so the count does not move: 97 of 169.
 What moved is that the next filter shape is a refusal about expression positions rather than about the
 recogniser's own narrowness.
+
+#### An array element's key, and four guards the rule never reaches
+
+`NoStringInGetSubscribedEventsRule` emits, taking `symplify/phpstan-rules` to 58 of 89. Three things, and two
+of them are about the same trap: a php-parser field's *nullability* changing what a test means.
+
+**A searchable kind for `ArrayItem`.** The rule walks every element of a `getSubscribedEvents()` return.
+`ArrayElement` is Mago's category node, and searching for it rather than for the keyed and unkeyed variants
+beneath keeps one search where php-parser has one class.
+
+**`->key` is nullable, and that is a different question.** php-parser gives every element an `ArrayItem` with
+a `?Expr` key, so `! $arrayItem->key instanceof Expr` asks "is there a key at all". The vocabulary already
+had an `instanceof Expr` arm — written for `$node->class instanceof Expr`, where the field is `Name|Expr` and
+the question is "is the class dynamic" — and the first emission of this rule went straight through it:
+
+    if (!(! Support::isName(Support::arrayElementKey($context, $array_item)))) { continue; }
+
+which is the *opposite* test. A string key is not a name node, so `! isName` held, the guard passed, and the
+rule would have reported... except that the same reading also passes for an element with no key at all. So
+the kind now says which field this is — `expr-option`, the way `hint-option` already marks a nullable hint —
+and the nullable arm answers `!== null`.
+
+**And the four guards the rule cannot reach.** Its `ClassConstFetch` branch is six statements whose net
+effect is `continue`:
+
+```php
+if ($arrayItem->key instanceof ClassConstFetch) {
+    $classConstFetch = $arrayItem->key;
+    if ($classConstFetch->class instanceof Expr) { continue; }
+    if ($classConstFetch->class->toString() === SymfonyClass::FORM_EVENTS) { continue; }
+    if ($classConstFetch->name instanceof Expr) { continue; }
+    if ($classConstFetch->name->toString() === 'class') { continue; }
+    continue;
+}
+```
+
+The trailing bare `continue` is unconditional, so those four tests decide nothing — the rule skips *every*
+class-constant key, and the tests read as though it skipped only some. That is an upstream quirk, and the
+fold is an exact simplification rather than an approximation: the proof is local, since every statement above
+the `continue` either binds a local nothing outside the block reads or is itself a guard whose only body is
+`continue`. A statement that could report, assign outside, or leave the rule is not accepted.
+
+##### The pair had to be widened before it could see the difference
+
+Both folds are load-bearing, and finding the second one's evidence took a correction. The bad example — a
+`'kernel.request' => 'onRequest'` key — reports identically with the key typed as a plain `expr` or as an
+`expr-option`, so it separates nothing. The case that does is the *priority* shape every real subscriber
+writes:
+
+```php
+AnotherEvent::class => ['onAnother', 10],
+```
+
+whose two inner elements have no key, are found by the same search, and are skipped by the original on
+`! $arrayItem->key instanceof Expr`.
+
+| the plugin | findings |
+|:--|:--|
+| as emitted | the string key only |
+| with `->key` typed as a plain `expr` | that, plus a false positive on the keyless priority element |
+| with the always-continue fold removed | refuses |
+
+The good examples also hold both class-constant spellings — `FormEvents::PRE_SUBMIT`, which the dead guards
+name, and two of the project's own — because that pair of cases is what the fold asserts.

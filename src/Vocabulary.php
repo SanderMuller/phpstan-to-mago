@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago;
 
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Attribute;
 use PhpParser\Node\AttributeGroup;
 use PhpParser\Node\Expr;
@@ -251,6 +252,11 @@ final class Vocabulary
         FuncCall::class => ['FunctionCall'],
         New_::class => ['Instantiation'],
         String_::class => ['LiteralString'],
+        // An array literal's elements. `ArrayElement` is the category node, and searching for it rather than
+        // for the keyed and unkeyed variants beneath keeps one search where php-parser has one class:
+        // `NoStringInGetSubscribedEventsRule` walks every element of a `getSubscribedEvents()` return and
+        // asks each whether it has a key.
+        ArrayItem::class => ['ArrayElement'],
         ClassLike::class => ['Class', 'Interface', 'Trait', 'Enum'],
     ];
 
@@ -390,6 +396,12 @@ final class Vocabulary
         // this is the same navigation from the node the hook fired for.
         'AttributeList' => [
             'attrs' => [self::PHP_ONLY, 'attributes', 'Support::attributesOf(Support::asPart($context, {base}))'],
+        ],
+        // `->key` is nullable where `->class` and `->var` are not, and that changes what `instanceof Expr`
+        // asks of it: on a `Name|Expr` field it asks "is this dynamic", on a `?Expr` field it asks "is there
+        // one at all". So the kind says which, the way `hint-option` already does for a nullable hint.
+        'ArrayElement' => [
+            'key' => [self::PHP_ONLY, 'expr-option', 'Support::arrayElementKey($context, {base})'],
         ],
         'Binary' => [
             'left' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
