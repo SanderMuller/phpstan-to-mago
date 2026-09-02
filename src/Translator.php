@@ -3035,10 +3035,18 @@ final readonly class Translator
 
             $of = $this->resolve($expr->getArgs()[0]->value, $line);
 
+            // A *name* position answers the resolved name, and this is the one place the distinction bites.
+            // PHPStan resolves names before a rule sees the tree, so `getName()` on the class side of
+            // `Widget::class` hands back `Examples\Wiring\Widget` — measured: the original reports
+            // `set(Widget::class, \Examples\Wiring\Widget::class)` as a duplicate and a port comparing the
+            // written spellings stayed silent on it. Everywhere else the written name is what php-parser
+            // gives, which is what a variable's own name is.
+            $helper = $of['kind'] === 'name-expr' ? 'nameAfterResolution' : 'writtenName';
+
             return [
                 'rust' => self::PHP_ONLY,
                 'kind' => 'bytes',
-                'php' => 'Support::writtenName($context, ' . $this->operand($of) . ')',
+                'php' => 'Support::' . $helper . '($context, ' . $this->operand($of) . ')',
             ];
         }
         $found = $expr->class instanceof Name ? $this->findClassByName($expr->class->getLast()) : null;

@@ -529,6 +529,17 @@ final class Support
         return Names::writtenName($context, $subject);
     }
 
+    /**
+     * The name php-parser hands a rule for a node, after PHPStan has resolved the file's names.
+     *
+     * A resolved name for an ordinary one, the keyword itself for `self`, `static` and `parent`, and the
+     * written name for anything that is not a name. See {@see Names::nameAfterResolution()}.
+     */
+    public static function nameAfterResolution(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        return Names::nameAfterResolution($context, $subject);
+    }
+
     /** Whether a navigated part is `__DIR__`, which php-parser models as its own node class. */
     public static function isDirConstant(?Part $part): bool
     {

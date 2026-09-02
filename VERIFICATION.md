@@ -3253,8 +3253,38 @@ That is the second time the same shape has cost a rule: `Call` was found on
 | as emitted | 2 |
 | with `Access` off the wrapper list | 0 |
 
-Both findings name the shortened class — `Use only "$services->set(Widget::class)" instead` — so the
-last-segment fold is measured by the message rather than by a count.
+##### The written name is the wrong name, and the resolved one is wrong for three words
+
+The first version of this read the *written* spelling, and the pair passed: the example wrote short names in
+their own namespace, where written and resolved-then-shortened coincide. That agreement hid the fact this
+repository has already written down twice — PHPStan resolves names before a rule sees the tree, so
+`NamingHelper::getName()` on the class side of `Widget::class` answers `Examples\Wiring\Widget`.
+
+Measured by adding the mixed spelling to the bad example: PHPStan reports
+`set(Widget::class, namespace\Widget::class)` as the duplicate it is, and the port comparing written
+spellings was silent on it.
+
+Reading the resolved name instead over-reported in the other direction, and the pair caught that within one
+run. PHPStan's resolution leaves `self`, `static` and `parent` alone, so the original compares `self` against
+`DuplicatedName` and declines — while `resolvedName()` maps the keyword to the enclosing class and made the
+port report a duplicate nobody asked about. `nameAfterResolution()` is the faithful reader: the resolved name
+for an ordinary one, the keyword itself for those three, and the written name for a subject that is not a
+name at all.
+
+| the plugin | bad-example findings |
+|:--|:--|
+| as emitted | the two short duplicates, and the mixed-spelling one |
+| reading the written spelling | the two short ones only — the mixed spelling lost |
+| reading the resolved name with no keyword exception | those three, plus `self::class` — which PHPStan does not report |
+
+The fixture needed one more measurement of its own. `\Examples\Wiring\Widget::class` does not survive the
+formatter — pint rewrites it back to the short form, and an alias import makes pint rewrite the *other* side
+into the alias — so the case is written `namespace\Widget::class`, which resolves the same way and which no
+formatter rule shortens.
+
+That is also what makes the last-segment fold measured rather than incidental. The port's value now carries
+the namespace, so removing the fold refuses the rule outright — and before the resolution fix, the message it
+produced was the short class only because the source happened to write it short.
 
 The kind restriction inside `writtenName()` is *not* exercised by the pair: widening it to answer any part's
 source text leaves both findings in place. What it protects is the meaning — `NamingHelper::getName()`

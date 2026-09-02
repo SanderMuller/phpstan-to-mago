@@ -73,6 +73,35 @@ final class Names
     }
 
     /**
+     * The name php-parser hands a rule for a node, after PHPStan has resolved the file's names.
+     *
+     * `NamingHelper::getName()` reads `->toString()` off a name, and by the time a rule sees the tree that
+     * name is resolved: the class side of `Widget::class` answers `Examples\Wiring\Widget`. So a rule
+     * comparing two of them compares fully-qualified names, and an alias or a leading backslash on one side
+     * changes nothing — measured, the original reports
+     * `set(Widget::class, \Examples\Wiring\Widget::class)` as a duplicate.
+     *
+     * Two exceptions, both measured rather than reasoned about: the three special class names stay as
+     * written, and a subject that is not a name at all falls back to {@see self::writtenName()} — a
+     * variable's own name is what php-parser gives there, and no resolution applies to it.
+     */
+    public static function nameAfterResolution(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        $part = $subject instanceof Node ? Tree::part($context, $subject) : $subject;
+
+        // `self`, `static` and `parent` stay as php-parser spells them. PHPStan's name resolution leaves
+        // those three alone, so a rule comparing `self::class` against `Thing::class` sees `self` against
+        // `Thing` and declines — measured on the pair, where resolving the keyword to the enclosing class
+        // made the port report a duplicate PHPStan says nothing about. {@see self::resolvedName()} maps them
+        // to the class on purpose, for the questions that are about the class rather than the spelling.
+        if ($part instanceof Part && $part->kind === NodeKind::Keyword) {
+            return self::textOf($part);
+        }
+
+        return self::isName($part) ? self::resolvedName($context, $part) : self::writtenName($context, $part);
+    }
+
+    /**
      * The name a node *writes*, which is php-parser's `$node->name` on a variable and `->toString()` on a
      * name or an identifier.
      *
@@ -81,8 +110,13 @@ final class Names
      * is not. So this answers null for any other node rather than falling back to its source text — a
      * navigated part always has text, and returning that would turn "not a name" into a name nobody wrote.
      *
-     * Kept apart from {@see ResolvedName()}, which answers what the *file* resolves a name to. This one is
-     * the spelling, because the rules comparing two of these compare what the author wrote.
+     * Kept apart from {@see self::resolvedName()}, which answers what the *file* resolves a name to — and
+     * that is what a *name* position needs, because PHPStan resolves names before a rule sees the tree. This
+     * one is for the positions where php-parser hands back the spelling itself: a variable's own name is what
+     * `$node->name` holds, and no resolution applies to it.
+     *
+     * Written `self::` rather than as a bare reference because `ResolvedName` is also an imported class here,
+     * and a formatter reading the docblock capitalised the reference into it.
      */
     public static function writtenName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
