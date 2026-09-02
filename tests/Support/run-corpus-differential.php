@@ -14,6 +14,7 @@ declare(strict_types=1);
  * generated plugins, the worker and both configurations.
  */
 
+use Nette\Neon\Entity;
 use Nette\Neon\Neon;
 use Sandermuller\PhpstanToMago\Tests\Support\CorpusDifferential;
 
@@ -98,11 +99,19 @@ $paths = array_values(array_filter(
 
 // Its exclusions too. PHPStan applies these to the paths it was given, so a corpus that ignores them is not
 // the corpus the original ran on. `excludePaths` is either a list or a map keyed `analyse`/`analyseAndScan`.
+//
+// An entry may carry PHPStan's optional marker — `config/reference.php (?)` for a path that only exists after
+// a build step — and neon parses that as an `Entity` rather than a string. `symfony/demo` writes one, and
+// without unwrapping it the run died on a TypeError inside the exclusion test. The marker itself says nothing
+// about the corpus, so the path is what is kept.
 $excludePaths = $configuration['parameters']['excludePaths'] ?? [];
 $excludes = [];
 foreach ($excludePaths as $entry) {
     foreach (is_array($entry) ? $entry : [$entry] as $path) {
-        $excludes[] = $path;
+        $path = $path instanceof Entity ? $path->value : $path;
+        if (is_string($path)) {
+            $excludes[] = $path;
+        }
     }
 }
 

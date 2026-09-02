@@ -198,6 +198,29 @@ final class Text
         return $subject !== null && preg_match($pattern, $subject) === 1;
     }
 
+    /**
+     * A string split on a pattern, dropping the empty pieces — `preg_split(.., -1, PREG_SPLIT_NO_EMPTY)`.
+     *
+     * A `list<string>` rather than `array|false`, because the caller has no use for the failure: `preg_split`
+     * answers false only for a pattern it cannot compile, and the pattern reaches here as a literal the
+     * transpiler read out of the rule. So a rule's own `=== false` guard is folded away where it is written,
+     * and this hands back the empty list for the shapes that have nothing to split — a null subject, or a
+     * subject that is entirely separators.
+     *
+     * @return list<string>
+     */
+    public static function splitByPattern(?string $subject, string $pattern): array
+    {
+        if ($subject === null) {
+            return [];
+        }
+
+        // Already a list without `PREG_SPLIT_OFFSET_CAPTURE`, so nothing to reindex.
+        $parts = preg_split($pattern, $subject, -1, PREG_SPLIT_NO_EMPTY);
+
+        return $parts === false ? [] : $parts;
+    }
+
     /** Whether a name is written entirely in upper case, as a constant convention check. */
     public static function isUppercase(?string $value): bool
     {

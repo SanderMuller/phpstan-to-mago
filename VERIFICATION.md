@@ -76,27 +76,41 @@ the safe direction.
 
 
 On `nikic/php-parser`'s 270 files of library source — a tree this repository installs, so the number can be
-re-run — the differential is **1086 agreeing, 1 original-only, 34 port-only**. Reproduce with
+re-run — the differential is **1248 agreeing, 1 original-only, 409 port-only**. Reproduce with
 `php tests/Support/run-corpus-differential.php . --paths=vendor/nikic/php-parser/lib`.
 
 | identifier | agree | only-original | only-port |
 |:--|--:|--:|--:|
+| `typeCoverage.paramTypeCoverage` | 1053 | 1 | 0 |
+| `typeCoverage.returnTypeCoverage` | 120 | 0 | 0 |
+| `typeCoverage.constantTypeCoverage` | 0 | 0 | 375 |
 | `complexity.functionLike` | 11 | 0 | 28 |
 | `complexity.classLike` | 4 | 0 | 6 |
-| `typeCoverage.paramTypeCoverage` | 1053 | 1 | 0 |
 | `symplify.noDynamicName` | 13 | 0 | 0 |
+| `symplify.explicitAbstractPrefixName` | 19 | 0 | 0 |
+| `typeCoverage.propertyTypeCoverage` | 8 | 0 | 0 |
+| `symplify.requiredInterfaceContractNamespace` | 8 | 0 | 0 |
+| `symplify.explicitInterfaceSuffixName` | 7 | 0 | 0 |
+| `symplify.forbiddenStaticClassConstFetch` | 2 | 0 | 0 |
+| `symplify.requireExceptionNamespace` | 2 | 0 | 0 |
+| `symplify.multipleClassLikeInFile` | 1 | 0 | 0 |
 
-All 34 are a configured threshold against a package default, and the numbers say so: this project's
-`phpstan.neon.dist` sets `class: 80, function: 20`, and the package ships `class: 40, function: 9`. A generated
-plugin deliberately carries its own package's defaults so that a generated project stands alone, so the port's
-threshold is lower and it reports more. The same decision is why the aggregate's message differs at every site
-it agrees on.
+All 409 are a configured threshold against a package default, and the configurations say so. This project's
+`phpstan.neon.dist` sets `class: 80, function: 20` where the package ships `class: 40, function: 9`, and it
+sets `constant: 0` — which switches the constant metric off for the original — where the package ships
+`constant_type: 99`. A generated plugin deliberately carries its own package's defaults so that a generated
+project stands alone, so the port's threshold is lower or present and it reports more. The same decision is why
+the aggregate's message differs at every site it agrees on.
 
-**Read the denominator before the agreement.** Of 49 identifiers under test, `php-parser` exercises **7** — 42
+This table was 1086 / 1 / 34 over 49 identifiers when it was first written, and the corpus has gained emitting
+rules since. The number moved because more rules run, not because the port drifted: every row added is a `0 0`
+row or the constant metric this section now names.
+
+**Read the denominator before the agreement.** Of 73 identifiers under test, `php-parser` exercises **13** — 60
 report nothing on either side, and a `0 0 0` row reads exactly like a clean agreement. Every Laravel- and
-PHPUnit-shaped rule is in that 41, because a parser library contains nothing for them to find. The runner names
-them now rather than leaving them in the total, so a reader can see that 1086 agreements come from seven rules
-and choose a corpus that reaches the rest.
+PHPUnit-shaped rule is in that 60, because a parser library contains nothing for them to find. The runner names
+them now rather than leaving them in the total, so a reader can see which rules the agreements come from and
+choose a corpus that reaches the rest.
 
 A second corpus, run for the same reason the first one is here — a green result on one tree says little.
 `league/commonmark`'s 302 files: **34 agreeing, 1 original-only, 23 port-only**. The 23 are the same threshold
@@ -2399,3 +2413,493 @@ PHPStan class reached as an object, a `class-string<Node>`, a two-argument `Refl
 one-argument `ReflectionObject` — the last two for the rule's count and class-name guards.
 
 `symplify/phpstan-rules` goes to **48 of 89**, and the seven-package total to **82 of 169 portable**.
+
+#### A guard that read the wrong node, and a negation that only half applied
+
+`NoRoutingPrefixRule` refused on `no node predicate for instanceof Identifier on a bytes`. The subject was the
+alarm rather than the obstacle: `$parentCaller->name`, where the rule had just narrowed `$parentCaller` to a
+`MethodCall`, resolved through the `ConstFetch` arm and rendered `Support::constantNameText()` about a method
+call. Had the rule written only `$parentCaller->name->toString() !== 'import'`, that would have *translated* —
+null compared against `'import'`, so every `@FrameworkBundle` import the original allows would have been
+reported. The refusal is what stopped a plausible-but-wrong rule shipping.
+
+Four defects came out of it, each measured before it was fixed.
+
+##### 1. A narrowing the predicate inliner threw away
+
+`rememberRefined()` records what an `instanceof` guard established, and it never reaches a helper the inliner
+takes as a *predicate*: there the guard becomes a conjunct of one boolean expression, no binding statement is
+emitted, and nothing records the test. The narrowed kind is now recorded on its own, and the descriptor
+carries it as `as` — the key `Vocabulary::FIELDS` is already indexed by, so the field navigation and the
+argument-list path both read it without a second mechanism.
+
+That closed `no argument list on a expr node` for three rules besides this one.
+
+##### 2. `!(a) || !(b)` was unwrapped as though the parentheses paired
+
+`PhpBackend::conditional()` folds `!(c) ? false : rest` into `(c) && (rest)` by taking `!(` off the front and
+`)` off the back. Those are not always the same pair. `!(a) || !(b)` passes both tests, and unwrapping gave
+`a) || !(b`, rebuilt as `(a) || !(b) && (rest)` — De Morgan applied to one operand with the connective left
+alone, which is the opposite guard for every subject where `a` holds.
+
+Measured, not assumed: no rule emitting at the time hit it, so the fix changes no emitted byte. That is
+exactly why `NegatesAWholeGuardTest` pins it rather than a snapshot — the shape is one vendor release away
+from a rule that does emit, and it fails silently. Reverting the fix reproduces `(a()) || !(b()) && (rest)`
+and turns two of its six cases red.
+
+##### 3. An exiting statement hoisted out of an expression
+
+An inlined predicate folds to one expression, so anything it appends to the statement list lands at the
+*caller's* position. For a statement that exits, that inverts the helper: a binding which cannot be made
+should make the helper answer false — the finding stands — while the hoisted form returned from the hook and
+reported nothing. This rule hoisted an argument binding whose bail fired on every `prefix()` whose receiver is
+not a call at all, which is the ordinary case the rule exists for.
+
+An argument read inside a predicate is now the expression itself. `argumentList()` and `positionalArgAt()`
+both answer null for a subject with no arguments and every question asked of the value is null-tolerant, so a
+missing argument makes the chain false — which is what the helper's own `return false` says.
+
+`refuseAHoistedExit()` stays behind it for the statement kinds that have no inline form. It is a net with no
+live case today, and that is stated rather than implied: with the inline binding taken out it fires, and the
+census records the refusal for `NoRoutingPrefixRule` and `NoGetRepositoryOutsideServiceRule`. That is its
+mutation check, and it is the only evidence for it.
+
+##### 4. Navigating from a nested call found nothing, silently
+
+The gate caught the last one, and only the gate could have. With the three fixes in place the bad example
+agreed with PHPStan and the good example was reported twice — the allowed-bundle test never held. Probing each
+step: mago wraps a *nested* call in a `Call` category node with the concrete `MethodCall` as its only child.
+`isMethodCall()` already went through that wrapper; `selector()`, `argumentList()` and `nthExpression()` did
+not. So the kind test answered yes and every navigation off the same part searched the wrapper's children,
+found none, and answered null.
+
+The hook's own node is the concrete call, which is why nothing had needed the unwrap and why no emitted rule
+was wrong about its *own* node. A rule reaching a call through a field was the shape that had never been
+gated.
+
+##### What the pair covers
+
+Bad: two `import(...)->prefix(...)` calls on this project's own controllers, agreeing with PHPStan on line and
+message. Good: the two allowed bundle prefixes, a `collection(...)->prefix(...)` — `CollectionConfigurator`
+declares `prefix()` too, so only the receiver's type declines it, which is what says the type guard does the
+work rather than the name — and a `prefix()` on an unrelated object. The two configurators joined the shared
+stubs; the pair resolves against those rather than a real Symfony install, like every pair beside it.
+
+`symplify/phpstan-rules` goes to **49 of 89**, and the seven-package total to **83 of 169 portable**.
+`NoWithOnStubRule` is the one emitted file that changed, and its behaviour did not: the guard the first fix
+repaired is followed by `! $var instanceof Variable && ! $var instanceof PropertyFetch`, which already
+excluded the case the broken guard let through.
+
+#### A subset measurement that described the harness
+
+The two steps before this one changed how every emitted plugin navigates, so the evidence that matters is a
+run over code nobody wrote for us. `../hihaho`, the whole project, `symplify/phpstan-rules`: **912 agreeing, 0
+original-only, 0 port-only** over 2932 files, against **912 / 0 / 0** for the commit before them. The
+per-identifier tables are identical apart from one new `0 0 0` row for `NoRoutingPrefixRule`.
+
+That comparison took two attempts. The first ran the old commit from a `git worktree` with this repository's
+`vendor/` symlinked in — and composer's autoloader resolves `__DIR__` through the symlink, so both sides loaded
+the *same* `src/`. The tell was `emitted: 52` on both, where the old commit emits 51. It is the shape
+`CLAUDE.md` already records for a no-op `git stash`: a BEFORE run that is silently the AFTER one. The second
+attempt used a self-contained copy, and `emitted: 51` against `emitted: 52` is what says the two sides differ.
+
+`rector.noClassReflectionStaticReflection` reads **33 agreeing, 0, 0** there — the first outside evidence for
+the rule two steps back, whose only check until now was its own example pair. `symfony.noRoutingPrefix` reads
+`0 0 0`: no corpus available here uses Symfony's routing configurators, so the fires gate remains its only
+evidence, and this run says nothing about it.
+
+##### 29 findings that were the source paths, not the port
+
+Narrowing the same corpus to `--paths=tests` reported **only-port 29**, all under `symplify.noDynamicName`, all
+of the shape `($this->handler)(..)` — invoking a property whose class declares `__invoke`. The rule allows
+that; the port reported it.
+
+The cause is the one the mago-config docblock already names, one level in. `includes` carried the consumer's
+`vendor/` so mago could walk a framework ancestry, and nothing else. PHPStan's autoloader does not stop at the
+analysed directories: it resolves an `App\` class declared under `app/` while the run analyses only `tests/`.
+Mago had never read the class, so its inferred type is a `ReferenceType` rather than a named object, the
+`__invoke` test could not run, and the guard fell through.
+
+The control settles it rather than the reading: adding the consumer's own root to `includes` takes the same
+corpus, the same 1071 files and the same 9 agreements from **29 port-only to 0**. The full-project run is
+unchanged at 912 / 0 / 0, and so is the `php-parser` table — which is what a fix confined to subset
+measurements should look like.
+
+Two things follow for any number quoted from a `--paths=` run. It was measured with mago reading less of the
+project than PHPStan, so it overstated the port's width; and the direction is one-sided, so a `--paths` run
+that reported **no** divergence was never weakened by this.
+
+#### A parent class, and a differential that answered about the wrong file
+
+`ForbiddenExtendOfNonAbstractClassRule` refused on `->getParentClass()`. Every question it asks after that is
+a field of `ClassLikeMetadata`, probed rather than read across: `directParentClass` for the parent,
+`ABSTRACT` and `BUILTIN` on its flags, `location->file` for the path the `vendor` guard tests. A vendor class
+is `BUILTIN false` and a `\ArrayObject` is `BUILTIN true`, so the rule's two consecutive guards stay two
+questions rather than collapsing into one.
+
+`getParentClass()` answers a *named class*, which is a kind the vocabulary already had — so
+`! $parent instanceof ClassReflection` becomes the existence test and `isAbstract()` goes to the codebase with
+no new arm. Only `isBuiltin()`, the declaring file and a `=== null` on that kind were missing.
+`ShouldCallParentMethodsRule` moves past the same obstacle to `->hasNativeMethod()`.
+
+##### The gate was green and the corpus was not
+
+`../hihaho`, whole project: **89 agreeing, 0 original-only, 119 port-only**. Every divergent site was a
+`FormRequest` subclass — a class extending a concrete framework base, which the rule skips because the parent
+is declared under `vendor/`.
+
+The cause was in the harness, and specifically in the previous step's fix to it. Adding the consumer's whole
+root to mago's `includes` also adds `_ide_helper.php`, which a Laravel project keeps there and which
+redeclares framework classes. Probed in the differential's own configuration:
+`Illuminate\Foundation\Http\FormRequest` resolves to `/…/hihaho/_ide_helper.php`, not to the vendor copy, so
+the `vendor` guard could not hold. The control is the previous configuration: with `includes` back to the
+vendor tree alone, the same rule reads **89 / 0 / 0**.
+
+PHPStan does not have the problem because it resolves through the autoloader, which names one file per class.
+So the fix follows that map rather than excluding stub files by name: `ResolutionRoots` reads the consumer's
+`composer.json` and includes its `psr-4`, `psr-0`, `classmap` and `files` entries.
+
+##### And the first version of that fix was worse than the bug
+
+Including every autoload root took the same corpus to **35 agreeing and 966 original-only**. An `includes`
+entry is scanned rather than analysed, and `app` and `tests` were in both lists, so most of the corpus stopped
+being reported on at all. A root already covered by `--paths` is therefore left out, which is what makes the
+list add context for what the run does *not* analyse — the case a subset creates and the only case the roots
+exist for.
+
+Both runs now read what they should: the whole project **1001 / 0 / 0** with the new rule at 89 / 0 / 0, and
+`--paths=tests` **128 / 0 / 0**, keeping the 29 the previous step closed.
+
+##### Two things the pair cannot show, said rather than implied
+
+The vendor branch has no sandbox: there is no vendor tree in the example directories, so the pair covers the
+abstract parent, no parent, a builtin parent and an interface-only class, and the vendor guard is exercised
+only by the differential above. And the file test compares mago's path against PHPStan's absolute one — mago's
+is relative to the analysed root when the paths are relative — so a project whose own directory has `vendor`
+in its name would diverge, in the narrow direction. No corpus here has one.
+
+##### The refactor that dropped a refusal
+
+Splitting `nullComparison()` to keep it under the complexity limit lost the arm that refuses a null test
+against a kind with no meaning for one. Nothing failed: the emitted output was unchanged and the suite was
+green apart from the census, whose single moved line — `StrictFunctionCallsRule` no longer needing
+`null comparison against Expr_Variable, which resolved to a hook-node` — was the whole evidence that a
+load-bearing refusal had gone. A refusal that stops existing is invisible in every direction except that one.
+
+#### A refusal that named the accessor rather than the obstacle
+
+`IllegalConstructorStaticCallRule` refused on `->getFunction()`, which reads as a capability gap and is not
+one. Two small arms close it: `$scope->getFunction()` reduces to the enclosing function's *name*, which
+`enclosingFunctionName()` has answered since the cognitive-complexity port, and `$scope->isInTrait()` walks to
+the nearest class-like and asks its kind. Neither needed a new descriptor kind — the name is bytes, so the
+rule's `=== null` guard translates through the byte comparison it already had.
+
+The refusal now reads `->getTraitAliases()`, and that one is real. `isInRenamedTraitConstructor()` asks PHP's
+trait *alias* table — which name a using class reaches a trait method under after `use T { m as other; }` —
+and mago's metadata carries no counterpart. `TraitUsers::aliases()` reads the same adaptations off the CST for
+the coverage passes, but that is an after-analysis walk over every file, not a question a node hook can ask
+about the class it is standing in.
+
+So the rule does not emit, and the census says why. That is the whole of this step: the previous reason
+pointed at an accessor two other rules use for something else entirely, and a reader sizing the work from it
+would have started in the wrong place.
+
+`RequireParentConstructCallRule` loses `->isInTrait()` from its needs at the same time; it still refuses on
+the `throw` its first guard uses as an assertion.
+
+No emitted byte changed, across all seven packages and all three targets.
+
+#### Three corpora, and the denominator they leave behind
+
+The last several steps added rules whose only evidence was their own example pair. Three differentials, all
+reproducible from projects on the measuring machine:
+
+| corpus | files | identifiers | exercised | agree | only-original | only-port |
+|:--|--:|--:|--:|--:|--:|--:|
+| `hihaho`, symplify | 2932 | 56 | 14 | 1001 | 0 | 0 |
+| `rector-src`, symplify + phpunit + deprecation | 2872 | 61 | 8 | 88 | 0 | 0 |
+| `finconnect`, strict-rules + phpunit + deprecation + complexity + type-coverage | 1895 | 25 | 15 | 1294 | 420 | 1346 |
+
+`rector-src` is worth its own row for what it adds rather than its total: four identifiers no other corpus
+reaches — `rector.avoidFeatureSetAttributeInRector`, `rector.noOnlyNullReturnInRefactor`,
+`rector.preferDirectIsName` and `symplify.stringFileAbsolutePathExists` — all at zero divergence.
+
+**Read the denominator first.** Across the three there are 81 distinct identifiers and **33 are exercised**.
+Of the `symfony.*` and `doctrine.*` rules, exactly one is: `symfony.noControllerMethodInjection`. None of the
+three corpora is a Symfony application, so fifteen Symfony rules and three Doctrine ones have their example
+pair and nothing else — `symfony.noRoutingPrefix`, added two steps ago, among them. A `0 0 0` row for those
+is not agreement.
+
+##### Every divergence on `finconnect` has one of two named causes
+
+**1340 of the 1346 port-only findings are a configured threshold against a package default**, and the
+consumer's own neon says so: `cognitive_complexity: class: 517, function: 484` where the package ships 40 and
+9 (389 findings), and `type_coverage: param: 83.2, property: 86.4` where it ships 99 for both (951). A
+generated plugin carries its own package's defaults deliberately, so it reports more. Same cause as the
+`php-parser` table above, three orders of magnitude louder because this consumer's thresholds are set to
+where its code currently is.
+
+**The remaining 6, and the 420 original-only, are the boolean-condition family.** Traced rather than assumed:
+the port describes `$this->request->get('form')` as `scalar|array|null` and reports, where PHPStan is silent.
+Both directions come from the same gap — PHPStan reaches Laravel through larastan, mago through nothing — and
+`--extension-host=` is the control for it, already measured on another corpus at 33 of 42 false positives
+closed by one fifteen-line return-type provider.
+
+##### The flags are a real axis, measured rather than assumed
+
+`BooleanRuleHelper::passesAsBoolean` depends on `checkNullables` and `checkUnionTypes`, which the emitted
+plugin takes as constructor parameters at PHPStan's own defaults. Forcing both on for *both* engines with
+`--parameter=`, on the same corpus and the same package:
+
+| | agree | only-original | only-port |
+|:--|--:|--:|--:|
+| the family at PHPStan's defaults | 679 | 417 | 6 |
+| the same family, both flags forced on | 853 | 469 | 10 |
+
+So a number quoted for this family without its flags is not a number. That is why the plugin takes them
+rather than baking them, and why `--parameter=` exists: one corpus run twice answers what two corpora at
+different settings cannot.
+
+##### A fourth corpus, and the first Symfony one
+
+`symfony/demo` at `--depth 1`, 49 files of application code: **70 agreeing, 0 original-only, 0 port-only**.
+Small, and it is the only Symfony application measured here, which is what it is for. Four identifiers get
+outside evidence for the first time — `symfony.noClassLevelRoute` (3), `symfony.requireInvokableController`
+(12), `symfony.requiredIsGrantedEnum` (3) and `phpunit.avoidAnyExpects` (1) — taking the exercised union
+across the four corpora from **33 to 37 of 81**.
+
+`symfony.noRoutingPrefix` still reads nothing. The demo routes by attribute, so it has no
+`import(..)->prefix(..)` for the rule to find, and its example pair remains its only evidence.
+
+Reproducing it takes four config lines and a build step, all in the *corpus*, none in this repository:
+
+```neon
+includes:
+    - vendor/symplify/phpstan-rules/config/services/services.neon
+    - vendor/symplify/phpstan-rules/config/symfony-rules.neon
+    - vendor/symplify/phpstan-rules/config/doctrine-rules.neon
+parameters:
+    excludePaths:
+        - config/reference.php (?)
+```
+
+then `php bin/console cache:warmup`, because `phpstan-symfony` reads the compiled container XML and aborts
+without it. The services file is separate from the family files on purpose in that package, and the
+differential registers every emitted rule as a service — so a consumer that includes some families and not
+the shared collaborators cannot be measured until it includes them.
+
+Two harness gaps surfaced getting there, both real and both fixed:
+
+- **`phpstan.dist.neon` was unreadable.** The resolver knew `phpstan.neon` and `phpstan.neon.dist`; Symfony's
+  own skeleton writes the suffix in the middle. The first Symfony corpus looked like a project with no PHPStan
+  configuration at all.
+- **PHPStan's optional marker crashed the exclusion test.** `config/reference.php (?)` parses as a
+  `Nette\Neon\Entity`, not a string, and `absolute()` took a TypeError. The marker says nothing about the
+  corpus, so the path is unwrapped and kept.
+
+#### A refusal that was right about the general case and wrong about this one
+
+`PhpUpgradeImplementsMinPhpVersionInterfaceRule` refused on `instanceof FullyQualified`, and that refusal's
+own text says why it could be answered: "the test is about resolution rather than spelling". Its loop walks
+`$node->implements`, which resolves to `directParentInterfaces` — names the *codebase* resolved. So no item
+can be the unresolved spelling the guard skips, and the guard folds.
+
+Sound only because the comparison behind it reads the same resolved list, so the `->implements` descriptor now
+carries its provenance and the name comparison folds case for a metadata-sourced item — the fold
+`holdsMetadataNames()` already applied to a whole list, applied to one item of it.
+
+##### Reading the emission caught two bugs the fold would otherwise have shipped
+
+The first emission was plausible and wrong twice over, and both were latent gaps rather than anything this
+rule introduced:
+
+- **The comparison was case-sensitive against a lowercased left side.** `$implement === 'Rector\Version-
+  Bonding\Contract\MinPhpVersionInterface'` can never hold, so the loop never exited.
+- **`return [];` inside the loop emitted nothing.** A trailing `return []` is the fall-through of collected
+  report conditions and correctly emits no bail; one inside a loop body is a real exit, and a method's last
+  statement cannot sit in a loop. Without the bail the loop body came out empty.
+
+Either one alone makes the rule report every class the loop exists to let through.
+
+##### Measured on real code, not argued
+
+`rules/Php8*` in `rector-src` holds 38 classes that match both of the rule's guards — the fully qualified
+name ends in `Rector` and carries a `\Php80\`-shaped segment — and all 38 implement the contract. Both
+engines are silent on them, so the differential row reads `0 / 0 / 0` and by the usual standard says nothing.
+
+Here it says something, because the mutation says what the row cannot. Over `rules/Php81`, nine of those
+classes:
+
+| the emitted plugin | findings |
+|:--|--:|
+| as emitted | 0 |
+| with the case fold taken out | 9 |
+| with the loop's bail taken out | 9 |
+
+So the guards were reached nine times and the exit fired nine times, on code nobody wrote for this. That is
+the difference between a `0 0 0` row that is a pass and one that is silence — and the only thing that
+separates them is having checked that the guards ran.
+
+#### A loop whose two guards mean "or", and a constant on the next class along
+
+`NoDoctrineListenerWithoutContractRule` refused on `a foreach in an inlined helper whose body is not a guard
+chain: Stmt_If`. The body is two membership tests, either of which answers the loop:
+
+```php
+foreach ($class->getMethods() as $classMethod) {
+    if (in_array($classMethod->name->toString(), DoctrineEvents::ORM_LIST)) { return true; }
+    if (in_array($classMethod->name->toString(), DoctrineEvents::ODM_LIST)) { return true; }
+}
+```
+
+The inliner read a leading `if` as a `continue` guard, which is a *conjunct* — "this item does not match" —
+and refused anything else. A leading `if` that returns the loop's match value is the opposite: the item
+matches and the rest of the body is not reached, so it is a **disjunct**. A body mixing the two is refused by
+name rather than folded, because a `continue` only guards what follows it and the answer nests rather than
+joins.
+
+Two smaller gaps behind it:
+
+- **An array constant on a named class.** `DoctrineEvents::ORM_LIST` is a plain list of strings, known at
+  transpile time exactly as a `self::` one is; the resolver only read the current class's. It goes through the
+  same index the static-helper inliner uses, into a scratch constant scope so a same-named constant on the two
+  classes cannot shadow.
+- **`in_array()` over a method declaration's name.** The byte helpers already reach it through
+  `Support::methodName()` for `str_ends_with`; a membership test over the same text asks the same question.
+
+##### The pair proves the fold, and the mutation says so
+
+No corpus on hand holds a Doctrine lifecycle listener — `hihaho` reads `0 / 0 / 0` for it and says nothing —
+so the example pair is the evidence, and it is built to carry the fold: `BadProductListener` declares only an
+ORM event and `BadDocumentListener` only an ODM one, so each bad case satisfies exactly one of the two
+disjuncts.
+
+| the emitted plugin over the pair | findings |
+|:--|--:|
+| as emitted | 2 |
+| with the disjunction flipped to a conjunction | 0 |
+
+A conjunction would need both lists to match at once, which neither class does. That is what makes the two
+bad cases a test of the fold rather than of the rule around it.
+
+`NoListenerWithoutContractRule`, the Symfony sibling with the same helper, moves past the same obstacle to
+`->attrGroups on a hook-node` — the class-like attribute walk this vocabulary refuses deliberately.
+
+#### A loop that ends by matching rather than by guarding
+
+`NoConstructorAndRequiredTogetherRule` refused on `a foreach in an inlined helper whose body is not a single
+guard`. Its helper is four `continue` guards and then `return true`:
+
+```php
+foreach ($class->getMethods() as $classMethod) {
+    if (! $classMethod->isPublic()) { continue; }
+    if (! $docComment instanceof Doc) { continue; }
+    if (! str_contains($docComment->getText(), '@required')) { continue; }
+    if (str_contains($docComment->getText(), 'circular')) { continue; }
+
+    return true;
+}
+```
+
+`anyBody()` required the trailing statement to be a guard of its own, so the refusal named the statement
+rather than the shape. A bare `return <the match value>` after the guards adds no condition: reaching it means
+every guard passed, which the conjunction of their negations already says.
+
+##### Both the fold and each guard behind it are measured
+
+No corpus on hand holds the shape — a `@required` public method beside a constructor — so the pair is the
+evidence, and its `GoodCircularException` exists for the guard that sits directly in front of the trailing
+return:
+
+| the emitted plugin over the pair | findings |
+|:--|--:|
+| as emitted | 2 |
+| with the `circular` conjunct removed | 3 |
+
+The third finding is `GoodCircularException`, which the original allows. So the last of the four guards
+survived the fold, which is the one a wrong reading of "the trailing statement is the guard" would have
+dropped.
+
+#### A split that has to happen while the plugin runs
+
+`NoBareAndSecurityIsGrantedContentsRule` refused on `preg_split()`. Every other piece of it already
+translated — the `in_array` over three class constants, the literal-string test, the three `str_contains` on
+the attribute's value — and its helper is the guard chain the step before this one made foldable. What was
+missing is the split itself.
+
+It cannot be done at transpile time: the subject is a string literal read out of the *analysed* code, so the
+pieces are only known while the plugin runs. `Support::splitByPattern()` does it, and the flags are checked
+rather than ignored — `-1, PREG_SPLIT_NO_EMPTY` is what the caller writes and what the helper implements, and
+any other limit or flag set produces a different list.
+
+The rule's own `if ($joinedItems === false)` guard folds away. `preg_split()` answers false only for a
+pattern it cannot compile, and the pattern reaches the helper as a literal the transpiler read out of the
+rule — so the helper's return type is `list<string>` and there is no `false` for the comparison to find.
+
+##### The split is load-bearing, and the shared identifier is not evidence
+
+`GoodSingleIsGranted::verified()` carries `is_granted("ROLE_ADMIN") and user.isVerified()` — joined, so the
+earlier guards pass, and one piece is not a permitted call, so the rule allows it. That is the case the split
+exists for:
+
+| the emitted plugin over the pair | findings |
+|:--|--:|
+| as emitted | 2 |
+| with the split replaced by the whole string as one piece | 3 |
+
+Unsplit, the whole expression contains `is_granted`, so the custom-function test never fires and the good
+example gains a finding the original does not make.
+
+**The corpus row cannot be read as this rule's evidence.** `NoBareAndSecurityIsGrantedContentsRule` and
+`RequireIsGrantedEnumRule` report under the *same* identifier — `symfony.requiredIsGrantedEnum`, which is the
+package's own constant for both — so `symfony/demo`'s `agree 3, 0, 0` names both rules and separates neither.
+Checked rather than assumed: none of the demo's `#[IsGranted]` attributes joins two checks, so all three
+belong to the sibling. The differential prints both rule names for a shared identifier, which is the honest
+rendering; what it cannot do is attribute per rule.
+
+#### An attribute walk that is one question, and the three fields behind it
+
+`NoListenerWithoutContractRule` refused on `->attrGroups on a hook-node`, which the vocabulary declines
+deliberately: metadata carries attribute names flattened and resolved, so answering `->attrs` and `->name`
+from that list would be three mappings pretending the tree has a shape it does not.
+
+The way past it is the one the codebase already prefers — map the *question*, not the fields. The nested walk
+
+```php
+foreach ($class->attrGroups as $attrGroup) {
+    foreach ($attrGroup->attrs as $attr) {
+        if ($attr->name->toString() === <literal>) { return true; }
+    }
+}
+```
+
+is recognised whole and becomes `Support::hasAttributeNamed()`, which `AttributeFinder::hasAttribute()`
+already reaches through the collaborator table. The literal still comes from the rule's own source, so no
+table holds the package's constant. Every part is matched against the source — both field names, the
+single-statement bodies, the `===` against a literal — so a walk asking something *else* of an attribute is
+still refused: `NoEntityOutsideEntityNamespaceRule` reads `->getParts()` off the name and is declined by the
+same recogniser.
+
+Three smaller fields behind it, each the second spelling of something already answered:
+
+- `$classMethod->params` on a method the rule found in a loop — the list `getParams()` gives.
+- `str_starts_with()` on a written type hint, through `hintName()`, which answers the resolved name
+  `$param->type->toString()` gives after PHPStan's name resolution.
+- `in_array($class->extends->toString(), [..])` on the PHP target. The `extends` arm of the membership test
+  had a Rust rendering only, so the rule refused with "operand is still Rust" — the shape the backend's own
+  refusal exists to catch.
+
+##### Both new folds are load-bearing, measured on the good example
+
+The pair carries one good case per accepted route: the attribute, the contract, an `__invoke`, a security
+parent, a form-event parameter, and a Doctrine method the sibling rule owns. Two mutations, each against the
+committed pair:
+
+| the emitted plugin | good-example findings |
+|:--|--:|
+| as emitted | 0 |
+| with the attribute question replaced by `false` | 1 |
+| with the form-event hint test replaced by `false` | 1 |
+
+`symfony/demo` reads `0 / 0 / 0` for both listener rules and says nothing about either: its listeners all
+carry the subscriber contract, which is what the rules ask for.

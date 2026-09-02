@@ -42,6 +42,25 @@ final class Inheritance
     }
 
     /**
+     * Whether the extends clause names one of these, which is `in_array($class->extends->toString(), [..])`.
+     *
+     * Case folded and per name, exactly as {@see extendsIs()} is and for the same reason: the clause's names
+     * arrive resolved, and the rule compares against canonical spellings.
+     *
+     * @param list<string> $names
+     */
+    public static function extendsIsOneOf(NodeAnalysisContext $context, Part|Node|null $subject, array $names): bool
+    {
+        foreach ($names as $name) {
+            if (self::extendsIs($context, $subject, $name)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The names in the enclosing declaration's extends clause.
      *
      * Written from the probe rather than from the shape one would expect: the clause is its own node

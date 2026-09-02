@@ -170,15 +170,46 @@ final class PhpBackend implements Backend
      */
     public function conditional(string $condition, string $then, string $otherwise): string
     {
-        if ($then === 'false' && str_starts_with($condition, '!(') && str_ends_with($condition, ')')) {
-            return '(' . substr($condition, 2, -1) . ') && (' . $otherwise . ')';
+        $negated = self::withoutTheLeadingNot($condition);
+        if ($negated !== null && $then === 'false') {
+            return '(' . $negated . ') && (' . $otherwise . ')';
         }
 
-        if ($then === 'true' && str_starts_with($condition, '!(') && str_ends_with($condition, ')')) {
-            return '!(' . substr($condition, 2, -1) . ') || (' . $otherwise . ')';
+        if ($negated !== null && $then === 'true') {
+            return '!(' . $negated . ') || (' . $otherwise . ')';
         }
 
         return "({$condition} ? {$then} : {$otherwise})";
+    }
+
+    /**
+     * What a whole condition negates, or null when the condition is not one negation.
+     *
+     * The paired parenthesis has to be the *last* character, and testing for `!(` and `)` at the two ends
+     * does not say that. `!(a) || !(b)` passes both tests and unwrapping it gives `a) || !(b`, which the
+     * caller then rebuilt as `(a) || !(b) && (rest)` — De Morgan applied to one operand, the connective left
+     * alone, and the result a rule that reports what the original allows. `NoRoutingPrefixRule` is the shape
+     * that surfaced it: `! $name instanceof Identifier || $name->toString() !== 'import'` bailing to false.
+     *
+     * Balanced by depth, like `Translator::stripOuterParentheses()`, and conservative when it cannot tell:
+     * answering null keeps the ternary, which is correct for every shape.
+     */
+    private static function withoutTheLeadingNot(string $condition): ?string
+    {
+        if (! str_starts_with($condition, '!(') || ! str_ends_with($condition, ')')) {
+            return null;
+        }
+
+        $depth = 0;
+        $length = strlen($condition);
+        for ($index = 1; $index < $length; ++$index) {
+            $depth += ($condition[$index] === '(' ? 1 : ($condition[$index] === ')' ? -1 : 0));
+            if ($depth === 0) {
+                return $index === $length - 1 ? substr($condition, 2, -1) : null;
+            }
+        }
+
+        return null;
     }
 
     private function name(string $rust): string
