@@ -1230,6 +1230,16 @@ final class Support
         return Members::declaredParamHint($parameter);
     }
 
+    /**
+     * A string split on a pattern, dropping the empty pieces. {@see Text::splitByPattern}
+     *
+     * @return list<string>
+     */
+    public static function splitByPattern(?string $subject, string $pattern): array
+    {
+        return Text::splitByPattern($subject, $pattern);
+    }
+
     /** Whether a name is written entirely in upper case, as a constant convention check. */
     public static function isUppercase(?string $value): bool
     {

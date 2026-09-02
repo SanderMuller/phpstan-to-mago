@@ -2819,3 +2819,40 @@ return:
 The third finding is `GoodCircularException`, which the original allows. So the last of the four guards
 survived the fold, which is the one a wrong reading of "the trailing statement is the guard" would have
 dropped.
+
+#### A split that has to happen while the plugin runs
+
+`NoBareAndSecurityIsGrantedContentsRule` refused on `preg_split()`. Every other piece of it already
+translated — the `in_array` over three class constants, the literal-string test, the three `str_contains` on
+the attribute's value — and its helper is the guard chain the step before this one made foldable. What was
+missing is the split itself.
+
+It cannot be done at transpile time: the subject is a string literal read out of the *analysed* code, so the
+pieces are only known while the plugin runs. `Support::splitByPattern()` does it, and the flags are checked
+rather than ignored — `-1, PREG_SPLIT_NO_EMPTY` is what the caller writes and what the helper implements, and
+any other limit or flag set produces a different list.
+
+The rule's own `if ($joinedItems === false)` guard folds away. `preg_split()` answers false only for a
+pattern it cannot compile, and the pattern reaches the helper as a literal the transpiler read out of the
+rule — so the helper's return type is `list<string>` and there is no `false` for the comparison to find.
+
+##### The split is load-bearing, and the shared identifier is not evidence
+
+`GoodSingleIsGranted::verified()` carries `is_granted("ROLE_ADMIN") and user.isVerified()` — joined, so the
+earlier guards pass, and one piece is not a permitted call, so the rule allows it. That is the case the split
+exists for:
+
+| the emitted plugin over the pair | findings |
+|:--|--:|
+| as emitted | 2 |
+| with the split replaced by the whole string as one piece | 3 |
+
+Unsplit, the whole expression contains `is_granted`, so the custom-function test never fires and the good
+example gains a finding the original does not make.
+
+**The corpus row cannot be read as this rule's evidence.** `NoBareAndSecurityIsGrantedContentsRule` and
+`RequireIsGrantedEnumRule` report under the *same* identifier — `symfony.requiredIsGrantedEnum`, which is the
+package's own constant for both — so `symfony/demo`'s `agree 3, 0, 0` names both rules and separates neither.
+Checked rather than assumed: none of the demo's `#[IsGranted]` attributes joins two checks, so all three
+belong to the sibling. The differential prints both rule names for a shared identifier, which is the honest
+rendering; what it cannot do is attribute per rule.

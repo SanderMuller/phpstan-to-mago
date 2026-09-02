@@ -127,7 +127,7 @@ upstream drift lands as a diff there rather than as a stale table here.
 
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
-| `symplify/phpstan-rules` | 89 | 53 | 35 | 1 |
+| `symplify/phpstan-rules` | 89 | 54 | 34 | 1 |
 | `hihaho/phpstan-rules` | 7 | 6 | 1 | 0 |
 | `tomasvotruba/type-coverage` | 10 | 5 | 5 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
@@ -135,7 +135,7 @@ upstream drift lands as a diff there rather than as a stale table here.
 | `phpstan/phpstan-phpunit` | 13 | 4 | 9 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-That is 87 of the 169 **portable** rules — the ones each package registers, minus three that report nothing a
+That is 88 of the 169 **portable** rules — the ones each package registers, minus three that report nothing a
 plugin could carry. `--status` counts whatever *your* project installed instead.
 
 <details>

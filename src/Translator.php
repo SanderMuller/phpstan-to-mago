@@ -50,6 +50,7 @@ use PhpParser\Node\InterpolatedStringPart;
 use PhpParser\Node\IntersectionType;
 use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
+use PhpParser\Node\Expr\UnaryMinus;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
@@ -1474,6 +1475,49 @@ final readonly class Translator
             $this->context->constants = $savedConstants;
             $this->context->intConstants = $savedInts;
         }
+    }
+
+    /**
+     * `preg_split(<pattern>, <text>, -1, PREG_SPLIT_NO_EMPTY)` as a descriptor over the pieces.
+     *
+     * The flags are checked rather than ignored. `PREG_SPLIT_NO_EMPTY` is what the one caller in the corpus
+     * writes and what {@see Runtime\Text::splitByPattern()} implements; any other limit or flag set produces
+     * a different list, and answering with this one would hand the rule pieces it did not ask for.
+     *
+     * @return Descriptor
+     */
+    private function splitByPattern(FuncCall $value, int $line): array
+    {
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a runtime split, which only the PHP target carries', $line);
+        }
+
+        $args = $value->getArgs();
+        if (count($args) !== 4
+            || ! $args[2]->value instanceof UnaryMinus
+            || ! $args[2]->value->expr instanceof Int_
+            || $args[2]->value->expr->value !== 1
+            || ! $args[3]->value instanceof ConstFetch
+            || $args[3]->value->name->toString() !== 'PREG_SPLIT_NO_EMPTY'
+        ) {
+            throw new Refusal(
+                'preg_split() with a limit or flags other than `-1, PREG_SPLIT_NO_EMPTY`, which split into '
+                . 'different pieces',
+                $line,
+            );
+        }
+
+        $pattern = $this->bytesValue($args[0]->value, $line);
+        $subject = $this->resolve($args[1]->value, $line);
+        if (! in_array($subject['kind'], ['bytes', 'class-name'], true)) {
+            throw new Refusal("preg_split() over a {$subject['kind']}", $line);
+        }
+
+        return [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'text-parts',
+            'php' => 'Support::splitByPattern(' . $this->operand($subject) . ', ' . $pattern . ')',
+        ];
     }
 
     /**
@@ -7051,6 +7095,19 @@ final readonly class Translator
             return;
         }
 
+        // `$x = preg_split(<pattern>, <text>, -1, PREG_SPLIT_NO_EMPTY)` — the pieces a separator left, split
+        // while the plugin runs because the subject is a literal read out of the analysed code. Only the flag
+        // combination the corpus writes: a different `$limit` or flag set means different pieces, and a helper
+        // that ignored them would hand the rule a list it did not ask for.
+        if ($value instanceof FuncCall
+            && $value->name instanceof Name
+            && $value->name->toString() === 'preg_split'
+        ) {
+            $this->context->locals[$name] = $this->splitByPattern($value, $line);
+
+            return;
+        }
+
         // $x = $node->getArgs()
         if ($value instanceof MethodCall && (string) $value->name === 'getArgs') {
             $this->context->locals[$name] = Transpiler::$target === 'php'
@@ -9035,6 +9092,19 @@ final readonly class Translator
 
                 return $this->operand($subject) . ' === ' . $this->operand($other);
             }
+        }
+
+        // `$parts === false` on a runtime split. `preg_split()` answers false only for a pattern it cannot
+        // compile, and the pattern reached the helper as a literal the transpiler read out of the rule — so
+        // the helper answers a list and the guard cannot hold. Folded rather than translated: there is no
+        // `false` for the comparison to find.
+        if ($right instanceof ConstFetch && strtolower($right->name->toString()) === 'false'
+            && $this->resolve($left, $line)['kind'] === 'text-parts'
+        ) {
+            return $this->unreachable(
+                'a runtime split answers a list: `preg_split()` returns false only for a pattern it cannot '
+                . 'compile, and the pattern is a literal read out of the rule',
+            );
         }
 
         throw new Refusal(

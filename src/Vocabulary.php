@@ -533,6 +533,10 @@ final class Vocabulary
         // single reduction `constantStringOf()` gives. The item stays a *type* rather than becoming text,
         // because the rules ask it for `->getValue()`.
         'constant-strings' => ['iter' => self::PHP_ONLY, 'item' => 'constant-string', 'phpIter' => '{rust}'],
+        // The pieces a `preg_split()` left, each a plain string. PHP target only: the split happens while the
+        // plugin runs, because the subject is a literal read out of the analysed code rather than one the
+        // transpiler could split itself.
+        'text-parts' => ['iter' => self::PHP_ONLY, 'item' => 'bytes', 'phpIter' => '{rust}'],
     ];
 
     /**
