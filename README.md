@@ -130,11 +130,11 @@ upstream drift shows up as a diff there instead of a stale table here.
 | `hihaho/phpstan-rules` | 7 | 6 | 1 | 0 |
 | `tomasvotruba/type-coverage` | 10 | 5 | 5 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
-| `phpstan/phpstan-strict-rules` | 45 | 18 | 27 | 0 |
+| `phpstan/phpstan-strict-rules` | 45 | 22 | 23 | 0 |
 | `phpstan/phpstan-phpunit` | 13 | 4 | 9 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-That is 91 of the 169 portable rules: the ones each package registers, minus three that report nothing a
+That is 95 of the 169 portable rules: the ones each package registers, minus three that report nothing a
 plugin could carry. `--status` counts whatever *your* project installed instead.
 
 <details>

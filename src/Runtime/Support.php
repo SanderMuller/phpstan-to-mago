@@ -503,13 +503,19 @@ final class Support
     /** Whether a unary prefix expression's operator is the one written. {@see Calls::unaryOperatorIs} */
     public static function unaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
     {
-        return Calls::unaryOperatorIs($context, $subject, $operator);
+        return Operators::unaryOperatorIs($context, $subject, $operator);
+    }
+
+    /** Whether a postfix expression's operator is the one written — `$x++` rather than `++$x`. */
+    public static function postfixOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
+    {
+        return Operators::postfixOperatorIs($context, $subject, $operator);
     }
 
     /** Whether a binary expression's operator is the one written, which Mago keeps in a child node. */
     public static function binaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
     {
-        return Calls::binaryOperatorIs($context, $subject, $operator);
+        return Operators::binaryOperatorIs($context, $subject, $operator);
     }
 
     /** Whether a navigated part is `__DIR__`, which php-parser models as its own node class. */

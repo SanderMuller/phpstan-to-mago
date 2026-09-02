@@ -21,6 +21,10 @@ use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\PostDec;
+use PhpParser\Node\Expr\PostInc;
+use PhpParser\Node\Expr\PreDec;
+use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\ShellExec;
 use PhpParser\Node\Expr\StaticCall;
@@ -202,6 +206,13 @@ final class Vocabulary
         // operator is the gate rather than the node kind — the same shape `BooleanNot` above already takes.
         UnaryPlus::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '+')", 'phpOnly' => true],
         UnaryMinus::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '-')", 'phpOnly' => true],
+        // The increment and decrement spellings. Mago keeps the prefix and postfix forms as different node
+        // kinds and the operator in a child of each, so the kind picks the side and the gate picks the
+        // operator. `phpstan-strict-rules` has one rule per cell of that grid.
+        PreInc::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '++')", 'phpOnly' => true],
+        PreDec::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '--')", 'phpOnly' => true],
+        PostInc::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPostfix', 'gate' => "Support::postfixOperatorIs(\$context, \$node, '++')", 'phpOnly' => true],
+        PostDec::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPostfix', 'gate' => "Support::postfixOperatorIs(\$context, \$node, '--')", 'phpOnly' => true],
         // A variable, in the three shapes Mago gives one. `$x` is a `DirectVariable`; `$$n` is a
         // `NestedVariable` holding one, and `${expr}` an `IndirectVariable` — probed, with `$$n` producing a
         // `NestedVariable` and then a `DirectVariable` for the inner `$n`. All three registered, because the
@@ -282,7 +293,15 @@ final class Vocabulary
             'cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
             'if' => [self::PHP_ONLY, 'expr', 'Support::conditionalThen($context, $node)'],
         ],
-        'UnaryPrefix' => ['expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        // `->expr` and `->var` are the same child under two php-parser names: `UnaryPlus` calls it `expr`
+        // and `PreInc` calls it `var`, and both are the one expression the operator applies to.
+        'UnaryPrefix' => [
+            'expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
+            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
+        ],
+        'UnaryPostfix' => [
+            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
+        ],
         // `$node->name` on a constant read is the node itself here. php-parser hangs a `Name` off the fetch;
         // mago's `ConstantAccess` *is* the name, and every question asked of it — does the codebase know it,
         // is it deprecated — is answered from the node by {@see Constants::constantMetadata()}, which has to
@@ -692,6 +711,27 @@ final class Vocabulary
         // The arithmetic counterpart, reaching the same `findTypeToCheck` one level down. Same three flags,
         // because the same function reads them; {@see Runtime\RuleLevel::isValidForArithmeticOperation()}
         // carries the measured table of what reports under each.
+        // Both increment helpers reach one port. `isValidForIncrement()` passes a string and
+        // `isValidForDecrement()` does not, and mago erases the numeric-string that distinction turns on —
+        // {@see Runtime\RuleLevel::isValidForIncrementOrDecrement()} states which direction that was
+        // resolved in, and the table it was measured from.
+        'PHPStan\Rules\Operators\OperatorRuleHelper::isValidForIncrement' => [
+            'helper' => 'RuleLevel::isValidForIncrementOrDecrement',
+            'kind' => 'bool',
+            'takes' => 'none',
+            'arguments' => [],
+            'types' => [1],
+            'flags' => ['checkNullables', 'checkUnionTypes', 'checkThisOnly'],
+        ],
+        'PHPStan\Rules\Operators\OperatorRuleHelper::isValidForDecrement' => [
+            'helper' => 'RuleLevel::isValidForIncrementOrDecrement',
+            'kind' => 'bool',
+            'takes' => 'none',
+            'arguments' => [],
+            'types' => [1],
+            'flags' => ['checkNullables', 'checkUnionTypes', 'checkThisOnly'],
+        ],
+
         'PHPStan\Rules\Operators\OperatorRuleHelper::isValidForArithmeticOperation' => [
             'helper' => 'RuleLevel::isValidForArithmeticOperation',
             'kind' => 'bool',

@@ -5730,6 +5730,18 @@ final readonly class Translator
             return 'support::line_text(context, node.span())';
         }
 
+        // A `$this->m()` whose whole body returns a literal, which is how an abstract rule lets each
+        // subclass name one word of a message it builds for all four of them. Rendered as the literal in
+        // argument position rather than folded into the format: the runtime string is the same either way,
+        // and leaving the format and the argument count alone is what keeps every other rule's `sprintf`
+        // byte-identical.
+        $returned = $this->literalReturnedBy($expr);
+        if ($returned !== null) {
+            return Transpiler::$target === 'php'
+                ? $this->context->backend->bytes($returned)
+                : '"' . addcslashes($returned, '"\\') . '"';
+        }
+
         $subject = $this->resolve($expr, $line);
 
         if (Transpiler::$target === 'php') {
@@ -8250,6 +8262,29 @@ final readonly class Translator
                 . 'comparison after it would have to read resolved names',
                 $expr->getStartLine(),
             );
+        }
+
+        // `$node instanceof PreInc` in a body four rules share, each hooking one cell of the prefix/postfix
+        // times increment/decrement grid. The hook fires for one php-parser class, so the test is decided
+        // here — true for the class this rule registered, false for its three siblings.
+        //
+        // Narrow on purpose. Both classes have to be hook entries that sit on the same Mago node *and* carry
+        // a gate, which is the situation the fold is about: several php-parser classes share one node kind
+        // and the operator in a child tells them apart. A virtual PHPStan node is excluded by it —
+        // `$node->getOriginalNode() instanceof Class_` inside the class hook is a real runtime question, and
+        // answering it from the hook entry would fold it to false.
+        $registered = Vocabulary::HOOKS[$this->context->nodeType] ?? null;
+        $tested = Vocabulary::HOOKS[$wanted] ?? null;
+        if ($subject['kind'] === 'hook-node'
+            && $this->context->hookKinds === []
+            && $registered !== null
+            && $tested !== null
+            && isset($registered['gate'], $tested['gate'])
+            && $registered['node'] === $tested['node']
+        ) {
+            return $wanted === $this->context->nodeType
+                ? $this->alwaysHolds('this hook fires for one operator, and this is the node class it registered')
+                : 'false';
         }
 
         if (! isset(Vocabulary::NODE_PREDICATES[$wanted])) {
@@ -11286,7 +11321,92 @@ final readonly class Translator
             return $this->context->literals[$expr->name];
         }
 
+        $returned = $this->literalReturnedBy($expr);
+        if ($returned !== null) {
+            return $returned;
+        }
+
+        $formatted = $this->constantSprintf($expr, $line);
+        if ($formatted !== null) {
+            return $formatted;
+        }
+
         throw new Refusal('expected a string literal', $line);
+    }
+
+    /**
+     * A `sprintf()` whose format and every argument are literals, folded at transpile time.
+     *
+     * `->identifier(sprintf('%s.nonNumeric', $this->getIdentifier()))` is the shape: an abstract rule builds
+     * the identifier its four subclasses report under, and each of them supplies the one word. The
+     * identifier has to be a literal — it is what a reader checks the port against — so the fold happens
+     * here or the rule is refused.
+     *
+     * Only all-`%s` formats with exactly as many arguments as placeholders. A width, a precision or a
+     * positional argument would need this to reproduce `sprintf`'s own parsing, and every one of those is
+     * still a refusal.
+     */
+    private function constantSprintf(Node $expr, int $line): ?string
+    {
+        if (! $expr instanceof FuncCall || ! $expr->name instanceof Name || $expr->name->toString() !== 'sprintf') {
+            return null;
+        }
+
+        $arguments = $expr->getArgs();
+        if ($arguments === []) {
+            return null;
+        }
+
+        $format = $this->rawStringLiteral($arguments[0]->value, $line);
+        $values = [];
+        foreach (array_slice($arguments, 1) as $argument) {
+            $values[] = $this->rawStringLiteral($argument->value, $line);
+        }
+
+        return substr_count($format, '%') === count($values) && substr_count($format, '%s') === count($values)
+            ? vsprintf($format, $values)
+            : null;
+    }
+
+    /**
+     * The literal a `$this->m()` call returns, where that is the whole of the method.
+     *
+     * How an abstract rule lets each subclass fill in one word of a message it builds for all of them:
+     * `sprintf('Only numeric types are allowed in %s, %s given.', $this->describeOperation(), ..)`, with
+     * `return 'pre-increment';` in each of the four rules that extend it. The identifier is the same shape
+     * one line down, which is why both literal readers ask this.
+     *
+     * Resolved through {@see declaringOf()}, so the *concrete* class answers: an abstract declaration is
+     * skipped by {@see Hierarchy::declaring()} and the rule's own override is what is found. A method with
+     * anything else in it answers null, and the caller refuses as it did before.
+     */
+    private function literalReturnedBy(Node $expr): ?string
+    {
+        if (! $expr instanceof MethodCall || ! $this->isThis($expr->var) || $expr->getArgs() !== []) {
+            return null;
+        }
+
+        $declaring = $this->declaringOf($this->memberName($expr->name, $expr->getStartLine()));
+        if ($declaring === null) {
+            return null;
+        }
+
+        $method = $this->memberName($expr->name, $expr->getStartLine());
+        foreach ($declaring['class']->getMethods() as $candidate) {
+            if ($candidate->name->toString() !== $method) {
+                continue;
+            }
+
+            $statements = $candidate->stmts ?? [];
+
+            return count($statements) === 1
+                && $statements[0] instanceof Return_
+                && $statements[0]->expr instanceof String_
+                    ? $statements[0]->expr->value
+                    : null;
+        }
+
+        return null;
     }
 
     private function intLiteral(Node $expr, int $line): int
@@ -11379,9 +11499,15 @@ final readonly class Translator
      * anyway rendered the message as the description of nothing, which is a plugin that reports on the right
      * line and tells the reader the wrong type.
      *
+     * The two unary kinds are here for the same reason and were measured the same way, in
+     * `internal/probe-unary-receiver-type.php`: `++$count` and `$count--` carry a null `receiverType` with
+     * the requirement declared, and `expressionType()` on the operand answers `int`. They reach the shortcut
+     * at all because php-parser calls a unary operand `->var`, the same name it gives a call's receiver — so
+     * the match is on a name rather than on a receiver, and the list is what says so.
+     *
      * @var list<string>
      */
-    private const array KINDS_WITHOUT_A_RECEIVER_TYPE = ['MethodPartialApplication'];
+    private const array KINDS_WITHOUT_A_RECEIVER_TYPE = ['MethodPartialApplication', 'UnaryPrefix', 'UnaryPostfix'];
 
     /**
      * The field a virtual node's getter stands for.

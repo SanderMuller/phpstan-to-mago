@@ -191,16 +191,123 @@ final class RuleLevel
             return true;
         }
 
-        $narrowed = $checkNullables || self::isNullOnly($type) ? $type : self::withoutNull($type);
+        return self::passesAsNumber($type, $checkNullables, $checkUnionTypes);
+    }
 
-        // A union is only checked where the flag says to check one, which is `findTypeToCheck` leaving the
-        // members alone and the accepted type then failing to cover them. Measured: `int|bool` is silent
-        // without the flag and reports with it, naming the whole union rather than the failing member.
-        if (! $checkUnionTypes && count($narrowed->atomicTypes) > 1) {
+    /**
+     * Whether an expression's type is a valid increment or decrement operand.
+     *
+     * One function for both, and for `++` and `--` alike, because the port cannot separate them — see the
+     * divergence below. Measured the same way as its arithmetic sibling, by
+     * `internal/probe-increment-operands.php`, which runs all four rules over one operand of every shape at
+     * each flag setting and prints what reports:
+     *
+     * | operand                                   | reports when                           |
+     * |:------------------------------------------|:---------------------------------------|
+     * | `bool`, `null`, `array`, a named object   | always                                 |
+     * | a bare `object`, `int\|bool`, `int\|string` | `checkUnionTypes`                      |
+     * | `?int`                                    | `checkNullables` and `checkUnionTypes` |
+     * | `int`, `float`, `numeric-string`, `mixed` | never                                  |
+     * | a plain `string`                          | `--` and `$x--` only, never `++`       |
+     *
+     * Note how much wider this is than the arithmetic family: an `array` and an object report here at every
+     * setting, and they never report there. The original is why — `isValidForIncrement()` and
+     * `isValidForDecrement()` have no `toNumber()` pass, so nothing hands those shapes to PHPStan core.
+     * Reusing the arithmetic table would have silenced the largest part of this rule's population.
+     *
+     * ## The one divergence, and which direction it was chosen in
+     *
+     * `isValidForIncrement()` passes a string outright — its comment says `$a = 'a'; $a++;` is valid PHP —
+     * and `isValidForDecrement()` does not. So PHPStan reports `--$text` on a plain string and says nothing
+     * about `--$numeric` on a `numeric-string`, which `isSubtypeOfNumber()` accepts.
+     *
+     * Mago erases that distinction: measured in `internal/probe-arithmetic-atomics.php`, a `numeric-string`
+     * parameter arrives as a bare `ScalarType(string)`, the same atomic a plain `string` gives. So the port
+     * has to answer both the same way, and it passes them: a decrement of a plain string goes unreported,
+     * where the other choice would report every decrement of a numeric string. Under-reporting is the
+     * direction this repository picks when one has to be picked, because it surfaces as `only-original` in a
+     * differential rather than as a finding nobody can act on.
+     *
+     * The increment half is exact — PHPStan passes every string there too.
+     */
+    public static function isValidForIncrementOrDecrement(
+        ?Type $type,
+        bool $checkNullables,
+        bool $checkUnionTypes,
+        bool $checkThisOnly,
+    ): bool {
+        if (! $type instanceof Type || self::isMixed($type)) {
             return true;
         }
 
-        return self::everyAtomicIsNumber($narrowed);
+        if (self::everyAtomicIsString($type)) {
+            return true;
+        }
+
+        if ($checkThisOnly && ! self::isThis($type)) {
+            return true;
+        }
+
+        return self::passesAsNumber($type, $checkNullables, $checkUnionTypes);
+    }
+
+    /**
+     * `findTypeToCheck` with the accepted type `int|float|numeric-string`, and the test that follows it.
+     *
+     * The narrowing is the same function the boolean family reaches, and the criteria is the difference: it
+     * keeps the union members that *satisfy* the accepted type, and where none does it keeps the whole union
+     * so the check sees what the rule was handed. That is what makes `int|bool` silent without
+     * `checkUnionTypes` — the `int` satisfies, so that is all the check looks at — and reporting with it.
+     */
+    private static function passesAsNumber(Type $type, bool $checkNullables, bool $checkUnionTypes): bool
+    {
+        if (! $checkNullables && ! self::isNullOnly($type)) {
+            $type = self::withoutNull($type);
+        }
+
+        // A bare `object` follows the same flag it follows for the boolean family, where PHPStan answers
+        // `ErrorType` and both callers read that as a pass. Measured here too: a bare `object` is silent
+        // without the flag and reports with it, while a *named* object reports either way.
+        if (! $checkUnionTypes && self::isBareObject($type)) {
+            return true;
+        }
+
+        return self::everyAtomicIsNumber(self::keepTheNumbersOf($type, $checkUnionTypes));
+    }
+
+    /**
+     * The members of a union that are numbers, or the whole type where none of them is.
+     *
+     * `filterUnion()` is the same shape for the boolean criteria. Kept apart rather than parameterised with
+     * a callable: these run inside every emitted plugin, and the two criteria are two tables of atomic
+     * kinds rather than two behaviours.
+     */
+    private static function keepTheNumbersOf(Type $type, bool $checkUnionTypes): Type
+    {
+        if ($checkUnionTypes || count($type->atomicTypes) < 2) {
+            return $type;
+        }
+
+        $kept = [];
+        foreach ($type->atomicTypes as $atomic) {
+            if ($atomic instanceof ScalarType && in_array($atomic->kind, self::NUMERIC, true)) {
+                $kept[] = $atomic;
+            }
+        }
+
+        return $kept === [] ? $type : Type::fromAtomics(...$kept);
+    }
+
+    /** Whether every part of a type is a string, which is `Type::isString()->yes()`. */
+    private static function everyAtomicIsString(Type $type): bool
+    {
+        foreach ($type->atomicTypes as $atomic) {
+            if (! $atomic instanceof ScalarType || $atomic->kind !== ScalarTypeKind::String) {
+                return false;
+            }
+        }
+
+        return $type->atomicTypes !== [];
     }
 
     /**

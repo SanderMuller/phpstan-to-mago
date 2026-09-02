@@ -225,46 +225,6 @@ final class Calls
         return in_array(($inner instanceof Part ? $inner : $part)->kind, self::WRITTEN_NAME_KINDS, true);
     }
 
-    /**
-     * Whether a unary prefix expression's operator is the one written.
-     *
-     * `!` and `-` and `+` are one `UnaryPrefix` kind with the operator as a child, the same shape as a binary
-     * one — so a hook for `BooleanNot` registers `UnaryPrefix` and gates on the token. Probed: the operator is
-     * the first child and the operand the second.
-     */
-    public static function unaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
-    {
-        $node = Tree::node($subject);
-        if (! $node instanceof Node) {
-            return false;
-        }
-
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind === NodeKind::UnaryPrefixOperator) {
-                return trim($context->source->getText($child)) === $operator;
-            }
-        }
-
-        return false;
-    }
-
-    /** Whether a binary expression's operator is the one written, which Mago keeps in a child node. */
-    public static function binaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
-    {
-        $node = Tree::node($subject);
-        if (! $node instanceof Node) {
-            return false;
-        }
-
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind === NodeKind::BinaryOperator) {
-                return trim($context->source->getText($child)) === $operator;
-            }
-        }
-
-        return false;
-    }
-
     /** The selector's own name, which is case sensitive in PHP as method names are compared. */
     public static function selectorIs(?Part $part, string $literal): bool
     {

@@ -130,5 +130,87 @@ final class PortsTheArithmeticOperandHelperTest extends TestCase
     public function test_an_absent_type_says_nothing(): void
     {
         $this->assertTrue(RuleLevel::isValidForArithmeticOperation(null, false, false, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, false, false, false));
+    }
+
+    /**
+     * The increment family is much wider than the arithmetic one, and this is the row that says so.
+     *
+     * `isValidForIncrement()` and `isValidForDecrement()` have no `toNumber()` pass, so an `array` and a
+     * named object are this rule's own findings rather than PHPStan core's. Reusing the arithmetic answer
+     * would have silenced the largest part of the population.
+     */
+    public function test_an_array_and_an_object_report_for_an_increment_and_not_for_an_addition(): void
+    {
+        $array = Type::array(Type::int(), Type::string());
+        $object = Type::namedObject('Acme\\Money');
+
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement($array, false, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement($object, false, false, false));
+
+        $this->assertTrue(RuleLevel::isValidForArithmeticOperation($array, false, false, false));
+        $this->assertTrue(RuleLevel::isValidForArithmeticOperation($object, false, false, false));
+    }
+
+    /** A bare `object` follows `checkUnionTypes`, where a named one reports either way. */
+    public function test_a_bare_object_follows_check_union_types_for_an_increment(): void
+    {
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(Type::object(), false, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(Type::object(), false, true, false));
+    }
+
+    /** `bool` and `null` report at every setting here as well. */
+    public function test_a_boolean_and_a_null_are_not_valid_increment_operands(): void
+    {
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(Type::bool(), false, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(Type::null(), false, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(Type::bool(), true, true, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(Type::null(), true, true, false));
+    }
+
+    /**
+     * `int|string` reports for an increment and never for an addition, and the union flag gates it.
+     *
+     * The pair of rows that separates the two ports most sharply: there the string makes the whole type
+     * uncoercible and PHPStan core owns it, here there is no such branch.
+     */
+    public function test_a_union_with_a_string_member_turns_on_check_union_types_for_an_increment(): void
+    {
+        $intOrString = Type::union(Type::int(), Type::string());
+
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement($intOrString, false, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement($intOrString, false, true, false));
+        $this->assertTrue(RuleLevel::isValidForArithmeticOperation($intOrString, false, true, false));
+    }
+
+    /**
+     * The chosen divergence: a plain string passes, because mago cannot tell it from a numeric one.
+     *
+     * PHPStan reports `--$text` and says nothing about `--$numeric`. Both arrive as the same atomic here, so
+     * one answer has to serve both, and passing is the direction that under-reports rather than reporting
+     * something the original allows.
+     */
+    public function test_a_string_passes_because_mago_cannot_tell_a_numeric_one_apart(): void
+    {
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(Type::string(), false, false, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(Type::string(), true, true, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(Type::literalString('12'), true, true, false));
+    }
+
+    /** `?int` needs both flags here too, and for the same reason. */
+    public function test_a_nullable_number_needs_both_flags_for_an_increment(): void
+    {
+        $nullableInt = Type::union(Type::int(), Type::null());
+
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement($nullableInt, false, false, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement($nullableInt, false, true, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement($nullableInt, true, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement($nullableInt, true, true, false));
+    }
+
+    /** And `checkThisOnly` silences this family the same way. */
+    public function test_check_this_only_silences_an_increment_as_well(): void
+    {
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(Type::bool(), false, false, true));
     }
 }

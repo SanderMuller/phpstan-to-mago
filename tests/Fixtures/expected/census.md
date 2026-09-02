@@ -373,7 +373,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 18 of 45 portable rules the package registers emit, 0 covered by the engine, 27 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 22 of 45 portable rules the package registers emit, 0 covered by the engine, 23 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
@@ -439,22 +439,10 @@ REFUSE  IllegalConstructorStaticCallRule
 REFUSE  MatchingTypeInSwitchCaseConditionRule
         no mapping for ->cases on a hook-node
         needs: no iteration mapped for ->cases, which resolved to a expr
-REFUSE  OperandInArithmeticPostDecrementRule
-        no hook mapping for node type PhpParser\Node\Expr\PostDec
-        needs: no PHP navigation for node.var (kind expr) on a PostDec node
-        needs: no node predicate for instanceof PhpParser\Node\Expr\PreInc on a hook-node
-REFUSE  OperandInArithmeticPostIncrementRule
-        no hook mapping for node type PhpParser\Node\Expr\PostInc
-        needs: no PHP navigation for node.var (kind expr) on a PostInc node
-        needs: no node predicate for instanceof PhpParser\Node\Expr\PreInc on a hook-node
-REFUSE  OperandInArithmeticPreDecrementRule
-        no hook mapping for node type PhpParser\Node\Expr\PreDec
-        needs: no PHP navigation for node.var (kind expr) on a PreDec node
-        needs: no node predicate for instanceof PhpParser\Node\Expr\PreInc on a hook-node
-REFUSE  OperandInArithmeticPreIncrementRule
-        no hook mapping for node type PhpParser\Node\Expr\PreInc
-        needs: no PHP navigation for node.var (kind expr) on a PreInc node
-        needs: no node predicate for instanceof PhpParser\Node\Expr\PreInc on a hook-node
+EMIT    OperandInArithmeticPostDecrementRule
+EMIT    OperandInArithmeticPostIncrementRule
+EMIT    OperandInArithmeticPreDecrementRule
+EMIT    OperandInArithmeticPreIncrementRule
 EMIT    OperandInArithmeticUnaryMinusRule
 EMIT    OperandInArithmeticUnaryPlusRule
 REFUSE  OperandsInArithmeticAdditionRule

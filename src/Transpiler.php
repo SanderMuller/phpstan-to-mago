@@ -668,7 +668,7 @@ PHP;
      */
     private function collectConfiguration(ClassLike $class, string $className): void
     {
-        $constructor = $class->getMethod('__construct');
+        $constructor = $this->constructorOf($class);
         if (! $constructor instanceof ClassMethod) {
             return;
         }
@@ -1187,6 +1187,35 @@ PHP;
      * way to ask "does it carry this attribute". One level cannot express that, and flattening the two into one
      * would be inventing a shape the source does not have.
      */
+
+    /**
+     * The constructor the rule actually runs, which may be one it inherits.
+     *
+     * A rule declaring none used to come back with nothing to sort, and the collaborator it was handed then
+     * read as an unknown property: the four increment and decrement rules in `phpstan-strict-rules` are one
+     * class each, holding a node type and two strings, and the `OperatorRuleHelper` they all delegate to is
+     * a parameter of the abstract parent's constructor. The refusal said "method call outside the
+     * vocabulary", which named the call rather than the reason it could not be resolved.
+     *
+     * The parent is looked up by written name in the same index the inliner uses for a parent's *methods*,
+     * so a rule whose helper and whose constructor both come from a base class needs no second mechanism.
+     * The neon lookup keeps the concrete rule's name, because that is what a package wires.
+     */
+    private function constructorOf(ClassLike $class): ?ClassMethod
+    {
+        $constructor = $class->getMethod('__construct');
+        if ($constructor instanceof ClassMethod) {
+            return $constructor;
+        }
+
+        if (! $class instanceof Class_ || ! $class->extends instanceof Name) {
+            return null;
+        }
+
+        $parent = $this->context->index->find($class->extends->getLast(), $this->file);
+
+        return $parent === null ? null : $this->constructorOf($parent['class']);
+    }
 
     /**
      * Records a parameter holding an object of this package's own, and says whether it did.

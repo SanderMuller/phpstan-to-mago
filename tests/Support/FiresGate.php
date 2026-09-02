@@ -213,6 +213,10 @@ final readonly class FiresGate
         // subject that is not `$this` at this gate's level, so both sides would agree on zero.
         'OperandInArithmeticUnaryPlusRule' => ['checkThisOnly' => false],
         'OperandInArithmeticUnaryMinusRule' => ['checkThisOnly' => false],
+        'OperandInArithmeticPreIncrementRule' => ['checkThisOnly' => false],
+        'OperandInArithmeticPreDecrementRule' => ['checkThisOnly' => false],
+        'OperandInArithmeticPostIncrementRule' => ['checkThisOnly' => false],
+        'OperandInArithmeticPostDecrementRule' => ['checkThisOnly' => false],
         'ClassLikeCognitiveComplexityRule' => [
             'cognitive_complexity' => ['class' => 3],
         ],

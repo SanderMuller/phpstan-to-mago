@@ -3047,3 +3047,99 @@ That matters for the census's own purpose, which is sizing work before doing it:
 `isValidForArithmeticOperation` in the census before this step returned nothing, while the capability gated
 seven rules. The header already warns that a shared label is not a shared capability; this is the other
 direction, and the same warning has to be read into a `needs:` line that looks complete.
+
+#### The increment family: four rules, one shared body, and six obstacles behind one refusal
+
+The four increment and decrement rules refused with `no PHP navigation for node.var`, and the census listed
+two needs under each. Both were true and neither was the work. Six things had to be built, and each one only
+became visible once the one in front of it was gone — the sizing problem the previous section measured, now
+from the inside.
+
+**Two hooks that Mago spells as one node each.** `PreInc`, `PreDec`, `PostInc` and `PostDec` are four
+php-parser classes over two Mago kinds — `UnaryPrefix` and `UnaryPostfix` — with the operator in a child. So
+the kind picks the side and a gate picks the operator, the shape `BooleanNot` already used for `!`.
+`postfixOperatorIs()` is the postfix reader; `unaryOperatorIs()` reads a `UnaryPrefixOperator` child and
+answers false for `$x++`.
+
+**A constructor the rule inherits.** All four are one class each holding a node type and two strings, and the
+`OperatorRuleHelper` they delegate to is a parameter of the abstract parent's constructor.
+`collectConfiguration()` read the rule's own constructor and returned early when there was none, so the
+helper read as an unknown property and the refusal said "method call outside the vocabulary" — a message
+about the call rather than about why it could not be resolved.
+
+**An abstract declaration is not an implementation.** `$this->describeOperation()` resolves to whichever
+class in the hierarchy has a body, and `Hierarchy::declaring()` returned the abstract parent's. PHP does not.
+
+**Two literal folds.** The shared body builds its message and its identifier from methods each subclass
+fills in: `sprintf('Only numeric types are allowed in %s, %s given.', $this->describeOperation(), ..)` and
+`->identifier(sprintf('%s.nonNumeric', $this->getIdentifier()))`. The first needs a `$this->m()` whose whole
+body is `return '<literal>';` to fold; the second needs that plus an all-`%s` `sprintf()` folded at transpile
+time. The literal goes into argument position rather than into the format, so every other rule's `sprintf`
+stays byte-identical.
+
+**An `instanceof` the hook decides.** The shared body opens with `($node instanceof PreInc || $node
+instanceof PostInc) && ! isValidForIncrement(..) || ($node instanceof PreDec || ..) && ..`. A hook fires for
+one php-parser class, so each test is settled at transpile time. The fold is narrow: both classes have to be
+hook entries on the same Mago node *carrying a gate*, which is the situation it is about — several classes
+sharing one node kind, told apart by an operator. A virtual PHPStan node is excluded by that, and
+deliberately: `$node->getOriginalNode() instanceof Class_` inside the class hook is a real runtime question.
+
+##### A unary operand is not a receiver, and the probe said so before the gate did
+
+`$scope->getType($node->var)` has a shortcut: where the argument is the vocabulary's own navigation to the
+hook kind's receiver, the type arrives ready-made under `ReceiverType`. php-parser calls a unary operand
+`->var` — the same name it gives a call's receiver — so adding that field made the shortcut fire on a node
+kind that has no receiver at all.
+
+`internal/probe-unary-receiver-type.php` measures it: on `++$count` and `$count--`, `$context->receiverType`
+is null with the requirement declared, while `expressionType()` on the operand answers `int`. Both kinds are
+now on the no-receiver list, next to `MethodPartialApplication`, which was found the same way.
+
+The mutation is worth reading, because it is not a refusal:
+
+| the emitted plugin | bad-example findings |
+|:--|:--|
+| as emitted | `bool given`, `null given`, `array given`, `stdClass given` |
+| with the unary kinds off the no-receiver list | four findings, on the right lines, each reading `,  given.` |
+
+A plugin that reports correctly and tells the reader nothing. The gate compares messages as well as lines,
+which is what turns that into a failure.
+
+##### The port is measured, and one of the six folds was speculation
+
+`internal/probe-increment-operands.php` runs all four rules over one operand of every shape at each flag
+setting. The population is much wider than the arithmetic family's: an `array` and a named object report at
+every setting, where `+` and `-` are silent on both. The original is why — `isValidForIncrement()` and
+`isValidForDecrement()` have no `toNumber()` pass, so nothing hands those shapes to PHPStan core. Reusing the
+arithmetic table would have silenced most of what these rules find.
+
+| operand | reports when |
+|:--|:--|
+| `bool`, `null`, `array`, a named object | always |
+| a bare `object`, `int\|bool`, `int\|string` | `checkUnionTypes` |
+| `?int` | `checkNullables` and `checkUnionTypes` |
+| `int`, `float`, `numeric-string`, `mixed` | never |
+| a plain `string` | `--` and `$x--` only, never `++` |
+
+The last row is the one divergence, and it is chosen rather than overlooked. `isValidForIncrement()` passes a
+string outright — its comment is `$a = 'a'; $a++;` — and `isValidForDecrement()` does not, so PHPStan reports
+`--$text` and says nothing about `--$numeric`. Mago erases the distinction the difference turns on: measured,
+a `numeric-string` parameter arrives as the same bare `ScalarType(string)` a plain string gives. The port
+passes both, so a decrement of a plain string goes unreported rather than a decrement of a numeric one being
+reported. The decrement pairs therefore hold a numeric string and not a plain one — a pair asserts agreement,
+and it cannot hold a case where the two disagree.
+
+Five of the six folds are load-bearing, each measured by breaking it: the `instanceof` fold, the inherited
+constructor, the abstract skip and the message literal each take the rule back to a refusal naming a
+different obstacle, and the receiver-type entry produces the empty-type message above. The sixth was
+speculation and is gone: the same literal folds added to `stringLiteral()` alongside `rawStringLiteral()`
+were never reached — removing them left all six rules emitting — so they were removed rather than kept
+because they looked symmetrical.
+
+##### One divergence measured on the way past
+
+A docblock `array<int, string>` arrives as the same bare `KeyedArrayType` a plain `array` does, so a rule
+interpolating the type renders `array` where PHPStan renders `array<int, string>`. That is mago dropping the
+parameters rather than `Runtime\Describe` losing them, which is why the row sits in
+`internal/probe-arithmetic-atomics.php` next to the atomics rather than in the renderer's own census. The
+bad examples take a plain `array` for that reason.
