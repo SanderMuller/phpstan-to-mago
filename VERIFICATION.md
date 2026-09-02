@@ -3361,3 +3361,24 @@ this rule is not the next one.
 The good examples are the two routes the rule allows and the port has to keep apart: a `parent::__construct()`
 call in the body, and a parent that declares no constructor at all — one class with no parent and one
 extending a marker.
+
+##### The inheritance the two rules rest on, measured at a distance
+
+Both halves of the helper above assert something about `getDeclaringMethod()`, and the pairs as first written
+could not see either. Three cases were added and all three agree with the original:
+
+- **A grandparent's constructor.** `class C extends B`, `B` declaring nothing, `A` declaring `__construct` —
+  PHPStan asks the *parent's* reflection and a reflection inherits, so it reports `C`. The port reports it
+  too, which is what says the codebase read walks the hierarchy rather than stopping at the direct parent.
+- **An override of a method a grandparent declares.** The same question in the other direction, and the
+  higher-stakes one: `NoProtectedClassStmtRule` shipped three steps ago and *skips* an override whose parent
+  has the method. Both engines skip it. Had the read stopped at the direct parent the port would have
+  reported where the original is silent — the wrong direction, in a rule already released.
+- **An anonymous class.** The original returns false for one with a comment saying so, and the port answers
+  the same way because mago models an anonymous class as its own node kind and the enclosing-class read finds
+  nothing. Silent on both sides.
+
+The protected-member case also cost a fixture correction worth recording: the first version of that good
+example declared the grandparent's protected method on a *concrete* class, and both engines reported that
+declaration — correctly, since it is exactly what the rule is about. A good example that contains a real
+violation is not a good example, and the gate said so on the first run.

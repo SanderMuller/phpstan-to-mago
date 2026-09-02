@@ -17,3 +17,17 @@ final class MarkedThing extends Marker
 {
     public function __construct(private readonly int $size) {}
 }
+
+/** And the anonymous class, which the original skips with a comment saying so. */
+final class Factory
+{
+    public function make(): Registry
+    {
+        return new class extends Registry {
+            public function __construct()
+            {
+                $this->entries = ['anonymous'];
+            }
+        };
+    }
+}

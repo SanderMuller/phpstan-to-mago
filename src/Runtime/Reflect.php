@@ -83,11 +83,13 @@ final class Reflect
      *
      * The anonymous case answers false rather than being skipped, because the original returns false there
      * with a comment saying so — and here it comes for free: mago models an anonymous class as its own node
-     * kind, so the enclosing-class read answers nothing for one.
+     * kind, so the enclosing-class read answers nothing for one. Measured on the pair, where an anonymous
+     * class overriding a parent constructor is silent on both sides.
      *
-     * The parent's *own* declaration is not the question. `getDeclaringMethod()` walks the hierarchy, so a
-     * grandparent's constructor answers true here, which is what `ClassReflection::hasConstructor()` does on
-     * PHPStan's side: it asks the parent's reflection, and that reflection inherits.
+     * The parent's *own* declaration is not the question, and `getDeclaringMethod()` walks the hierarchy —
+     * measured, not read off the SDK: a class whose *grandparent* declares the constructor reports on both
+     * sides. That is what `ClassReflection::hasConstructor()` does on PHPStan's side, since it asks the
+     * parent's reflection and a reflection inherits.
      */
     public static function parentHasConstructor(NodeAnalysisContext $context, Part|Node|null $node): bool
     {
@@ -246,6 +248,12 @@ final class Reflect
      * `getDeclaringMethod()` answers for the whole hierarchy, which is what PHPStan's question means — a class
      * that inherits a method has it. Null-tolerant because the class name comes from
      * {@see self::resolvedName()}, which answers null for `parent` and for a variable class name.
+     *
+     * The walk is the hierarchy's, and it is measured rather than assumed: `getDeclaringMethod()` answers for
+     * a method a *grandparent* declares, which is what makes this match PHPStan's `hasMethod()` on a parent
+     * reflection. Two shipped rules rest on it — the constructor-override one reports a class whose
+     * grandparent declares the constructor, and the protected-member one skips an override of a method a
+     * grandparent declares — and both agree with the original on the pair.
      */
     public static function methodExists(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
