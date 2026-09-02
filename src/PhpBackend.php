@@ -44,9 +44,9 @@ final class PhpBackend implements Backend
                 return "{$pad}if ({$this->checked($a['condition'])}) {\n{$pad}    {$a['exit']}\n{$pad}}\n\n";
             case 'bind-adapter':
                 // The PHP helpers navigate, so they need the context that Rust's adapters do not.
-                return $this->bind($pad, $a['bind'], $this->checked($this->call($a['adapter'], ['$context', $a['subject']])));
+                return $this->bind($pad, $a['bind'], $this->checked($this->call($a['adapter'], ['$context', $a['subject']])), $a['exit']);
             case 'bind-arg':
-                return $this->bind($pad, $a['bind'], $this->call('positional_arg_at', [$a['args'], $a['index']]));
+                return $this->bind($pad, $a['bind'], $this->call('positional_arg_at', [$a['args'], $a['index']]), $a['exit']);
             case 'if-open':
                 return "{$pad}if ({$this->checked($a['condition'])}) {\n";
             case 'else':
@@ -117,11 +117,11 @@ final class PhpBackend implements Backend
     }
 
     /** `$x = Support::f(..); if ($x === null) { return; }` stands in for Rust's let-else. */
-    private function bind(string $pad, string $bind, string $value): string
+    private function bind(string $pad, string $bind, string $value, string $exit): string
     {
         $name = $this->name($bind);
 
-        return "{$pad}\${$name} = {$value};\n{$pad}if (\${$name} === null) {\n{$pad}    {$this->bail()}\n{$pad}}\n\n";
+        return "{$pad}\${$name} = {$value};\n{$pad}if (\${$name} === null) {\n{$pad}    {$exit}\n{$pad}}\n\n";
     }
 
     /**

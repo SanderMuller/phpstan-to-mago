@@ -518,6 +518,17 @@ final class Support
         return Operators::binaryOperatorIs($context, $subject, $operator);
     }
 
+    /**
+     * The name a node *writes* — a variable's own name, or a name or identifier's text, or null.
+     *
+     * The question `NamingHelper::getName()` asks. Null for anything else, which is what the rules reading it
+     * test for. See {@see Names::writtenName()}.
+     */
+    public static function writtenName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        return Names::writtenName($context, $subject);
+    }
+
     /** Whether a navigated part is `__DIR__`, which php-parser models as its own node class. */
     public static function isDirConstant(?Part $part): bool
     {

@@ -72,6 +72,33 @@ final class Names
         return $subject->text;
     }
 
+    /**
+     * The name a node *writes*, which is php-parser's `$node->name` on a variable and `->toString()` on a
+     * name or an identifier.
+     *
+     * `NamingHelper::getName()` in `symplify/phpstan-rules` is exactly these three cases and a null for
+     * everything else, and the null matters: three rules test `is_string()` on the answer and decline when it
+     * is not. So this answers null for any other node rather than falling back to its source text — a
+     * navigated part always has text, and returning that would turn "not a name" into a name nobody wrote.
+     *
+     * Kept apart from {@see ResolvedName()}, which answers what the *file* resolves a name to. This one is
+     * the spelling, because the rules comparing two of these compare what the author wrote.
+     */
+    public static function writtenName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        $variable = self::directVariableName($context, $subject);
+        if ($variable !== null) {
+            return $variable;
+        }
+
+        $part = $subject instanceof Node ? Tree::part($context, $subject) : $subject;
+        if (! $part instanceof Part) {
+            return null;
+        }
+
+        return self::isName($part) || self::selectorIsIdentifier($part) ? self::textOf($part) : null;
+    }
+
     /** Whether a navigated part is `__DIR__`, which php-parser models as its own node class. */
     public static function isDirConstant(?Part $part): bool
     {

@@ -3020,6 +3020,27 @@ final readonly class Translator
     private function inlineStaticProducer(StaticCall $expr, int $line): ?array
     {
         $method = $this->memberName($expr->name, $expr->getStartLine());
+
+        // `NamingHelper::getName($node)` — the name a node writes, or null. Answered rather than inlined:
+        // the helper's body is three `return`s of three different expressions, which the choice recogniser
+        // does not take (it folds *literals*) and the producer path refuses on the first of them. The
+        // question itself is one navigation, and `NamingHelper::isName()` next to it is already answered the
+        // same way.
+        if ($expr->class instanceof Name && $expr->class->getLast() === 'NamingHelper' && $method === 'getName'
+            && count($expr->getArgs()) === 1
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a written name as text, which only the PHP target carries', $line);
+            }
+
+            $of = $this->resolve($expr->getArgs()[0]->value, $line);
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'bytes',
+                'php' => 'Support::writtenName($context, ' . $this->operand($of) . ')',
+            ];
+        }
         $found = $expr->class instanceof Name ? $this->findClassByName($expr->class->getLast()) : null;
         if ($found === null) {
             return null;
@@ -3312,6 +3333,12 @@ final readonly class Translator
 
         // `if (COND) { $x = A; } else { $x = B; }` — one name bound two ways, which is a ternary written long.
         if ($this->bindConditionalValue($stmt)) {
+            return;
+        }
+
+        // `if (str_contains($name, '\\')) { $name = Strings::after($name, '\\', -1); }` — a name shortened
+        // to its last segment, written as a branch because the helper form would need a helper.
+        if ($this->takesTheLastSegment($stmt)) {
             return;
         }
 
@@ -6278,7 +6305,14 @@ final readonly class Translator
 
         $bind = $this->freshName($instanceof->expr, $wanted);
         $adapter = $refinement['adapter'];
-        $this->context->lines[] = new Stm('bind-adapter', ['bind' => $bind, 'adapter' => $adapter, 'subject' => $this->operand($subject)], $this->context->indent);
+        // The bail, not {@see bindingExit()}: a refinement is only reached where the guard it replaces
+        // exits with one, so what the original does when the narrowing fails is already known here.
+        $this->context->lines[] = new Stm('bind-adapter', [
+            'bind' => $bind,
+            'adapter' => $adapter,
+            'subject' => $this->operand($subject),
+            'exit' => $this->context->backend->bail(),
+        ], $this->context->indent);
 
         if (isset($refinement['field'])) {
             // The binding *is* the field, so record it under the property the rule will read.
@@ -6430,6 +6464,114 @@ final readonly class Translator
         ];
 
         return true;
+    }
+
+    /**
+     * `if (str_contains($x, SEP)) { $x = <the part after the last SEP>; }` — a name cut down to its last
+     * segment.
+     *
+     * The same question {@see lastNameSegmentHelper()} answers for a helper written to ask it, in the
+     * spelling a rule uses when it asks inline. `NoServiceSameNameSetClassRule` writes it to turn
+     * `App\Some\Service` into `Service` for its message.
+     *
+     * The condition is redundant once the answer is `last_name_segment()`, which returns the whole string
+     * where there is no separator — so the fold drops it rather than rendering a ternary. Sound only because
+     * the two agree on that case, which is why the separator has to be the same literal on both sides and
+     * the subject the same variable in all three places.
+     */
+    private function takesTheLastSegment(If_ $stmt): bool
+    {
+        if ($stmt->elseifs !== [] || $stmt->else instanceof Else_ || count($stmt->stmts) !== 1) {
+            return false;
+        }
+
+        $name = $this->assignedName($stmt->stmts[0]);
+        $condition = $stmt->cond;
+        if ($name === null
+            || ! $condition instanceof FuncCall
+            || ! $condition->name instanceof Name
+            || $condition->name->toString() !== 'str_contains'
+            || count($condition->getArgs()) !== 2
+            || ! $this->isNamedVariable($condition->getArgs()[0]->value, $name)
+        ) {
+            return false;
+        }
+
+        /** @var Expression $statement */
+        $statement = $stmt->stmts[0];
+        /** @var Assign $assign */
+        $assign = $statement->expr;
+        $line = $stmt->getStartLine();
+        $separator = $this->rawStringLiteral($condition->getArgs()[1]->value, $line);
+        if ($separator !== '\\' || ! $this->takesTheTailAfterTheLast($assign->expr, $name, $separator, $line)) {
+            return false;
+        }
+
+        $current = $this->context->locals[$name] ?? null;
+        if ($current === null) {
+            return false;
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal("a name's last segment, which only the PHP target carries", $line);
+        }
+
+        $this->context->locals[$name] = [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'bytes',
+            'php' => $this->context->backend->call('last_name_segment', [$this->nameText($current, $line)]),
+        ];
+
+        return true;
+    }
+
+    /** Whether an expression is `Strings::after($<name>, <separator>, -1)`, Nette's "after the last". */
+    private function takesTheTailAfterTheLast(Expr $expr, string $name, string $separator, int $line): bool
+    {
+        if (! $expr instanceof StaticCall
+            || ! $expr->class instanceof Name
+            || $expr->class->getLast() !== 'Strings'
+            || $this->memberName($expr->name, $line) !== 'after'
+            || count($expr->getArgs()) !== 3
+            || ! $this->isNamedVariable($expr->getArgs()[0]->value, $name)
+        ) {
+            return false;
+        }
+
+        try {
+            $written = $this->rawStringLiteral($expr->getArgs()[1]->value, $line);
+        } catch (Refusal) {
+            return false;
+        }
+
+        $offset = $expr->getArgs()[2]->value;
+
+        return $written === $separator
+            && $offset instanceof UnaryMinus
+            && $offset->expr instanceof Int_
+            && $offset->expr->value === 1;
+    }
+
+    /** Whether an expression is exactly this local, read by name. */
+    private function isNamedVariable(Expr $expr, string $name): bool
+    {
+        return $expr instanceof Variable && $expr->name === $name;
+    }
+
+    /**
+     * What a binding does when the navigation it depends on answers nothing.
+     *
+     * Inside a loop that is `continue`, and it has to be: the original's guard on the produced value is
+     * `continue` too — `AvoidFeatureSetAttributeInRectorRule` writes `if (! is_string($attributeName))
+     * continue;` — so a `return` there abandons every later call in the same class where the original moves
+     * to the next one. That shipped: a `setAttribute()` written with no arguments made the emitted plugin
+     * stop looking, and the snapshot carried the `return` for as long as no example held one.
+     *
+     * Outside a loop the bail is right, because there the original's guard leaves the rule as well.
+     */
+    private function bindingExit(): string
+    {
+        return $this->context->inLoop ? 'continue;' : $this->context->backend->bail();
     }
 
     /** The variable a statement assigns, when it is a plain assignment to a simple name. */
@@ -7411,7 +7553,12 @@ final readonly class Translator
 
             $bind = 'arg' . ($index === 0 ? '' : (string) $index) . '_value';
             $pad = str_repeat(' ', $this->context->indent);
-            $this->context->lines[] = new Stm('bind-arg', ['bind' => $bind, 'args' => $this->operand($list), 'index' => (string) $index], $this->context->indent);
+            $this->context->lines[] = new Stm('bind-arg', [
+                'bind' => $bind,
+                'args' => $this->operand($list),
+                'index' => (string) $index,
+                'exit' => $this->bindingExit(),
+            ], $this->context->indent);
             $this->context->locals[$name] = ['rust' => $bind, 'kind' => $unwrapped ? 'expr' : 'arg', 'key' => 'arg' . $index];
             if (Transpiler::$target === 'php') {
                 // The binding is a PHP variable, so later reads of the local render as one.
@@ -9650,7 +9797,14 @@ final readonly class Translator
             // `$node->name->toString() === 'class'` on a member name: the part carries its own text, and PHP
             // compares member names case-insensitively, which `nameIs()` already does.
             'name-part' => 'Support::nameIs(Support::textOf(' . $this->operand($subject) . '), ' . $this->context->backend->bytes($literal) . ')',
-            'expr' => "support::expression_selector_is({$subject['rust']}, b\"{$literal}\")",
+            // An arbitrary expression asked whether it *writes* this name, which is what
+            // `NamingHelper::getName($node) === $name` asks. Compared with `===` rather than through
+            // `nameIs()`: the original is strict, and a variable's name is case sensitive in PHP where a
+            // member's is not. `writtenName()` answers null for anything that is not a variable, a name or an
+            // identifier, so the comparison is false exactly where php-parser's is.
+            'expr' => Transpiler::$target === 'php'
+                ? 'Support::writtenName($context, ' . $this->operand($subject) . ') === ' . $this->context->backend->bytes($literal)
+                : "support::expression_selector_is({$subject['rust']}, b\"{$literal}\")",
             default => throw new Refusal("name comparison against a {$subject['kind']}", $line),
         };
     }

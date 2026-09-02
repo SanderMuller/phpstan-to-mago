@@ -3217,3 +3217,68 @@ stayed is the pair of tables the refusal reads and the recognition that fills th
 **No count moves.** `phpstan-strict-rules` stays at 22 of 45 and the total at 95 of 169. What the step
 produced is a measurement that closes a line of work rather than opening one: the six rules are not waiting
 on a transpiler feature, they are waiting on mago typing an operand it currently types as a result.
+
+#### A written name, a name shortened, and the wrapper that made a guard chain silent
+
+`NoServiceSameNameSetClassRule` emits, taking `symplify/phpstan-rules` to 56 of 89. Its refusal named the
+guard-body shape inside an inlined helper, and three things sat behind it.
+
+**`NamingHelper::getName()` is one navigation, not a helper to inline.** Its body is three returns of three
+different expressions — a variable's name, a name's or identifier's text, and null — which the choice
+recogniser does not take (that one folds *literals*) and the producer path refuses on the first of them.
+`Support::writtenName()` answers it instead, and the null matters: three rules in the package test
+`is_string()` on the result and decline when it is not. So it answers null for any other node rather than
+falling back to a part's source text, which would turn "not a name" into a name nobody wrote.
+
+**A name shortened to its last segment, written as a branch.** `if (str_contains($name, '\\')) { $name =
+Strings::after($name, '\\', -1); }` is the same question `lastNameSegmentHelper()` already answers for a
+helper written to ask it. The fold drops the condition, which is sound because `last_name_segment()` returns
+the whole string where there is no separator — so the two agree on the case the condition was guarding.
+
+**And the wrapper.** With both of those in, the plugin emitted, loaded, ran, and reported nothing where
+PHPStan reported twice. `internal/probe-service-name-guards.php` prints the guards one at a time and names
+it: `a0='Access' isCca=true classPartKind=NULL`. Mago wraps a member access in an `Access` category node the
+way it wraps a nested call in `Call`, the *predicate* looked through it — `concreteMemberAccess()` — and the
+*navigation* did not. So `isClassConstantAccess()` said yes about an argument whose class part then came back
+null, and two guards later the rule was silent.
+
+That is the second time the same shape has cost a rule: `Call` was found on
+`$routes->import('..')->prefix('/x')`, where the receiver of `prefix` arrives wrapped. The helper is now
+`throughTheCategoryWrapper()` and reads a list of the wrappers rather than one kind.
+
+##### What the pair measures, and the one guard it does not
+
+| the plugin | bad-example findings |
+|:--|--:|
+| as emitted | 2 |
+| with `Access` off the wrapper list | 0 |
+
+Both findings name the shortened class — `Use only "$services->set(Widget::class)" instead` — so the
+last-segment fold is measured by the message rather than by a count.
+
+The kind restriction inside `writtenName()` is *not* exercised by the pair: widening it to answer any part's
+source text leaves both findings in place. What it protects is the meaning — `NamingHelper::getName()`
+answers null for a node that is not a name, and a rule comparing two of these would otherwise call two
+different calls with the same source text equal. The good example holds the shape it is about
+(`$containerConfigurator->services()->set(..)`, whose receiver is a call), and both readings decline that
+one for the same reason.
+
+##### A shipped exit that was wrong, with no example that can reach it
+
+Reading the emission turned up a defect next door. A binding the port synthesises for a navigation that may
+fail — `$arg_value = Support::positionalArgAt(..); if ($arg_value === null) { .. }` — always exited with the
+rule's bail, including inside a loop. The original's guard on such a value is `continue`:
+`AvoidFeatureSetAttributeInRectorRule` writes `if (! is_string($attributeName)) { continue; }`, so a `return`
+there abandons every later call in the same class. One line of one shipped plugin changes,
+`return;` to `continue;`.
+
+**No example in the corpus can execute it, and two attempts to write one are why that is stated rather than
+assumed.** The binding answers null only where the call has fewer arguments than the index, and a rule
+reading `getArgs()[0]` unguarded is a rule that *throws* on such a call: adding `$node->setAttribute();` to
+the bad example took PHPStan from 7 findings to none, an internal error rather than a comparison. A spread
+argument — `setAttribute(...$spread)` — looked like the agreeing case and is not: both engines decline it and
+mago's argument reader unwraps the spread's value fine, so the count stayed 7 with the fix and 7 without it.
+
+So the fix rests on the original's own `continue` rather than on a measurement, and it is marked that way
+here. The refinement binding keeps the bail deliberately: that one is only reached where the guard it
+replaces exits with one, so what the original does is already known there.

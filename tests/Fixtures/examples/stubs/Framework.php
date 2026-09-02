@@ -424,3 +424,23 @@ namespace Symfony\Component\Form\Event;
 
 /** A form event, whose parameter type is the last thing the rule accepts. */
 final class PreSubmitEvent {}
+
+namespace Symfony\Component\DependencyInjection\Loader\Configurator;
+
+/** The parameter type `SymfonyClosureDetector` looks for on a config closure's only argument. */
+final class ContainerConfigurator
+{
+    public function services(): ServicesConfigurator
+    {
+        return new ServicesConfigurator();
+    }
+}
+
+/** What `$containerConfigurator->services()` hands back, and `set()` is the call the rules read. */
+final class ServicesConfigurator
+{
+    public function set(string $id, ?string $class = null): self
+    {
+        return $this;
+    }
+}

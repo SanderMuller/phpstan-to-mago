@@ -18,6 +18,9 @@ use Mago\Sdk\Syntax\NodeKind;
  */
 final class Calls
 {
+    /** The category nodes mago wraps a concrete call or member access in, each holding exactly one child. */
+    private const array CATEGORY_WRAPPERS = [NodeKind::Call, NodeKind::Access];
+
     /**
      * The node kinds a *written* member name is spelled with, as opposed to a computed one.
      *
@@ -48,7 +51,7 @@ final class Calls
      */
     public static function nthExpression(NodeAnalysisContext $context, Part|Node|null $subject, int $index): ?Part
     {
-        $node = self::throughTheCallWrapper($context, $subject);
+        $node = self::throughTheCategoryWrapper($context, $subject);
         if (! $node instanceof Node) {
             return null;
         }
@@ -109,7 +112,7 @@ final class Calls
     /** The member selector of a method call: `->expects(..)` gives `expects`. */
     public static function selector(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $node = self::throughTheCallWrapper($context, $subject);
+        $node = self::throughTheCategoryWrapper($context, $subject);
         if (! $node instanceof Node) {
             return null;
         }
@@ -127,7 +130,7 @@ final class Calls
 
     public static function argumentList(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $node = self::throughTheCallWrapper($context, $subject);
+        $node = self::throughTheCategoryWrapper($context, $subject);
         if (! $node instanceof Node) {
             return null;
         }
@@ -280,20 +283,25 @@ final class Calls
     }
 
     /**
-     * The call node itself, through the `Call` category node mago wraps a *nested* call in.
+     * The concrete node, through the category wrapper mago puts around a call or a member access.
      *
      * The hook's own node is the concrete `MethodCall`, so navigating from it needs no unwrap and none of
-     * these helpers had one. A call the rule reached through a field is not: measured on
-     * `$routes->import('..')->prefix('/x')`, where the receiver of `prefix` arrives as `Call` with a single
-     * `MethodCall` child. `isMethodCall()` already went through the wrapper — that is what
-     * {@see concreteCall()} does — so the kind test said yes and every navigation off the same part then
-     * searched the wrapper's children, found none, and answered null. The guard chain read as a rule that
-     * simply never matched.
+     * these helpers had one. A node the rule reached through a field or an argument is not.
+     *
+     * Both wrappers were found the same way, and both by a rule that read as never matching. `Call` came
+     * from `$routes->import('..')->prefix('/x')`, where the receiver of `prefix` arrives as `Call` with a
+     * single `MethodCall` child. `Access` came from `$services->set(Widget::class, Widget::class)`, where
+     * the argument arrives as `Access` with a single `ClassConstantAccess` child — measured in
+     * `internal/probe-service-name-guards.php`, which prints `a0='Access' isCca=true classPartKind=NULL`.
+     *
+     * In both cases the *predicate* already went through the wrapper — {@see concreteCall()} and
+     * {@see concreteMemberAccess()} do that — so the kind test said yes while every navigation off the same
+     * part searched the wrapper's children, found none, and answered null.
      */
-    private static function throughTheCallWrapper(NodeAnalysisContext $context, Part|Node|null $subject): ?Node
+    private static function throughTheCategoryWrapper(NodeAnalysisContext $context, Part|Node|null $subject): ?Node
     {
         $node = Tree::node($subject);
-        if (! $node instanceof Node || $node->kind !== NodeKind::Call) {
+        if (! $node instanceof Node || ! in_array($node->kind, self::CATEGORY_WRAPPERS, true)) {
             return $node;
         }
 
