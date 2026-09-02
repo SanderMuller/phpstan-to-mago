@@ -188,7 +188,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 182, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 192, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php

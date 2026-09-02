@@ -3689,3 +3689,85 @@ package; everything else keeps the accessor.
 The check asks the property sets rather than matching the refusal's text, so a reworded message cannot
 silently stop matching. Exactly one census line moves, and the mutation is that line: without the condition,
 the four rows above move together.
+
+### The survey reads what a refusing statement encloses
+
+The validation pass this closes a gap in already existed: survey mode, `PackageCoverage::needs()`, and the
+`needs:` lines under every refused census entry. What it never did was look *inside* the statement that
+refused, so a rule whose whole body sits in one `if` or one `foreach` contributed one entry — the shape of
+the wrapper — and nothing about the work inside it.
+
+Measured before building: **28 of 80 refused rules said only what their emit run already said.** Twenty-six
+had a `needs:` block that was the refusal echoed back, and two had none. That is the survey reporting that it
+ran rather than what it found, and it is a third of the corpus it exists to size.
+
+The descent is one loop: when a statement refuses, its enclosed statements are read in its place. A clause
+that holds a body rather than being a statement — `else`, `elseif`, `catch`, `finally`, a `switch` case, all
+five `Stmt` subclasses in php-parser — is descended through instead of handed over, because translating one
+would add `statement outside the vocabulary: Stmt_Else` to every branching rule: a line about php-parser's
+class hierarchy, not about the rule.
+
+**After: 21 of 80.** Nine rules gained obstacles they had never reported, the five `OperandsInArithmetic*`
+rules among them — each of which used to describe a family of one obstacle that measurement had already shown
+to be six. Eighty-six needs lines are new across the census, and no line is lost: the one that moves is
+`collector returns something other than a list of values` under `NewWithFollowingSettersCollector`, reordered
+because five obstacles now precede it.
+
+Two of the 21 arrived there rather than starting there: the widened `unknown local $` filter below took away
+their only extra line. That is the filter working, not a regression.
+
+#### Two artefacts of stepping over, filtered by mechanism rather than by wording
+
+The descent translates statements out of the position they were written in, so some of what it produces is
+about the descent and not about the rule:
+
+| artefact | why it is not a need | lines it added |
+|:--|:--|--:|
+| `unknown local $x` nested one label deep | a skipped assignment left the name unbound; the existing filter was anchored to the start of the line and missed `assignment value outside the vocabulary: unknown local $stmt` | 19 |
+| `continue outside a loop` and its two variants | `inLoop` is false only because the enclosing `foreach` refused at its iterable — a `continue` outside a loop is a fatal error in PHP, so no rule holds one | 28 |
+
+The second is measured, not argued: the phrase appears **zero** times in the census this descent was added
+to and 28 times in the one it produced. The first widening also removes six lines that were already noise by
+the existing filter's own stated rationale, `unknown local $this` among them.
+
+Left alone deliberately: `$errorMessage is not a message built in this rule`, which reads like the same class
+of artefact and is not — it appears five times in the pre-descent census, so it is an existing need with an
+existing meaning.
+
+#### Mutation checks
+
+Three folds, three mutations, each restored from a copy rather than with `git checkout --`:
+
+| mutation | census effect |
+|:--|:--|
+| descend into no statements (`foreach ([] as $nested)`) | 86 needs lines disappear |
+| drop the `outside a loop` filter | 28 artefact lines return |
+| re-anchor `unknown local $` to `str_starts_with` | 19 artefact lines return |
+
+`TracksUpstreamDriftTest` failed on each and passes with all three in place.
+
+#### What still does not appear, and why the bound is still a bound
+
+A second obstacle inside a single **expression**. An expression has no position to resume from — the
+statement around it needs a value — so the first one still stops the walk. Three prose sites said the old
+bound and now say this one: the census header (fixed in its generator, never in the file), the
+`Transpiler::$collectNeeds` docblock, and `PackageCoverage::needs()`.
+
+What is in the remaining 21 has not been read rule by rule, and the census says so rather than guessing: some
+refuse inside one expression, and some — `NewOverSettersRule` for one — refuse before any statement is
+reached at all.
+
+#### Verification
+
+Emit-all across `php`, `analyzer` and `linter` over the four corpus packages plus `tests/Fixtures/Rules`:
+188 files, `diff -r` clean apart from the `--out` path the `mago.toml` snippet embeds. Suite 922/922. PHPStan
+0 errors with no new baseline entry — `Transpiler` moves from 182 to 192, which is the class the guidelines
+name as growing with coverage.
+
+One PHPStan error was fixed rather than baselined: `bodyOf()` first read sub-nodes as `$node->{$name}`, a
+variable property access. It reads `get_object_vars($node)` now, because php-parser publishes the sub-node
+names and nothing that reads one by name. That the two agree was probed rather than assumed — over 23 nodes
+covering every branching shape, `getSubNodeNames()` returns exactly the public properties that are not
+`attributes`, with no extras and none missing.
+
+No count moves. The census gets 86 more lines about the same 80 refusals.

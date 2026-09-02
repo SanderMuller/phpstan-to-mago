@@ -149,9 +149,9 @@ final readonly class PackageCoverage
      * navigation where it needs that *and* the renderer, and a whole corpus looked absent because the walk
      * that would have read it stopped for an unrelated reason.
      *
-     * A lower bound, and the shape of the collection is why: a statement that refuses is stepped over and
-     * the next one translated, so obstacles in *different* statements all appear, and a second obstacle
-     * inside one statement does not.
+     * A lower bound, and the shape of the collection is why: a statement that refuses is stepped over, the
+     * statements it encloses are read in its place, and the next one is translated. So obstacles in
+     * different statements all appear, and a second obstacle inside one *expression* does not.
      *
      * @return list<string>
      */
@@ -176,12 +176,21 @@ final readonly class PackageCoverage
                 $transpiler->needs(),
             );
 
-            // `unknown local $x` is not a capability the rule needs; it is what stepping over the statement
-            // that bound `$x` produces. Keeping those would make every skipped assignment cost two lines and
-            // read as two gaps.
+            // Two artefacts of stepping over a statement, rather than capabilities a rule needs.
+            //
+            // `unknown local $x` is what a skipped assignment produces: the name is in the source and not in
+            // the translated state. Matched anywhere in the line rather than at its start, because the
+            // descent into a refusing statement reaches the same name one label deeper — `assignment value
+            // outside the vocabulary: unknown local $stmt` is the identical gap with a prefix on it.
+            //
+            // `outside a loop` is the same thing for a `continue`. A `continue` outside a loop is a fatal
+            // error in PHP, so no rule holds one; the message means `inLoop` is false, which after a
+            // `foreach` refuses at its iterable it always is. Measured: the phrase appears nowhere in the
+            // census this descent was added to, and 28 times in the one it produced.
             $needs = array_filter(
                 $needs,
-                static fn (string $need): bool => ! str_starts_with($need, 'unknown local $'),
+                static fn (string $need): bool => ! str_contains($need, 'unknown local $')
+                    && ! str_contains($need, 'outside a loop'),
             );
 
             // First sentence only. A needs entry is a *label* for sizing, and one refusal's full text runs to

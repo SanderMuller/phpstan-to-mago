@@ -23,11 +23,15 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\Case_;
+use PhpParser\Node\Stmt\Catch_;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Else_;
+use PhpParser\Node\Stmt\ElseIf_;
 use PhpParser\Node\Stmt\Expression;
+use PhpParser\Node\Stmt\Finally_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Namespace_;
@@ -57,9 +61,9 @@ final class Transpiler
      * reason. A first blocker says what to fix next; it never says what a fix is worth.
      *
      * Statement by statement, because that is the granularity a refusal can be resumed from: a statement
-     * that refuses is skipped and the next one is translated. Obstacles inside one statement — a helper
-     * inlined three levels down — still stop at the first, so the list is a *lower bound* on what a rule
-     * needs and says so.
+     * that refuses is skipped, the statements it encloses are read in its place, and the next one is
+     * translated. Obstacles inside one *expression* still stop at the first, because an expression has no
+     * position to resume from, so the list is a *lower bound* on what a rule needs and says so.
      *
      * Survey mode only, and never during emission: skipping a statement is exactly the approximation the
      * generator refuses to make.
@@ -1408,7 +1412,75 @@ PHP;
             if (! in_array($reason, $this->needs, true)) {
                 $this->needs[] = $reason;
             }
+
+            foreach ($this->bodyOf($stmt) as $nested) {
+                $this->translateOrCollect($nested);
+            }
         }
+    }
+
+    /**
+     * The statements a refusing statement encloses, so the survey reads them instead of stopping at it.
+     *
+     * The census called its list a lower bound for two reasons, and this closes one of them. A rule whose
+     * whole body sits inside one `if` or one `foreach` used to contribute exactly one entry — the shape of
+     * the wrapper — and nothing about the work inside it. 26 of 80 refused rules said only what their emit
+     * run already said, which is the survey reporting that it ran rather than what it found. The five
+     * `OperandsInArithmetic*` rules are the clearest case: each refuses on the same `if` shape, so each
+     * described a family of one obstacle that measurement had already shown to be six.
+     *
+     * A clause that holds a body is not a statement this transpiler translates, so `else`, `elseif`, `catch`,
+     * `finally` and a `switch` case are descended through rather than handed over. Translating one would add
+     * `statement outside the vocabulary: Stmt_Else` to every branching rule — a line about php-parser's
+     * class hierarchy, not about the rule.
+     *
+     * The other reason the bound stays a bound: a second obstacle inside a single *expression* still does not
+     * appear, because an expression has no position to resume from.
+     *
+     * @return list<Stmt>
+     */
+    private function bodyOf(Node $node): array
+    {
+        $found = [];
+        // Through `get_object_vars()` rather than `$node->{$name}`: php-parser publishes the sub-node names
+        // and nothing that reads one by name, and a variable property access is a hole in the type checker's
+        // view of this class as much as in a reader's. The two agree on every node — `getSubNodeNames()`
+        // returns exactly the public properties that are not `attributes`.
+        $properties = get_object_vars($node);
+        foreach ($node->getSubNodeNames() as $name) {
+            $value = $properties[$name] ?? null;
+            foreach (is_array($value) ? $value : [$value] as $child) {
+                if (! $child instanceof Node || $child instanceof Expr) {
+                    continue;
+                }
+
+                if ($child instanceof Stmt && ! $this->holdsABody($child)) {
+                    $found[] = $child;
+
+                    continue;
+                }
+
+                $found = [...$found, ...$this->bodyOf($child)];
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * Whether a statement is a branch of an enclosing one rather than a statement of its own.
+     *
+     * {@see bodyOf} says why these are descended through instead of translated. All five are `Stmt`
+     * subclasses in php-parser — `Case_` included, which is why the test is `instanceof` on the class rather
+     * than a check that something is not a `Stmt`.
+     */
+    private function holdsABody(Stmt $stmt): bool
+    {
+        return $stmt instanceof Else_
+            || $stmt instanceof ElseIf_
+            || $stmt instanceof Catch_
+            || $stmt instanceof Finally_
+            || $stmt instanceof Case_;
     }
 
     /**
