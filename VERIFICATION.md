@@ -4684,3 +4684,51 @@ directions: it named a cause that covers two of six, and it implied a missing ch
 #### Verification
 
 No behaviour change. Suite 933/933, PHPStan 0, emit-all unchanged.
+
+### Most of the differential's noise is one configuration asymmetry
+
+Four rounds of reading differential output have subtracted the same blocks by inspection each time — the two
+complexity thresholds, the constant-coverage minimum, and on Laravel a 366-entry `declareCoverage` block
+where the port reports nothing at all. They are one cause, and it is in the harness rather than in the port.
+
+`CorpusDifferential` writes a neon that **includes this repository's own `phpstan.neon.dist`**, so PHPStan
+runs at this project's thresholds:
+
+    type_coverage: { return: 100, param: 100, property: 100, constant: 0, declare: 100 }
+
+The port's side is built from the same rule list and constructed with **no arguments** —
+`new \Transpiled\DeclareCoverageRule()` — so every plugin carries the package default instead. Hence the
+shape of each block: `declare: 100` makes PHPStan report all 366 files that lack `declare(strict_types=1)`
+while the port's default reports none; `constant: 0` makes PHPStan silent where the port's default reports 18;
+and the complexity rules carry 40 against this project's 80, which is the 52 entries whose two messages the
+report already prints side by side.
+
+On the Laravel run that is **436 of the 551 only-port and 402 only-original entries** — the large majority of
+what a reader has to subtract before the real divergences are visible.
+
+#### Why it is not fixed here
+
+`ConsumerParameters::argumentsFor()` exists to do exactly this: it reads the consumer's parameter dump and
+passes matching values into the emitted plugin's constructor. Two things stop it.
+
+- It matches `(true|false)` only, so an integer threshold is skipped.
+- The names do not correspond. The emitted plugin takes `$required`; the consumer's key is `declare`, nested
+  under `type_coverage`. Lining them up needs the *provenance* — which container parameter each constructor
+  argument came from.
+
+That provenance is recorded. `Transpiler` writes `configured[$name]['parameter']` when it resolves a rule's
+default from the package neon. It does not reach the harness: the emitted manifest carries identifiers and
+messages, and aggregates are not in it at all.
+
+So the fix is to surface that mapping from the emit output and read it in `ConsumerParameters` — a change to
+test support with a clear shape and no product surface. It is named here rather than started because the
+tick that found it had already spent itself on the diagnosis, and because a half-threaded parameter would
+make the runs *less* readable rather than more.
+
+`paramTypeCoverage`'s 423 is not part of this: that is the reflection-extension over-count
+`ACCEPTED_DIVERGENCE` records at a 1.11% ceiling.
+
+#### Verification
+
+No code change. The numbers above are read from the committed differential output and this repository's own
+`phpstan.neon.dist`; the constructor call is quoted from the sandbox worker the last run wrote.
