@@ -5563,3 +5563,48 @@ Suite 943/943, PHPStan 0, pint clean. The only change is a comment, so there is 
 to move; both mutations above were reverted by copy-restore. The first mutation of this step was also the
 wrong instrument and is worth naming: `Emitter.php:817` and `:840` hold the same two lines of Rust, so
 picking the first `ProviderMeta::new` a grep returns tests the branch nobody reaches.
+
+### What the suite actually watches, one token at a time
+
+Three ticks of this now: the linter target had no check, the analyzer target turned out to have one, and this
+step finished the map by mutating a token in every remaining emission path and reading which tests fail.
+
+| emission path            | mutated token                          | what fails                |
+|:--|:--|:--|
+| php node hook            | the `PluginDefinition` description     | 21 `TranspilesToPhpTest`  |
+| php whole-project pass   | the same line in the other template    | 1 `TranspilesToPhpTest`   |
+| php aggregate template   | `{DESCRIPTION}` in `Transpiler`        | 1 `AggregatesTypeCoverageTest` |
+| analyzer node hook       | `ProviderMeta::new(.., "generated")`   | 3 `TranspilesToRustTest`  |
+| linter rule              | `Category::BestPractices`              | 3 `TranspilesToLintTest`  |
+| analyzer whole-run hook  | the same `ProviderMeta` line           | **nothing** — unreachable |
+
+Every reachable path is watched. That was not knowable from reading the tests: two of these paths are two
+templates in one file that differ by a few lines, and the php scaffold splits into a node-hook and a
+whole-project form that only one snapshot in twenty-two exercises.
+
+#### The guideline said the opposite, and two of its sentences were measurably false
+
+`.ai/guidelines/baseline.md` — the source `boost sync` reads into `CLAUDE.md` and `AGENTS.md` — said "The
+test suite runs the PHP target only, so the analyzer and linter branches have no check in it", and offered
+"a one-token change to `$reportSpan` alters five `.rs` files and nothing the suite sees" as the reason.
+
+The first was already wrong before this session: `TranspilesToRustTest` has pinned three analyzer snapshots
+for as long as it has existed. The second is wrong today and was measured rather than argued — that exact
+change fails six tests, three analyzer snapshots and three linter ones.
+
+The instruction those sentences justify is still right, for a different reason, and the correction says which:
+the snapshots read 22 of 58 fixture rules on the php target and 3 on each Rust one, while the corpus emits
+138, 42 and 33 files. A change that moves only a corpus rule's shape moves no snapshot. So emit all three
+targets and `diff -r` anyway — because the snapshots are narrow, not because they are absent.
+
+The copy-aside baseline recipe is now written down there too. This session built a `git worktree` for that
+job first and got an empty diff for the wrong reason: the worktree's `vendor` symlink autoloads this
+repository's `src`, so both runs read the same code.
+
+#### Verification
+
+Suite 943/943, PHPStan 0. Six mutations, each reverted by copy-restore before the next; `git status` shows no
+`src/` or `tests/` change, so the only edit is the guideline and the two files `boost sync` generates from
+it. The sync was run deliberately and its diff read line by line before committing — `wrote=2, unchanged=83,
+deleted=0`, and the diff in each generated file is the one paragraph. That check is not ceremony: a sync run
+by a composer hook once deleted and regenerated both files inside an unrelated commit.

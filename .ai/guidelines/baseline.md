@@ -48,10 +48,27 @@ Separating them means changing how helpers are inlined. Do not attempt it as a r
 
 ### Verify a refactor byte-for-byte, across all three targets
 
-The test suite runs the PHP target only, so the analyzer and linter branches have no check in it. Before
-touching anything, emit every rule in the four corpus packages plus `tests/Fixtures/Rules` for all three
-targets, keep the tree, and `diff -r` after every step. Zero diff is the pass condition. A one-token change
-to `$reportSpan` alters five `.rs` files and nothing the suite sees.
+Every reachable emission path now has a snapshot behind it, and this is what each one costs to break —
+measured by mutating one token in each and reading which tests fail:
+
+| emission path                 | what catches a changed byte           |
+|:--|:--|
+| php node hook                 | 21 `TranspilesToPhpTest` snapshots    |
+| php whole-project pass        | 1 `TranspilesToPhpTest` snapshot      |
+| php aggregate template        | 1 `AggregatesTypeCoverageTest`        |
+| analyzer node hook            | 3 `TranspilesToRustTest` snapshots    |
+| linter rule                   | 3 `TranspilesToLintTest` snapshots    |
+| analyzer whole-run hook       | nothing — no rule in the corpus reaches it |
+
+**Emit all three targets anyway.** The snapshots read 22 of the 58 rules in `tests/Fixtures/Rules` on the php
+target and 3 on each Rust one, while the corpus emits 138 php, 42 analyzer and 33 linter files: a change that
+moves only a corpus rule's shape moves none of them. So before touching anything, emit every rule in the four
+corpus packages plus `tests/Fixtures/Rules` for all three targets, keep the tree, and `diff -r` after every
+step. Zero diff is the pass condition, apart from the `--out` path the `mago.toml.snippet` embeds.
+
+Build the baseline by copying the changed sources aside and restoring them from HEAD, not with `git
+worktree`: a worktree's `vendor` symlink autoloads this repository's `src`, so both runs read the same code
+and the diff is empty for the wrong reason.
 
 A step that changes any emitted byte, snapshot or census line is wrong. Revert the step; never update the
 snapshot to match it.
