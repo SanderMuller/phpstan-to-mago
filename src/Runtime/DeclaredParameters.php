@@ -6,6 +6,7 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 
 use Mago\Sdk\Analyzer\AfterAnalysisContext;
 use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata as ClassMetadata;
+use Mago\Sdk\Analyzer\Type\NamedObjectType;
 use Mago\Sdk\SourceLocation;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
@@ -273,13 +274,93 @@ final class DeclaredParameters
      */
     private static function declaresMethod(AfterAnalysisContext $context, array $ancestors, string $method): bool
     {
-        foreach ($ancestors as $ancestor) {
+        foreach (self::throughMixins($context, $ancestors) as $ancestor) {
             if ($context->codebase->methodExists($ancestor, $method)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * The ancestors, plus whatever a `@mixin` on any of them puts on it, transitively.
+     *
+     * `ClassReflection::hasMethod()` is answered by PHPStan's own `MixinMethodsClassReflectionExtension`, in
+     * core and not in larastan, so a class whose *ancestor* carries `@mixin X` has every method of `X` and the
+     * collector's LSP guard skips it. That is the whole of this metric's over-count on `laravel/framework`:
+     * bisecting `Illuminate` by directory put +1190 of +1310 in `Database`, +55 in `Redis` and +16 in
+     * `Pagination`, and the other 35 directories at exactly zero.
+     *
+     * Controlled rather than reasoned about, each row predicted before the run:
+     *
+     * | shape                                             | PHPStan | port before |
+     * |:--|--:|--:|
+     * | `@mixin` on the parent, target declares the method |       3 |           5 |
+     * | the same control with the `@mixin` line removed    |       5 |           5 |
+     * | `@mixin` on the parent, target *documents* it      |       1 |           3 |
+     * | a three-link `@mixin` chain                        |       3 |           5 |
+     * | `@mixin` naming a class nothing resolves           |       3 |           3 |
+     *
+     * The chain row is why this walks: `hasMethod()` recurses, so `Relation` being `@mixin Builder` and
+     * `Builder` being `@mixin Query\Builder` locks a name declared two links out. The documenting row needs
+     * nothing extra — `methodExists()` already answers for a `@method` line, which is why a `@method` on a
+     * plain parent never diverged. The unresolvable row is the reason this cannot close every case: `@mixin
+     * \Redis` on `Illuminate\Redis\Connections\Connection` is answered by PHPStan from the loaded
+     * extension, and mago has no metadata for a class it never parsed.
+     *
+     * The subject's *own* `@mixin` is deliberately not consulted. The guard asks `getParents()` and
+     * `getInterfaces()`, so a class documenting a mixin on itself does not thereby lock its own methods.
+     *
+     * @param list<string> $ancestors
+     *
+     * @return list<string>
+     */
+    private static function throughMixins(AfterAnalysisContext $context, array $ancestors): array
+    {
+        $queue = $ancestors;
+        $seen = [];
+        $reached = [];
+        while ($queue !== []) {
+            $name = array_shift($queue);
+            if (isset($seen[strtolower($name)])) {
+                continue;
+            }
+
+            $seen[strtolower($name)] = true;
+            $reached[] = $name;
+
+            $metadata = $context->codebase->getClassLike($name);
+            if (! $metadata instanceof ClassMetadata) {
+                continue;
+            }
+
+            foreach ($metadata->mixins as $mixin) {
+                foreach ($mixin->atomicTypes as $atomic) {
+                    // A generic argument is written on plenty of them — `@mixin Builder<TRelatedModel>` on
+                    // `Relation` — and the name is what the guard needs.
+                    if ($atomic instanceof NamedObjectType) {
+                        $queue = [...$queue, $atomic->name, ...self::ancestryOf($context, $atomic->name)];
+                    }
+                }
+            }
+        }
+
+        return $reached;
+    }
+
+    /**
+     * A named class's own declared ancestry, which `hasMethod()` on a mixin target consults as well.
+     *
+     * @return list<string>
+     */
+    private static function ancestryOf(AfterAnalysisContext $context, string $class): array
+    {
+        $metadata = $context->codebase->getClassLike($class);
+
+        return $metadata instanceof ClassMetadata
+            ? [...$metadata->parentClasses, ...$metadata->parentInterfaces]
+            : [];
     }
 
     /**

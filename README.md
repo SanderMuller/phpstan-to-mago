@@ -169,8 +169,8 @@ Per-rule agreement is gated: for each emitted rule CI runs the real `mago` binar
 the same two files and compares line and message. A rule that emits and reports nothing fails.
 
 Corpus-scale agreement is not proven. [VERIFICATION.md](VERIFICATION.md) has the differential runs, their
-traced gaps, and the defects they found — six across the last two rounds. Four vendor trees read 11744
-agreeing against 454 divergences, and every one has a written cause.
+traced gaps, and the seven defects they found. Four vendor trees read 11744 agreeing against 31 divergences,
+and every one has a written cause.
 
 ## Performance
 

@@ -36,9 +36,11 @@ use Mago\Sdk\Syntax\Node;
  *   trait method. That is what makes a finding land where PHPStan puts it.
  * - **Method names in metadata are lowercased**, so any comparison has to fold case.
  *
- * One filter of the original is **not** reproduced: `ParamTypeDeclarationCollector` skips a function-like whose
- * docblock declares a `callable` parameter, which needs a docblock read this does not do. A project using that
- * shape will disagree, and it is a known gap rather than a silent one.
+ * One filter reads like a gap and is not: `ParamTypeDeclarationCollector` skips a function-like whose docblock
+ * declares a `callable` parameter, and {@see Declarations::declaresCallableParameter()} reproduces it from the
+ * trivia, matching the original's `'@param callable'` substring exactly — one space, so `@param  callable`
+ * fires in neither. The `docblock-callable` control pins it. This sentence said the opposite for as long as
+ * the filter has existed.
  */
 final readonly class TypeCoverage
 {

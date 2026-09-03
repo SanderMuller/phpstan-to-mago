@@ -5176,3 +5176,103 @@ the failure mode a number in prose has: the run moves and the sentence does not.
 
 No code change and no test reads the README, so there is nothing to run. Both figures are read from the run
 recorded at line 5110 of this file, and the defect list from line 4956.
+
+### `@mixin` was the +1310, and PHPStan answers it from core rather than from larastan
+
+The last step said the parameter over-count's cause was not established and named the instrument. The
+instrument was the wrong one. What settled it was bisecting `Illuminate` by directory, which nobody had
+done because the note's story — reflection extensions — predicted the over-count would be spread everywhere:
+
+    Database    251 files   original 3098   port 4288   +1190
+    Redis        16 files   original  117   port  172     +55
+    Pagination   18 files   original  105   port  121     +16
+    the other 35 directories                              +0
+
++1261 of +1310 in three directories out of 38, and 35 at exactly zero. That is not a property of the corpus;
+it is three files' worth of one shape.
+
+`Redis` was the smallest, so it went first. `PredisClusterConnection` counts 0 against 1, and the one
+declaration is `keys(string $pattern)`. Nothing in its ancestry declares `keys` — checked, both the parent
+chain and `Illuminate\Contracts\Redis\Connection`. What its ancestry does carry is `@mixin \Predis\Client`
+on `PredisConnection` and `@mixin \Redis` on `Connection`.
+
+**The first hypothesis was wrong and one control said so.** predis is not installed here, so the obvious
+reading was that an unresolvable `@mixin` makes the guard fire. A control with `@mixin \Predis\Client` on the
+parent counts 3 against 3 — PHPStan skips nothing. The mixin that matters is `\Redis`, which resolves because
+ext-redis is loaded on this machine, and `Redis::keys()` exists.
+
+So the cause is `MixinMethodsClassReflectionExtension`, which is in **PHPStan core** and not in larastan.
+`ClassReflection::hasMethod()` answers for every method a `@mixin` target has, the collector's LSP guard
+skips such a method entirely, and mago publishes `ClassLikeMetadata->mixins`. It was reproducible all along.
+
+Five controls, each predicted before it ran:
+
+| control                                        | PHPStan | port before | port after |
+|:--|--:|--:|--:|
+| `mixin-on-ancestor` — target declares it       |       3 |           5 |          3 |
+| `mixin-absent` — the same, `@mixin` removed    |       5 |           5 |          5 |
+| `documented-mixin` — target `@method`s it      |       1 |           3 |          1 |
+| `mixin-chain` — two links                      |       3 |           5 |          3 |
+| `mixin-unresolvable` — target does not resolve |       5 |           5 |          5 |
+
+`documented-mixin` needed nothing extra: `Codebase::methodExists()` already answers for a `@method` line,
+which is why a `@method` on a plain parent had never diverged. `mixin-chain` is why the walk is transitive —
+`Relation` is `@mixin Builder` and `Builder` is `@mixin Query\Builder`, and following one link answered 5.
+Both mutation-checked: disabling the follow fails exactly the three mixin rows and no others, and restricting
+it to depth one fails only `mixin-chain`.
+
+#### What is left is one declaration, and it is a stub gap
+
+    Illuminate, whole tree   1694 files   original 17635   port 17636   +1
+
+`Redis` alone still reads +3, and the three parameters are `PhpRedisConnection::hscan()`. Mago carries
+`\Redis` too — probed by declaring each name against `@mixin \Redis` and reading which the guard skipped: it
+knows `scan`, `sscan` and `zscan`, and not `hscan`. So the residue is a mixin target whose metadata is
+missing a method the runtime has, which no plugin can close from this side.
+
+That makes the figure machine-specific in a way worth saying out loud: without ext-redis loaded, PHPStan
+resolves nothing for `\Redis`, skips nothing, and the over-count on `Illuminate` would be larger while the
+port stayed the same. `mixin-extension-stub` pins the divergence at 1 against 4 and skips itself where the
+extension is absent, rather than passing for the wrong reason.
+
+The other two metrics were measured on the same three directories before deciding they were out of scope:
+`properties` 416/46/33 and `returns` 3113/120/154, delta zero on every one. The property collector's guard
+reads `hasProperty()`, which the mixin extension also answers, so the zero is a measurement rather than an
+assumption.
+
+#### The four corpora, and what the fix did to them
+
+    nikic/php-parser/lib          270 files   1693 agree   0 / 0
+    rector/rector/src             489 files    246 agree   1 / 0
+    laravel Support + Database    367 files   7998 agree   1 / 25
+    nesbot/carbon/src             914 files   1807 agree   3 / 1
+
+**11744 agreements against 31 divergences**, down from 454. `paramTypeCoverage` on Laravel goes from 423
+port-only to 2000 agreements with none either side. Agreements do not move, which is the arithmetic this
+predicts: the fix removes findings the port should never have reported, and a removed false positive is not
+a new agreement.
+
+The 25 left on Laravel are the traced ones — `noDynamicName` 15, `forbiddenStaticClassConstFetch` 7,
+`noClassReflectionStaticReflection` 3 — and carbon's `paramTypeCoverage` 2 only-original were there before
+this change, unmoved by it.
+
+#### One claim in the file was false, and this step found it by reading around the fix
+
+`TypeCoverage`'s docblock said the collector's `@param callable` skip is "**not** reproduced ... a known gap
+rather than a silent one". `DeclaredParameters::countable()` calls
+`Declarations::declaresCallableParameter()`, which matches the original's `'@param callable'` substring
+exactly — one space, so Laravel's `@param  callable` fires in neither — and `docblock-callable` controls it.
+The sentence was wrong for as long as the filter has existed, and it is the kind of wrong that survives:
+it reads as a caveat, so nobody checks it.
+
+#### Verification
+
+Suite 939/939 after the snapshot update, PHPStan 0 with no new baseline entry, and pint clean on every file
+this touched. (`vendor/bin/pint --test` also names `src/Translator.php`, `src/SourceIndex.php` and four
+fixtures; the fixtures are `pint.json` exclusions reached only by naming them, and the two sources are
+unmodified by this change, so the run that names them is reading HEAD's copy of them.) Emit-all across `php`,
+`analyzer` and `linter` over the four corpus packages plus `tests/Fixtures/Rules`: 213 files each side,
+and `diff -r` names one emitted file — `ParamTypeCoverageRule.php`, lines 19-29, which is the note — plus the
+`--out` path the four `mago.toml.snippet`s embed. The baseline was built by copying the three changed sources
+aside, restoring them from HEAD, emitting, and copying back; a `git worktree` was tried first and was wrong,
+because its `vendor` symlink autoloads this repository's `src` and both runs then read the same code.

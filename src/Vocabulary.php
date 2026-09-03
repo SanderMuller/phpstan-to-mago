@@ -834,9 +834,17 @@ final class Vocabulary
      * The divergence a mapped aggregate is emitted *with*, where it does not reach exact agreement.
      *
      * The parameter metric agreed exactly on a small fixture, then disagreed on a 585-file dependency tree,
-     * and was withheld while the gap was traced. Every remaining part of the gap has the same cause and that
-     * cause is not portable, so the honest outcome is a bound rather than a refusal — refusing forever on
-     * something the port cannot close blocks the rule permanently for nothing.
+     * and was withheld while the gap was traced. The remaining gap has one cause and that cause is not
+     * portable, so the honest outcome is a bound rather than a refusal — refusing forever on something the
+     * port cannot close blocks the rule permanently for nothing.
+     *
+     * **"Not portable" has been wrong once, and the wrong part was the largest part.** The bound read 1.11%
+     * for two years' worth of application measurements and 7.4% on a vendor tree, and the vendor figure was
+     * attributed to the same unportable reflection. It was `@mixin`: PHPStan's own
+     * `MixinMethodsClassReflectionExtension`, in core rather than in larastan, answers `hasMethod()` for
+     * every method a mixin target has, and mago publishes `ClassLikeMetadata->mixins`. Following it took
+     * `Illuminate` from +1310 to +1. So a cause named unportable is a claim about the SDK as well as about
+     * PHPStan, and it is worth re-asking whenever the number is large.
      *
      * **The measurement, and what it is against.** `php tests/Support/run-coverage-corpus.php <consumer-root>`
      * on two Laravel consumers. On hihaho (2933 files) PHPStan counts 13694 parameters where this counts
@@ -882,18 +890,19 @@ final class Vocabulary
     public const array ACCEPTED_DIVERGENCE = [
         'parameters' => [
             'ceiling' => 0.0111,
-            'note' => 'Over-counts the original by 1.11% at most on the two Laravel *applications* it was '
-                . 'measured on — +81 of 13694 and +37 of 11428 — and by considerably more on a vendor tree: '
-                . '+1310 of 17635, or 7.4%, on the 1694 files of laravel/framework\'s own `Illuminate`, where '
-                . 'no reflection extension is installed at all. So read 1.11% as the figure for an '
-                . 'application\'s own source and not as a bound. What drives the larger number is not '
-                . 'established; it is not the unused-trait multiplicity, because widening the corpus from 367 '
-                . 'files to 1694 moved the *ratio* from 26.5% to 7.4% and left the absolute over-count almost '
-                . 'unchanged at +1211 to +1310. The collector skips a method whose name an ancestor has, '
-                . 'and PHPStan answers that from reflection extensions a Mago plugin cannot reproduce. '
-                . 'Over-counting only: the under-count this once also carried — a class declared twice in one '
-                . 'file behind a version guard, -7 on nikic/php-parser — was the ancestry being read from the '
-                . 'name rather than from the declaration, and is fixed. Reproduce with '
+            'note' => 'Over-counts the original by +1 of 17635 declarations on the 1694 files of '
+                . 'laravel/framework\'s own `Illuminate`, and by 1.11% at most on the two Laravel '
+                . '*applications* it was measured on — +81 of 13694 and +37 of 11428, both measured before '
+                . '`@mixin` was followed and not re-measured since. The collector skips a method whose name an '
+                . 'ancestor has, asking `ClassReflection::hasMethod()`, and two of the things that answer it '
+                . 'are reproduced here: a `@method` line on an ancestor, and a `@mixin` on one, followed '
+                . 'transitively. The mixin was +1310 on `Illuminate` by itself — +1190 of that in `Database`, '
+                . '+55 in `Redis`, +16 in `Pagination`, and the other 35 directories at zero. What remains is '
+                . 'a mixin target whose metadata is missing a method the runtime has: `@mixin \\Redis` on '
+                . 'Illuminate\\Redis\\Connections\\Connection, where mago carries `scan`, `sscan` and '
+                . '`zscan` and not `hscan`, so `PhpRedisConnection::hscan()` is the whole +1 — and, on an '
+                . 'application, larastan\'s factory and auth extensions, which a Mago plugin cannot '
+                . 'reproduce. Under-counts nothing measured. Reproduce with '
                 . '`php tests/Support/run-coverage-corpus.php <consumer-root>`.',
         ],
         'constants' => [

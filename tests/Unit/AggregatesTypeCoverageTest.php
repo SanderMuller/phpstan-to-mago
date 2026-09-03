@@ -154,11 +154,15 @@ final class AggregatesTypeCoverageTest extends TestCase
         $this->assertStringContainsString("'typeCoverage.paramTypeCoverage'", $emitted);
         $this->assertStringContainsString('Out of %d possible param types', $emitted);
 
-        // Both figures, because one of them alone is what a reader would take as a bound. 1.11% is the two
-        // Laravel applications; 7.4% is `laravel/framework`'s own `Illuminate`, measured after the first
-        // number had been shipped as though it covered a vendor tree too.
+        // Both figures, because one of them alone is what a reader would take as a bound. +1 of 17635 is
+        // `laravel/framework`'s own `Illuminate` as it stands; 1.11% is the two Laravel applications, and it
+        // is the older of the two — measured before `@mixin` was followed and not re-measured since, which
+        // the note has to keep saying or the smaller vendor figure reads as covering an application too.
+        $this->assertStringContainsString('+1 of 17635 declarations', $emitted);
         $this->assertStringContainsString('1.11% at most on the two Laravel *applications*', $emitted);
-        $this->assertStringContainsString('+1310 of 17635, or 7.4%', $emitted);
+        $this->assertStringContainsString('not re-measured since', $emitted);
+        // And what the +1 is, by name. A residue nobody can name is how +1 becomes +1310 again unnoticed.
+        $this->assertStringContainsString('PhpRedisConnection::hscan()', $emitted);
         $this->assertStringContainsString('run-coverage-corpus.php', $emitted);
     }
 
