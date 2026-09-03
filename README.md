@@ -169,8 +169,8 @@ Per-rule agreement is gated: for each emitted rule CI runs the real `mago` binar
 the same two files and compares line and message. A rule that emits and reports nothing fails.
 
 Corpus-scale agreement is not proven. [VERIFICATION.md](VERIFICATION.md) has the differential runs, their
-traced gaps, and the defects they found — four in the last round. Its closest reading is 367 Laravel files at
-7996 agreeing, 3 only the original reports, and six entries with no traced cause.
+traced gaps, and the defects they found — five in the last round. Three vendor trees read 9937 agreeing
+against 450 divergences, and every one of the 450 has a traced cause.
 
 ## Performance
 

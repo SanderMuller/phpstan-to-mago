@@ -4925,3 +4925,40 @@ is mago inferring more.
 
 No code change. Both types above are dumped output, not readings of the source; the reduction that produced
 them is a file PHPStan reports on and the port does not.
+
+### All three corpora, re-read with the thresholds aligned
+
+The php-parser and rector runs were measured *before* the configuration asymmetry was closed, so their
+numbers were stale. Re-read:
+
+| corpus | files | agree | only-original | only-port |
+|:--|--:|--:|--:|--:|
+| `nikic/php-parser/lib` | 270 | 1693 | 0 | 0 |
+| `rector/rector/src` | 489 | 246 | 1 | 0 |
+| `laravel/framework` `Support` + `Database` | 367 | 7998 | 1 | 448 |
+
+`rector/rector/src` went from 657 only-port to **none**: all of it was the threshold mismatch, and the one
+only-original is the phar-resident `PHPStan\Type\StaticType` parent named as unclosable.
+`nikic/php-parser/lib` went from 410 only-port to none and is now exactly clean.
+
+**9937 agreements against 450 divergences, and each of the 450 has a written cause:**
+
+    423   paramTypeCoverage      the reflection-extension over-count, at its 1.11% ceiling
+     15   noDynamicName          9 unused traits, 6 places mago's inference stops short
+      7   staticConstFetch       unused traits, one through a trait-to-trait chain
+      3   noClassReflection...   unused traits
+      1   noConstructorOverride  a parent class that lives only inside phpstan.phar
+      1   noDynamicName          a destructuring mago types more narrowly than PHPStan
+
+Four of those causes are divergences this repository records as deliberate, one is a measured ceiling, and
+three are places the two engines' type inference or class resolution differ — in both directions.
+
+Five defects came out of these runs and are fixed: a `noConstructorOverride` false positive on a
+twice-declared class name, a `paramTypeCoverage` under-count from reading ancestry by name, five findings
+missed inside anonymous classes, a return-type anchor one line out on every attributed method, and
+`__FUNCTION__` not folding to its value.
+
+#### Verification
+
+No code change. Every number is from a differential run in this session; the three sandboxes are separate and
+each run reads the consumer's own configuration on both sides.
