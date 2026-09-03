@@ -3993,3 +3993,53 @@ invites from the one the field answers, and neither docblock had been there.
 Fires gate 564/564 with the new case in the pair. Suite green. PHPStan 0 errors. Emit-all unchanged across
 all three targets. No census line moves and no count moves; one more shipped rule family agrees with PHPStan
 where it did not.
+
+### Arguments are read as written, and that is now pinned rather than assumed
+
+Three rules refuse because they call `ParametersAcceptorSelector::selectFromArgs()` and
+`ArgumentsNormalizer::reorderFuncArguments()` — they read arguments in *declared* order, so a named argument
+lands where its parameter sits. Sizing that led to a claim about every other rule: that a rule which does not
+normalize reads arguments as written, PHPStan hands them back as written, and the port reading the written
+order therefore agrees. That claim was reasoned, not measured, and two of this session's bugs came from
+exactly that.
+
+Measured now. `NoArrayMapWithArrayCallableRule` reads `$node->getArgs()[0]->value` and asks whether it is an
+array literal. Written `array_map(array: $values, callback: [$this, 'twice'])`, argument zero is `array:
+$values`, so the rule stays quiet even though the call does pass an array callable — and the port is quiet
+too. Both silent, which on its own is worth nothing.
+
+So the case was mutated rather than trusted. Reversing the list in `Calls::argumentAt()` makes the port report
+the new line and stop reporting the bad example:
+
+    - 'Bad.php'  => [ 0 => '16: Avoid using array callables in array_map() ...' ]
+    + 'Good.php' => [ 0 => '47: Avoid using array callables in array_map() ...' ]
+
+The case is live, and it now pins written order for every rule that does not normalize. If argument reading
+is ever made order-aware by default, this pair fails — which is the point of putting it in a good example
+rather than in a comment.
+
+`PositionalFlagRule`'s pair already carried named arguments, but for its own guard rather than for the
+generic reader; this is the first case that holds `Calls::argumentAt()` itself to the written order.
+
+#### The normalizing three are buildable, which was the open question
+
+Probed rather than assumed, because a helper that cannot resolve a parameter name is no helper:
+`$context->codebase->getFunction()` carries parameter names for internal functions as well as user-declared
+ones, and the lookup folds case.
+
+    array_keys            3 params: $array, $filter_value, $strict
+    in_array              3 params: $needle, $haystack, $strict
+    str_replace           4 params: $search, $replace, $subject, $count
+    ParamsProbe\localFn   3 params: $needle, $haystack, $strict
+    paramsprobe\localfn   3 params: $needle, $haystack, $strict
+
+So the reordering is reachable. What is not yet designed is the translator side: the rules bind the function
+reflection to a local and ask it two things — `->getName()` and `->getVariants()` — and the site that maps
+`$scope->getFunction()` says in its own comment that it avoided a handle "with two arms and no third question
+behind them". Here there are two arms, so that is a design decision rather than a mapping, and it is not made
+in this commit.
+
+#### Verification
+
+Fires gate 564/564. Suite green. PHPStan 0 errors. Emit-all unchanged across all three targets. No census line
+moves and no count moves.
