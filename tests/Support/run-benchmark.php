@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * What the port costs against the rule packages it came from, on a consumer's own code.
  *
- *   php tests/Support/run-benchmark.php <consumer-root> [--paths=a,b] [--packages=vendor/one] [--runs=N]
+ *   php tests/Support/run-benchmark.php <consumer-root> [--paths=a,b] [--packages=one/rules] [--runs=N]
  *       [--sandbox=DIR]
  *
  * Four rows: the mago engine with no plugins, the same engine carrying the transpiled ones, PHPStan with a

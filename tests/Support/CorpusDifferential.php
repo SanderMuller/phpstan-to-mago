@@ -209,10 +209,19 @@ final class CorpusDifferential
             }
 
             if ($this->emitted === []) {
-                throw new RuntimeException(
-                    'The consumer has none of the configured rule packages installed, so there is nothing to '
-                    . 'transpile: ' . implode(', ', $this->packages),
-                );
+                // Both counts, because two different failures end here and the message used to name only
+                // one of them. Reading "the consumer has none of the configured rule packages installed"
+                // about `spaze/phpstan-disallowed-calls` — installed, 38 rules found, all 38 refused on a
+                // missing hook — sends a reader to check the vendor directory, which is fine, and then to
+                // doubt the path, which is not. Stating both is also one branch fewer than choosing between
+                // them, and this class sits one point under its complexity limit.
+                throw new RuntimeException(sprintf(
+                    'Nothing to transpile from %s: %d of them are not installed, and the rest yielded %d '
+                    . 'refusal(s) and no emission. Run the transpiler over the package to read them.',
+                    implode(', ', $this->packages),
+                    count($this->skipped),
+                    count($this->refused),
+                ));
             }
         } finally {
             Transpiler::$target = $target;

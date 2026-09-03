@@ -5865,3 +5865,48 @@ survey figure as the contrast, and says what the gap is.
 Suite 943/943, PHPStan 0, pint clean. The census alarm caught each header edit and the file was replaced from
 its `.actual`; no rule line moved. The emit figures are three runs — the package, `composer/pcre`, and
 `EchoCalls` alone for the named refusal — and the 17 is `grep -c` over the emit output, not an estimate.
+
+### One error message named the wrong failure, and the README opened with a mechanism
+
+Two things this session tripped over, fixed together.
+
+**`CorpusDifferential::emit()` printed "The consumer has none of the configured rule packages installed"
+whenever nothing emitted.** Two different failures end at that line — a package that is absent, and a package
+whose every rule refuses — and the message named only the first. Reading it about
+`spaze/phpstan-disallowed-calls`, which is installed, has 38 rules found, and refuses all 38 on a missing
+hook, sends a reader to check the vendor directory and then to doubt the path. It now states both counts:
+
+    Nothing to transpile from spaze/phpstan-disallowed-calls: 0 of them are not installed,
+    and the rest yielded 38 refusal(s) and no emission.
+
+    Nothing to transpile from no/such-package: 1 of them are not installed, and the rest
+    yielded 0 refusal(s) and no emission.
+
+Both branches run. Stating both counts is also one branch fewer than choosing between them, which matters
+here: the first version used a ternary and took the class from 80 to 81 against its complexity limit, so
+PHPStan refused it. The `sprintf` is both the clearer message and the one that fits.
+
+**Two usage docblocks documented `--packages=vendor/one`.** `CorpusDifferential` prepends `vendor/` itself,
+so that spelling refuses every package. It cost a run here and a run in the benchmark last week; both lines
+now read `--packages=one/rules`.
+
+#### The README, audited against the `readme` skill
+
+- **The opening named a mechanism, not a problem.** It read "Transpile PHPStan rules into Mago analyzer
+  plugins", then explained why a rule object cannot travel. The reader's situation comes first now: you run
+  Mago and still run PHPStan, because your conventions exist only as PHPStan rules.
+- **Nothing in the opening may contradict the Performance section**, and the obvious problem-first sentence —
+  *PHPStan is the slow part of your loop* — would have. This repository's own benchmark says the port is
+  slower than a warm PHPStan on the corpus it publishes. The opening claims portability, which is what the
+  measurements support.
+- **1225 words to 1204**, against a ~1200 ceiling, prose only. The flag list moved from a code block to a
+  three-row table — occasional-tier reference material, and two of the five flags were dropped to `--help`.
+- Structure re-checked rather than assumed: 68 words before the first code block (limit ~80), longest
+  paragraph 66 words (limit ~100), no line over 110 columns. The prose-majority sections that remain are the
+  caveat and concept ones the skill exempts.
+
+#### Verification
+
+Suite 943/943, PHPStan 0 with no new baseline entry, pint clean. Both differential failure branches were run
+rather than reasoned about. No `src/` change, so no emitted byte moves; every README figure in the edited
+sections was measured earlier in this session and none was restated from memory.

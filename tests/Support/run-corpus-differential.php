@@ -6,7 +6,7 @@ declare(strict_types=1);
  * The corpus differential, run against a consumer project.
  *
  *   php tests/Support/run-corpus-differential.php <consumer-root> [--threads=N] [--sandbox=DIR]
- *       [--paths=a,b] [--packages=vendor/one,vendor/two] [--parameter=name=true]
+ *       [--paths=a,b] [--packages=one/rules,two/rules] [--parameter=name=true]
  *       [--extension-host=/path/to/plugin.php]
  *
  * Prints the emission counts, the corpus size, and per identifier the agree / only-original / only-port
