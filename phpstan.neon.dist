@@ -127,6 +127,7 @@ parameters:
                 - tests/Support/FiresGate.php
                 - tests/Unit/AggregatesConstantCoverageTest.php
                 - tests/Unit/AggregatesDeclareCoverageTest.php
+                - tests/Unit/AggregatesReturnCoverageTest.php
                 - tests/Unit/AggregatesTypeCoverageTest.php
                 - tests/Unit/AnalysesTheEmittedPluginsTest.php
                 # The trait divergence is a fact about two engines, so measuring it means running both.

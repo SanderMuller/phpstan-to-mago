@@ -4570,3 +4570,42 @@ it is a test class and its own fixture, not a line.
 
 Suite 930/930, PHPStan 0 errors, emit-all unchanged across all three targets — the anchor is runtime, and the
 runtime ships as a package. No census line moves and no count moves.
+
+### Pinning the return-type anchor, and two guesses the fixture corrected
+
+The previous commit fixed an anchor the suite could not see: `returnTypeCoverage` had no line-level test, so
+the port reported every attributed method a line below the original and nothing caught it. This is
+`AggregatesReturnCoverageTest`, built on the pattern its three siblings follow — four fixture files, findings
+compared with PHPStan's by `line: message`.
+
+**Both tests fail on the mutation.** Restoring `nameLocation ?? location`:
+
+    agrees_with_the_real_rule    'Attributed.php' => 23 expected, 24 actual
+    counts_and_skips             '24: Out of 4 possible ...' does not start with "23: "
+
+So the anchor is pinned twice over: once against PHPStan's own answer, and once against the line the fixture
+names.
+
+#### The fixture corrected two things it was written to demonstrate
+
+**The closure does not count.** `Anonymous.php` holds a closure with no return type, put there because the
+collector's node type is `FunctionLike` and a closure looked like it would be counted. The run says 4
+possible, not 5, and PHPStan agrees at 4 — the aggregate walks the codebase's *method* list, so a closure
+never reaches it. The file is kept for that, stated as a measurement rather than as the reason it was
+written.
+
+**And the nullable fallback was unreachable, not defensive.** The previous commit's message said the
+`nameLocation ?? location` fallback "goes too, since a declaration always has a location and only a closure's
+name is missing". The case it named is one that loop never sees: it iterates metadata methods, and a method
+always has a name. Removing the fallback was right, and the reason given for it was not.
+
+The fixture earns its four files on measured grounds now: a declared return type that is counted and never
+reported, a plain untyped method where both anchors coincide, an attributed one where they do not, and a
+closure that is counted by neither engine.
+
+#### Verification
+
+Suite 933/933, up from 930 — the three new tests. PHPStan 0 errors: `proc_open()` is disallowed by
+configuration and this test spawns both engines like its three siblings, so it joins the same scoped
+exception rather than taking a new baseline entry. Emit-all unchanged; no census line moves and no count
+moves.
