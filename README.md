@@ -59,7 +59,7 @@ because a refused rule reports nothing, and so does a translated rule that under
 
 ## Running a generated plugin
 
-Mago runs PHP extensions as workers. Register the plugins in one and point `mago.toml` at it:
+Mago runs PHP extensions as workers. Register the plugins in one, then point `mago.toml` at it:
 
 ```php
 <?php // worker.php
@@ -101,11 +101,11 @@ public function __construct(
 ```
 
 Nothing from a consuming project is baked in; override in the worker, which `manifest.json` names. A rule
-taking a PHPStan service is refused by name: no worker can supply a `ReflectionProvider`.
+taking a PHPStan service is refused by name — no worker can supply a `ReflectionProvider`.
 
 ## Refusals
 
-A rule using a construct outside the vocabulary is refused, naming the construct and its line:
+A construct outside the vocabulary is refused, naming it and its line:
 
 ```
   REFUSE  ClosureUsesThisRule: no mapping for ->static on a hook-node (line 26)
@@ -152,12 +152,12 @@ with its count. Larger pieces:
 </details>
 
 An aggregate is mapped only once its numbers agree with the real rule on a real project, and carries its
-measured bound: `tests/Support/run-coverage-corpus.php <project> --metric=<name>`.
+measured bound: `run-coverage-corpus.php <project> --metric=<name>`.
 
 ## How far this is verified
 
 Per-rule agreement is gated: for each emitted rule CI runs the real `mago` binary against real PHPStan over
-the same two files and compares line and message. A rule that emits and reports nothing fails.
+the same two files, comparing line and message. A rule that emits and reports nothing fails.
 
 Corpus-scale agreement is not proven. Five vendor trees read 12305 agreeing against 28 divergences, each with
 a written cause: 19 are traits PHPStan never analyses, 4 are inference gaps, 5 are findings the port misses.

@@ -6401,3 +6401,40 @@ PHPStan 0, suite 943/943, pint clean. The standard emit-all across all three tar
 either. Ten of this session's fifteen cleared errors needed no code change; these five did, and the
 difference is worth the sentence: a description can be wrong about code that is right, and mutation of a
 shaped array is code the description cannot rescue.
+
+### The Mago floor the README states, tested rather than inherited
+
+`composer.json` requires `^1.47.1` and the README says generated plugins run under 1.47.1 or later. That
+claim predates this session, and this session added two new SDK reads to the runtime — `ClassLikeMetadata->mixins`
+and `FunctionLikeMetadata->static`. If either arrived after 1.47.1, every consumer resolving the floor would
+break, and nothing here would have said so: the dev dependency installs the *latest* match.
+
+So it was installed at the floor and run:
+
+    mago 1.47.1
+    ClassLikeMetadata::$mixins = true
+    FunctionLikeMetadata::$static = true
+    PHPStan 0    suite 943/943
+
+The suite is the part that settles it rather than the reflection check, because the fires gate starts the
+real binary for every emitted rule — 564 pairs against 1.47.1's own analyzer, not against its class shapes.
+Restored to `^1.47.1` afterwards, which resolves 1.47.5 again.
+
+The README needs no edit for this. The claim is what it already says; what changed is that it is now
+measured, and a version floor is exactly the kind of statement that quietly stops being true when a runtime
+grows a new field.
+
+#### The README pass
+
+Audited against the `readme` skill rather than only re-read. Structure holds: 68 words before the first code
+block against a limit of ~80, longest paragraph 66 against ~100, no line over 118 columns. Every figure in it
+was measured this session — five corpora at 12305 against 28, `--status` at 99 of 209, the per-package table,
+the benchmark rows. 1213 words to 1209 against a ~1200 ceiling, prose only, nothing structural removed.
+
+Nothing in the README states a baseline figure, so this session's fifteen cleared errors need no change
+there. That is the right split: the baseline is contributor detail and `CLAUDE.md` carries it.
+
+#### Verification
+
+PHPStan 0 and suite 943/943 on both 1.47.1 and 1.47.5. `git status` clean after the restore, and
+`composer.json` is untouched because the constraint already allowed both.
