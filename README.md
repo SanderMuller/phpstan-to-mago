@@ -2,9 +2,9 @@
 
 Transpile PHPStan rules into [Mago](https://github.com/carthage-software/mago) analyzer plugins.
 
-A PHPStan rule reaches into thousands of classes Mago does not expose to PHP, so you cannot hand Mago a rule
-at runtime. A rule's *decisions*, though, usually reduce to guards over the syntax tree plus a few questions
-about the enclosing class, and that much translates.
+A PHPStan rule reaches into thousands of classes Mago does not expose to PHP, so you cannot hand Mago one at
+runtime. A rule's *decisions* usually reduce to guards over the syntax tree plus a few questions about the
+enclosing class, and that much translates.
 
 ```bash
 composer require --dev sandermuller/phpstan-to-mago
@@ -25,10 +25,10 @@ vendor/bin/phpstan-to-mago --survey vendor/hihaho/phpstan-rules/src
 Each target writes into its own subdirectory of `--out`, with a `generated/manifest.json` naming each rule's
 identifier, messages and defaults.
 
-**Only the `php` target installs.** It emits a worker plus the `mago.toml` snippet that registers it, against
-Mago's supported plugin API. The two Rust targets emit source for the registry Mago's own bundled plugins
-use, which has no registration path from outside Mago's tree and calls a `support` module that does not
-exist. Every count here is the `php` target — a rule can render as Rust and be refused as PHP.
+**Only the `php` target installs.** It emits a worker plus the `mago.toml` snippet registering it, against
+Mago's supported plugin API. The Rust targets emit source for the registry Mago's own bundled plugins use,
+which has no registration path from outside Mago's tree. Every count here is the `php` target — a rule can
+render as Rust and be refused as PHP.
 
 A plugin depends on this package and on `carthage-software/mago`:
 
@@ -58,12 +58,9 @@ final class ForbiddenStaticConstFetchRule implements Plugin, NodeAnalysisHook
   `phpstan/phpstan-deprecation-rules` are each one rule short of that.
 - As a pre-filter: transpiled rules on save and on push, full PHPStan on merge or nightly.
 
-It does not make an existing PHPStan run cheaper, because dropping rules does not drop the parsing and type
-inference underneath.
-
-The pre-filter does not gate. A Mago-clean commit can still fail the deferred PHPStan run, since a refused
-rule lives only in PHPStan, and both failures look the same as a passing run: a refused rule reports nothing,
-and so does a translated rule that under-reports.
+It does not make an existing PHPStan run cheaper: dropping rules does not drop the parsing and type inference
+underneath. And the pre-filter does not gate — a Mago-clean commit can still fail the deferred PHPStan run,
+because a refused rule reports nothing and so does a translated rule that under-reports.
 
 ## Running a generated plugin
 
@@ -94,8 +91,8 @@ require __DIR__ . '/build/generated-php/ForbiddenStaticConstFetchRule.php';
 command = ["php", "worker.php"]
 ```
 
-Generated plugins live in the `Transpiled` namespace and are enabled by default, so `analyzer.plugins` needs
-no entry.
+Generated plugins live in the `Transpiled` namespace and are on by default, so `analyzer.plugins` needs no
+entry.
 
 ## Configured rules
 
@@ -108,8 +105,8 @@ public function __construct(
 ) {}
 ```
 
-Nothing from a consuming project is baked in. Override in the worker, which `manifest.json` names. A rule
-taking a PHPStan service is refused, naming it, because no worker can supply a `ReflectionProvider`.
+Nothing from a consuming project is baked in; override in the worker, which `manifest.json` names. A rule
+taking a PHPStan service is refused by name, because no worker can supply a `ReflectionProvider`.
 
 ## Refusals
 
@@ -120,12 +117,12 @@ A rule using a construct outside the vocabulary is refused, naming the construct
 ```
 
 Read the refusals next to the `emitted` count, never the count alone. Two checks produce them: the generator
-refuses a construct it cannot translate, and the backend refuses an operand it could not render.
+refuses a construct it cannot translate, the backend an operand it could not render.
 
 ## What it can translate
 
 Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md`, which a test regenerates, so
-upstream drift shows up as a diff there instead of a stale table here.
+upstream drift shows up there as a diff rather than here as a stale table.
 
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
@@ -159,9 +156,8 @@ with its count. The larger pieces:
 
 </details>
 
-An aggregate is mapped only once its numbers agree with the real rule on a real project, and it carries the
-bound it was measured at. Reproduce any with
-`tests/Support/run-coverage-corpus.php <project> --metric=<name>`.
+An aggregate is mapped only once its numbers agree with the real rule on a real project, and carries the
+bound it was measured at: `tests/Support/run-coverage-corpus.php <project> --metric=<name>`.
 
 ## How far this is verified
 
@@ -174,18 +170,23 @@ and every one has a written cause.
 
 ## Performance
 
-The same 20 rules on both engines, so this measures what the port costs. Best of three, one machine, the same
-1090 files and 64 findings:
+`php tests/Support/run-benchmark.php <project>` runs both engines over your own code. On this repository's own
+`vendor/nikic/php-parser/lib` — 270 files, 80 emitted rules, best of three:
 
 | | wall | CPU |
 |:--|--:|--:|
-| mago, engine only | 0.10s | 0.59s |
-| mago + the 20 transpiled rules | 0.25s | 1.14s |
-| PHPStan, cold | 5.86s | 33.13s |
-| PHPStan, warm result cache | 0.59s | 0.56s |
+| mago, engine only | 3.84s | 3.76s |
+| mago + the 80 transpiled rules | 5.79s | 7.17s |
+| PHPStan, cold result cache | 2.69s | 9.35s |
+| PHPStan, warm result cache | 0.74s | 0.71s |
 
-Against a cold run: 23x faster on wall clock, 29x cheaper on CPU. Against a warm PHPStan: 2.4x faster on
-wall clock, roughly twice the CPU, because `mago analyze` has no result cache.
+The rules add **1.95s wall and 3.41s CPU** — the marginal cost, which no total gives. Five of the 80 are
+whole-codebase aggregates and are 1.21s of that wall; the other 75 cost 0.70s together. The engine baseline
+tracks the resolution set, so it moves with your `includes` rather than your sources.
+
+So here the port is 2.2x slower than a cold PHPStan on wall clock, 1.3x cheaper on CPU, and slower on both
+than a warm one — `mago analyze` has no result cache. An earlier table claimed 23x faster, against a project
+outside this repository; not carried, because a checkout cannot reproduce it.
 
 ## Requirements
 

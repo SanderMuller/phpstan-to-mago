@@ -5697,3 +5697,47 @@ than this one.
 PHPStan 0 — `proc_open()` is forbidden by this project's own configuration, and the benchmark is added to the
 same scoped exception the fires-gate and the differentials sit in, for the same reason: what two engines cost
 is a property of running them. Pint clean. No `src/` change, so no emitted byte moves.
+
+### What the rules cost, measured three times on one corpus
+
+The benchmark existed but the README still carried a figure nothing could reproduce, so this step measured
+the same corpus at three rule counts. One corpus, one machine, `n=3`, only the packages varying:
+
+| packages                        | emitted | engine only | with rules | rules add            |
+|:--|--:|:--|:--|:--|
+| `cognitive-complexity`          |       2 | 3.78s / 3.80s | 4.06s / 4.67s | +0.28s wall, +0.87s CPU |
+| all but `type-coverage`         |      75 | 3.88s / 3.74s | 4.58s / 5.73s | +0.70s wall, +1.99s CPU |
+| all four                        |      80 | 3.84s / 3.76s | 5.79s / 7.17s | +1.95s wall, +3.41s CPU |
+
+**Five rules cost more than the other seventy-five.** Going from 75 to 80 adds 1.21s wall and 1.44s CPU, and
+those five are `type-coverage`'s whole-codebase aggregates — the ones that walk every class rather than
+firing per node. Going from 2 to 75 adds 0.42s wall for 73 more per-node rules.
+
+That was predicted before the run in the direction it came out, and it settles the shape: a fixed host cost
+of roughly a quarter-second, a small per-node-rule cost, and an aggregate cost in its own class.
+
+#### It also explains the figure that could not be reproduced
+
+The README's old table reported the engine alone at 0.10s where this corpus reads 3.84s, and a marginal cost
+of +0.15s wall for 20 rules where 75 per-node rules cost +0.70s here. Both gaps have the same two causes and
+neither is the port: the engine baseline tracks the *resolution set*, and this repository's `includes` is its
+whole vendor tree; and the 20 rules that table measured are the ones `VERIFICATION.md` describes as one hook
+row each for twenty node types, which is the cheapest shape there is.
+
+So the old numbers were not wrong. They described a small project running trivial rules, and were read as a
+property of the port. The README now carries the measurement a reader can repeat, names the corpus in the
+same sentence, and says plainly that on it the port is 2.2x slower than a cold PHPStan on wall clock while
+1.3x cheaper on CPU — and slower on both than a warm one.
+
+#### What was not checked
+
+The per-package table in `## What it can translate` — 99 of 169 portable — was not re-verified here. The
+census counts 107 EMIT of 190, and the two are reconcilable if "portable" means the rules each package
+*registers*, which is what the sentence beside the table says. Reconcilable is not verified, and saying so is
+cheaper than a wrong count: it is one run of the status command away for whoever needs it.
+
+#### Verification
+
+README 1275 words after the rewrite, trimmed to 1227 against the `readme` skill's ~1200 ceiling — prose
+only, across five sections, with no table, example or caveat cut. No code change, so nothing to emit or
+diff; PHPStan and the suite were last green at 943/943 in the previous step and this one touches neither.
