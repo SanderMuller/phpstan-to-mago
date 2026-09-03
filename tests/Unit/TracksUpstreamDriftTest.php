@@ -134,7 +134,7 @@ final class TracksUpstreamDriftTest extends TestCase
             '',
             'One line per rule in the seven packages listed below, and under a refused one the reason. Those',
             'seven are the corpus — installed to be read rather than run — and not every rule package a',
-            'checkout has: `--status` counts 209 portable rules here against this file\'s 190. The other two',
+            "checkout has: `--status` counts 209 portable rules here against this file's 190. The other two",
             'arrived for other reasons. `spaze/phpstan-disallowed-calls` is a dev dependency this project runs',
             'on *itself*, through the neons `phpstan.neon.dist` includes; `composer/pcre` ships two rules and',
             'is here only because `composer/xdebug-handler` requires it. Neither adds a rule this target can',

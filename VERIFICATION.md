@@ -6590,3 +6590,50 @@ PHPStan 0. `composer sync-ai` reported `wrote=2, unchanged=83, deleted=0` and th
 `AGENTS.md` is the one paragraph, read before committing. The tally in the first draft was wrong — it said
 "twenty-four errors cleared, nineteen of them" from memory rather than from the commits — and is replaced by
 the two figures that are checkable, 58 and 14.
+
+### `composer qa-check` was red, and nothing in this session had run it
+
+Every step here has run PHPStan, the suite, pint on the files it touched and the emit-all diff. It had not
+run the project's own gate, which is five steps and starts with one nobody had checked:
+
+    rector process --dry-run    17 files changed
+    pint --test                 src/Translator.php
+    phpstan-simplified          passing
+    validate-gitattributes      failure
+    test                        passing
+
+**Rector wanted 17 files and pint one.** Some of that backlog predates this session — `AggregateRule`,
+`PhpBackend`, `Runtime\Deprecations`, `Runtime\Loops` and three tests were never touched here — and some of
+it is mine: the census header string this session added uses `\'` where `SimplifyQuoteEscapeRector` wants
+`"..."`. Running the tools the project runs is the only way that shows up.
+
+Both applied, and the check that makes it safe is the one `CLAUDE.md` already names for exactly this: pint and
+rector have rewritten `src/Transpiler.php` wholesale before, and the snapshots proved the output untouched.
+
+    emit-all, three targets   213 files each side, diff -r clean
+    PHPStan 0                 suite 944/944
+
+21 files changed, 163 insertions, 179 deletions, and no emitted byte moves.
+
+#### The gitattributes failure was two thirds local state
+
+`validate-gitattributes` wanted two entries the managed block does not carry: `.cache/phpstan-dogfood/` and
+`.cache/phpstan-emitted/`. Recorded earlier in this file as an upstream gap, which was half right.
+
+`lean-package-validator` builds its expectation from the directories that *exist on disk*.
+`.cache/phpstan-dogfood/` was a stale artefact of an old dogfood run — deleting it dropped that expectation
+outright, which is the measurement that separates "the block is missing an entry" from "this checkout has a
+directory a clean one does not".
+
+What remains is real and small: `.cache/phpstan-emitted/` exists because `composer phpstan-emitted` is a
+documented script in this repository, so **running a documented script turns the project's own gate red**.
+Removing the directory makes the gate green and the next run of that script makes it red again. The durable
+fix is upstream in `sandermuller/package-boost-php`, which generates the managed block from a fixed list
+rather than from the cache directories the project's own configs create. `.gitattributes` is boost-managed,
+so it is not fixable from here by hand.
+
+#### Verification
+
+`composer qa-check` green, all five steps, run as the project runs it rather than tool by tool. The emit-all
+diff is what licenses the formatting: 213 files each side across `php`, `analyzer` and `linter`, and no
+emitted file differs.

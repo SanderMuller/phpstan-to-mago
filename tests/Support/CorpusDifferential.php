@@ -507,7 +507,7 @@ final class CorpusDifferential
      */
     private function analysedPaths(): array
     {
-        return array_map(fn (string $path): string => $this->absolute($path), $this->paths);
+        return array_map($this->absolute(...), $this->paths);
     }
 
     /**
@@ -739,7 +739,7 @@ final class CorpusDifferential
         $bySite = [];
         foreach ($findings as $finding) {
             $parts = explode(': ', $finding, 2);
-            $bySite[self::atLineOne($parts[0])] = $parts[1] ?? '';
+            $bySite[$this->atLineOne($parts[0])] = $parts[1] ?? '';
         }
 
         return $bySite;
@@ -757,7 +757,7 @@ final class CorpusDifferential
      * PHPStan at `-1` and the port at `1`, and no agreement anywhere. That is the comparison being unable to
      * express the finding rather than the two engines disagreeing about one.
      */
-    private static function atLineOne(string $site): string
+    private function atLineOne(string $site): string
     {
         return str_ends_with($site, ':-1') ? substr($site, 0, -3) . ':1' : $site;
     }

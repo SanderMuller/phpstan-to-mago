@@ -61,6 +61,6 @@ final class DropsTheTraitUserSuffixTest extends TestCase
     #[DataProvider('messages')]
     public function test_only_the_appended_suffix_is_dropped(string $message, string $expected): void
     {
-        self::assertSame($expected, CorpusDifferential::withoutTraitUsers($message));
+        $this->assertSame($expected, CorpusDifferential::withoutTraitUsers($message));
     }
 }

@@ -135,8 +135,8 @@ final class AggregatesDeclareCoverageTest extends TestCase
         // file rather than a position in one, and mago has no way to report a finding without a span, so the
         // port anchors on the file's first node. That is a rendering difference and not a disagreement.
         $this->assertSame(
-            array_map(static fn (array $lines): array => array_values($lines), $original),
-            array_map(static fn (array $lines): array => array_values($lines), $port),
+            array_map(array_values(...), $original),
+            array_map(array_values(...), $port),
         );
     }
 

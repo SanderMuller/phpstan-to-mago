@@ -8,12 +8,13 @@ use PhpParser\Node;
 use PhpParser\Node\Stmt\ClassMethod;
 use PHPStan\Analyser\Scope;
 use PHPStan\Rules\Rule;
+use Sandermuller\PhpstanToMago\Tests\Support\Subprocess;
 
 /**
  * Logs which class encloses every method PHPStan visits, and reports nothing.
  *
  * Written to a file rather than returned as findings because the tool wrapper this repository runs under
- * rewrites `phpstan analyse` output -- see {@see \Sandermuller\PhpstanToMago\Tests\Support\Subprocess}. A file
+ * rewrites `phpstan analyse` output -- see {@see Subprocess}. A file
  * is the one channel neither wrapper touches.
  *
  * @implements Rule<ClassMethod>

@@ -344,7 +344,7 @@ final class Types
         // PHPStan reported and the port was silent, and `[$object, 'ownMethod']` and
         // `[$object, 'noSuchMethod']` agreed either way. A false negative, and the third of this shape —
         // {@see Mixins} carries the other two.
-        return $className !== null && Mixins::declaringMethod($context->codebase, $className, $method) !== null;
+        return $className !== null && Mixins::declaringMethod($context->codebase, $className, $method) instanceof FunctionLikeMetadata;
     }
 
     /**

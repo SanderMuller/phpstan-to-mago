@@ -43,7 +43,7 @@ final class TraitMethodHookDivergesTest extends TestCase
     {
         $fired = $this->firings($this->runPhpstan(...));
 
-        self::assertSame([
+        $this->assertSame([
             'TraitDivergence\AbstractClass::abstractMethod',
             'TraitDivergence\AbstractClass::inAbstract',
             'TraitDivergence\AlsoUsesIt::inTrait',
@@ -58,7 +58,7 @@ final class TraitMethodHookDivergesTest extends TestCase
     {
         $fired = $this->firings($this->runMago(...));
 
-        self::assertSame([
+        $this->assertSame([
             'TraitDivergence\ATrait::inTrait',
             'TraitDivergence\AbstractClass::abstractMethod',
             'TraitDivergence\AbstractClass::inAbstract',
@@ -92,20 +92,13 @@ final class TraitMethodHookDivergesTest extends TestCase
         $phpstan = $this->firings($this->runPhpstan(...));
         $mago = $this->firings($this->runMago(...));
 
-        self::assertSame(self::AGREED, array_values(array_intersect($phpstan, $mago)));
-        self::assertSame(
-            [
-                'TraitDivergence\ATrait::inTrait',
-                'TraitDivergence\AnUnusedTrait::inUnusedTrait',
-                'TraitDivergence\UsedOnlyByATrait::inChainedTrait',
-            ],
-            array_values(array_diff($mago, $phpstan)),
-            'A trait with no using class is no longer mago-only, or the trait it is declared in stopped being named.',
-        );
-        self::assertSame(
-            ['TraitDivergence\AlsoUsesIt::inTrait', 'TraitDivergence\UsesTheTrait::inTrait'],
-            array_values(array_diff($phpstan, $mago)),
-        );
+        $this->assertSame(self::AGREED, array_values(array_intersect($phpstan, $mago)));
+        $this->assertSame([
+            'TraitDivergence\ATrait::inTrait',
+            'TraitDivergence\AnUnusedTrait::inUnusedTrait',
+            'TraitDivergence\UsedOnlyByATrait::inChainedTrait',
+        ], array_values(array_diff($mago, $phpstan)), 'A trait with no using class is no longer mago-only, or the trait it is declared in stopped being named.');
+        $this->assertSame(['TraitDivergence\AlsoUsesIt::inTrait', 'TraitDivergence\UsesTheTrait::inTrait'], array_values(array_diff($phpstan, $mago)));
     }
 
     /**
@@ -132,15 +125,11 @@ final class TraitMethodHookDivergesTest extends TestCase
     {
         $sandbox = $this->ruleSandbox();
 
-        self::assertSame(
-            [
-                'Routes.php:41',
-                'Routes.php (in context of class Examples\Controllers\FirstController):22',
-                'Routes.php (in context of class Examples\Controllers\SecondController):22',
-            ],
-            $this->phpstanRouteFindings($sandbox),
-            'PHPStan no longer reports a trait-declared route once per using controller.',
-        );
+        $this->assertSame([
+            'Routes.php:41',
+            'Routes.php (in context of class Examples\Controllers\FirstController):22',
+            'Routes.php (in context of class Examples\Controllers\SecondController):22',
+        ], $this->phpstanRouteFindings($sandbox), 'PHPStan no longer reports a trait-declared route once per using controller.');
 
         // Line 22 is the trait's route and 41 the class-declared control. The port reaches the trait now and
         // reports it once; PHPStan reports it twice, once per using controller. That one finding is the whole
@@ -152,21 +141,13 @@ final class TraitMethodHookDivergesTest extends TestCase
         // nothing to say why. A findings list that came back empty can mean the plugin declined, the worker
         // never started, or the binary is not there, and those want different fixes — an assertion that only
         // prints `[]` sends the reader to the wrong one.
-        self::assertSame(
-            ['Routes.php:22', 'Routes.php:41'],
-            $found,
-            "The emitted plugin no longer reports the trait-declared route alongside the class-declared one.\n"
-            . "mago output:\n" . $this->magoRouteOutput,
-        );
+        $this->assertSame(['Routes.php:22', 'Routes.php:41'], $found, "The emitted plugin no longer reports the trait-declared route alongside the class-declared one.\n"
+        . "mago output:\n" . $this->magoRouteOutput);
 
         // The message carries what the second report would have said, which is the deliberate divergence
         // here: one readable finding naming its users, rather than N identical lines. Asserted, because the
         // whole point of choosing it is that a reader can act on it.
-        self::assertStringContainsString(
-            '(via Examples\Controllers\FirstController, Examples\Controllers\SecondController)',
-            implode("\n", $this->magoRouteMessages),
-            'The trait finding no longer names the classes that made its guard pass.',
-        );
+        $this->assertStringContainsString('(via Examples\Controllers\FirstController, Examples\Controllers\SecondController)', implode("\n", $this->magoRouteMessages), 'The trait finding no longer names the classes that made its guard pass.');
     }
 
     /** @return list<string> */
@@ -307,7 +288,7 @@ final class TraitMethodHookDivergesTest extends TestCase
                 analyzerPlugins: [new \Transpiled\NoRouteTrailingSlashPathRule()],
             )))->run();
             PHP);
-        file_put_contents($sandbox . '/mago.toml', <<<TOML
+        file_put_contents($sandbox . '/mago.toml', <<<'TOML'
             [source]
             paths = ["src", "stubs"]
 

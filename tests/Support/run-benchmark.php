@@ -172,7 +172,7 @@ function benchmark_row(string $label, array $command, string $cwd, int $runs, ?c
 {
     $walls = [];
     $cpus = [];
-    for ($run = 0; $run < $runs; $run++) {
+    for ($run = 0; $run < $runs; ++$run) {
         if ($before !== null) {
             $before();
         }

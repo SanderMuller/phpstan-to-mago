@@ -185,7 +185,7 @@ final readonly class AggregateRule
             $object = self::configurationObject($ruleFile, $configuration);
             $paths = array_values(array_filter(
                 $object?->pathsFor($getter) ?? [],
-                static fn (string $path): bool => $configuration->hasParameter($path),
+                $configuration->hasParameter(...),
             ));
 
             foreach ($paths as $path) {

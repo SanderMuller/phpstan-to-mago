@@ -12,8 +12,13 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
-use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\BinaryOp\Concat;
+use PhpParser\Node\Expr\BinaryOp\Div;
+use PhpParser\Node\Expr\BinaryOp\Minus;
+use PhpParser\Node\Expr\BinaryOp\Mod;
+use PhpParser\Node\Expr\BinaryOp\Mul;
+use PhpParser\Node\Expr\BinaryOp\Plus;
+use PhpParser\Node\Expr\BinaryOp\Pow;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
@@ -891,7 +896,7 @@ final class Vocabulary
         'parameters' => [
             'ceiling' => 0.0111,
             'note' => 'Over-counts the original by +1 of 17635 declarations on the 1694 files of '
-                . 'laravel/framework\'s own `Illuminate`, and by 1.11% at most on the two Laravel '
+                . "laravel/framework's own `Illuminate`, and by 1.11% at most on the two Laravel "
                 . '*applications* it was measured on — +81 of 13694 and +37 of 11428, both measured before '
                 . '`@mixin` was followed and not re-measured since. The collector skips a method whose name an '
                 . 'ancestor has, asking `ClassReflection::hasMethod()`, and two of the things that answer it '
@@ -901,7 +906,7 @@ final class Vocabulary
                 . 'a mixin target whose metadata is missing a method the runtime has: `@mixin \\Redis` on '
                 . 'Illuminate\\Redis\\Connections\\Connection, where mago carries `scan`, `sscan` and '
                 . '`zscan` and not `hscan`, so `PhpRedisConnection::hscan()` is the whole +1 — and, on an '
-                . 'application, larastan\'s factory and auth extensions, which a Mago plugin cannot '
+                . "application, larastan's factory and auth extensions, which a Mago plugin cannot "
                 . 'reproduce. Under-counts nothing measured. Reproduce with '
                 . '`php tests/Support/run-coverage-corpus.php <consumer-root>`.',
         ],
@@ -921,11 +926,11 @@ final class Vocabulary
             'note' => 'Counted exactly on the two Laravel consumers it was measured on: 18307 of 18307 and '
                 . '8526 of 8526, agreeing on the percentage as well as the count. A zero ceiling is the '
                 . 'measurement rather than an absence of one. Four things had to hold and each was measured '
-                . 'first: a trait\'s methods are counted once for every class that reaches them and not once '
+                . "first: a trait's methods are counted once for every class that reaches them and not once "
                 . 'each, with a class reaching a trait through two traits counting twice; a class that '
-                . 'declares the method itself does not reach the trait\'s, and a `@method` docblock takes no '
-                . 'name away from it; magic methods are skipped by php-parser\'s list of seventeen names and '
-                . 'not by mago\'s flag; and neither a `@method` entry nor an enum\'s `cases()`, `from()` and '
+                . "declares the method itself does not reach the trait's, and a `@method` docblock takes no "
+                . "name away from it; magic methods are skipped by php-parser's list of seventeen names and "
+                . "not by mago's flag; and neither a `@method` entry nor an enum's `cases()`, `from()` and "
                 . '`tryFrom()` is a declaration the collector can see. Reproduce with '
                 . '`php tests/Support/run-coverage-corpus.php <consumer-root> --metric=returns`.',
         ],
@@ -934,7 +939,7 @@ final class Vocabulary
             'note' => 'Counted exactly on the two Laravel consumers it was measured on: 866 of 866 and 1443 '
                 . 'of 1443, agreeing on the percentage as well as the count. A zero ceiling is the '
                 . 'measurement rather than an absence of one. Four things had to hold together and each was '
-                . 'measured before it was relied on: a trait\'s properties are counted zero times, unlike '
+                . "measured before it was relied on: a trait's properties are counted zero times, unlike "
                 . 'its methods; a promoted property is not counted at all; a property is typed when it is '
                 . 'written with a type, when a parent class declares it, or when its docblock mentions '
                 . '`callable` or `resource`; and a declaration is taken where it is written, which '
@@ -1041,12 +1046,12 @@ final class Vocabulary
      * it, and a row here would say a second thing about the same class.
      */
     public const array OPERATOR_KINDS = [
-        BinaryOp\Div::class => 'Binary',
-        BinaryOp\Minus::class => 'Binary',
-        BinaryOp\Mul::class => 'Binary',
-        BinaryOp\Mod::class => 'Binary',
-        BinaryOp\Pow::class => 'Binary',
-        BinaryOp\Plus::class => 'Binary',
+        Div::class => 'Binary',
+        Minus::class => 'Binary',
+        Mul::class => 'Binary',
+        Mod::class => 'Binary',
+        Pow::class => 'Binary',
+        Plus::class => 'Binary',
         AssignOp\Div::class => 'Assignment',
         AssignOp\Minus::class => 'Assignment',
         AssignOp\Mul::class => 'Assignment',

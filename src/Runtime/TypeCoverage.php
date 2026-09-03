@@ -180,7 +180,7 @@ final readonly class TypeCoverage
                 }
 
                 $total += $times;
-                if ($method->declaredReturnType !== null) {
+                if ($method->declaredReturnType instanceof TypeMetadata) {
                     $typed += $times;
 
                     continue;

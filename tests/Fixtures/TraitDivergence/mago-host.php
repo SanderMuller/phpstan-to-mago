@@ -23,7 +23,7 @@ use Sandermuller\PhpstanToMago\Runtime\Support;
 
 require_once (string) getenv('TRAIT_PROBE_AUTOLOAD');
 
-final class MagoProbe implements Plugin, NodeAnalysisHook
+final class MagoProbe implements NodeAnalysisHook, Plugin
 {
     public function getDefinition(): PluginDefinition
     {

@@ -174,7 +174,7 @@ final class PhpBackend implements Backend
      */
     public function conditional(string $condition, string $then, string $otherwise): string
     {
-        $negated = self::withoutTheLeadingNot($condition);
+        $negated = $this->withoutTheLeadingNot($condition);
         if ($negated !== null && $then === 'false') {
             return '(' . $negated . ') && (' . $otherwise . ')';
         }
@@ -198,7 +198,7 @@ final class PhpBackend implements Backend
      * Balanced by depth, like `Translator::stripOuterParentheses()`, and conservative when it cannot tell:
      * answering null keeps the ternary, which is correct for every shape.
      */
-    private static function withoutTheLeadingNot(string $condition): ?string
+    private function withoutTheLeadingNot(string $condition): ?string
     {
         if (! str_starts_with($condition, '!(') || ! str_ends_with($condition, ')')) {
             return null;

@@ -28,7 +28,6 @@ final class UnmappedNodeTypeRule implements Rule
 {
     public const string ERROR_MESSAGE = 'Do not fetch that constant';
 
-
     public function getNodeType(): string
     {
         return Expression::class;

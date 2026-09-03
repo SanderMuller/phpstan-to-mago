@@ -28,7 +28,7 @@ final readonly class ExampleReader
         $units = [];
         $paths = glob($this->directory . '/*.php');
         foreach ($paths === false ? [] : $paths as $path) {
-            $units = [...$units, ...self::unitsIn($path)];
+            $units = [...$units, ...$this->unitsIn($path)];
         }
 
         $bad = $blank;
@@ -43,7 +43,7 @@ final readonly class ExampleReader
             $fires = $fires && ! $diverges;
             $silent = $silent && ! $diverges;
             if ($bad === $blank && $fires) {
-                $bad = self::render($example);
+                $bad = $this->render($example);
                 // The rules that only look at test files need the snippet to be named like one, and
                 // the harness lets an example say so.
                 if ($ruleReadsTheFileName) {
@@ -53,7 +53,7 @@ final readonly class ExampleReader
             }
 
             if ($good === $blank && $silent && ! $fires) {
-                $good = self::render($example);
+                $good = $this->render($example);
             }
         }
 
@@ -71,7 +71,7 @@ final readonly class ExampleReader
      *
      * @return list<array{file: string, header: list<string>, lines: list<string>, open: int}>
      */
-    private static function unitsIn(string $path): array
+    private function unitsIn(string $path): array
     {
         $units = [];
         $read = file($path);
@@ -137,7 +137,7 @@ final readonly class ExampleReader
      *
      * @param array{file: string, header: list<string>, lines: list<string>, open: int} $unit
      */
-    private static function render(array $unit): string
+    private function render(array $unit): string
     {
         $header = implode('', $unit['header']);
         // The corpus keeps its fixtures in one namespace; a snippet does not need it, but the

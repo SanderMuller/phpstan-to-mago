@@ -36,7 +36,7 @@ final class Loops
     {
         $target = self::target($context, $subject, NodeKind::ForeachKeyValueTarget);
 
-        return $target === null ? null : Calls::nthExpression($context, $target, 0);
+        return $target instanceof Part ? Calls::nthExpression($context, $target, 0) : null;
     }
 
     /**
@@ -48,13 +48,13 @@ final class Loops
     public static function foreachValue(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
         $keyed = self::target($context, $subject, NodeKind::ForeachKeyValueTarget);
-        if ($keyed !== null) {
+        if ($keyed instanceof Part) {
             return Calls::nthExpression($context, $keyed, 1);
         }
 
         $plain = self::target($context, $subject, NodeKind::ForeachValueTarget);
 
-        return $plain === null ? null : Calls::nthExpression($context, $plain, 0);
+        return $plain instanceof Part ? Calls::nthExpression($context, $plain, 0) : null;
     }
 
     /**

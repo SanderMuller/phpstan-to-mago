@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Runtime;
 
+use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata;
+use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\Metadata\MetadataFlags;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Syntax\Node;
@@ -56,7 +58,7 @@ final class Deprecations
         $className = Declares::enclosingClassName($context, $subject);
         if ($className !== null) {
             $classLike = $context->codebase->getClassLike($className);
-            if ($classLike !== null && $classLike->flags->contains(MetadataFlags::DEPRECATED)) {
+            if ($classLike instanceof ClassLikeMetadata && $classLike->flags->contains(MetadataFlags::DEPRECATED)) {
                 return true;
             }
         }
@@ -74,7 +76,7 @@ final class Deprecations
             ? $context->codebase->getMethod($className, $name)
             : ($kind === 'Function' ? $context->codebase->getFunction($name) : null);
 
-        return $metadata !== null && $metadata->flags->contains(MetadataFlags::DEPRECATED);
+        return $metadata instanceof FunctionLikeMetadata && $metadata->flags->contains(MetadataFlags::DEPRECATED);
     }
 
     /**
