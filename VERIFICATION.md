@@ -5910,3 +5910,44 @@ now read `--packages=one/rules`.
 Suite 943/943, PHPStan 0 with no new baseline entry, pint clean. Both differential failure branches were run
 rather than reasoned about. No `src/` change, so no emitted byte moves; every README figure in the edited
 sections was measured earlier in this session and none was restated from memory.
+
+### There is no cluster left in the census, measured three ways
+
+The porting side has been quoted as "no remaining lever" since `02b8a3a`, on a count of needs. This step
+tested that from three other directions, because a claim resting on one measurement is the shape this file
+keeps recording as wrong.
+
+**By hook.** 8 refusals in the whole census name a missing hook, and all 8 name a *different* node type —
+`Stmt\For_`, `Stmt\Expression`, `Param`, `Expr\Cast`, `Expr\BinaryOp`, `ClassConstantsNode`, `BooleanAndNode`,
+`BooleanOrNode`. One hook, one rule, every time. (`spaze/phpstan-disallowed-calls` has 17 in one family, but
+it is not corpus and the last step measured what adopting it buys: nothing.)
+
+**By reading the one that looked cheap.** `OverwriteVariablesWithForLoopInitRule` lists a single need behind
+its hook, which is as close to a free rule as this file gets. Reading it took two minutes and killed it: it
+calls `$scope->hasVariableType()`, which has no PHP rendering — measured earlier this session, it renders for
+the two Rust targets only — and its `checkValueVar()` helper *recurses* on `List_` and `Array_` items, which
+the census never reaches because it stops at the first obstacle. The guidelines say to rank by reading the
+rule rather than counting these lines, and this is what that costs and buys.
+
+**By what a single capability would unblock.** A need only frees a rule when it is that rule's *only* need.
+22 of the 80 refused rules have exactly one, and they group like this:
+
+     8  configuration the package never wires
+     3  three different access paths — `->getType()`, `->getTraitAliases()`, a helper's method
+     2  a `ClassReflection` test on a service
+     9  nine distinct singletons
+
+So one lever exists and it is the configuration cluster, which `VERIFICATION.md:826` already sized at four
+real rules and left as a decision because it changes what a coverage figure counts. Everything else is one
+rule at a time, and `hasVariableType` — the other candidate — appears in exactly one refused rule, which
+carries four more needs including `Stmt_While`.
+
+That is the useful shape of the answer: not "the work is hard" but "the work does not batch". A capability
+here buys one rule, so it is worth building when that rule is worth having, and the census is the wrong
+instrument for finding out which one that is.
+
+#### Verification
+
+No code change. Every figure is a parse of the committed census plus one read of a vendor rule; the
+`hasVariableType` rendering claim is from this session's own measurement rather than restated from the
+census.
