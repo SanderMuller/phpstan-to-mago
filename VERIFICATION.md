@@ -4282,3 +4282,52 @@ plugin and failed on the wording, which is the check doing its job; it is update
 describes what the code now does and the old one described a defect that is gone. The 0.0111 ceiling stays: it covers the over-count from PHPStan's
 reflection extensions, which is a separate and genuinely unportable cause. 39 counting controls pass, suite
 green, PHPStan 0 errors.
+
+### A second corpus, and the one divergence a plugin cannot close
+
+`nikic/php-parser` came out clean after the last two commits, so the differential ran over
+`rector/rector/src` — 489 files, and a corpus whose own code the `rector.*` rules were written for.
+
+    total: agree 246, only-original 1, only-port 657
+
+The 657 is the configuration difference already named: the two complexity thresholds and the
+constant-coverage minimum, which the port carries at the package default and this repository sets higher.
+Nothing new.
+
+The 1 is new, and it runs the *other* way — PHPStan reports and the port does not, which is the direction a
+narrowing guard can cause and the previous commit had just added one. It is not that guard.
+
+    only-original  vendor/rector/rector/src/StaticTypeMapper/ValueObject/Type/SimpleStaticType.php:13
+
+`SimpleStaticType extends StaticType`, so the guard passes. `PHPStan\Type\StaticType` lives only inside
+`phpstan.phar`, and mago scans `.php` files. The parent is unresolvable, so "does the parent declare
+`__construct`" answers no, and the port stays silent where PHPStan — running from that phar, with an
+autoloader — reports.
+
+Nothing in the port can close this. A plugin cannot read a phar. It is named on `Reflect` so the next
+differential run does not read it as a defect.
+
+#### The first probe answered a different question
+
+The probe that established this was written with a bare `mago.toml` holding only `paths`, and it reported
+that *every* class outside the analysed directory was unresolved — including `PhpParser\Node\Stmt\Class_`,
+which is plain files. That would have made the finding a broad structural asymmetry rather than one narrow
+cause, and the write-up had already started saying so.
+
+The corpus differential does not run that configuration. It sets `includes`, a resolution context scanned for
+symbols and never analysed, and `ResolutionRoots` puts the consumer's whole `vendor` in it. Re-probed under
+that:
+
+    PHPStan\Type\StaticType                       phar-only                 UNRESOLVED
+    PhpParser\Node\Stmt\Class_                    vendor, plain files       resolved
+    Rector\...\SimpleStaticType                   the analysed path         resolved
+    ArrayObject                                   builtin                   resolved
+
+One cause, not a class of them. The guidelines' rule is that a probe answers the question it asked rather
+than the one about to be acted on; here the two differed by a config line, and the wrong answer was the more
+alarming one.
+
+#### Verification
+
+No behaviour change — one docblock. Suite green, PHPStan 0 errors, emit-all unchanged: the runtime ships as a
+package rather than being emitted, so a note on `Reflect` reaches no generated file.

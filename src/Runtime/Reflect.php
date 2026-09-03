@@ -20,6 +20,18 @@ use Mago\Sdk\Syntax\NodeKind;
  * *declaring* a method and a class *having* one are different questions, and the port answered the first
  * where PHPStan asks the second.
  *
+ * **Every question here is bounded by what mago scanned.** PHPStan reflects whatever its autoloader can
+ * reach; mago knows the analysed paths, the resolution roots it is given, and the builtins. Where a consumer
+ * points mago at its whole `vendor` those two sets nearly coincide — probed under the corpus differential's
+ * own configuration, where another vendor package resolves and so does a builtin. What does not resolve is a
+ * class whose source is inside a **phar**, because mago scans `.php` files and a phar holds none.
+ *
+ * That is one measured divergence rather than a shape: on `rector/rector/src`, `SimpleStaticType extends
+ * PHPStan\Type\StaticType`, and `StaticType` lives only in `phpstan.phar`. PHPStan reports the constructor
+ * override; the port asks whether the parent declares `__construct`, gets nothing for a parent it cannot see,
+ * and stays silent. Nothing here can fix it — a plugin cannot read a phar — so it is named so the next
+ * differential run does not read it as a defect.
+ *
  * One method reads the CST as well, and says why: {@see parentHasConstructor()} asks the declaration a node
  * sits in before asking the codebase about its name, because a name can have two declarations and the
  * metadata keeps one. That is not a crack in the grouping — it is the same distinction one level out, between
