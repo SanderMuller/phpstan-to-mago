@@ -157,8 +157,6 @@ with its count. The larger pieces:
 - A collector-and-consumer pair. Mago has no collector, so the pair becomes one whole-project pass and the
   *measurement* is reimplemented. Five of `type-coverage`'s metrics are mapped this way.
 
-`$obj?->m(..)` and `$obj->m(...)` are separate hooks, because Mago makes each a separate node.
-
 </details>
 
 An aggregate is mapped only once its numbers agree with the real rule on a real project, and it carries the
@@ -171,8 +169,8 @@ Per-rule agreement is gated: for each emitted rule CI runs the real `mago` binar
 the same two files and compares line and message. A rule that emits and reports nothing fails.
 
 Corpus-scale agreement is not proven. [VERIFICATION.md](VERIFICATION.md) has the differential runs, their
-traced gaps, and the defects they found. The largest run is a 9199-file Symfony application, at 1901
-agreeing, 0 original-only, 0 port-only.
+traced gaps, and the defects they found — four in the last round, across `nikic/php-parser` and
+`laravel/framework`. A 9199-file Symfony application runs at 1901 agreeing, 0 either way.
 
 ## Performance
 
