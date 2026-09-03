@@ -53,7 +53,86 @@ final class ConstantStrings
             return $inferred;
         }
 
+        $magic = self::magicConstant($context, $subject);
+        if ($magic !== null) {
+            return $magic;
+        }
+
         return self::declaredLiteral($context, $subject);
+    }
+
+    /**
+     * What `__FUNCTION__` stands for, which mago's inferred type does not fold and PHPStan's does.
+     *
+     * Measured on `laravel/framework`: `ForbiddenArrayMethodCallRule` missed both its findings there, and
+     * both are `array_map([$this, __FUNCTION__], $value)` inside `quoteString()`. A probe over the same
+     * array written three ways settles which half is missing — `[$this, 'quoteString']` resolves and
+     * `[$this, __FUNCTION__]` answers null, so the rule's literal test is right and the value is absent.
+     *
+     * **The nearest function-like, closures included, which is not what
+     * {@see Declares::enclosingFunctionName()} answers.** That one walks past a closure because
+     * `$scope->getFunction()` does; `__FUNCTION__` does not — PHP gives a closure's own name there, not the
+     * method around it. So a closure answers null here, and the rules that ask are silent on both sides:
+     * PHPStan reads `'{closure}'`, which names no method, and null fails the caller's own literal test.
+     *
+     * `__METHOD__` and `__CLASS__` are deliberately absent. Both mean something else inside a trait — PHP
+     * resolves them against the *using* class at runtime — and answering them from the declaration would be
+     * a guess about which of the two questions a rule is asking. Answering null is what they did before.
+     */
+    private static function magicConstant(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        $node = self::magicNode($context, Tree::node($subject));
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        [$file, $located] = Tree::locate($context, $node);
+        foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
+            if ($ancestor->kind === NodeKind::Closure || $ancestor->kind === NodeKind::ArrowFunction) {
+                return null;
+            }
+
+            if ($ancestor->kind !== NodeKind::Method && $ancestor->kind !== NodeKind::Function) {
+                continue;
+            }
+
+            foreach ($file->getChildren($ancestor) as $child) {
+                if ($child->kind === NodeKind::LocalIdentifier || $child->kind === NodeKind::Identifier) {
+                    return trim($file->getText($child));
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The `__FUNCTION__` node a subject stands for, through the wrappers an array element puts around it.
+     *
+     * A caller hands over whatever the rule reads, and for `[$this, __FUNCTION__]` that is the element:
+     * `ArrayElement > ValueArrayElement > Expression > MagicConstant`, probed rather than assumed. The
+     * inferred-type path answers a plain literal at that same position, so this one has to reach the same
+     * depth.
+     *
+     * Matched by text as well as by kind, so a subject that *contains* a magic constant is not read as one:
+     * the element's own text and the constant's are the same string when the constant is the whole value,
+     * and differ for anything else — a concatenation, a call taking it as an argument.
+     */
+    private static function magicNode(NodeAnalysisContext $context, ?Node $node): ?Node
+    {
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        if (strcasecmp(trim($context->source->getText($node)), '__FUNCTION__') !== 0) {
+            return null;
+        }
+
+        if ($node->kind === NodeKind::MagicConstant) {
+            return $node;
+        }
+
+        return $context->source->getDescendants($node, NodeKind::MagicConstant)[0] ?? null;
     }
 
     /** The initialiser of the class constant this expression fetches, when it is a plain quoted string. */

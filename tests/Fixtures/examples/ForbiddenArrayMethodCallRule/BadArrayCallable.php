@@ -20,6 +20,19 @@ final class BadArrayCallable extends InheritsHandling
     }
 
     /**
+     * The same callable with `__FUNCTION__` in place of the literal.
+     *
+     * PHPStan resolves a magic constant to its value, so the rule reads `'named'` and reports. Mago's
+     * inferred type does not fold one, so the port read nothing and stayed silent — both of
+     * `ForbiddenArrayMethodCallRule`'s findings on `laravel/framework` were this, and both are
+     * `array_map([$this, __FUNCTION__], $value)` inside a `quoteString()`.
+     */
+    public function named(): array
+    {
+        return [$this, __FUNCTION__];
+    }
+
+    /**
      * The same callable written the long way.
      *
      * `[..]` and `array(..)` are one node to php-parser and two kinds to Mago, and the plugin registered only

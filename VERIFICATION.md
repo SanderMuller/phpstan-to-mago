@@ -4828,3 +4828,52 @@ either a recorded divergence or a measured ceiling.
 
 Suite 933/933, PHPStan 0. Five emitted files change and every changed line is the `@param` chain; the
 reviewed `ParamTypeCoverageRule` snapshot is updated for it. No census line moves and no count moves.
+
+### `__FUNCTION__` is a value PHPStan folds and mago does not
+
+Two of the six untraced entries were `forbiddenArrayMethodCall`'s only-original findings, and three more
+turned out to need no work: `rector.noClassReflectionStaticReflection`'s three sit in `HasFactory` and
+`ReadsClassAttributes`, traits with no using class in the analysed paths, which is already recorded.
+
+Both `forbiddenArrayMethodCall` sites are the same line written twice:
+
+    array_map([$this, __FUNCTION__], $value)     Grammar.php:233 and SqlServerGrammar.php:1040
+
+The rule asks whether the second array element is a constant string naming a method that exists. PHPStan
+resolves a magic constant to its value; mago's inferred type does not fold one. Probed over the same array
+written three ways, which separates the rule's test from the value behind it:
+
+    [$this, __FUNCTION__]     constantStringAt = NULL
+    [$this, 'quoteString']    constantStringAt = 'quoteString'
+    [$this, __METHOD__]       constantStringAt = NULL
+
+So the literal test is right and the value is absent. `ConstantStrings::at()` now answers `__FUNCTION__`
+from the declaration it sits in, and the corpus closes: **2 agree, 0, 0**, with `only-original` at 0 across
+the whole `Illuminate\Database` subtree.
+
+#### Two things the fix had to get right, and one it deliberately does not
+
+**The nearest function-like, closures included.** `Declares::enclosingFunctionName()` walks *past* a closure,
+because `$scope->getFunction()` does — that was a defect fixed earlier in this session. `__FUNCTION__` does
+not: PHP gives a closure's own name there, not the method around it. So a closure answers null here, and both
+engines stay silent — PHPStan reads `'{closure}'`, which names no method, and null fails the caller's own
+literal test.
+
+**The wrappers.** The subject a rule hands over is the array *element*, and the chain is
+`ArrayElement > ValueArrayElement > Expression > MagicConstant` — probed, after two attempts that looked for
+an `Expression` child of the element and found none, because the element's child is the `ValueArrayElement`.
+The match is by text as well as by kind, so a subject that merely *contains* a magic constant is not read as
+one.
+
+**`__METHOD__` and `__CLASS__` stay null.** Both mean something else inside a trait — PHP resolves them
+against the using class at runtime — so answering them from the declaration would guess which of two
+questions a rule is asking. Null is what they answered before.
+
+#### Verification
+
+The pair gained a `__FUNCTION__` case and the mutation is the fold: without it the port loses that line and
+the pair fails. Suite 933/933, PHPStan 0, emit-all unchanged — the fold is runtime, and the runtime ships as
+a package. No census line moves and no count moves.
+
+That leaves **one** entry on the Laravel run with no cause written down: `noDynamicName`'s single
+only-original.
