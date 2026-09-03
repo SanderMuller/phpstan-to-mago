@@ -4127,3 +4127,47 @@ this class have this method" would answer null for every inherited method and re
 
 No behaviour changes: two docblocks and one probe. Suite green, PHPStan 0 errors, emit-all unchanged across
 all three targets. No census line moves and no count moves.
+
+### What is actually left, measured instead of characterised
+
+Twice in this session the remaining work was described as "a type-system tier" — one coherent piece to attack
+deliberately. That was a characterisation from the rules read most recently, not a count. Counted, it is
+wrong, and the shape of what remains is different enough to change what to do next.
+
+**269 needs entries across 80 refused rules, 170 of them distinct. 129 appear exactly once.**
+
+Six of the 80 are the `OperandsInArithmetic*` family, which was built to emission and withdrawn on
+measurement — mago types operand 1 of a compound assignment as the value the expression produces, and on
+12125 real files the division rule made zero agreements. Counting them inflates every cluster they sit in, so
+the table below excludes them. That exclusion is the point of the row: `a second identifier before the first
+was reported` reads as an 8-rule cluster and is a 2-rule cluster, because six of the eight are that family.
+
+| need | rules (excl. withdrawn) |
+|:--|--:|
+| guard body is neither `return []` nor `continue`, but `Stmt_Expression` | 10 |
+| `$errorMessage` is not a message built in this rule | 7 |
+| statement outside the vocabulary: `Stmt_Expression` | 6 |
+| guard body is neither `return []` nor `continue`, but `Stmt_Return` | 6 |
+| collector returns something other than a list of values | 4 |
+| `array_merge()`, `Expr_Ternary`, `->getType()`, a 2-statement `if` | 4 each |
+
+Not one of them is a type-system capability. The largest is a statement shape this transpiler already handles
+in three other positions — the four `*TypeDeclarationCollector` rules hit it on `if ($param->variadic) {
+--$paramCount; continue; }`, an accumulator adjusted before the `continue`.
+
+**And no cluster is a lever.** Every one of the ten rules behind the largest need has at least four distinct
+needs of its own:
+
+    RequireParentConstructCallRule    4      ConstantTypeDeclarationCollector   7
+    WrongCaseOfInheritedMethodRule    4      ParamTypeDeclarationCollector      7
+    AssertEqualsIsDiscouragedRule     4      ReturnTypeDeclarationCollector     7
+    PropertyTypeDeclarationCollector  5      NewWithFollowingSettersCollector  11
+    NoReferenceRule                   6      ArrayFilterStrictRule             15
+
+The clusters also overlap rather than stack: three of the four rules in `collector returns something other
+than a list of values` are also in the largest row, so closing both moves the same three rules partway.
+
+So the honest position is that there is no next lever. Coverage past 99 of 169 is many small capabilities,
+most serving one rule, and the sizing question is no longer "which cluster first" but whether the corpus is
+worth that at all. This measurement is here so the question gets asked with the numbers rather than with an
+impression — including the impression this same session offered twice.
