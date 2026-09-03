@@ -5822,3 +5822,46 @@ Suite 943/943, PHPStan 0, pint clean. The census's own alarm did the work: every
 `TracksUpstreamDriftTest` with the diff, and the file was replaced from the `.actual` beside it each time —
 three times, because the first draft was wrong about `composer/pcre` and the second needed a paragraph break.
 No rule line moved in any of them, which is the check that this is a header change and not a corpus change.
+
+### The 15 that emit do not emit, and the census header said so for a day
+
+The plan for this step was to run the differential over the 15 `spaze/phpstan-disallowed-calls` rules that
+last step reported as translating, on the argument that "they emit" is not "they agree". The differential
+refused to start:
+
+    The consumer has none of the configured rule packages installed, so there is nothing to
+    transpile: spaze/phpstan-disallowed-calls
+
+The message is misleading — the package is installed, and the condition behind it is `emitted === []` — but
+the fact under it is real. A plain emit run:
+
+    php bin/phpstan-to-mago --target=php --out=… vendor/spaze/phpstan-disallowed-calls/src
+    emitted: 0, refused: 38 (target: php)
+
+**Zero, against the survey's 15.** The cause is documented on `Transpiler::transpile()` and is the whole
+point of that docblock: survey mode *assumes a hook exists* for a node type with no mapping, so it can report
+what a body would need behind its first structural blocker. 17 of spaze's 38 rules hook `Stmt\Echo_`,
+`Stmt\Break_`, `Stmt\Goto_`, `Stmt\Global_`, `Stmt\Unset_` and the like, none of which the vocabulary maps.
+`EchoCalls` alone: `no hook mapping for node type PhpParser\Node\Stmt\Echo_`.
+
+So the answer to "would adopting the package be worth proposing" is no, and it is not a close call: it would
+add 38 rules to the census denominator and none to the numerator.
+
+#### The mistake is the one this repository names most often, made against its own warning
+
+Last step's census header said "a survey emits 15 of spaze's 38, and nothing here watches them for drift",
+next to a sentence about adopting a corpus package being a decision. Every word of that is true and the
+paragraph is wrong: it invites a reader to size a package from a survey figure, which
+`VERIFICATION.md` already records going wrong — "A survey reporting 4 emitted where a real run emitted 3
+looked like leniency in the survey. It was the target." The docblock on the function I called says the same
+thing in the same words.
+
+The figure was labelled `survey` and that was not enough. What made it misleading was putting it where a
+reader is deciding, without the emit figure beside it. The header now leads with the emit run, gives the
+survey figure as the contrast, and says what the gap is.
+
+#### Verification
+
+Suite 943/943, PHPStan 0, pint clean. The census alarm caught each header edit and the file was replaced from
+its `.actual`; no rule line moved. The emit figures are three runs — the package, `composer/pcre`, and
+`EchoCalls` alone for the named refusal — and the 17 is `grep -c` over the emit output, not an estimate.
