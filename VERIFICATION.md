@@ -6028,3 +6028,52 @@ No code change. The probe is a throwaway plugin in the scratch directory, readin
 and `Types::typeIsCallable()` — the same two calls the emitted rule makes, so it answers the rule's question
 rather than a similar one. The three-call comparison inside `Connection.php` is the control: two spellings
 that work and one that does not, with everything else held.
+
+### The parentheses were not the cause, and a seven-line control says what is
+
+Last step named a mago bug precisely enough to report, so this step built the minimal reproduction anyone
+filing it would need. It did not reproduce:
+
+    /** @param  \Closure(): int    $a */   →  callable
+    /** @param  (\Closure(): int)  $b */   →  callable
+
+Both read `callable`. The parentheses are not the trigger, and the sentence written yesterday — "mago
+resolves a parenthesised closure type to what the closure returns" — is wrong. Laravel's line 736 carries
+parentheses *and* something else, and one site cannot say which half matters.
+
+Seven spellings, one variable at a time:
+
+    \Closure(): int                    callable
+    (\Closure(): int)                  callable
+    \Closure(): list<int>              callable
+    \Closure(): array{q: string}       callable
+    \Closure(): int[]                  array
+    (\Closure(): int[])                array
+    \Closure(): array{q: string}[]     array
+
+**The trigger is the trailing `[]`.** A generic array return is fine and an array *shape* return is fine;
+`T[]` is not. mago binds the suffix to the whole `\Closure(): T` rather than to `T`, so the parameter is an
+array of closures instead of a closure, and the rule's exemption then correctly declines to call an array
+callable.
+
+`mago analyze` reports nothing on any of these seven, so nothing surfaces without asking for the inferred
+type. That is worth carrying into a report: the symptom is silence, not a diagnostic.
+
+#### Two corrections in two days on one line of vendor code
+
+The first reading called it a docblock-parsing quirk without naming the fault. The second named the
+parentheses, from three call sites in one file — a real control, and still the wrong half, because all three
+of Laravel's spellings that differ also differ in the suffix. Only a file written to vary one thing at a time
+separated them, and it took seven rows because the first two refuted the standing answer without replacing
+it.
+
+The general lesson is the one this file already carries and this is a clean instance of: a comparison inside
+found code controls what that code happens to vary. `Connection.php` varies parentheses and suffix together,
+so it can rule things in and never out.
+
+#### Verification
+
+No code change. The reproduction is the seven-method file above, run under a probe reading
+`Support::expressionType()` and `Types::typeIsCallable()` — the same two calls the emitted rule makes. Each
+row is one docblock differing from its neighbour in one token, and the file is small enough to paste into an
+upstream issue as it stands.
