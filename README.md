@@ -53,13 +53,13 @@ final class ForbiddenStaticConstFetchRule implements Plugin, NodeAnalysisHook
   `phpstan/phpstan-deprecation-rules` are each one rule short.
 - As a pre-filter: transpiled rules on save and push, full PHPStan on merge or nightly.
 
-It does not make an existing PHPStan run cheaper: dropping rules does not drop the parsing and type inference
-underneath. And the pre-filter does not gate — a Mago-clean commit can still fail the deferred run, because a
-refused rule reports nothing and so does a translated rule that under-reports.
+It does not make an existing PHPStan run cheaper: dropping rules does not drop the parsing and type
+inference underneath. And the pre-filter does not gate — a Mago-clean commit can still fail the deferred run,
+because a refused rule reports nothing, and so does a translated rule that under-reports.
 
 ## Running a generated plugin
 
-Mago runs PHP extensions as worker processes. Register the plugins in a worker and point `mago.toml` at it:
+Mago runs PHP extensions as workers. Register the plugins in one and point `mago.toml` at it:
 
 ```php
 <?php // worker.php
@@ -112,7 +112,7 @@ A rule using a construct outside the vocabulary is refused, naming the construct
 ```
 
 Read the refusals next to the `emitted` count, never alone. Two checks produce them: the generator refuses a
-construct it cannot translate, the backend an operand it could not render.
+construct it cannot translate, the backend an operand it cannot render.
 
 ## What it can translate
 
@@ -151,8 +151,8 @@ with its count. Larger pieces:
 
 </details>
 
-An aggregate is mapped only once its numbers agree with the real rule on a real project, and carries the
-bound it was measured at: `tests/Support/run-coverage-corpus.php <project> --metric=<name>`.
+An aggregate is mapped only once its numbers agree with the real rule on a real project, and carries its
+measured bound: `tests/Support/run-coverage-corpus.php <project> --metric=<name>`.
 
 ## How far this is verified
 
@@ -160,7 +160,8 @@ Per-rule agreement is gated: for each emitted rule CI runs the real `mago` binar
 the same two files and compares line and message. A rule that emits and reports nothing fails.
 
 Corpus-scale agreement is not proven. Four vendor trees read 11744 agreeing against 28 divergences, each with
-a written cause; [VERIFICATION.md](VERIFICATION.md) has the runs and the eight defects they found.
+a written cause: 19 are traits PHPStan never analyses, 4 are inference gaps, 5 are findings the port misses.
+[VERIFICATION.md](VERIFICATION.md) has the runs and the eight defects they found.
 
 ## Performance
 
@@ -183,8 +184,8 @@ CPU, slower on both than a warm one, because `mago analyze` has no result cache.
 
 ## Requirements
 
-PHP 8.4 for the transpiler, the floor the rule packages themselves set. Generated plugins run under Mago
-1.47.1 or later. Skip 1.47.0: its release carries no Linux binary, so it installs and then cannot run.
+PHP 8.4 for the transpiler, the floor the rule packages set. Generated plugins run under Mago 1.47.1 or
+later. Skip 1.47.0: its release carries no Linux binary, so it installs and then cannot run.
 
 ## Contributing
 

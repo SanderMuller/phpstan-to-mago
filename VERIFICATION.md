@@ -6122,3 +6122,43 @@ behaviour this repository asks for.
 No code change. The narrowing control is three methods in one file, run through the differential inside this
 repository and removed afterwards; the type figures come from the probe reading the same two calls the
 emitted rule makes. Predictions were written before each run, in the message and in the file.
+
+### 19 of the 28 divergences are one deliberate behaviour, and the headline hid that
+
+Every only-port finding across the four corpora, attributed to its rule and its file:
+
+    ReadsClassAttributes    6    trait, no user in the analysed paths
+    SoftDeletes             5    trait, no user
+    HasFactory              4    trait, no user
+    ManagesTransactions     1    trait, no user
+    MassPrunable            1    trait, no user
+    Prunable                1    trait, no user
+    BroadcastsEvents        1    trait, used only by a trait nothing uses
+    ---                    19
+    Connection.php:736      1    a `\Closure(): T[]` docblock mago reads as `array`
+    Migrator.php:857        1    no `is_callable()` narrowing
+    Benchmark.php:27        1    a closure parameter typed through `Collection::map()`'s generics
+    CarbonInterval:3624     1    a destructuring mago types more narrowly than PHPStan
+
+Checked rather than assumed: `grep` for a `use` of each trait inside the analysed paths returns nothing for
+six of the seven, and for `BroadcastsEvents` returns exactly `BroadcastsEventsAfterCommit` — itself a trait
+that nothing in scope uses. PHPStan reaches a trait body only through a using *class*, so it never analyses
+any of these files, and the port does.
+
+With the five only-original findings, that is 19 + 4 + 5 = 28.
+
+**So two thirds of the divergence count is one documented behaviour**, recorded as not-a-defect at line 4372
+of this file: the port analyses the file it is given. A consumer pointing it at a directory of traits gets
+real findings that PHPStan declines to look for. Calling that a divergence is right; letting it sit in the
+same total as an inference gap is what misleads, because the aggregate reads as 28 disagreements about the
+same kind of thing.
+
+The README now splits the number where it states it. That is the whole change — no behaviour moves, because
+the 19 are not a defect and reproducing PHPStan's blind spot would mean building a guard into every emitted
+rule to report *less* on code the consumer asked about.
+
+#### Verification
+
+No code change. The attribution is a parse of this run's differential output, one line per finding, and the
+trait claim is seven `grep`s over the analysed paths rather than a reading of the recorded cause. README
+1204 to 1213 words, the added clause paid for by trimming five sentences elsewhere.
