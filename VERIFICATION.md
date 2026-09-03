@@ -6077,3 +6077,48 @@ No code change. The reproduction is the seven-method file above, run under a pro
 `Support::expressionType()` and `Types::typeIsCallable()` — the same two calls the emitted rule makes. Each
 row is one docblock differing from its neighbour in one token, and the file is small enough to paste into an
 upstream issue as it stands.
+
+### Controls for the other two engine-level divergences, and a check on the five false negatives
+
+Two site-read causes have turned out imprecise in as many days, so the remaining engine-level entries got the
+same treatment: a file that varies one thing at a time.
+
+**`is_callable()` narrowing**, `Migrator.php:857`. Three methods, one union parameter, one guard each:
+
+    unguarded         string|Closure, no guard        string|callable   both engines report      agree
+    viaIsCallable     if (is_callable($b))            string|callable   PHPStan declines         only-port
+    viaInstanceof     if ($c instanceof Closure)      Closure           both engines decline     no finding
+
+Every row predicted before the run and every one met. mago narrows on `instanceof` and not on
+`is_callable()`, PHPStan narrows on both, and the rule asks `isClosureOrCallableType()` — so each engine
+answers truthfully about its own inference. The `instanceof` row is what makes this a narrowing gap rather
+than "mago does not narrow": it does, on the other spelling.
+
+That is the second of the three reduced to a file small enough to hand to someone. The third,
+`Benchmark.php:27`, is a closure parameter typed only through `Collection::map()`'s generics and has not been
+reduced — a generics-inference gap needs the generic call chain around it, and a repro that carries Laravel's
+`Collection` is not a minimal one.
+
+#### The five false negatives, re-checked
+
+Across all four corpora the port is silent where the original reports exactly five times:
+
+    carbon    MessageFormatterMapper.php:42     noProtectedClassStmt    a parent declared twice, per PHP version
+    carbon    TranslatorImmutable.php:24, :40   paramTypeCoverage       the same resolution chain
+    rector    SimpleStaticType.php:13           noConstructorOverride   a parent inside phpstan.phar
+    laravel   QueueFake.php:214                 noDynamicName           mago infers *more* than PHPStan
+
+All five carry a written cause already. Four are class-resolution facts about a corpus, which no engine
+release can move, and the fifth is inference — so it was the one worth re-measuring on 1.47.5, and the probe
+says `callable|Closure` with `typeIsCallable=true`, matching the `CallableType|NamedObjectType` recorded when
+it was first traced. The cause holds and the finding is unchanged.
+
+Worth keeping in view: these are the entries where a consumer loses a real finding, and there are five of them
+against 11744 agreements. Four are the port declining to guess about a class it cannot resolve, which is the
+behaviour this repository asks for.
+
+#### Verification
+
+No code change. The narrowing control is three methods in one file, run through the differential inside this
+repository and removed afterwards; the type figures come from the probe reading the same two calls the
+emitted rule makes. Predictions were written before each run, in the message and in the file.
