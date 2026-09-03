@@ -6162,3 +6162,49 @@ rule to report *less* on code the consumer asked about.
 No code change. The attribution is a parse of this run's differential output, one line per finding, and the
 trait claim is seven `grep`s over the analysed paths rather than a reading of the recorded cause. README
 1204 to 1213 words, the added clause paid for by trimming five sentences elsewhere.
+
+### A fifth corpus, and what its clean run does not prove
+
+Four corpora had all been read to exhaustion, and a green run over material already mined is the weakest
+evidence available. `phpunit/phpunit` is the fifth: 1003 files, a test framework rather than a library or an
+application, and the one corpus here whose own rule package — `phpstan/phpstan-phpunit` — targets the shape
+of code it contains.
+
+    vendor/phpunit/phpunit/src   1003 files   561 agree   0 / 0
+
+**Zero divergences**, and the agreements are spread rather than piled on one rule — 18 rules produce
+findings:
+
+    128 explicitInterfaceSuffixName      13 forbiddenStaticClassConstFetch
+    124 requiredInterfaceContractNamespace 10 explicitTraitSuffixName
+    111 requireExceptionNamespace          9 complexity.classLike
+     69 requireAttributeNamespace          8 noDynamicName
+     35 explicitAbstractPrefixName         8 phpunit.noAssertFuncCallInTests
+     18 noClassReflectionStaticReflection  4 noProtectedClassStmt
+     16 complexity.functionLike            3 parentMethodVisibilityOverride
+                                           2 foreachCeption, 1 each ×3
+
+Five corpora now read **12305 agreeing against 28 divergences**, and the 28 are unchanged: this corpus adds
+none.
+
+#### The reading that would have been wrong
+
+`noDynamicName`, `forbiddenStaticClassConstFetch` and `noClassReflectionStaticReflection` carry every one of
+the 19 trait divergences on Laravel, and here they agree 8/8, 13/13 and 18/18. The tempting sentence is that
+this supports the trait explanation.
+
+It does not, and the check takes one command. `phpunit/src` *does* contain traits with no user in scope —
+`ProxiedCloneMethod`, `StubApi`, `Method`, `MockObjectApi`, `DoubledCloneMethod` — so the shape is present.
+What is absent is anything for those rules to report inside them: `grep` counts zero `protected` members and
+zero static self-const fetches across all five. A divergence needs a finding to diverge about, and there was
+none available.
+
+So the clean run is strong evidence of general agreement on a corpus nobody here wrote, and **silent** on the
+trait question. Recording which of those two it is matters more than the zero does.
+
+#### Verification
+
+No code change. One differential run, its per-rule table read rather than its total, and two `grep`s over
+`phpunit/src` to find out whether the clean result discriminates. README's corpus sentence moves from four
+trees and 11744 agreements to five and 12305; the divergence count and its split are untouched, because this
+run added nothing to either.
