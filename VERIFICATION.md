@@ -5951,3 +5951,43 @@ instrument for finding out which one that is.
 No code change. Every figure is a parse of the committed census plus one read of a vendor rule; the
 `hasVariableType` rendering claim is from this session's own measurement rather than restated from the
 census.
+
+### mago 1.47.4 to 1.47.5 closes one divergence, and the corpora say which
+
+The installed binary was one patch behind. `composer update carthage-software/mago` moves it to 1.47.5, which
+`composer.json`'s `^1.47.1` already allowed, so no tracked file changes — `composer.lock` is gitignored here.
+
+Suite 943/943 and PHPStan 0 on the new binary, and the fires gate runs the real `mago`, so that is 564 rule
+pairs re-checked against it rather than a version bump taken on trust. The four corpora:
+
+    nikic/php-parser/lib          1693 agree   0 / 0     unchanged
+    rector/rector/src              246 agree   1 / 0     unchanged
+    laravel Support + Database    7998 agree   1 / 22    was 1 / 23
+    nesbot/carbon/src             1807 agree   3 / 1     unchanged
+
+**11744 against 28**, from 29. The one that closed is
+`Illuminate/Database/Eloquent/Relations/Concerns/CanBeOneOfMany.php:113`, and it is one of the three
+engine-level type differences catalogued two steps ago as "not a port bug":
+
+    if ($aggregate instanceof Closure) {
+        $closure = $aggregate;
+    }
+    …
+    if (isset($closure)) {
+        $closure($subQuery);      // NoDynamicNameRule reported here, and no longer does
+    }
+
+The narrowing has to survive from the assignment, through a conditionally-defined variable, to a read guarded
+by `isset()`. 1.47.4 did not carry it and 1.47.5 does, so `typeIsCallable()` now answers yes and the rule
+declines exactly as the original does. Traced to those two sites rather than inferred from the line number.
+
+This is a controlled comparison by construction: same corpus, same port, same configuration, one variable.
+It is also the first time a divergence in this file has closed without a change to this repository, which is
+worth knowing about the remaining 28 — some of them are waiting on the other engine.
+
+#### Verification
+
+Suite 943/943, PHPStan 0, four corpora re-run. No `src/` change and no emitted byte moves; the README's
+divergence count moves from 29 to 28. Two other upgrades are available and are not taken here, because they
+are majors and a decision: `pestphp/pest` 4 to 5 (with `pest-plugin-arch`) and `phpunit/phpunit` 12 to 13.
+`composer outdated` also marks `mrpunyapal/rector-pest` and `symplify/phpstan-extensions` abandoned.

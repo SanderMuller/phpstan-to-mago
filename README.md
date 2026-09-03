@@ -159,7 +159,7 @@ bound it was measured at: `tests/Support/run-coverage-corpus.php <project> --met
 Per-rule agreement is gated: for each emitted rule CI runs the real `mago` binary against real PHPStan over
 the same two files and compares line and message. A rule that emits and reports nothing fails.
 
-Corpus-scale agreement is not proven. Four vendor trees read 11744 agreeing against 29 divergences, each with
+Corpus-scale agreement is not proven. Four vendor trees read 11744 agreeing against 28 divergences, each with
 a written cause; [VERIFICATION.md](VERIFICATION.md) has the runs and the eight defects they found.
 
 ## Performance
