@@ -36,6 +36,22 @@ final class BadDynamicNames
         // answered on the first callable atomic rather than on the whole union.
         $partly = $mixedCallable(1);
 
-        return [$constant, $staticProperty, $property, $method, $staticMethod, $called, $partly];
+        // Three literal strings the original does *not* exempt, and each for its own reason. Only `Yes`
+        // exempts, and `ConstantStringType::isCallable()` has three ways of not saying it.
+        //
+        // An instance method named as a string: callable before PHP 8.0 and not after, which the original
+        // decides through `PhpVersion::supportsCallableInstanceMethods()` — `versionId < 80000`.
+        $instanceString = 'Examples\\Dynamic\\Holder::run';
+        $viaInstanceString = $instanceString();
+
+        // A class nothing resolves, which is `Maybe` rather than `No` — and a maybe reports.
+        $unknownClass = 'Examples\\Dynamic\\NoSuchClass::whatever';
+        $viaUnknownClass = $unknownClass();
+
+        // And a name that is no function at all.
+        $unknownFunction = 'noSuchFunctionAnywhereAtAll';
+        $viaUnknownFunction = $unknownFunction();
+
+        return [$constant, $staticProperty, $property, $method, $staticMethod, $called, $partly, $viaInstanceString, $viaUnknownClass, $viaUnknownFunction];
     }
 }

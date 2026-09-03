@@ -447,9 +447,9 @@ final class Support
      * rather than a `CallableType`, so it is matched by name — that is the shape `Closure::fromCallable()` and a
      * closure literal both produce.
      */
-    public static function typeIsCallable(?Type $type): bool
+    public static function typeIsCallable(NodeAnalysisContext $context, ?Type $type): bool
     {
-        return Types::typeIsCallable($type);
+        return Types::typeIsCallable($context, $type);
     }
 
     /**

@@ -8986,7 +8986,7 @@ final readonly class Translator
 
             return $this->negateUnless(
                 $tail === 'yes',
-                $this->context->backend->call('type_is_callable', [$this->operand($this->resolve($inner->var, $line))]),
+                $this->context->backend->call('type_is_callable', ['$context', $this->operand($this->resolve($inner->var, $line))]),
             );
         }
 

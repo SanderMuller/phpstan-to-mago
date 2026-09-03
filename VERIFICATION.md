@@ -5336,3 +5336,78 @@ Suite 939/939, PHPStan 0 with no new baseline entry, pint clean. Emit-all across
 `linter` over the four corpus packages plus `tests/Fixtures/Rules`: 213 files each side, and `diff -r` names
 **no emitted file at all** — only the `--out` path the four `mago.toml.snippet`s embed. A Runtime change
 should move zero emitted bytes, and this one does. Baseline built by the copy-aside route again.
+
+### A literal string naming a function is callable, and the port said no for every string
+
+Two of Laravel's `noDynamicName` port-only findings are `Illuminate/Support/Pluralizer.php:93` and `:94`:
+
+    $functions = ['mb_strtolower', 'mb_strtoupper', 'ucfirst', 'ucwords'];
+    foreach ($functions as $function) {
+        if ($function($comparison) === $comparison) {
+
+PHPStan's type for `$function` there is a union of four constant strings, `ConstantStringType::isCallable()`
+says yes for each, so `CallableTypeAnalyzer::isClosureOrCallableType()` exempts the call and the rule
+declines. `Types::isCallableAtomic()` matched only a `CallableType` and a `Closure` object, so the port
+reported — on every dispatch table a consumer writes, not only on these two lines.
+
+The exemption's clauses were read out of `phpstan.phar` rather than inferred from the name, because only its
+`Yes` exempts and it has three ways of not saying yes: a function name is a plain existence check;
+`Class::method` needs the class known, the method present **and static**, because
+`PhpVersion::supportsCallableInstanceMethods()` is `versionId < 80000`; and an unknown class or a missing
+method on a non-final one is `Maybe`, which reports.
+
+Six shapes, each predicted before the run and each now agreeing:
+
+| shape                                             | PHPStan | port before |
+|:--|:--|:--|
+| a literal naming a function                        | silent  | reports     |
+| a union of them from a `foreach` over a list       | silent  | reports     |
+| `'Class::staticMethod'`                            | silent  | reports     |
+| `'Class::instanceMethod'`                          | reports | reports     |
+| `'NoSuchClass::whatever'`                          | reports | reports     |
+| a name that is no function                         | reports | reports     |
+
+#### Two wrong instruments, each found by probing rather than by reading
+
+**`StringType->callable` is not this question.** The SDK publishes exactly that flag on the string type, and
+reaching for it is the obvious first move. Written that way, the clause changed no finding on a probe holding
+four shapes it should have closed — and it did not fire for a `@param callable-string` either, so it has no
+control here and was dropped rather than shipped unexercised.
+
+**A literal string is not a `StringType` atomic.** A probe printing the atomics for `$function(..)` answered
+`ScalarType kind=String refinement=StringType`, and the type *renders* as plain `string` in both the literal
+and non-literal case. So the value lives on the scalar's refinement, which is what `constantStringsOf()`
+already read for a whole type; `literalStringOfAtomic()` is the one-atomic form of the same read, because the
+callable question is asked per atomic and a union has to answer for each.
+
+**`MetadataFlags::STATIC` reads false for a `public static function`.** The constant exists, `1 << 32`, and
+`flags->contains()` answered false on a control where the method was found. `FunctionLikeMetadata` carries a
+dedicated `public readonly bool $static`, which is right. That makes three occasions this repository has recorded a
+field existing being mistaken for a field answering — `PHPVersion::$id`, whose integer is packed differently
+from PHPStan's, and `getConstant('PHP_EOL')`, which answers by bare name and not inside a namespace, are the
+other two. The probe that caught this one printed the lookup and the flag on the same line.
+
+#### The emitted signature changes, deliberately
+
+`Support::typeIsCallable()` had no context to ask the codebase with, so it takes one now, and the Translator
+emits `Support::typeIsCallable($context, ..)`. One emitted rule calls it, so emit-all across the three
+targets names exactly one file and one line — the added argument.
+
+    nikic/php-parser/lib          270 files   1693 agree   0 / 0
+    rector/rector/src             489 files    246 agree   1 / 0
+    laravel Support + Database    367 files   7998 agree   1 / 23
+    nesbot/carbon/src             914 files   1807 agree   3 / 1
+
+11744 agreements against **29** divergences, from 31. The 13 `noDynamicName` port-only findings left on
+Laravel are 10 in traits with no analysed user — a recorded divergence — and three engine-level type
+differences, each read at its site: `Connection.php:736` is a `@param (\Closure(): ..)` docblock,
+`Migrator.php:857` is `is_callable()` narrowing a variable, and `Benchmark.php:27` is a closure parameter
+typed only through `Collection::map()`'s generics. None of the three is a port bug.
+
+#### Verification
+
+Suite 939/939, PHPStan 0 with no new baseline entry. Emit-all: 213 files each side, one emitted file
+differing by one argument, plus the `--out` path in four snippets. Mutation-checked: forcing the literal to
+null fails the good example at all three of its new lines and leaves the bad example's ten findings agreeing,
+which is both directions of the clause in one run. `vendor/bin/pint --test` also names `src/Translator.php`,
+unmodified here beyond that one argument and already listed at HEAD.

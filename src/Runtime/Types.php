@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Runtime;
 
+use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
 use Mago\Sdk\Analyzer\Type\CallableType;
@@ -48,7 +49,7 @@ final class Types
      *   `Builder::findOr()` is one — so mago's type is `Closure|null` where PHPStan's, after `removeNull`,
      *   is `Closure`. Counting the null made the port report where the rule does not.
      */
-    public static function typeIsCallable(?Type $type): bool
+    public static function typeIsCallable(NodeAnalysisContext $context, ?Type $type): bool
     {
         if (! $type instanceof Type || $type->atomicTypes === []) {
             return false;
@@ -60,7 +61,7 @@ final class Types
                 continue;
             }
 
-            if (! self::isCallableAtomic($atomic)) {
+            if (! self::isCallableAtomic($context, $atomic)) {
                 return false;
             }
 
@@ -71,10 +72,80 @@ final class Types
     }
 
     /** A closure object is a named object rather than a `CallableType`, which is what both spellings produce. */
-    private static function isCallableAtomic(object $atomic): bool
+    private static function isCallableAtomic(NodeAnalysisContext $context, object $atomic): bool
     {
         return $atomic instanceof CallableType
-            || ($atomic instanceof NamedObjectType && strcasecmp(ltrim($atomic->name, '\\'), 'Closure') === 0);
+            || ($atomic instanceof NamedObjectType && strcasecmp(ltrim($atomic->name, '\\'), 'Closure') === 0)
+            || self::literalNamesACallable($context, self::literalStringOfAtomic($atomic));
+    }
+
+    /**
+     * Whether a literal string is one PHP could call, which is what `ConstantStringType::isCallable()` says.
+     *
+     * A string is not a shape the rule's exemption looked at until a corpus said otherwise: Laravel's
+     * `Pluralizer` loops `['mb_strtolower', 'mb_strtoupper', 'ucfirst', 'ucwords']` and calls `$function(..)`,
+     * where PHPStan's type is a union of four constant strings, every one of them callable, so
+     * `isCallable()->yes()` and the rule declines. The port answered no for a string and reported both calls.
+     *
+     * The clauses are the original's, read out of `phpstan.phar` rather than inferred from the name, because
+     * only its `Yes` exempts and it has three ways of not saying yes:
+     *
+     * - a function name, which is a plain existence check
+     * - `Class::method` where the class is known and the method exists — and, from PHP 8.0, only when that
+     *   method is static. `supportsCallableInstanceMethods()` is `versionId < 80000`, so on anything this
+     *   package supports `'Widget::instanceMethod'` is *not* callable
+     * - anything else is `No`, or `Maybe` for an unknown class or a missing method on a non-final one, and a
+     *   maybe reports
+     *
+     * `Mixins::declaringMethod()` answers the method half, because PHPStan asks `hasMethod()` here too and a
+     * `@mixin` on the named class supplies methods for it as much as anywhere else.
+     */
+    /**
+     * The literal behind one string atomic, or null when it is not one literal string.
+     *
+     * A literal string is not a `StringType` beside the others: it is a `ScalarType` of kind `String` whose
+     * *refinement* is the `StringType` carrying the value, and the type renders as plain `string` either way.
+     * Testing `$atomic instanceof StringType` therefore matched nothing at all — measured, because the clause
+     * written that way changed no finding on a probe holding four shapes it should have closed.
+     *
+     * {@see constantStringsOf()} reads the same structure for a whole type; this is the one-atomic form,
+     * because the callable question is asked per atomic and a union has to answer for each.
+     */
+    private static function literalStringOfAtomic(object $atomic): ?string
+    {
+        if (! $atomic instanceof ScalarType || $atomic->kind !== ScalarTypeKind::String) {
+            return null;
+        }
+
+        $refinement = $atomic->refinement;
+
+        return $refinement instanceof StringType && is_string($refinement->literalValue) ? $refinement->literalValue : null;
+    }
+
+    private static function literalNamesACallable(NodeAnalysisContext $context, ?string $literal): bool
+    {
+        if ($literal === null || $literal === '') {
+            return false;
+        }
+
+        if ($context->codebase->functionExists($literal)) {
+            return true;
+        }
+
+        // The original's own pattern, which is stricter than `str_contains($literal, '::')`: one identifier,
+        // then `::`, then one identifier, and nothing else. `'Widget::a::b'` and `'$var::method'` are not
+        // callable spellings and must not be read as one.
+        if (preg_match('#^([a-zA-Z_\x7f-\xff\\\\][a-zA-Z0-9_\x7f-\xff\\\\]*)::([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*)$#', $literal, $matches) !== 1) {
+            return false;
+        }
+
+        $method = Mixins::declaringMethod($context->codebase, $matches[1], $matches[2]);
+
+        // `FunctionLikeMetadata->static`, not `flags->contains(MetadataFlags::STATIC)`. The flag exists and
+        // is documented and reads false for a `public static function` — probed on this control, where the
+        // method was found and the bit was not set. Reaching for the bit is the obvious move and it would
+        // have made every `'Class::staticMethod'` report.
+        return $method instanceof FunctionLikeMetadata && $method->static;
     }
 
     /**
