@@ -26,7 +26,7 @@ use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 final class ParamTypeCoverageRule implements AfterAnalysisHook, Plugin
 {
     /**
-     * @param float $required PHPStan's `%type_coverage.param_type%`
+     * @param float $required PHPStan's `%type_coverage.param%` or `%type_coverage.param_type%`
      */
     public function __construct(public readonly float $required = 99) {}
 

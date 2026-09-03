@@ -32,7 +32,8 @@ final readonly class AggregateRule
         public string $metric,
         public string $identifier,
         public string $message,
-        public string $threshold,
+        /** @var list<string> the parameter paths the rule's getter falls back through, in that order */
+        public array $thresholds,
         public float $default,
     ) {}
 
@@ -77,9 +78,9 @@ final readonly class AggregateRule
         $identifier = self::constant($class, 'IDENTIFIER')
             ?? throw new Refusal('an aggregate rule with no IDENTIFIER to report under');
 
-        [$threshold, $default] = self::threshold($class, $ruleFile, $configuration);
+        [$thresholds, $default] = self::threshold($class, $ruleFile, $configuration);
 
-        return new self($metric, $identifier, $message, $threshold, $default);
+        return new self($metric, $identifier, $message, $thresholds, $default);
     }
 
     /**
@@ -150,13 +151,20 @@ final readonly class AggregateRule
     }
 
     /**
-     * The configured threshold the rule compares against, as a parameter path and its default.
+     * The configured threshold the rule compares against, as the parameter paths it reads and its default.
      *
      * Reached through the `Configuration` getter the rule calls, which {@see ConfigurationObject} reduces to
-     * the parameter it reads. Refused rather than defaulted when it cannot be resolved: a coverage rule with
+     * the parameters it reads. Refused rather than defaulted when it cannot be resolved: a coverage rule with
      * a guessed threshold would report against a number nobody chose.
      *
-     * @return array{string, float}
+     * **All the paths, not the first that resolves.** A getter reading
+     * `$this->parameters['constant'] ?? $this->parameters['constant_type']` reads two, and the package
+     * declares the alias as `null` — so the first with a *numeric* default is the fallback, never the alias.
+     * Recording only that one is right about the default and wrong about the consumer: someone who sets
+     * `constant: 0` has set the alias, and a plugin carrying `constant_type` never sees it. That is why
+     * `constantTypeCoverage` stayed 18 findings apart after the thresholds were otherwise aligned.
+     *
+     * @return array{list<string>, float}
      */
     private static function threshold(ClassLike $class, string $ruleFile, ?PackageConfiguration $configuration): array
     {
@@ -175,12 +183,15 @@ final readonly class AggregateRule
             }
 
             $object = self::configurationObject($ruleFile, $configuration);
-            foreach ($object?->pathsFor($getter) ?? [] as $path) {
-                if ($configuration->hasParameter($path)) {
-                    $default = $configuration->defaultFor($path);
-                    if (is_int($default) || is_float($default)) {
-                        return [$path, (float) $default];
-                    }
+            $paths = array_values(array_filter(
+                $object?->pathsFor($getter) ?? [],
+                static fn (string $path): bool => $configuration->hasParameter($path),
+            ));
+
+            foreach ($paths as $path) {
+                $default = $configuration->defaultFor($path);
+                if (is_int($default) || is_float($default)) {
+                    return [$paths, (float) $default];
                 }
             }
 

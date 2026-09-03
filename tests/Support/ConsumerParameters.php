@@ -70,10 +70,14 @@ final class ConsumerParameters
         // `%type_coverage.declare%`, and matching on `required` finds nothing at all. That mismatch is what
         // made a differential run compare the consumer's configured original against a port at package
         // defaults: 436 of the 953 divergences on one Laravel run were that and nothing else.
+        // A line may name more than one, in the order the rule's getter falls back through them —
+        // `%type_coverage.constant%` or `%type_coverage.constant_type%`. The first the consumer sets is the
+        // one the original runs at, which is the whole point of an alias.
         $origins = [];
-        preg_match_all('/@param \w+ \$(\w+) PHPStan\'s `%([^%]+)%`/', $source, $declared, PREG_SET_ORDER);
+        preg_match_all('/@param \w+ \$(\w+) PHPStan\'s ((?:`%[^%]+%`(?: or )?)+)/', $source, $declared, PREG_SET_ORDER);
         foreach ($declared as $origin) {
-            $origins[$origin[1]] = $origin[2];
+            preg_match_all('/%([^%]+)%/', $origin[2], $paths);
+            $origins[$origin[1]] = $paths[1];
         }
 
         $arguments = [];
@@ -84,7 +88,14 @@ final class ConsumerParameters
                 continue;
             }
 
-            $value = isset($origins[$parameter]) ? $this->valueAt($origins[$parameter]) : null;
+            $value = null;
+            foreach ($origins[$parameter] ?? [] as $path) {
+                $value = $this->valueAt($path);
+                if ($value !== null) {
+                    break;
+                }
+            }
+
             if ($value !== null) {
                 $arguments[] = $parameter . ': ' . $value;
 

@@ -4783,3 +4783,48 @@ commit declined to write.
 
 Suite 933/933, PHPStan 0. Thirteen emitted files change and every changed line is the `@param` docblock; the
 reviewed `ParamTypeCoverageRule` snapshot is updated for it. No census line moves and no count moves.
+
+### The alias chain, and the differential with no configuration left in it
+
+The previous commit left four metrics misaligned and named the reason: `type-coverage` declares two
+parameters per metric — `constant_type` at 99 and `constant`, an "alias to avoid typos", at `null` — and its
+`Configuration` reads `$this->parameters['constant'] ?? $this->parameters['constant_type']`.
+
+`ConfigurationObject::pathsFor()` already returned both, in fallback order, and said so in its docblock.
+`AggregateRule::threshold()` threw one away: it took the first path with a *numeric* default, and an alias
+declared `null` never has one. Right about the default, wrong about the consumer — someone who writes
+`constant: 0` has set the alias, and a plugin carrying `constant_type` never sees it.
+
+So `AggregateRule` records the paths rather than a path, the emitted `@param` line names them in order —
+``PHPStan's `%type_coverage.constant%` or `%type_coverage.constant_type%``` — and `ConsumerParameters` takes
+the first the consumer sets. A consumer who sets neither falls through to the package default, which is what
+they would have got anyway.
+
+    ConstantTypeCoverageRule(required: 0)      PropertyTypeCoverageRule(required: 100)
+    DeclareCoverageRule(required: 100)         ReturnTypeCoverageRule(required: 100)
+    ParamTypeCoverageRule(required: 100)
+
+`constantTypeCoverage` leaves the divergence list, and with it the last configuration-caused block:
+
+| run | agree | only-original | only-port |
+|:--|--:|--:|--:|
+| before the thresholds were touched | 7597 | 402 | 551 |
+| thresholds and the `-1` line | 7996 | 3 | 466 |
+| the alias chain | **7996** | **3** | **448** |
+
+#### What is left is all traced but one
+
+    paramTypeCoverage    423 only-port   the reflection-extension over-count, at a 1.11% ceiling
+    noDynamicName         15 only-port   9 unused traits, 6 places mago's inference stops short
+    staticConstFetch       7 only-port   unused traits, one through a trait-to-trait chain
+    rector.noClassReflectionStaticReflection   3 only-port   not traced
+    forbiddenArrayMethodCall               2 only-original   not traced
+    noDynamicName                          1 only-original   not traced
+
+Six entries across two identifiers have no cause written down. Everything else on a 367-file corpus is
+either a recorded divergence or a measured ceiling.
+
+#### Verification
+
+Suite 933/933, PHPStan 0. Five emitted files change and every changed line is the `@param` chain; the
+reviewed `ParamTypeCoverageRule` snapshot is updated for it. No census line moves and no count moves.

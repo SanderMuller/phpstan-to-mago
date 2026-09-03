@@ -480,10 +480,13 @@ PHP;
         $rust = strtr($template, [
             '{CLASS}' => $className,
             '{THRESHOLD}' => $threshold,
-            // The parameter the threshold came from, kept beside the argument that carries it. The default is
-            // the *package's*, so a consumer running at their own threshold has to pass one — and without the
-            // name written here they have no way to know which of their options this argument is.
-            '{THRESHOLD_PARAMETER}' => $aggregate->threshold,
+            // The parameters the threshold came from, kept beside the argument that carries it. The default
+            // is the *package's*, so a consumer running at their own threshold has to pass one — and without
+            // the names written here they have no way to know which of their options this argument is.
+            //
+            // Plural where the rule's getter falls back: `constant ?? constant_type`. The default comes from
+            // whichever has one, and a consumer who sets either has set this argument.
+            '{THRESHOLD_PARAMETER}' => implode('%` or `%', $aggregate->thresholds),
             '{PLUGIN}' => $this->context->backend->bytes($identifier),
             '{NAME}' => $this->context->backend->bytes($className),
             '{DESCRIPTION}' => $this->context->backend->bytes("Transpiled from PHPStan's {$className}."),
