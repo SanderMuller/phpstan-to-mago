@@ -4609,3 +4609,33 @@ Suite 933/933, up from 930 — the three new tests. PHPStan 0 errors: `proc_open
 configuration and this test spawns both engines like its three siblings, so it joins the same scoped
 exception rather than taking a new baseline entry. Emit-all unchanged; no census line moves and no count
 moves.
+
+### The fourth Laravel lead was the trait case again, one link further out
+
+`forbiddenStaticClassConstFetch` reported 7 findings PHPStan does not, against 86 agreements. All seven sit
+in traits — `BroadcastsEvents`, `HasFactory`, `MassPrunable`, `Prunable`, `SoftDeletes` — so the first guess
+was the cause already pinned two commits ago: PHPStan reaches a trait body only through a using class.
+
+Six fit it directly, with no user in the analysed paths. **The seventh did not.** `BroadcastsEvents` has one
+user, so by the check used earlier its finding was unexplained.
+
+It is the same cause, and the check was too coarse. `BroadcastsEventsAfterCommit` — the only thing using
+`BroadcastsEvents` — is *itself a trait*, and nothing in scope uses it. The chain never arrives at a class,
+so PHPStan analyses neither body and the silence is identical.
+
+So "has a user" has to mean a using *class*, transitively. Counting `use` statements does not see the
+difference, and counting them is what nearly left one finding attributed to nothing.
+
+The fixture now holds that shape: `UsedOnlyByATrait` declares a method, `NothingUsesThisOne` uses that trait
+and is used by nothing. `TraitMethodHookDivergesTest` asserts three mago-only entries instead of two — one
+mechanism at three depths: reported once against once per user, no user at all, and a user chain that stops
+at another trait.
+
+Nothing to fix. The port analyses the file it is given, and this is the third face of a divergence already
+recorded as deliberate. What is worth having is the fixture, so the next attribution of a port-only finding
+in a trait does not have to re-derive that a trait is not a user.
+
+#### Verification
+
+No behaviour change — one fixture pair of traits and the assertions that read them. Suite 933/933, PHPStan 0,
+emit-all unchanged.

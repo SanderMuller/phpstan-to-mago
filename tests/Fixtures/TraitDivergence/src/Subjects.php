@@ -63,3 +63,23 @@ trait AnUnusedTrait
 {
     public function inUnusedTrait(): void {}
 }
+
+/**
+ * A trait whose only user is another trait, which no class uses either.
+ *
+ * The chain matters, and a count of `use` statements does not see it. Attributing the seven
+ * `ForbiddenStaticClassConstFetchRule` port-only findings on `Illuminate\Database` needed this: six sat in
+ * traits with no user at all, and the seventh — `BroadcastsEvents` — had one, `BroadcastsEventsAfterCommit`,
+ * which is itself a trait that nothing in scope uses. PHPStan reaches a trait body only through a using
+ * *class*, so a chain that never arrives at one is the same silence as no user at all.
+ */
+trait UsedOnlyByATrait
+{
+    public function inChainedTrait(): void {}
+}
+
+/** Uses the trait above and is used by nothing, so the chain stops here. */
+trait NothingUsesThisOne
+{
+    use UsedOnlyByATrait;
+}

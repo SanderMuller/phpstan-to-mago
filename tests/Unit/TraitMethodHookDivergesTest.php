@@ -66,6 +66,7 @@ final class TraitMethodHookDivergesTest extends TestCase
             'TraitDivergence\AnInterface::inInterface',
             'TraitDivergence\AnUnusedTrait::inUnusedTrait',
             'TraitDivergence\PlainClass::inClass',
+            'TraitDivergence\UsedOnlyByATrait::inChainedTrait',
         ], $fired, 'The mago method hook no longer names the trait a method is declared in.');
     }
 
@@ -74,11 +75,17 @@ final class TraitMethodHookDivergesTest extends TestCase
      *
      * Read from the same two runs the tests above assert, so it cannot drift from them.
      *
-     * Two mago-only entries, and they are the same mechanism at its two ends. `ATrait::inTrait` is reported
+     * Three mago-only entries, and they are one mechanism at three depths. `ATrait::inTrait` is reported
      * once where PHPStan reports it per using class. `AnUnusedTrait::inUnusedTrait` has no using class at
-     * all, so PHPStan never reaches the body and reports nothing — the degenerate case, and the one that
-     * reads as a false positive in a differential. Measured on `laravel/framework`: 9 of `NoDynamicNameRule`'s
-     * 15 port-only findings sit in traits with no user in the analysed paths.
+     * all, so PHPStan never reaches the body — the degenerate case, and the one that reads as a false
+     * positive in a differential. `UsedOnlyByATrait::inChainedTrait` has a user that is itself a trait
+     * nothing uses, so the chain never arrives at a class and the silence is the same.
+     *
+     * That third case is here because counting `use` statements does not see it. On `laravel/framework`, 9 of
+     * `NoDynamicNameRule`'s 15 port-only findings sit in traits with no user, and all 7 of
+     * `ForbiddenStaticClassConstFetchRule`'s do — six with no user and one, `BroadcastsEvents`, whose only
+     * user is the trait `BroadcastsEventsAfterCommit`. A check that counted that as a user would have called
+     * the seventh unexplained.
      */
     public function test_the_two_engines_name_a_different_class_for_the_same_trait_method(): void
     {
@@ -87,7 +94,11 @@ final class TraitMethodHookDivergesTest extends TestCase
 
         self::assertSame(self::AGREED, array_values(array_intersect($phpstan, $mago)));
         self::assertSame(
-            ['TraitDivergence\ATrait::inTrait', 'TraitDivergence\AnUnusedTrait::inUnusedTrait'],
+            [
+                'TraitDivergence\ATrait::inTrait',
+                'TraitDivergence\AnUnusedTrait::inUnusedTrait',
+                'TraitDivergence\UsedOnlyByATrait::inChainedTrait',
+            ],
             array_values(array_diff($mago, $phpstan)),
             'A trait with no using class is no longer mago-only, or the trait it is declared in stopped being named.',
         );
