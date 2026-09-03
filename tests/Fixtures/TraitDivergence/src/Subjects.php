@@ -50,3 +50,16 @@ final class AlsoUsesIt
 {
     use ATrait;
 }
+
+/**
+ * Used by nothing here, which is the degenerate case of the same divergence.
+ *
+ * PHPStan reaches a trait's body only through a using class, so with no user in the analysed tree it never
+ * analyses this method and reports nothing for it. A node hook fires on the declaration and reports once.
+ * Measured on `laravel/framework`: 9 of `NoDynamicNameRule`'s 15 port-only findings are in traits with no
+ * user in the analysed paths — `SoftDeletes`, `ManagesTransactions`, `ReadsClassAttributes`.
+ */
+trait AnUnusedTrait
+{
+    public function inUnusedTrait(): void {}
+}

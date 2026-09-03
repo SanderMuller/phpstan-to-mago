@@ -4331,3 +4331,57 @@ alarming one.
 
 No behaviour change — one docblock. Suite green, PHPStan 0 errors, emit-all unchanged: the runtime ships as a
 package rather than being emitted, so a note on `Reflect` reaches no generated file.
+
+### A third corpus, and the trait case the differential reads as false positives
+
+`laravel/framework`'s `Support` and `Database` trees — 367 files, and the trait- and facade-heavy idioms this
+port has diverged on before:
+
+    total: agree 7592, only-original 407, only-port 551
+
+Several identifiers move, and this section closes only the largest single cause. `NoDynamicNameRule` is the
+sharpest: **177 agree, 15 only-port, 1 only-original**, in a rule whose closure guard was fixed two commits
+ago — so the first question was whether that fix caused them. It did not; that fix narrows.
+
+Nine of the fifteen are in traits, and the traits differ in one way that decides it:
+
+| trait | users in the analysed paths | findings |
+|:--|--:|--:|
+| `ReadsClassAttributes` | 0 | 4 |
+| `SoftDeletes` | 0 | 4 |
+| `ManagesTransactions` | 0 | 1 |
+| `CanBeOneOfMany` | 3 | 1 |
+
+PHPStan reaches a trait's body only through a using class. With no user in the analysed tree it never
+analyses the method and reports nothing; a node hook fires on the declaration and reports once.
+
+#### Proved with a control, not read off the table
+
+One file, two traits, identical bodies, one used by a class beside it and one not:
+
+    symplify.noDynamicName   agree 1  only-original 0  only-port 1
+        only-port  .../trait-control/src/Traits.php:12      <- the unused one
+
+The used trait's line agrees; the unused one is port-only. Nothing else differs between them.
+
+That is the same mechanism `TraitMethodHookDivergesTest` already measures at its other end — a trait method
+reported once where PHPStan reports it per using class — so the fixture gained an unused trait and the test
+now asserts **two** mago-only entries rather than one. The degenerate case is the one that reads as a false
+positive in a differential, which is why it is worth pinning in CI rather than describing.
+
+Not a defect to fix: the port analyses the file it is given, and declining to analyse a trait until something
+uses it would be a deliberate narrowing with no evidence behind it. Named so the next differential run can
+subtract it.
+
+#### What is left on this corpus, unattributed
+
+Six `noDynamicName` findings outside traits — `Pluralizer.php:93` calls `$function($comparison)` where
+`$function` iterates a list of function-name literals, which PHPStan's callable check accepts and the port's
+`typeIsCallable` does not. Plus `noProtectedClassStmt` at 5 only-original against 966 agreements,
+`forbiddenStaticClassConstFetch` at 7 only-port against 86, and `returnTypeCoverage` at 33 each way. Each is
+its own question and none is opened here.
+
+#### Verification
+
+No behaviour change — one fixture trait and the assertions that read it. Suite green, and the trait-divergence
+test passes with the new entry in both places it appears.
