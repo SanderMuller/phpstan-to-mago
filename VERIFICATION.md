@@ -5411,3 +5411,56 @@ differing by one argument, plus the `--out` path in four snippets. Mutation-chec
 null fails the good example at all three of its new lines and leaves the bad example's ten findings agreeing,
 which is both directions of the clause in one run. `vendor/bin/pint --test` also names `src/Translator.php`,
 unmodified here beyond that one argument and already listed at HEAD.
+
+### Finishing the `hasMethod` family: one more live defect, and one hypothesis the control refuted
+
+Two audits had already paid, so the third asked the remaining sites the same question. `ACCEPTED_DIVERGENCE`
+itself had nothing left to re-ask — four of its five metrics carry a zero ceiling and the fifth is now +1 —
+so the audit went to the other places the runtime answers a reflection question.
+
+**`Types::typeHasMethod()` is the port of `$type->hasMethod($m)->yes()`, and it read `methodExists()`
+directly.** `ForbiddenArrayMethodCallRule` reports `[$object, 'method']` when the method *exists*, so a
+mixin-supplied name made PHPStan report and the port stay silent. Three shapes in one probe, predicted first:
+
+    [$base, 'mixedInMethod']     only-original   a false negative
+    [$base, 'ownMethod']         agree (both report)
+    [$base, 'noSuchMethodHere']  agree (both silent)
+
+Routing it through `Mixins::declaringMethod()` closes the first and leaves the other two. That is the third
+defect of this shape, after the false positive in `NoProtectedClassStmtRule` and the false negative in
+`PreventParentMethodVisibilityOverrideRule`, and like those two it is latent: the four corpora read 11744
+against 29 both before and after.
+
+#### The property collector looked like a fourth and is not
+
+`PropertyTypeDeclarationCollector::isGuardedByParentClassProperty()` asks `$parent->hasProperty($name)`, and
+`MixinPropertiesClassReflectionExtension` is right there in `phpstan.phar` beside the methods one. The
+inference was that the port's property guard has the same gap.
+
+It does not, and the control says so twice over. A class whose parent carries `@mixin` of a class declaring
+`public string $shared` counts **2 against 2** — PHPStan reports the untyped `$shared` rather than treating
+it as guarded. Running PHPStan on the same fixture at level 8 says why: `Access to an undefined property
+ProbeMixinProp\PropBase::$shared`. So the mixin supplies nothing for the guard to find.
+
+And the discriminating control, because "the mixin is not resolving in this file" would explain the same
+result: adding a *method* to the same mixin target and reading `$base->sharedMethod()` from the same file
+raises no error at all. The mixin resolves; it resolves for methods and not for this property. So the
+extension existing was not the extension answering — the same mistake as `MetadataFlags::STATIC` one step up,
+made about a class rather than a field, and the only reason it did not ship a change is that the control ran
+before the fix.
+
+#### One near-miss worth recording, caught by a guard test rather than by care
+
+`vendor/bin/pint` on the example directory rewrote `array($this, 'handle')` to `[$this, 'handle']` in
+`BadArrayCallable::legacyCallable()` — the exact case that file's own docblock says pint destroys, which is
+why the file sits in `pint.json`'s `notPath`. Naming the directory on the command line bypasses that.
+`KeepsTheShapeAFixtureExistsForTest` failed with "no longer contains array($this, 'handle'), so the case it
+exists to exercise is gone and its pair passes for nothing", which is the whole point of that test. Restored,
+and the lesson is to run pint the way the project runs it rather than pointed at a path.
+
+#### Verification
+
+Suite 939/939, PHPStan 0 with no new baseline entry, pint clean. Emit-all across `php`, `analyzer` and
+`linter`: 213 files each side, no emitted file differing — only the `--out` path in four snippets, as a
+Runtime change should be. Mutation-checked: putting `methodExists()` back fails exactly the new line of
+`BadArrayCallable.php` and nothing else in 564 gate cases. Four corpora unchanged at 11744 against 29.

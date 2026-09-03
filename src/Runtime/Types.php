@@ -338,7 +338,13 @@ final class Types
     {
         $className = self::namedObjectName($type, false);
 
-        return $className !== null && $context->codebase->methodExists($className, $method);
+        // Through `@mixin` as well, because `$type->hasMethod()` is answered by the same core extension that
+        // answers `ClassReflection::hasMethod()`. Controlled on `ForbiddenArrayMethodCallRule`, which reports
+        // `[$object, 'method']` when the method *exists*: with the name coming from a mixin on the class,
+        // PHPStan reported and the port was silent, and `[$object, 'ownMethod']` and
+        // `[$object, 'noSuchMethod']` agreed either way. A false negative, and the third of this shape —
+        // {@see Mixins} carries the other two.
+        return $className !== null && Mixins::declaringMethod($context->codebase, $className, $method) !== null;
     }
 
     /**

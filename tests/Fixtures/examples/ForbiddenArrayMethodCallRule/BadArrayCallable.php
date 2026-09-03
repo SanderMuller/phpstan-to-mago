@@ -9,6 +9,19 @@ abstract class InheritsHandling
     public function inherited(): void {}
 }
 
+/** The class a `@mixin` points at, whose methods the mixing class therefore has. */
+class HandlingMixin
+{
+    public function mixedIn(): void {}
+}
+
+/**
+ * A class that declares nothing and has `mixedIn()` anyway.
+ *
+ * @mixin HandlingMixin
+ */
+class MixesInHandling {}
+
 final class BadArrayCallable extends InheritsHandling
 {
     public function handle(): void {}
@@ -17,6 +30,19 @@ final class BadArrayCallable extends InheritsHandling
     public function callable(): array
     {
         return [$this, 'handle'];
+    }
+
+    /**
+     * The pair naming a method only a `@mixin` puts on the class.
+     *
+     * The rule reports when the method *exists*, asking `$type->hasMethod($name)->yes()`, and PHPStan
+     * answers that through its core mixin extension. Reading only written and inherited methods made the
+     * port silent here — a false negative, and the third defect of that shape: the other two are in
+     * `NoProtectedClassStmtRule` and `PreventParentMethodVisibilityOverrideRule`.
+     */
+    public function mixedInPair(MixesInHandling $subject): array
+    {
+        return [$subject, 'mixedIn'];
     }
 
     /**
