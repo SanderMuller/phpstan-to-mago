@@ -4043,3 +4043,49 @@ in this commit.
 
 Fires gate 564/564. Suite green. PHPStan 0 errors. Emit-all unchanged across all three targets. No census line
 moves and no count moves.
+
+### The argument normalizer is buildable and should not be built
+
+Last commit left a design decision open: the three rules that call `ParametersAcceptorSelector::selectFromArgs()`
+and `ArgumentsNormalizer::reorderFuncArguments()` bind a function reflection to a local and ask it two things,
+`->getName()` and `->getVariants()`, and the site that maps `$scope->getFunction()` says in its own comment
+that it avoided a handle "with two arms and no third question behind them". This is that decision, made
+against the census rather than against the shape of the code.
+
+**The two arms turn out not to be the problem.** `$function->getVariants()` never escapes the idiom — it is
+passed to `selectFromArgs()`, whose result is passed to `reorderFuncArguments()` and nowhere else. So the pair
+collapses to one operation, "arguments in declared order", and the runtime needs only the callee's name, which
+`Names` already resolves. No handle is required.
+
+**The algorithm is portable and the null return is nearly unreachable.** Read rather than guessed:
+
+- no named arguments at all → `array_values($callArgs)`, and `reorderFuncArguments()` then returns the *same*
+  `FuncCall` object. The normalizer is the identity for every call written positionally, which is almost all
+  of them.
+- otherwise each named argument moves to its parameter's index, positional arguments keep their written index,
+  and a name the signature does not declare is appended.
+- `null` comes back only when a variadic parameter is followed by another parameter, which PHP's own grammar
+  forbids. It is defensive code in valid PHP, the same shape as the sweep `PositionalFlagRule`'s pair
+  documents as unexercisable.
+
+So the work is real, bounded, and reachable — mago carries the parameter names, as the previous commit
+measured.
+
+**And building it moves nothing.** The three rules that would use it need, in total:
+
+| rule | distinct needs | the normalizer is |
+|:--|--:|:--|
+| `ClassDependencyTreeRule` | 4 | one of four, behind a cross-file constructor lookup |
+| `StrictFunctionCallsRule` | 8 | one of eight |
+| `ArrayFilterStrictRule` | 16 | one of sixteen |
+
+Every one of the others is a separate capability — union walking, `->toBoolean()`, `->getIterableValueType()`,
+`$scope->getNativeType()`, a `break` statement, `array_key_exists()`. Closing the normalizer leaves all three
+refusing, and leaves a subsystem in the runtime that no emitted rule reaches. That is the trap the foreach
+navigation hit two commits ago at one method's scale; here it would be at a subsystem's.
+
+The need-lists above exist because of the descent added earlier in this session. Before it, `ArrayFilterStrictRule`
+reported one need and this decision would have been made on the belief that the normalizer was most of the job.
+
+**Decision: not built.** Revisit if a rule appears whose only remaining need is declared-order arguments. Until
+then the normalizer is a correctly-sized piece of work with nothing behind it.
