@@ -4385,3 +4385,48 @@ its own question and none is opened here.
 
 No behaviour change — one fixture trait and the assertions that read it. Suite green, and the trait-divergence
 test passes with the new entry in both places it appears.
+
+### The anonymous class the hooks never see, and why registering it is not one line
+
+`NoProtectedClassStmtRule` misses 5 findings against 966 agreements on `Illuminate\Database`. All five are
+the same shape:
+
+    AsBinary.php:24            protected string $format;
+    AsEnumArrayObject.php:26   protected $arguments;
+    AsEnumArrayObject.php:76   protected function getStorableEnumValue($enum)
+    AsEnumCollection.php:26    protected $arguments;
+    AsEnumCollection.php:72    protected function getStorableEnumValue($enum)
+
+Every one is inside a `new class(..) implements CastsAttributes { .. }` that a Laravel cast returns.
+
+The rule hooks `InClassNode` and tests `getOriginalNode() instanceof Class_`. php-parser has no separate
+class for an anonymous one — it *is* a `Stmt\Class_` with a null name — so PHPStan visits it and the test
+passes. Mago gives it `NodeKind::AnonymousClass`, the emitted plugin registers
+`[Class_, Enum, Interface]`, and the hook never fires.
+
+Two edits look sufficient and are not. `Emitter::targets()` adds the kind for every `classOnly` hook, and
+`Declares::declarationKindIs()` answers `Class` for an anonymous one because that is what php-parser's
+`instanceof` means. Together they change the target list of **20 emitted rules** and make
+`NoProtectedClassStmtRule` see the five.
+
+**They also cost two rules that emit today.** `NoMissingSpaceInClassAnnotationRule` and
+`AttributeRequiresPhpVersionRule` move to `REFUSE` with `null comparison against Expr_Variable, which
+resolved to a class-reflection`, and the census names it before any corpus does.
+
+The cause is a fold, and the fold says so itself at `Translator:9259`:
+
+    // two of them are settled by which hook it is: the class hook fires only for classes, and
+    // never for anonymous ones, which are a separate node in Mago.
+
+`isClass()`, `isAnonymous()` and their four neighbours are answered *statically* from the fact that the hook
+cannot fire on an anonymous class. Registering the kind makes that false. `Reflect::parentHasConstructor()`
+leans on the same assumption from the other side — its docblock says the anonymous case "comes for free"
+because the enclosing-class read answers nothing for one.
+
+So the work is: give `isAnonymous()` and its neighbours a real runtime answer from the node's kind, re-check
+every fold that assumes the hook never sees one, and only then register the kind. That is a coherent piece of
+work and it is not this commit — shipping the two edits alone trades 5 findings for 2 rules, which is a net
+loss, and shipping them with a broken fold would be worse than either.
+
+Reverted, measured, and left here so the next attempt starts from the dependency rather than from the
+symptom.
