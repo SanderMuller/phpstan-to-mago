@@ -5063,3 +5063,55 @@ rules apart.
 
 Suite 933/933, PHPStan 0, emit-all unchanged — the check is runtime. `nesbot/carbon` now has one untraced
 entry rather than two: `CarbonInterval.php:3624`, `$instance->$unit`, only-port.
+
+### The last untraced entry is reachability, and it applies to every rule
+
+`nesbot/carbon`'s remaining only-port was `CarbonInterval.php:3624`:
+
+    if (PHP_VERSION_ID !== 8_03_20) {
+        $instance->$unit += $value;      // 3618 — both engines report this
+
+        return;
+    }
+
+    self::setIntervalUnit($instance, $unit, ($instance->$unit ?? 0) + $value);   // 3624 — port only
+
+Both lines are the same dynamic property fetch in the same method, `incrementUnit()`, which is not a magic
+accessor. In that one file PHPStan reports **13** dynamic names and the port 14, so the rule is working on
+both sides and 3624 is the only difference.
+
+PHPStan decides `PHP_VERSION_ID !== 8_03_20` from the constant — always true for any analysed version but
+that one — so the `return` always fires and everything after it is never analysed. A node hook has no
+reachability analysis and fires on the node regardless.
+
+**Proved with a control, not read off the file.** One class, two methods, the same
+`return $subject->$name;` in each, and the only difference is a guard PHPStan can decide:
+
+    Reach.php:13   reached                                           agree
+    Reach.php:28   after `if (PHP_VERSION_ID !== 8_03_20) { return; }`   only-port
+
+Nothing in the port can close this. Constant-condition reachability is an analyser's job, and the plugin API
+hands a hook every node in the file. Worth recording as a *general* cause rather than one rule's: it applies
+to every emitted rule, and any consumer whose code guards on `PHP_VERSION_ID`, `PHP_OS_FAMILY` or a
+`define()`d constant will see port-only findings behind those guards.
+
+An earlier attempt to read PHPStan's side directly went wrong and is worth one line: a hand-written neon
+registering `NoDynamicNameRule` alone reported *nothing* on the file, which read as PHPStan finding none. It
+was the config — the rule takes a `CallableTypeAnalyzer` the package's own neon wires, and the differential
+includes that neon. The rule reports 13 there.
+
+#### Every entry on all four corpora now has a cause
+
+    nikic/php-parser/lib          270 files   1693 agree   0 / 0
+    rector/rector/src             489 files    246 agree   1 / 0
+    laravel Support + Database    367 files   7998 agree   1 / 448
+    nesbot/carbon/src             914 files   1807 agree   3 / 1
+
+11744 agreements against 454 divergences, each with a written cause: one measured ceiling, four recorded
+divergences, and the rest places the two engines resolve a class, infer a type, or reach a statement
+differently.
+
+#### Verification
+
+No code change. The control is a two-method file run through the differential; both numbers above are from
+that run.
