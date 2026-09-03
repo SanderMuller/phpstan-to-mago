@@ -6285,3 +6285,42 @@ the guidelines say a dependency is not added without approval; `rector.php` alre
 PHPStan 0 on both scripts, suite 943/943, pint clean. The removal is one line of `composer.json`; the fix is
 one statement split in two. `composer.lock` is gitignored here, so a checkout resolving the tree afresh is
 what CI does anyway.
+
+### Ten baseline errors were a stale docblock and a guard behind a call
+
+The last step found a real error under a suppressor, so the same question went to the other suppressor in
+this repository: `phpstan-baseline.neon`, 32 entries covering 58 errors, of which 15 are the documented
+complexity debt and 17 are type errors nobody had re-read.
+
+**`Runtime\Support`, one entry, and the highest-stakes one in the file** because the runtime ships inside
+every emitted plugin: `Cannot access property $text on Part|null`.
+
+    return self::isInt($part) ? (int) $part->text : null;
+
+Safe at runtime the whole time — `isInt()` returns true only for a `Part` — and invisible to PHPStan,
+because a guard behind a call narrows nothing. The same shape as `getcwd() === false ? '.' : getcwd()` one
+step ago, which is why it is worth naming as a shape: *reads as guarded, is guarded, and the analyser cannot
+see it*. Making the check local fixes it without adding one.
+
+**`ModuleEmitter`, nine errors, all one cause.** Its `module()` carried two docblocks:
+
+    /**
+     * @param mixed[][] $rules
+     */
+    /**
+     * @param list<array{name: string, trait: string, …}> $rules
+     */
+    public static function module(array $rules): string
+
+The precise one is dead — the stale `mixed[][]` wins — so every `$rule['name']` and `$rule['module']` read
+as `mixed`. `lintModule()` had the same `@param mixed[][]` with no replacement at all. Deleting one docblock
+and typing the other cleared all nine.
+
+    baseline    32 entries / 58 errors  ->  28 entries / 48 errors
+
+#### Verification
+
+PHPStan 0, suite 943/943, pint clean. Emit-all across `php`, `analyzer` and `linter`: 213 files each side and
+`diff -r` names no emitted file — only the `--out` path in four snippets. That check matters more than usual
+here, because `ModuleEmitter` *writes* the Rust module and registration files, so a docblock change in it is
+exactly where a silent output change would hide.

@@ -712,7 +712,11 @@ final class Support
 
     public static function intLiteralValue(?Part $part): ?int
     {
-        return self::isInt($part) ? (int) $part->text : null;
+        // The `instanceof` looks redundant beside `isInt()`, which tests it too, and it is what makes the
+        // guarantee local: a guard behind a call narrows nothing, so `$part->text` read as a property access
+        // on `Part|null` and sat in the baseline. Safe at runtime the whole time — `isInt()` cannot return
+        // true for null — which is why the fix is to make the check visible rather than to add one.
+        return $part instanceof Part && self::isInt($part) ? (int) $part->text : null;
     }
 
     /**

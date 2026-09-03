@@ -15,9 +15,6 @@ use RuntimeException;
 final class ModuleEmitter
 {
     /**
-     * @param mixed[][] $rules
-     */
-    /**
      * @param list<array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, identifiers: list<string>, arguments: array<string, mixed>, messages: list<string>}> $rules
      */
     public static function module(array $rules): string
@@ -118,7 +115,9 @@ final class ModuleEmitter
      * Returns the module itself plus the three registration entries per rule, which live in files this
      * generator does not own. They are written out rather than applied so that patching the Mago tree
      * stays a separate, visible step.
-     * @param mixed[][] $rules
+     *
+     * @param list<array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, identifiers: list<string>, arguments: array<string, mixed>, messages: list<string>}> $rules
+     *
      * @return array<string, string>
      */
     public static function lintModule(array $rules): array

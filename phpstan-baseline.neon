@@ -37,31 +37,6 @@ parameters:
 			path: src/ExampleReader.php
 
 		-
-			rawMessage: 'Part $rule[''module''] (mixed) of encapsed string cannot be cast to string.'
-			identifier: encapsedStringPart.nonString
-			count: 4
-			path: src/ModuleEmitter.php
-
-		-
-			rawMessage: 'Part $rule[''name''] (mixed) of encapsed string cannot be cast to string.'
-			identifier: encapsedStringPart.nonString
-			count: 4
-			path: src/ModuleEmitter.php
-
-		-
-			rawMessage: Possibly invalid array key type mixed.
-			identifier: offsetAccess.invalidOffset
-			count: 1
-			path: src/ModuleEmitter.php
-
-		-
-			rawMessage: Cannot access property $text on Sandermuller\PhpstanToMago\Runtime\Part|null.
-			identifier: property.nonObject
-			count: 1
-			path: src/Runtime/Support.php
-
-
-		-
 			rawMessage: Cannot cast PhpParser\Node\Expr|PhpParser\Node\Identifier to string.
 			identifier: cast.string
 			count: 16
