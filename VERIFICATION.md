@@ -6360,3 +6360,44 @@ Not done here, and named rather than left as a bare baseline entry.
 PHPStan 0, suite 943/943, pint clean. Emit-all across `php`, `analyzer` and `linter`: 213 files each side,
 `diff -r` names no emitted file. `Emitter` is the class that writes them, so that check is the one that
 matters for this change.
+
+### `ExampleReader`, where the baseline needed a code change after all
+
+Four entries, one shape, and the last one in this file that a docblock could not answer. `forRule()` parsed
+every example file inline, built each unit as an array, mutated it with `$unit['lines'][] = $line`, and
+handed it to a `$render` closure whose `@param` PHPStan did not apply.
+
+Two extractions and one restructure:
+
+- `unitsIn(string $path): list<array{file: string, header: list<string>, lines: list<string>, open: int}>`
+  gives the shape a declared boundary instead of an inline `@var`.
+- `render(array $unit): string` is the closure as a method, so its `@param` is one PHPStan reads.
+- **The open unit is three variables rather than one array being mutated.** That is what actually fixes it:
+  extraction alone still left `Method unitsIn() should return list<array{…}> but returns
+  list<non-empty-array<'file'|'header'|'lines'|'open', int|list<string>|string>>`, because appending to a
+  shaped array widens the whole shape. The array is now built once, where the unit closes.
+
+    baseline    26 entries / 46 errors  ->  22 / 41
+
+Five errors: four type errors and `forRule()`'s cognitive complexity, which was baselined at 36 against a
+limit of 20 and is now under it. That entry went without being aimed at — the extraction that gave PHPStan
+its shapes is the same one that split the method.
+
+#### The check the usual emit-all would have missed
+
+This is the class that reads example files for the linter target's `good_example` and `bad_example`, and the
+standard byte-for-byte run does not pass `--examples`, so those fields are `"<?php\n"` in it. A refactor here
+is invisible to the check this repository runs by default.
+
+    linter target, --examples=tests/Fixtures/examples, five packages
+    33 files each side, diff -r clean
+
+Run before and after with the sources copied aside and restored from HEAD, the same way every emit baseline
+here is built.
+
+#### Verification
+
+PHPStan 0, suite 943/943, pint clean. The standard emit-all across all three targets names no emitted file
+either. Ten of this session's fifteen cleared errors needed no code change; these five did, and the
+difference is worth the sentence: a description can be wrong about code that is right, and mutation of a
+shaped array is code the description cannot rescue.

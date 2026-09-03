@@ -25,74 +25,11 @@ final readonly class ExampleReader
             return [$blank, $blank];
         }
 
-        /** @var list<array{file: string, header: list<string>, lines: list<string>, open: int}> $units */
         $units = [];
         $paths = glob($this->directory . '/*.php');
         foreach ($paths === false ? [] : $paths as $path) {
-            /** @var list<string> $lines */
-            $read = file($path);
-            $lines = $read === false ? [] : $read;
-            /** @var list<string> $header */
-            $header = [];
-            $headerDepth = 0;
-            $depth = 0;
-            /** @var array{file: string, header: list<string>, lines: list<string>, open: int}|null $unit */
-            $unit = null;
-            foreach ($lines as $line) {
-                $opens = substr_count($line, '{');
-                $closes = substr_count($line, '}');
-                if ($depth === 0 && $unit === null) {
-                    // A top-level declaration starts here, or this is still the file header.
-                    if (preg_match('/^\s*(final |abstract |readonly )*(class|interface|trait|enum|function|const) /', $line) === 1) {
-                        // A docblock or comment run immediately above belongs to this declaration, not
-                        // to the file, or it would be repeated on top of every later unit.
-                        $own = [];
-                        while ($header !== [] && trim(end($header)) !== '' && ! str_ends_with(rtrim(end($header)), ';')) {
-                            array_unshift($own, array_pop($header));
-                        }
-
-                        $unit = ['file' => basename($path), 'header' => $header, 'lines' => [...$own, $line], 'open' => $headerDepth];
-                        $depth += $opens - $closes;
-                        if ($depth <= 0 && str_contains($line, ';')) {
-                            $units[] = $unit;
-                            $unit = null;
-                            $depth = 0;
-                        }
-
-                        continue;
-                    }
-
-                    $header[] = $line;
-                    // A braced `namespace Foo { .. }` leaves the header open; the snippet has to close
-                    // it again or it will not parse on its own.
-                    $headerDepth += $opens - $closes;
-
-                    continue;
-                }
-
-                $unit['lines'][] = $line;
-                $depth += $opens - $closes;
-                if ($depth <= 0) {
-                    $units[] = $unit;
-                    $unit = null;
-                    $depth = 0;
-                }
-            }
+            $units = [...$units, ...self::unitsIn($path)];
         }
-
-        /**
-         * @param array{file: string, header: list<string>, lines: list<string>, open: int} $unit
-         */
-        $render = static function (array $unit): string {
-            $header = implode('', $unit['header']);
-            // The corpus keeps its fixtures in one namespace; a snippet does not need it, but the
-            // `use` statements are load-bearing since the rules resolve written names.
-            $header = (string) preg_replace('/^namespace .*;\n\n?/m', '', $header);
-
-            $closing = str_repeat("\n}", max(0, $unit['open']));
-
-            return rtrim($header . implode('', $unit['lines']) . $closing) . "\n";
-        };
 
         $bad = $blank;
         $good = $blank;
@@ -106,7 +43,7 @@ final readonly class ExampleReader
             $fires = $fires && ! $diverges;
             $silent = $silent && ! $diverges;
             if ($bad === $blank && $fires) {
-                $bad = $render($example);
+                $bad = self::render($example);
                 // The rules that only look at test files need the snippet to be named like one, and
                 // the harness lets an example say so.
                 if ($ruleReadsTheFileName) {
@@ -116,10 +53,99 @@ final readonly class ExampleReader
             }
 
             if ($good === $blank && $silent && ! $fires) {
-                $good = $render($example);
+                $good = self::render($example);
             }
         }
 
         return [$good, $bad];
+    }
+
+    /**
+     * The top-level declarations one file holds, each with the header it needs to parse on its own.
+     *
+     * Extracted so the shape is declared at a boundary rather than asserted inside one method. Inline
+     * `@var` on `$units` and `$unit` used to stand in for that, and it did not reach the `$render` closure
+     * below: `$unit['lines'][] = $line` on a variable that is also assigned `null` left PHPStan with
+     * `array{file: .., header: .., lines: .., open: int}|array{lines: non-empty-list<string>}`, which is
+     * four baseline entries and no fault in the code. A declared return type answers all four.
+     *
+     * @return list<array{file: string, header: list<string>, lines: list<string>, open: int}>
+     */
+    private static function unitsIn(string $path): array
+    {
+        $units = [];
+        $read = file($path);
+        $lines = $read === false ? [] : $read;
+        $header = [];
+        $headerDepth = 0;
+        $depth = 0;
+        // The open unit as three separate values rather than one array being mutated. `$unit['lines'][] =`
+        // on a shaped array is what PHPStan cannot follow — it widens the whole shape to
+        // `non-empty-array<'file'|'header'|'lines'|'open', int|list<string>|string>` and the shape is gone.
+        // Building the array once, where the unit closes, keeps it.
+        $openLines = null;
+        $openHeader = [];
+        $openDepth = 0;
+        foreach ($lines as $line) {
+            $opens = substr_count($line, '{');
+            $closes = substr_count($line, '}');
+            if ($depth === 0 && $openLines === null) {
+                // A top-level declaration starts here, or this is still the file header.
+                if (preg_match('/^\s*(final |abstract |readonly )*(class|interface|trait|enum|function|const) /', $line) === 1) {
+                    // A docblock or comment run immediately above belongs to this declaration, not
+                    // to the file, or it would be repeated on top of every later unit.
+                    $own = [];
+                    while ($header !== [] && trim(end($header)) !== '' && ! str_ends_with(rtrim(end($header)), ';')) {
+                        array_unshift($own, array_pop($header));
+                    }
+
+                    $openHeader = $header;
+                    $openDepth = $headerDepth;
+                    $openLines = [...$own, $line];
+                    $depth += $opens - $closes;
+                    if ($depth <= 0 && str_contains($line, ';')) {
+                        $units[] = ['file' => basename($path), 'header' => $openHeader, 'lines' => $openLines, 'open' => $openDepth];
+                        $openLines = null;
+                        $depth = 0;
+                    }
+
+                    continue;
+                }
+
+                $header[] = $line;
+                // A braced `namespace Foo { .. }` leaves the header open; the snippet has to close
+                // it again or it will not parse on its own.
+                $headerDepth += $opens - $closes;
+
+                continue;
+            }
+
+            $openLines[] = $line;
+            $depth += $opens - $closes;
+            if ($depth <= 0) {
+                $units[] = ['file' => basename($path), 'header' => $openHeader, 'lines' => $openLines, 'open' => $openDepth];
+                $openLines = null;
+                $depth = 0;
+            }
+        }
+
+        return $units;
+    }
+
+    /**
+     * One unit as a standalone snippet: its header, its own lines, and whatever braces the header left open.
+     *
+     * @param array{file: string, header: list<string>, lines: list<string>, open: int} $unit
+     */
+    private static function render(array $unit): string
+    {
+        $header = implode('', $unit['header']);
+        // The corpus keeps its fixtures in one namespace; a snippet does not need it, but the
+        // `use` statements are load-bearing since the rules resolve written names.
+        $header = (string) preg_replace('/^namespace .*;\n\n?/m', '', $header);
+
+        $closing = str_repeat("\n}", max(0, $unit['open']));
+
+        return rtrim($header . implode('', $unit['lines']) . $closing) . "\n";
     }
 }
