@@ -5016,3 +5016,50 @@ on this corpus and both named above.
 
 No code change. Every number is from a differential run in this session, each in its own sandbox and reading
 the consumer's configuration on both sides.
+
+### The callable check read the wrong union rule, in both directions
+
+`nesbot/carbon`'s untraced only-original was `Rounding.php:130`, which calls `$function(..)` where
+`$function` is declared `callable|string $function = 'round'` — a native union. `Types::typeIsCallable()`
+answered true on the **first** callable atomic, so the port stayed silent where the rule reports.
+
+**The first fix was wrong, and the corpus said so within one run.** Requiring *every* atomic to be callable
+— the rule `typeIsBoolean()` follows, and traced there to `UnionType`'s `lazyExtremeIdentity` — closed
+Carbon's entry and opened seven on Laravel:
+
+    laravel noDynamicName    only-port 15  ->  22
+    carbon  noDynamicName    only-orig  1  ->   0
+
+`Builder::findOr(..., ?Closure $callback = null)` calls `$callback()` with no null guard, so mago's type is
+`Closure|null` and counting the null made the port report where PHPStan does not.
+
+The caller settles it, and reading it was what the two directions were pointing at.
+`CallableTypeAnalyzer::isClosureOrCallableType()` is four lines:
+
+    $unwrappedNameStaticType = TypeCombinator::removeNull($nameStaticType);
+    if ($unwrappedNameStaticType->isCallable()->yes()) { return true; }
+
+**Every atomic except null, and at least one.** `removeNull` discards a null from the union and nothing else,
+so `Closure|null` is exempt exactly as `Closure` is, and `callable|string` is not exempt at all. Both corpora
+agree at that reading:
+
+    carbon   1806 agree, 4 only-orig, 1 only-port   ->   1807 agree, 3 only-orig, 1 only-port
+    laravel  7998 agree, 1 only-orig, 448 only-port  ->  unchanged
+
+#### Pinned from both sides
+
+The pair now carries both halves, and each mutation is caught by the other's file:
+
+| mutation | what fails |
+|:--|:--|
+| back to *any* atomic | the bad example loses line 37, the `callable\|string` call |
+| count the null in *every* | the good example gains line 54, the `?Closure` call |
+
+A single-sided fixture would have accepted one of the two wrong readings, which is how this shipped: the
+existing pair had a `callable` and a `Closure` parameter, both single-atomic, and neither can tell the three
+rules apart.
+
+#### Verification
+
+Suite 933/933, PHPStan 0, emit-all unchanged — the check is runtime. `nesbot/carbon` now has one untraced
+entry rather than two: `CarbonInterval.php:3624`, `$instance->$unit`, only-port.

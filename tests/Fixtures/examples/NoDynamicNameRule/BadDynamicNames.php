@@ -13,7 +13,7 @@ namespace Examples\Dynamic;
  */
 final class BadDynamicNames
 {
-    public function everyKind(string $name, object $subject, string $class, mixed $next): mixed
+    public function everyKind(string $name, object $subject, string $class, mixed $next, callable|string $mixedCallable = 'strlen'): mixed
     {
         // Branch one: the class part is computed, the member name is written.
         $constant = $class::FIXED;
@@ -30,6 +30,12 @@ final class BadDynamicNames
         // unreported.
         $called = $next(1);
 
-        return [$constant, $staticProperty, $property, $method, $staticMethod, $called];
+        // A union the rule does *not* exempt: `removeNull` takes nothing out of `callable|string`, so
+        // `isCallable()->yes()` is maybe and the rule reports. `nesbot/carbon`'s `Rounding.php` declares
+        // exactly this — `callable|string $function = 'round'` — and the port stayed silent while it
+        // answered on the first callable atomic rather than on the whole union.
+        $partly = $mixedCallable(1);
+
+        return [$constant, $staticProperty, $property, $method, $staticMethod, $called, $partly];
     }
 }

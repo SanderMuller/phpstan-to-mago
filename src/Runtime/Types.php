@@ -32,24 +32,49 @@ final class Types
      * Mago models a type as its atomic parts, and a callable is one of them. A closure object is a named object
      * rather than a `CallableType`, so it is matched by name — that is the shape `Closure::fromCallable()` and a
      * closure literal both produce.
+     *
+     * **Every atomic except null, and at least one.** Not the union rule {@see typeIsBoolean} follows, and the
+     * difference is the caller's: `CallableTypeAnalyzer::isClosureOrCallableType()` runs
+     * `TypeCombinator::removeNull()` over the type *before* asking `isCallable()->yes()`. So a null in the
+     * union is discarded and anything else in it is not.
+     *
+     * Both halves were measured, in opposite directions, and one reading of this satisfied neither:
+     *
+     * - *Any* atomic was too loose. `nesbot/carbon`'s `Rounding.php` declares
+     *   `callable|string $function = 'round'` and calls `$function(..)`. `removeNull` takes nothing away,
+     *   `callable|string` is `maybe`, and the rule reports; answering on the first callable atomic stayed
+     *   silent.
+     * - *Every* atomic was too strict. Seven Laravel sites call a `?Closure` with no null guard —
+     *   `Builder::findOr()` is one — so mago's type is `Closure|null` where PHPStan's, after `removeNull`,
+     *   is `Closure`. Counting the null made the port report where the rule does not.
      */
     public static function typeIsCallable(?Type $type): bool
     {
-        if (! $type instanceof Type) {
+        if (! $type instanceof Type || $type->atomicTypes === []) {
             return false;
         }
 
+        $callable = false;
         foreach ($type->atomicTypes as $atomic) {
-            if ($atomic instanceof CallableType) {
-                return true;
+            if ($atomic instanceof SimpleAtomicType && $atomic->kind === SimpleAtomicTypeKind::Null) {
+                continue;
             }
 
-            if ($atomic instanceof NamedObjectType && strcasecmp(ltrim($atomic->name, '\\'), 'Closure') === 0) {
-                return true;
+            if (! self::isCallableAtomic($atomic)) {
+                return false;
             }
+
+            $callable = true;
         }
 
-        return false;
+        return $callable;
+    }
+
+    /** A closure object is a named object rather than a `CallableType`, which is what both spellings produce. */
+    private static function isCallableAtomic(object $atomic): bool
+    {
+        return $atomic instanceof CallableType
+            || ($atomic instanceof NamedObjectType && strcasecmp(ltrim($atomic->name, '\\'), 'Closure') === 0);
     }
 
     /**

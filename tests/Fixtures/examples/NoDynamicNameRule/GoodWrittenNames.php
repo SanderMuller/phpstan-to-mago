@@ -21,6 +21,11 @@ function helper(): int
  */
 final class GoodWrittenNames
 {
+    private function nullableClosure(): ?\Closure
+    {
+        return static fn (): int => 1;
+    }
+
     public function everyKind(Holder $subject, callable $callable, \Closure $closure): mixed
     {
         $constant = Holder::FIXED;
@@ -42,6 +47,11 @@ final class GoodWrittenNames
         // spelling. Both spellings, because the exemption tests `callable` and `Closure` separately.
         $viaCallable = $callable(1);
         $viaClosure = $closure(1);
+
+        // A nullable closure called with no null guard. The rule runs `TypeCombinator::removeNull()` over the
+        // type before asking `isCallable()->yes()`, so `Closure|null` is exempt exactly as `Closure` is —
+        // seven Laravel sites are this shape, `Builder::findOr()` among them.
+        $viaNullable = $this->nullableClosure()();
 
         return [$constant, $staticProperty, $property, $method, $staticMethod, $name, $bare, $qualified, $namespaced, $viaCallable, $viaClosure];
     }
