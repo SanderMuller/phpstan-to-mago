@@ -5151,3 +5151,28 @@ one — a single assertion on "up to 1.11%" is what let the narrower figure stan
 
 Suite 933/933, PHPStan 0. One emitted file changes and the change is the note; the reviewed snapshot is
 updated for it. No census line moves and no count moves.
+
+### The README kept a total two commits older than the runs it points at
+
+The README's verification section read:
+
+    Four vendor trees read 11743 agreeing against 455 divergences, and all but two have a traced cause.
+
+Both halves were true when written and neither was true when read. `bd7fbc0` traced the first of the two
+untraced entries — Carbon's `callable|string` call — by fixing it, and `9de66ca` traced the second to
+reachability behind `PHP_VERSION_ID`, which no plugin can close. That moved the totals to 11744 against 454
+and left nothing untraced, which is the sentence the two commit messages already carried.
+
+The defect count was stale in the other direction. "Five in the last round" was written at `2e54196` and
+listed at line 4956: the `noConstructorOverride` false positive, the `paramTypeCoverage` under-count, the
+anonymous-class misses, the return-type anchor, and `__FUNCTION__`. `bd7fbc0` is a sixth — a behaviour change
+in `Runtime\Types` that the fourth corpus found — and it came out of a later run than those five, so the
+count and the "last round" cannot both stay. The README now says six across the last two rounds.
+
+Nothing here is a new measurement. It is the README catching up with runs already recorded above, which is
+the failure mode a number in prose has: the run moves and the sentence does not.
+
+#### Verification
+
+No code change and no test reads the README, so there is nothing to run. Both figures are read from the run
+recorded at line 5110 of this file, and the defect list from line 4956.
