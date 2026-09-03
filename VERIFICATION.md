@@ -4528,3 +4528,45 @@ not a mechanism — so the next reader does not build the same argument on it.
 #### Verification
 
 No behaviour change: two comments. Suite 930/930, PHPStan 0, emit-all unchanged.
+
+### Thirty-three findings each way, and every pair one line apart
+
+`returnTypeCoverage` on Laravel's `Support` and `Database` trees: **3782 agree, 33 only-original, 33
+only-port**. Equal counts either way is a shape worth reading before a cause is guessed at, and here it is
+the whole answer:
+
+    only-original  .../Eloquent/Collection.php:698        only-port  .../Eloquent/Collection.php:699
+    only-original  .../Concerns/GuardsAttributes.php:46   only-port  .../Concerns/GuardsAttributes.php:47
+
+Checked mechanically rather than by eye: taking every only-original site, adding one to its line, and
+comparing the set to the only-port set gives an exact match, with nothing left over on either side. All 33
+are attributed methods — `#[\Override]` on nine `Collection` methods, `#[Initialize]` on the `Concerns`
+traits.
+
+`ReturnTypeDeclarationCollector` writes `$missingTypeLines[] = $node->getLine()` on the function-like, and
+php-parser's start line for an attributed method is the attribute's. The port anchored on
+`$method->nameLocation`, which is the `public function` line. The two coincide exactly where there is no
+attribute — which is every fixture in this repository, and why the anchor read that way for as long as it
+did.
+
+Anchoring on `$method->location` closes all 33: on `Illuminate\Database\Eloquent` the metric goes to **1218
+agreements with nothing either side**. The nullability goes with it — `nameLocation` is null for a closure
+and needed a fallback, while a declaration always has a location.
+
+#### The gap that let it through, named rather than closed
+
+`returnTypeCoverage` appears in **no test file**. `paramTypeCoverage`, `constantTypeCoverage` and
+`declareCoverage` each have an `Aggregates*Test` comparing the port's findings against PHPStan's *by line* on
+a fixture; the returns metric has only `CountsReturnsLikeTheCollectorTest`, which compares totals. Counts
+agree — `ACCEPTED_DIVERGENCE` records `returns` at a 0.0 ceiling, 18307 of 18307 — and an anchor that is one
+line out does not move a count.
+
+So the suite stayed green through both the defect and the fix, and this change is demonstrated by the corpus
+differential rather than pinned by CI. Building `AggregatesReturnCoverageTest` on the pattern the other three
+follow, with an attributed method in its fixture, is the follow-up; it is named here rather than done because
+it is a test class and its own fixture, not a line.
+
+#### Verification
+
+Suite 930/930, PHPStan 0 errors, emit-all unchanged across all three targets — the anchor is runtime, and the
+runtime ships as a package. No census line moves and no count moves.
