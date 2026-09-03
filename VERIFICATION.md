@@ -4639,3 +4639,48 @@ in a trait does not have to re-derive that a trait is not a user.
 
 No behaviour change — one fixture pair of traits and the assertions that read them. Suite 933/933, PHPStan 0,
 emit-all unchanged.
+
+### The last Laravel lead, and what the callable check actually answers
+
+`noDynamicName`'s 15 port-only findings: 9 sit in traits with no using class, already pinned. The remaining
+six were characterised two commits ago as "PHPStan's callable check accepts function-name literals and the
+port's does not". That is true of two of them and wrong about the other four.
+
+Probed rather than reasoned, on the five shapes a callable arrives in:
+
+| written | mago's inferred type | `typeIsCallable` |
+|:--|:--|:--|
+| `@param Closure $cb` on an untyped parameter | `CallableType` | true |
+| `Closure $cb` natively | `CallableType` | true |
+| `mixed $x` under `if (is_callable($x))` | `CallableType` | true |
+| `@param list<Closure>` iterated | `CallableType` | true |
+| `foreach (['mb_strtolower', 'ucfirst'] as $f)` | two constant `ScalarType`s | **false** |
+
+So the port's check is not missing a case for docblocks, for `is_callable()` narrowing, or for element
+types — mago answers all four. The one shape it answers false for is a constant string naming a function,
+which is `Pluralizer.php:93` and `:94` and nothing else in the fifteen.
+
+The other four are each a place mago's inference does not reach as far as PHPStan's, and they are four
+different places rather than one:
+
+- `Connection.php:736` — `@param (\Closure(): array{query: string, ...}[]) $callback`, a parenthesised
+  closure signature with a trailing `[]`.
+- `Benchmark.php:27` — `$callback` is the parameter of a closure passed to `Collection::wrap(..)->map(..)`,
+  so its type comes through a generic.
+- `Migrator.php:857` — `is_callable($argument)` narrowing a `foreach` variable over `...$arguments`, where
+  the same narrowing on a parameter does work.
+- `CanBeOneOfMany.php:113` — `$closure` assigned in a branch above and called under `isset($closure)`.
+
+#### Why the closable one is not closed here
+
+`Types::typeIsCallable(?Type $type)` takes a type and nothing else. Answering "a constant string naming a
+function the codebase knows" needs the codebase, so the signature gains a context — and that signature is
+called by name from every emitted plugin that asks the question. Two findings on one corpus does not pay for
+changing a shipped helper's shape and every call site that carries it.
+
+Recorded instead, with the table, because the characterisation it replaces was mine and was wrong in both
+directions: it named a cause that covers two of six, and it implied a missing check where there is none.
+
+#### Verification
+
+No behaviour change. Suite 933/933, PHPStan 0, emit-all unchanged.
