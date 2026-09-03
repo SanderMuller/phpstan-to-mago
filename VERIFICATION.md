@@ -6250,3 +6250,38 @@ that entry alone would conclude otherwise.
 No code change. Each row is one method differing from its neighbour in one thing, measured with the probe
 that reads the same two calls the emitted rule makes. The trait claim is a read of the assertions in
 `TraitMethodHookDivergesTest`, which runs in the suite.
+
+### An abandoned package was hiding a real type hole
+
+`composer outdated` marks two dev dependencies abandoned. `symplify/phpstan-extensions` is the one that can
+go without a decision: everything this repository used it for is in `symplify/phpstan-rules`, which is
+already installed and auto-registered. Its `phpstan-extensions.neon` declares the same
+`errorFormatter.symplify` the `phpstan-simplified` script asks for, and both scripts still run after the
+removal — checked, because a missing formatter fails at the CLI rather than in analysis.
+
+Removing it turned PHPStan red:
+
+    src/Options.php:79  Parameter #7 $status expects string|null, string|false|null given
+
+That is not a regression from the removal. It is an error the package was suppressing: among the extensions
+it registered is one typing `getcwd()`, `dirname()` and `realpath()` as always `string`, and the line is
+
+    $status = getcwd() === false ? '.' : getcwd();
+
+which reads as guarded and is not — the second call is a fresh one, so it is `string|false` again. With the
+extension installed, `getcwd()` never had a `false` to carry, so the shape was invisible. One call fixes it.
+
+No test: forcing `getcwd()` to fail is not something a test can do here, and the guidelines say to skip a
+test where the error is a narrowing fact rather than a reproducible fault. What makes it worth writing down
+is the mechanism — **a type extension that lies in the safe direction hides every bug of that shape**, and
+this repository installs it as a dev dependency rather than shipping it, so nothing downstream was affected.
+
+`mrpunyapal/rector-pest` is the other abandoned one and is left alone. Its successor is a *new* require, and
+the guidelines say a dependency is not added without approval; `rector.php` already guards its set list with
+`class_exists`, so nothing breaks while the decision waits.
+
+#### Verification
+
+PHPStan 0 on both scripts, suite 943/943, pint clean. The removal is one line of `composer.json`; the fix is
+one statement split in two. `composer.lock` is gitignored here, so a checkout resolving the tree afresh is
+what CI does anyway.

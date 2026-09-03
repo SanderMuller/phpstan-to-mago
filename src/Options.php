@@ -58,7 +58,12 @@ final readonly class Options
                 // The project this tool was pointed at, which for a `--dev` install is the directory the
                 // consumer runs it from. Defaulted rather than required, because a flag that always needs a
                 // path is one people get wrong in the common case.
-                $status = getcwd() === false ? '.' : getcwd();
+                // One call, not two. `getcwd() === false ? '.' : getcwd()` reads as guarded and is not:
+                // the second call is a fresh one, so it is `string|false` again — and it was invisible while
+                // `symplify/phpstan-extensions` was installed, because that package types `getcwd()` as
+                // always `string`. Removing the abandoned package is what surfaced it.
+                $cwd = getcwd();
+                $status = $cwd === false ? '.' : $cwd;
             } elseif (str_starts_with($argument, '--status=')) {
                 $status = substr($argument, strlen('--status='));
             } elseif ($argument === '--unverified' || $argument === '--unverified-aggregates') {
