@@ -3948,3 +3948,48 @@ does, which is the whole point.
 
 Suite green. PHPStan 0 errors; `Translator` moves from 2331 to 2335 with no new baseline entry. Emit-all
 unchanged across all three targets — a refusal's text reaches no emitted file.
+
+### The same closure bug, a second time, in the class next door
+
+The walk fixed in `Declares` last commit had a sibling. `Deprecations::scopeIsDeprecated()` listed `Closure`
+and `ArrowFunction` among the kinds `$scope->getFunction()` can answer with, and its comment carried the same
+false claim: that PHPStan answers null inside a closure too.
+
+`DefaultDeprecatedScopeResolver` is four lines and settles it — the third of its three questions is
+
+    $function = $scope->getFunction();
+    if ($function !== null && $function->isDeprecated()->yes()) {
+
+and `enterAnonymousFunction()` passes that function straight through. So a closure written in a `@deprecated`
+method is a deprecated scope, and every rule in `phpstan-deprecation-rules` opens with that check.
+
+The direction is the unsafe one. The port read the scope as undeprecated and **reported where PHPStan is
+quiet**, which is the failure mode the class's own header docblock says it exists to prevent.
+
+Reproduced with the closure as the only change to the good example:
+
+    'GoodDeprecatedConst.php' => [ 0 => '43: Use of constant FILTER_SANITIZE_STRING is deprecated.' ]
+
+against an empty PHPStan side. Dropping the two kinds from `FUNCTION_LIKE_KINDS` makes the gate green.
+
+#### Whether there is a third
+
+Swept every `Closure`/`ArrowFunction` mention in the runtime rather than assuming two was the count. Four
+others exist and none is about the scope's function: `CognitiveComplexity::NESTING` counts a closure as
+nesting, which is what the rule it ports does; `DeclaredParameters::FUNCTION_LIKES` counts the parameters of
+every function-like, closures included, which is what type-coverage measures; `FormRequestRules` searches for
+closures; and `Members` reads one's body. `Declares` and `Deprecations` were the two, and the sweep is why
+that is a count rather than a guess.
+
+#### Why it happened twice
+
+Both sites asserted PHPStan's behaviour in a comment instead of citing it, and the assertion is the natural
+reading of the method name: a closure is anonymous, so an accessor called `getFunction()` sounds like it
+should answer about the closure. Nothing short of `enterAnonymousFunction()` separates the question the name
+invites from the one the field answers, and neither docblock had been there.
+
+#### Verification
+
+Fires gate 564/564 with the new case in the pair. Suite green. PHPStan 0 errors. Emit-all unchanged across
+all three targets. No census line moves and no count moves; one more shipped rule family agrees with PHPStan
+where it did not.
