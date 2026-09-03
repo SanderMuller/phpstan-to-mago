@@ -154,7 +154,11 @@ final class AggregatesTypeCoverageTest extends TestCase
         $this->assertStringContainsString("'typeCoverage.paramTypeCoverage'", $emitted);
         $this->assertStringContainsString('Out of %d possible param types', $emitted);
 
-        $this->assertStringContainsString('Over-counts the original by up to 1.11%', $emitted);
+        // Both figures, because one of them alone is what a reader would take as a bound. 1.11% is the two
+        // Laravel applications; 7.4% is `laravel/framework`'s own `Illuminate`, measured after the first
+        // number had been shipped as though it covered a vendor tree too.
+        $this->assertStringContainsString('1.11% at most on the two Laravel *applications*', $emitted);
+        $this->assertStringContainsString('+1310 of 17635, or 7.4%', $emitted);
         $this->assertStringContainsString('run-coverage-corpus.php', $emitted);
     }
 

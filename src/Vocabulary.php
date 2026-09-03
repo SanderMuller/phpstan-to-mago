@@ -882,8 +882,14 @@ final class Vocabulary
     public const array ACCEPTED_DIVERGENCE = [
         'parameters' => [
             'ceiling' => 0.0111,
-            'note' => 'Over-counts the original by up to 1.11% on the two Laravel consumers it was measured '
-                . 'on: +81 of 13694 and +37 of 11428. The collector skips a method whose name an ancestor has, '
+            'note' => 'Over-counts the original by 1.11% at most on the two Laravel *applications* it was '
+                . 'measured on — +81 of 13694 and +37 of 11428 — and by considerably more on a vendor tree: '
+                . '+1310 of 17635, or 7.4%, on the 1694 files of laravel/framework\'s own `Illuminate`, where '
+                . 'no reflection extension is installed at all. So read 1.11% as the figure for an '
+                . 'application\'s own source and not as a bound. What drives the larger number is not '
+                . 'established; it is not the unused-trait multiplicity, because widening the corpus from 367 '
+                . 'files to 1694 moved the *ratio* from 26.5% to 7.4% and left the absolute over-count almost '
+                . 'unchanged at +1211 to +1310. The collector skips a method whose name an ancestor has, '
                 . 'and PHPStan answers that from reflection extensions a Mago plugin cannot reproduce. '
                 . 'Over-counting only: the under-count this once also carried — a class declared twice in one '
                 . 'file behind a version guard, -7 on nikic/php-parser — was the ancestry being read from the '

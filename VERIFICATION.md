@@ -5115,3 +5115,39 @@ differently.
 
 No code change. The control is a two-method file run through the differential; both numbers above are from
 that run.
+
+### The parameter over-count is 7.4% on a vendor tree, not 1.11%
+
+`paramTypeCoverage`'s 423 port-only findings on Laravel are the largest remaining block, and the shipped note
+reads "Over-counts the original by up to 1.11%". The messages carry both totals, so the question is
+answerable:
+
+    Illuminate Support + Database    367 files    original 4568 possible / 1482 typed    port 5779 / 1696
+    Illuminate, whole tree          1694 files    original 17635 / 5026                  port 18945 / 5259
+
+**+1211 of 4568 on the subset (26.5%), +1310 of 17635 on the whole tree (7.4%).** The note was measured on two
+Laravel *applications* — +81 of 13694 and +37 of 11428 — and it says so, but "up to 1.11%" reads as a bound,
+and a consumer pointing the plugin at their vendor directory is seven times outside it.
+
+**One hypothesis tested and refuted.** The natural guess was unused-trait multiplicity: PHPStan reaches a
+trait only through a using class, so a trait whose users sit outside the analysed paths is counted by the port
+and not by the original. Widening the corpus from 367 files to 1694 gives most of those traits their users —
+and the *ratio* fell from 26.5% to 7.4% while the absolute over-count barely moved, +1211 to +1310. Scope
+changes the denominator, not the surplus. Whatever the 1310 declarations are, they are counted in both scopes.
+
+Nor is it the reflection extensions the note names: larastan is not installed here, so nothing is answering
+`hasMethod()` from a factory or auth model.
+
+`run-coverage-setdiff.php` is the instrument for naming the declarations, and the one attempt made with it
+was uninformative for a reason worth writing down: pointed at a single trait file, both engines count zero,
+because a trait with no using class in scope is counted zero times by *both*. Naming the 1310 needs a file
+where the port over-counts on its own.
+
+So the cause is not established, and the note now says that rather than implying the 1.11% covers it. The
+figure ships inside the emitted plugin, and `AggregatesTypeCoverageTest` asserts both numbers rather than
+one — a single assertion on "up to 1.11%" is what let the narrower figure stand as though it were general.
+
+#### Verification
+
+Suite 933/933, PHPStan 0. One emitted file changes and the change is the note; the reviewed snapshot is
+updated for it. No census line moves and no count moves.
