@@ -6208,3 +6208,45 @@ No code change. One differential run, its per-rule table read rather than its to
 `phpunit/src` to find out whether the clean result discriminates. README's corpus sentence moves from four
 trees and 11744 agreements to five and 12305; the divergence count and its split are untouched, because this
 run added nothing to either.
+
+### The third gap reduces after all, and it is the combination that loses the type
+
+Two steps ago this said `Benchmark.php:27` "has not been reduced — a generics-inference gap needs the generic
+call chain around it, and a repro that carries Laravel's `Collection` is not a minimal one". Wrong on both
+counts: it reduces, and `Collection` is not needed.
+
+The first attempt — a `@template` box with a `map()` taking `Closure(TValue): TReturn`, and the inferred
+parameter called directly — read `callable` and did not reproduce. Adding the shape Laravel actually has, an
+inner closure capturing the parameter with `use`, did. Five rows, one variable at a time:
+
+    $callback($item)   declared Closure parameter, inside map()          callable
+    $callback()        template-inferred parameter, called directly      callable
+    $callback()        template-inferred parameter, captured by `use`    mixed
+    $callback()        declared Closure parameter, called directly       callable
+    $callback()        declared Closure parameter, captured by `use`     callable
+
+**Neither half loses the type on its own.** Template inference survives a direct call (row 2) and a declared
+type survives the same capture (row 5); only the two together drop to `mixed`. Rows 2 and 5 are what make
+this a statement about the combination rather than about either feature, and both were predicted before the
+run.
+
+So all three engine-level divergences now have a minimal reproduction with no Laravel in it: a `\Closure(): T[]`
+docblock read as `array`, no `is_callable()` narrowing, and a template-inferred closure lost across a `use`
+capture. Each is reportable as it stands, and filing remains a decision.
+
+#### The trait explanation was already controlled, which the last entry did not say
+
+Yesterday's fifth-corpus entry noted the clean `phpunit` run is silent on the trait question. True, and
+incomplete in a way worth correcting: the question is answered elsewhere.
+`TraitMethodHookDivergesTest` runs both engines over `tests/Fixtures/TraitDivergence` and asserts
+`AnUnusedTrait::inUnusedTrait` and `UsedOnlyByATrait::inChainedTrait` on the mago side and not PHPStan's,
+with five non-trait shapes agreeing as the control.
+
+So the 19 trait divergences rest on a test in the suite rather than on a reading of a corpus, and a reader of
+that entry alone would conclude otherwise.
+
+#### Verification
+
+No code change. Each row is one method differing from its neighbour in one thing, measured with the probe
+that reads the same two calls the emitted rule makes. The trait claim is a read of the assertions in
+`TraitMethodHookDivergesTest`, which runs in the suite.
