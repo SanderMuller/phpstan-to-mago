@@ -6525,3 +6525,39 @@ PHPStan 0, run after every edit including the last. Suite 944/944. Emit-all acro
 `linter`: 213 files each side, no emitted file differs. No fixture this time: unlike the cast, a dynamic
 *variable* name inside a rule body is refused well before this line, so there is nothing to reproduce and the
 guard is the neighbouring arm's, not a new judgement.
+
+### The baseline is complexity only
+
+    baseline    19 entries / 20 errors  ->  14 / 14
+
+Every remaining entry is a cognitive-complexity figure. The six type errors that were left went four ways,
+and only one of them was a description problem:
+
+- **`inlineMethod()`'s `$uses`** had no value type, so assigning it to `TranslationContext::$useMap`
+  (`array<string, string>`) failed. Typed from what its four callers pass.
+- **Two callers passed `$expr->getArgs()`** where `list<Arg>` is declared. php-parser types that
+  `array<Arg>`; the two other callers in this file already wrap it in `array_values()`, which is a no-op at
+  runtime because the array is a list. Now all four do.
+- **A raw string pushed into `list<Stm>`.** `Backend::render()` takes a `Stm`, so
+  `$this->context->lines[] = "{$pad}}\n\n"` is a `TypeError` waiting for anything that renders that range
+  again. Nothing has hit it because the `renderRange()` above happens to run first. `block-close` renders
+  `"{$pad}}\n\n"` in both backends at this indent — checked in `PhpBackend` and `RustBackend` before
+  swapping, and the emit-all diff is what proves the bytes.
+- **An `isset()` that was never a question.** `isset($spec[2])` guarded a third element declared `2?: string`
+  in `Vocabulary::REFINEMENTS`. Rewriting it as `?? null` moved PHPStan from "might not exist" to
+  **"always exists and is not nullable"**, which is the answer: the constant has one `fields` row and both of
+  its specs carry the selector. The guard is gone, and the declared shape now says `2: string` because that
+  is what the data is.
+
+That last one is worth the space. The same line was reported two contradictory ways within a minute, and the
+contradiction is the information: the first message is about the docblock, the second about the constant's
+real contents, and only the second is a fact about the program.
+
+#### Verification
+
+PHPStan 0, suite 944/944, and emit-all across `php`, `analyzer` and `linter` at 213 files each side with no
+emitted file differing — which is the check the `block-close` swap needed, since it changes what is pushed
+rather than what is rendered. Class complexity moves 2339 to 2337: the conditional came out.
+
+`src/Translator.php` remains the one file `pint --test` names, as it did before this change and as
+`CLAUDE.md` records.

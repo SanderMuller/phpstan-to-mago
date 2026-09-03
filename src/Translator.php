@@ -1691,6 +1691,9 @@ final readonly class Translator
      * different feature (loops, accumulators) rather than a different helper.
      *
      * @param list<Arg> $args
+     * @param array<string, string>|null $uses the `use` map of the file the helper is declared in, so a name
+     *                                         written there resolves against its own imports rather than the
+     *                                         calling rule's
      */
     private function inlineMethod(ClassLike $class, string $methodName, array $args, int $line, ?array $uses = null): string
     {
@@ -6415,10 +6418,15 @@ final readonly class Translator
         $fields = [];
         foreach ($refinement['fields'] as $property => $spec) {
             [$template, $kind] = $spec;
-            $entry = [str_replace('{bind}', $bind, $template), $kind];
-            if (isset($spec[2])) {
-                $entry[2] = str_replace('{bind}', '$' . $bind, $spec[2]);
-            }
+            // Three elements, unconditionally. The guard here used to be `isset($spec[2])`, and PHPStan
+            // answered both ways when it was rewritten: the offset "might not exist" against the declared
+            // `2?: string`, then "always exists" against the constant's real contents. The second is the
+            // measurement — `REFINEMENTS` has one `fields` row and both of its specs carry the selector.
+            $entry = [
+                str_replace('{bind}', $bind, $template),
+                $kind,
+                str_replace('{bind}', '$' . $bind, $spec[2]),
+            ];
 
             $fields[$property] = $entry;
         }
@@ -7162,7 +7170,11 @@ final readonly class Translator
             }
         }
 
-        $this->context->lines[] = "{$pad}}\n\n";
+        // A `Stm`, not the string it renders to. `$lines` is `list<Stm>` and `Backend::render()` takes one,
+        // so a raw string here is a `TypeError` waiting for anything that renders this range again — the
+        // renderRange above happens to run first, which is why nothing has hit it. `block-close` renders
+        // `"{$pad}}\n\n"` in both backends, at this indent, so the bytes are the same ones.
+        $this->context->lines[] = new Stm('block-close', [], $this->context->indent);
     }
 
     /** `return [$a, $b];` in a collector becomes a push into the cross-file store. */
@@ -8430,7 +8442,7 @@ final readonly class Translator
         // needs no lookup. Without this, `findClassByName('self')` finds nothing and the refusal names `self`,
         // which points at no file anyone can open.
         if (in_array($helper, ['self', 'static'], true) && $this->context->currentClass instanceof ClassLike) {
-            return $this->inlineMethod($this->context->currentClass, $method, $args, $expr->getStartLine(), $this->context->useMap);
+            return $this->inlineMethod($this->context->currentClass, $method, array_values($args), $expr->getStartLine(), $this->context->useMap);
         }
 
         // Any other static helper whose source we can find is inlined rather than hand-translated — unless a
@@ -8443,7 +8455,7 @@ final readonly class Translator
                 return $stood;
             }
 
-            return $this->inlineMethod($helperClass['class'], $method, $args, $expr->getStartLine(), $helperClass['uses']);
+            return $this->inlineMethod($helperClass['class'], $method, array_values($args), $expr->getStartLine(), $helperClass['uses']);
         }
 
         throw new Refusal("unknown static helper {$helper}::{$method}()", $expr->getStartLine());

@@ -1113,7 +1113,7 @@ final class Vocabulary
      * node's properties the binding then stands for.
      */
     /**
-     * @var array<class-string, array{adapter: string, field?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>}>
+     * @var array<class-string, array{adapter: string, field?: string, fields?: array<string, array{0: string, 1: string, 2: string}>}>
      */
     public const array REFINEMENTS = [
         // adapter yields the node itself, so its fields are reachable
