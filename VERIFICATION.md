@@ -6669,3 +6669,32 @@ the runtime for 564 rule pairs, and these five corpora exercise it over 4123 fil
 
 No code change. Five differential runs and five coverage runs, each compared against the figure recorded for
 it earlier in this file rather than against a memory of it.
+
+### The gate's fragility was fixable here after all
+
+Last step recorded `.cache/phpstan-emitted/` as an upstream problem: `composer phpstan-emitted` is a
+documented script, running it creates that directory, and `lean-package-validator` then wants a
+`.gitattributes` entry the boost-managed block does not carry. True, and it stopped one question short.
+
+`lean-package-validator` enumerates one level below an ignored root. A directory nested *deeper* is invisible
+to it — tested before changing anything, by creating `.cache/phpstan/emitted` and running the validator
+against it:
+
+    .cache/phpstan-emitted/     expected an entry     failure
+    .cache/phpstan/emitted/     no entry expected     success
+
+So `phpstan-emitted.neon`'s `tmpDir` moves one level down, and the cache is still its own rather than shared
+with the main config. `composer phpstan-emitted` now runs without reddening the gate, with no change to a
+boost-managed file and nothing waiting on another repository.
+
+**"The fix is upstream" was the right shape and the wrong conclusion**, and the difference is one experiment:
+the constraint was never "the block must list every cache directory", it was "the validator looks one level
+down". Naming the mechanism instead of the symptom is what made the alternative visible.
+
+    composer qa-check   exit 0, all five steps
+
+#### Verification
+
+The whole gate, run as the project runs it: rector 0 changed, pint clean, `phpstan-simplified` 0,
+`validate-gitattributes` valid, suite 944/944. `AnalysesTheEmittedPluginsTest` passes, which is the test that
+spawns PHPStan with the config whose `tmpDir` moved.
