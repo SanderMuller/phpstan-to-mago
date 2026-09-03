@@ -6561,3 +6561,32 @@ rather than what is rendered. Class complexity moves 2339 to 2337: the condition
 
 `src/Translator.php` remains the one file `pint --test` names, as it did before this change and as
 `CLAUDE.md` records.
+
+### The guideline this session corrected is stale again, from this session's own work
+
+`.ai/guidelines/baseline.md` was corrected this morning: 33 entries became 32, and the paragraph gained the
+two commands that produce the figure. Six commits later the file holds 14 entries and 14 errors, all
+complexity, so the corrected number is wrong again — by the same hand that corrected it.
+
+The fix is not a third number. The paragraph now says what is *structurally* true — the baseline holds
+nothing but complexity — and leaves the count to the commands already printed beside it. A structural claim
+goes stale only when the structure changes, which is a different rate.
+
+It also records what emptying it taught, because that is the part a reader can use:
+
+- **Most of 58 errors to 14 was a description problem.** A stale docblock winning over a precise one, a guard
+  behind a call, a parameter typed weaker than its only caller, an `isset()` on an offset that always exists.
+  None of them reads as a bug, which is exactly why they sat there.
+- **The rest were real and none had ever fired.** Sixteen `(string) $node->name` comparisons fatal on a
+  computed name, an `Expr` as an array key, a raw string in a `list<Stm>`. Each needed a fixture written for
+  it, because no rule in the corpus reaches those lines — so a green suite said nothing about them.
+
+That second bullet is the reusable part: a baseline entry can be the only evidence that a line is both wrong
+and unexercised, and the two facts hide each other.
+
+#### Verification
+
+PHPStan 0. `composer sync-ai` reported `wrote=2, unchanged=83, deleted=0` and the diff in `CLAUDE.md` and
+`AGENTS.md` is the one paragraph, read before committing. The tally in the first draft was wrong — it said
+"twenty-four errors cleared, nineteen of them" from memory rather than from the commits — and is replaced by
+the two figures that are checkable, 58 and 14.

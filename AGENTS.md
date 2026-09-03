@@ -3,19 +3,25 @@
 `phpstan-baseline.neon` holds the errors this code arrived with when it moved out of research. It came down
 from 559 by installing the Mago SDK so the runtime type-checks, replacing 92 calls to php-parser's deprecated
 `getLine()`, typing the vocabulary tables and the descriptor shape everything flows through, extracting
-`ExampleReader`, splitting the worst predicate method, and splitting the runtime into twelve classes. It now
-holds 32 entries covering 58 errors.
+`ExampleReader`, splitting the worst predicate method, and splitting the runtime into twelve classes.
 
-Prefer emptying it over adding to it. Check the current figure rather than quoting this one — a number in a
-guideline goes stale, and the file is one command away:
+**It now holds nothing but complexity.** Every type error is out, and the count is one command rather than a
+figure here, because a figure here goes stale:
 
     grep -c 'identifier:' phpstan-baseline.neon
     grep -o 'count: [0-9]*' phpstan-baseline.neon | awk '{s+=$2} END {print s}'
 
-The entry count above had gone stale — it read 33 — before anyone ran those, which is the argument for
-printing the command beside a number rather than trusting the number. The error count was still right, and
-that is the ordinary case: staleness arrives one figure at a time, so a paragraph half-checked reads as
-checked.
+Prefer emptying it over adding to it, and expect two kinds of entry when you do. It went from 58 errors to 14
+in one pass, and most of that was a *description* problem rather than a code problem: a stale docblock winning
+over a precise one, a guard behind a call the analyser cannot narrow through, a parameter typed weaker than
+its only caller, an `isset()` on an offset that always exists. Nothing about those reads as a bug, which is
+why they survived.
+
+The rest were real and none had ever fired. `(string) $node->name` on sixteen comparisons is fatal for any
+node whose name is computed; an `Expr` was used as an array key; a raw string was pushed into a `list<Stm>`
+that `Backend::render()` would have rejected. Each needed a fixture written for it, because no rule in the
+corpus reaches those lines — which is the argument for reading a baseline entry rather than trusting that a
+green suite means the code is exercised.
 
 ## What remains is two classes, and only one of them can be split further
 
