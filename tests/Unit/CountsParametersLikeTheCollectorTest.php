@@ -119,23 +119,27 @@ final class CountsParametersLikeTheCollectorTest extends TestCase
      *
      * `ACCEPTED_DIVERGENCE` said the port over-counts and *never* under-counts. That was true of the two Laravel
      * consumers it was measured on and false in general: `nikic/php-parser` — a tree in this repository's own
-     * vendor directory — comes out at -7, and the whole -7 is one file.
+     * vendor directory — came out at -7, and the whole -7 was one file.
      *
      * `Internal/TokenPolyfill.php` declares `TokenPolyfill` twice, the first inside
      * `if (\PHP_VERSION_ID >= 80000)` which then returns. PHPStan counts what the file *writes*, so the second
-     * body contributes; the port reads metadata keyed by class name, gets one entry for the name, and counts
-     * neither body. Exactly the seven parameters of `__construct` (4), `is` (1) and `tokenize` (2).
+     * body contributes. Exactly the seven parameters of `__construct` (4), `is` (1) and `tokenize` (2).
      *
-     * Asserted as a *zero* on the port's side rather than as the first declaration's count, because "counts one
-     * of the two" and "counts neither" are different defects and the fix for one is not the fix for the other.
+     * **The cause this test used to state was wrong, and the correction is the fix.** It said the port reads
+     * metadata keyed by class name and counts neither body. Probed: the CST holds both declarations and both
+     * bodies, and the walk reaches them. What lost them was the LSP guard — `ancestorsOf()` asked the codebase
+     * for the *name*, and the metadata for a twice-declared name keeps one entry, here the first, whose parent
+     * is `PhpToken`. Every method the second body declares that `PhpToken` also declares then read as locked
+     * by an ancestor and was skipped. Reading the clauses off the declaration instead answers about the body
+     * being counted, and the two engines agree.
      *
      * @see Vocabulary::ACCEPTED_DIVERGENCE
      */
-    public function test_a_class_declared_twice_in_one_file_is_counted_by_neither_body(): void
+    public function test_a_class_declared_twice_in_one_file_is_counted_from_the_body_being_read(): void
     {
         [$original, $port] = (new CoverageControl(self::CONTROLS . '/conditionally-redeclared'))->totals();
 
         $this->assertSame(3, $original, 'The real rule no longer counts the redeclared class body.');
-        $this->assertSame(0, $port, 'The port now counts something for a class declared twice, which changes what the bound has to say.');
+        $this->assertSame($original, $port, 'The port no longer counts the second declaration, so the -7 on nikic/php-parser is back.');
     }
 }

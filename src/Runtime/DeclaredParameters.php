@@ -300,24 +300,24 @@ final class DeclaredParameters
      * PHPStan's own reflection-extension interfaces being unreachable inside `phpstan.phar`, and 12 is the auth
      * model. `tests/Support/run-coverage-setdiff.php` names the declarations behind any of them.
      *
-     * An anonymous class has no name for the codebase to look up, so its `extends` and `implements` clauses
-     * are read from the tree and each named ancestor's own ancestry folded in from metadata. Skipping the
-     * question for it instead cost 4 against 2 on a control whose anonymous class implements an interface
-     * declaring the method — the LSP guard could not fire where PHPStan's did.
+     * **Read from the tree for every class, named or not.** The clauses are the declaration's own; the name is
+     * not. A file can declare one name twice — `nikic/php-parser` writes two `TokenPolyfill` classes behind a
+     * `PHP_VERSION_ID` guard — and the metadata keeps one of them, so asking the codebase by name gave the
+     * *other* declaration's parent. Every method the second declares that `PhpToken` also declares then looked
+     * locked by LSP and was skipped, which is where the -7 this metric used to accept on `nikic/php-parser`
+     * came from. Probed: the CST holds both declarations and both bodies, while the metadata for the name
+     * holds `parent='phptoken'` and no methods at all.
+     *
+     * The tree route was already here for anonymous classes, which have no name to look up; it turned out to
+     * be the right route for both. Each named ancestor's own ancestry is still folded in from metadata, which
+     * is what the transitive `parentClasses` gave before. Skipping the question for an anonymous class instead
+     * cost 4 against 2 on a control whose anonymous class implements an interface declaring the method — the
+     * LSP guard could not fire where PHPStan's did.
      *
      * @return list<string>
      */
     private static function ancestorsOf(AfterAnalysisContext $context, SourceFile $source, Node $owner): array
     {
-        $name = Declarations::classLikeName($source, $owner);
-        if ($name !== null) {
-            $metadata = $context->codebase->getClassLike($name);
-
-            return $metadata instanceof ClassMetadata
-                ? [...$metadata->parentClasses, ...$metadata->parentInterfaces]
-                : [];
-        }
-
         $ancestors = [];
         foreach ($source->getChildren($owner) as $child) {
             if ($child->kind !== NodeKind::Extends && $child->kind !== NodeKind::Implements) {

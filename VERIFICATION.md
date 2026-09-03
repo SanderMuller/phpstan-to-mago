@@ -4222,3 +4222,63 @@ Reproduced in a fixture pair before the fix — the port reported the good examp
 and the mutation is that guard: without it, `GoodTwoDeclarationsOfOneName.php` is reported again. Fires gate
 564/564, suite green, PHPStan 0 errors, emit-all unchanged across all three targets. No census line moves and
 no count moves.
+
+### The second needle was documented, and the documentation had the cause wrong
+
+Last commit left `paramTypeCoverage` open as "a different defect ... new information". It was neither.
+`Vocabulary::ACCEPTED_DIVERGENCE` already carried it, with the number this differential re-derived: *"a class
+declared twice in one file behind a version guard is counted by PHPStan and by neither body here, which is -7
+on nikic/php-parser"*. A control for the exact shape has existed under `conditionally-redeclared`, and a test
+asserted the divergence rather than an agreement.
+
+So the finding was not the -7. It was that the stated **cause** was wrong, and the wrong cause is what made it
+look unportable.
+
+**What the test said:** the port reads metadata keyed by class name, gets one entry, and counts neither body.
+
+**What a probe says:** the CST holds both declarations and both method bodies, and the walk reaches them. The
+metadata for the name holds `parent='phptoken'` and *no methods at all*.
+
+    CLASS node: class Polyfill extends \PhpToken {}
+    CLASS node: class Polyfill {     public function __construct(public int $id, publi
+      METHOD node: public function __construct(public int $id, public string $t
+      METHOD node: public function is(mixed $kind): bool ...
+
+    metadata: parent='phptoken' methods=
+
+The bodies are read. What discards them is the LSP guard: `ancestorsOf()` asked the codebase for the *name*,
+the metadata for a twice-declared name keeps one entry — here the first — and every method the second body
+declares that `PhpToken` also declares then read as locked by an ancestor and was skipped.
+
+#### The fix was already in the file
+
+`ancestorsOf()` had two branches: metadata by name, and — for an anonymous class, which has no name — the
+declaration's own `extends` and `implements` read off the tree with each named ancestor's ancestry folded in
+from metadata. The second branch is correct for both. The clauses belong to the declaration; the name does
+not.
+
+Deleting the named branch makes the control count 3 against PHPStan's 3, and the other 16 parameter controls
+are unchanged. On the corpus:
+
+| | before | after |
+|:--|:--|:--|
+| `symplify.noConstructorOverride` | agree 111, only-port 1 | agree 111, only-port 0 |
+| `typeCoverage.paramTypeCoverage` | agree 1053, only-original 1 | agree 1054, only-original 0 |
+| totals in the message | 2752 possible / 721 typed against 2745 / 715 | 2752 / 721 on both sides |
+
+`only-original` across the whole run is now 0. The remaining 409 `only-port` is the configuration difference
+the previous commit named — the complexity thresholds and the constant-coverage minimum — and the one
+surviving `paramTypeCoverage` message difference is the configured minimum, *over 100 %* against *over 99 %*,
+with identical counts either side of it.
+
+Both defects the differential found on this corpus have the same shape, which is worth saying once: a name is
+not a declaration, and the codebase is keyed by the first.
+
+#### Verification
+
+`ACCEPTED_DIVERGENCE`'s note is carried into the emitted plugin, so the emit-all diff is that comment and
+nothing else — no emitted code changes. The reviewed snapshot under `tests/Fixtures/aggregate` holds that
+plugin and failed on the wording, which is the check doing its job; it is updated because the new sentence
+describes what the code now does and the old one described a defect that is gone. The 0.0111 ceiling stays: it covers the over-count from PHPStan's
+reflection extensions, which is a separate and genuinely unportable cause. 39 counting controls pass, suite
+green, PHPStan 0 errors.
