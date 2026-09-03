@@ -52,6 +52,7 @@ final readonly class Emitter
         }
 
         $parameters = [];
+        $origins = [];
         foreach ($this->context->configured as $property => $configured) {
             $type = match ($configured['kind']) {
                 'config-list' => 'array',
@@ -62,6 +63,15 @@ final readonly class Emitter
 
             $parameters[] = '        public readonly ' . $type . ' $' . $property
                 . ' = ' . $this->phpDefault($configured['default']) . ',';
+
+            // Which PHPStan parameter the value came from, kept with the argument that carries it. A reader
+            // of the generated plugin has no other way to learn that `$required` is `%type_coverage.declare%`
+            // — the default is the *package's*, and a consumer running at their own threshold has to pass it
+            // here. `tests/Support/ConsumerParameters` reads these lines for the same reason: without them a
+            // differential run compares the consumer's configured original against a port at package
+            // defaults, which is a difference in configuration reported as a disagreement.
+            $origins[] = '     * @param ' . $type . ' $' . $property
+                . " PHPStan's `%" . $configured['parameter'] . '%`';
         }
 
         // A derived property is assigned in the body, from the parameters above. The rule's own parameter
@@ -83,7 +93,8 @@ final readonly class Emitter
         // as a formatting accident rather than as "this takes nothing".
         $signature = $parameters === []
             ? '    public function __construct()'
-            : "    public function __construct(\n" . implode("\n", $parameters) . "\n    )";
+            : "    /**\n" . implode("\n", $origins) . "\n     */\n"
+                . "    public function __construct(\n" . implode("\n", $parameters) . "\n    )";
 
         return "\n" . $properties . "\n" . $signature . $body . "\n";
     }

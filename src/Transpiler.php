@@ -424,6 +424,9 @@ use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 
 {DIVERGENCE}final class {CLASS} implements AfterAnalysisHook, Plugin
 {
+    /**
+     * @param float $required PHPStan's `%{THRESHOLD_PARAMETER}%`
+     */
     public function __construct(public readonly float $required = {THRESHOLD}) {}
 
     public function getDefinition(): PluginDefinition
@@ -477,6 +480,10 @@ PHP;
         $rust = strtr($template, [
             '{CLASS}' => $className,
             '{THRESHOLD}' => $threshold,
+            // The parameter the threshold came from, kept beside the argument that carries it. The default is
+            // the *package's*, so a consumer running at their own threshold has to pass one — and without the
+            // name written here they have no way to know which of their options this argument is.
+            '{THRESHOLD_PARAMETER}' => $aggregate->threshold,
             '{PLUGIN}' => $this->context->backend->bytes($identifier),
             '{NAME}' => $this->context->backend->bytes($className),
             '{DESCRIPTION}' => $this->context->backend->bytes("Transpiled from PHPStan's {$className}."),

@@ -4732,3 +4732,54 @@ make the runs *less* readable rather than more.
 
 No code change. The numbers above are read from the committed differential output and this repository's own
 `phpstan.neon.dist`; the constructor call is quoted from the sandbox worker the last run wrote.
+
+### Aligning the thresholds, and the finding the mismatch was hiding
+
+The previous commit named the asymmetry and left it: PHPStan ran at this repository's thresholds while every
+port plugin was constructed with no arguments. Closing it took three pieces.
+
+**The emitted plugin now says where its argument came from.** `@param float $required PHPStan's
+`%type_coverage.declare%`` sits beside the constructor. That is worth having on its own — the default in a
+generated plugin is the *package's*, so a consumer at their own threshold has to pass one, and until now the
+plugin gave them no way to learn which of their options it is. `ConsumerParameters` reads the same line.
+
+**`argumentsFor()` reads that line rather than matching the argument's own name.** The two differ wherever
+the option is nested, and every aggregate is: matching on `required` finds nothing, and the path resolves.
+Numbers as well as booleans, and the older name-matching path stays for a plugin emitted before the line
+existed.
+
+**And a `-1` line is read as line 1.** That is PHPStan saying it has no position: `DeclareCoverageRule` asks
+about the file, so it reports with no line and prints `-1`, while a plugin has to anchor somewhere.
+
+| | before | after |
+|:--|:--|:--|
+| `complexity.classLike` / `functionLike` | 13 and 39 only-port | absent — thresholds now 80 and 20 on both sides |
+| `typeCoverage.declareCoverage` | 0 agree, 366 only-original | **366 agree, 0, 0** |
+| totals | agree 7597, only-original 402, only-port 551 | **agree 7996, only-original 3, only-port 466** |
+
+Three only-original entries remain on the whole run, and both causes are already recorded:
+`forbiddenArrayMethodCall`'s two and `noDynamicName`'s one.
+
+The declare block is the part worth reading twice. Aligning the threshold alone moved it from *366
+only-original and 0 only-port* to *366 and 366* — the same 366 files, PHPStan at `-1` and the port at `1`,
+agreeing on every file and matching on none. The configuration mismatch had been hiding a comparison the
+harness could not express, and fixing one exposed the other rather than fixing it.
+
+#### What is still not aligned, and it is not what the last commit said
+
+`constantTypeCoverage`'s 18 only-port survives, and the reason corrects the previous commit. That commit said
+`constant: 0` in this repository's config made PHPStan silent where the port reported. The value is right and
+the key is not: `type-coverage` declares **two** parameters per metric — `constant_type`, defaulted 99, and
+`constant`, an "alias to avoid typos" defaulted null — and its `Configuration` object prefers the alias when
+set. `$aggregate->threshold` names the non-alias half, so the port is now constructed at 99 where PHPStan
+runs at 0.
+
+Four metrics have that pair. Resolving it means the transpiler recording an alias chain rather than one
+parameter, which is a change to what a rule's threshold *is* and not to how it is passed. Left here with the
+package's own neon quoted, because a partial alias table would be the half-threaded parameter the previous
+commit declined to write.
+
+#### Verification
+
+Suite 933/933, PHPStan 0. Thirteen emitted files change and every changed line is the `@param` docblock; the
+reviewed `ParamTypeCoverageRule` snapshot is updated for it. No census line moves and no count moves.

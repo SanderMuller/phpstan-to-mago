@@ -730,10 +730,27 @@ final class CorpusDifferential
         $bySite = [];
         foreach ($findings as $finding) {
             $parts = explode(': ', $finding, 2);
-            $bySite[$parts[0]] = $parts[1] ?? '';
+            $bySite[self::atLineOne($parts[0])] = $parts[1] ?? '';
         }
 
         return $bySite;
+    }
+
+    /**
+     * A site whose line is `-1` read as line 1, because `-1` is PHPStan saying it has no position.
+     *
+     * `DeclareCoverageRule` asks a question about the *file* — whether it opens with
+     * `declare(strict_types=1)` — so PHPStan reports it with no line and prints `-1`. A plugin has to anchor
+     * somewhere, and line 1 is where a whole-file finding belongs.
+     *
+     * Without this the two can never match: the run that first aligned the thresholds turned a
+     * `declareCoverage` block of 366 only-original and 0 only-port into 366 and 366 — the same 366 files,
+     * PHPStan at `-1` and the port at `1`, and no agreement anywhere. That is the comparison being unable to
+     * express the finding rather than the two engines disagreeing about one.
+     */
+    private static function atLineOne(string $site): string
+    {
+        return str_ends_with($site, ':-1') ? substr($site, 0, -3) . ':1' : $site;
     }
 
     /**

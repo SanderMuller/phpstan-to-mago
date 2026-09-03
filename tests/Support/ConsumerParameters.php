@@ -64,7 +64,18 @@ final class ConsumerParameters
             return '';
         }
 
-        $dump = $this->dump();
+        // The generated plugin says which PHPStan parameter each argument came from, on the `@param` line
+        // beside it. Read from there rather than by matching the argument's own name against the dump: the
+        // two differ wherever the option is nested, and every aggregate is — `$required` is
+        // `%type_coverage.declare%`, and matching on `required` finds nothing at all. That mismatch is what
+        // made a differential run compare the consumer's configured original against a port at package
+        // defaults: 436 of the 953 divergences on one Laravel run were that and nothing else.
+        $origins = [];
+        preg_match_all('/@param \w+ \$(\w+) PHPStan\'s `%([^%]+)%`/', $source, $declared, PREG_SET_ORDER);
+        foreach ($declared as $origin) {
+            $origins[$origin[1]] = $origin[2];
+        }
+
         $arguments = [];
         foreach ($matches[1] as $parameter) {
             if (array_key_exists($parameter, $this->overrides)) {
@@ -73,14 +84,57 @@ final class ConsumerParameters
                 continue;
             }
 
-            // Anchored to the dump's own two-column indent so a key of the same name nested inside another
-            // structure cannot answer for the top-level parameter the plugin actually reads.
-            if (preg_match('/^    "' . preg_quote($parameter, '/') . '": (true|false),?$/m', $dump, $found) === 1) {
+            $value = isset($origins[$parameter]) ? $this->valueAt($origins[$parameter]) : null;
+            if ($value !== null) {
+                $arguments[] = $parameter . ': ' . $value;
+
+                continue;
+            }
+
+            // The older path, kept for a plugin emitted before the `@param` line existed and for one whose
+            // parameter the consumer does not define. Anchored to the dump's own two-column indent so a key
+            // of the same name nested inside another structure cannot answer for the top-level parameter.
+            if (preg_match('/^    "' . preg_quote($parameter, '/') . '": (true|false),?$/m', $this->dump(), $found) === 1) {
                 $arguments[] = $parameter . ': ' . $found[1];
             }
         }
 
         return implode(', ', $arguments);
+    }
+
+    /**
+     * A parameter's value as the dump wrote it, following a dotted path, or null where the consumer sets none.
+     *
+     * Text rather than `json_decode`, for the reason this class's header gives: the dump does not decode on a
+     * real project. Each segment but the last narrows the text to that key's block, anchored to the indent
+     * the level sits at, so `type_coverage.declare` cannot be answered by a `declare` key somewhere else.
+     *
+     * Booleans, integers and floats only. A list or a nested structure is not something a threshold argument
+     * takes, and passing one as a named argument would need it rendered rather than copied.
+     */
+    private function valueAt(string $path): ?string
+    {
+        $text = $this->dump();
+        $segments = explode('.', $path);
+        $last = array_pop($segments);
+
+        foreach ($segments as $depth => $segment) {
+            $indent = str_repeat(' ', 4 + $depth * 4);
+            $opening = $indent . '"' . $segment . '": {';
+            $at = strpos($text, "\n" . $opening);
+            if ($at === false) {
+                return null;
+            }
+
+            $closing = strpos($text, "\n" . $indent . '}', $at);
+            $text = $closing === false ? substr($text, $at) : substr($text, $at, $closing - $at);
+        }
+
+        $indent = str_repeat(' ', 4 + count($segments) * 4);
+        $pattern = '/^' . preg_quote($indent, '/') . '"' . preg_quote($last, '/')
+            . '": (true|false|-?\d+(?:\.\d+)?),?$/m';
+
+        return preg_match($pattern, $text, $found) === 1 ? $found[1] : null;
     }
 
     /** The consumer's own configuration file, which is where their parameter values are declared. */
