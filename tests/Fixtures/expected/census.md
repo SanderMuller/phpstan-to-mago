@@ -107,9 +107,9 @@ REFUSE  ForbiddenNewArgumentRule  (the package registers it nowhere)
 REFUSE  ForbiddenNodeRule
         PhpParser\Node covers several node kinds, and this rule narrows to them with `instanceof` against a value rather than a written class name — a configured list of node classes. A plugin declares its targets statically, so there is no shape to register: the rule's target set is only known at analysis time
         needs: $forbiddenNodes is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
-        needs: access path outside the vocabulary: ->prettyPrintExpr()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->prettyPrintExpr()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->prettyPrint()
+        needs: access path outside the vocabulary: $this->standard->prettyPrintExpr()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->standard->prettyPrintExpr()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->standard->prettyPrint()
         needs: $errorMessage is not a message built in this rule
 EMIT    ForbiddenStaticClassConstFetchRule
 EMIT    ForeachCeptionRule
@@ -146,14 +146,14 @@ EMIT    NoDoctrineListenerWithoutContractRule
 EMIT    NoDocumentMockingRule
 EMIT    NoDoubleConsecutiveTestMockRule
 REFUSE  NoDuplicateArgAutowireByTypeRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
+        assignment value outside the vocabulary: access path outside the vocabulary: $this->classConstructorTypesResolver->resolveClassConstructorNamesToTypes()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->classConstructorTypesResolver->resolveClassConstructorNamesToTypes()
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
         needs: assignment value outside the vocabulary: no PHP navigation for node.class (kind expr) on a MethodCall node
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return
 REFUSE  NoDuplicateArgsAutowireByTypeRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolveClassConstructorNamesToTypes()
+        assignment value outside the vocabulary: access path outside the vocabulary: $this->classConstructorTypesResolver->resolveClassConstructorNamesToTypes()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->classConstructorTypesResolver->resolveClassConstructorNamesToTypes()
         needs: NamingHelper::isNames() over a expr
 EMIT    NoDynamicNameRule
 EMIT    NoEntityMockingRule
@@ -166,8 +166,8 @@ EMIT    NoGetDoctrineInControllerRule
 EMIT    NoGetInCommandRule
 EMIT    NoGetInControllerRule
 REFUSE  NoGetRepositoryOnServiceRepositoryEntityRule
-        access path outside the vocabulary: ->resolveFromEntityClass()
-        needs: access path outside the vocabulary: ->resolveFromEntityClass()
+        access path outside the vocabulary: $this->repositoryClassResolver->resolveFromEntityClass()
+        needs: access path outside the vocabulary: $this->repositoryClassResolver->resolveFromEntityClass()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Strings::after()
         needs: $errorMessage is not a message built in this rule
 REFUSE  NoGetRepositoryOutsideServiceRule
@@ -208,7 +208,7 @@ REFUSE  NoReferenceRule
         needs: no node predicate for instanceof PhpParser\Node\Expr\Closure on a hook-node
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Expression
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolveParentClassMethod()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->parentClassMethodNodeResolver->resolveParentClassMethod()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: array_merge()
 EMIT    NoRepositoryCallInDataFixtureRule
 EMIT    NoRequiredOutsideClassRule
@@ -226,7 +226,7 @@ REFUSE  NoSetClassServiceDuplicationRule
         expected a string literal
         needs: expected a string literal
         needs: no argument list on a expr node
-        needs: access path outside the vocabulary: ->prettyPrintExpr()
+        needs: access path outside the vocabulary: $this->standard->prettyPrintExpr()
         needs: access path outside the vocabulary: Strings::after()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Strings::after()
         needs: $errorMessage is not a message built in this rule
@@ -291,9 +291,9 @@ EMIT    RequiredOnlyInAbstractRule
 REFUSE  SeeAnnotationToTestRule
         not a resolvable list of strings
         needs: not a resolvable list of strings
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->resolve()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->phpDocResolver->resolve()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getDeprecatedTag()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->find()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->seePhpDocTagNodesFinder->find()
 REFUSE  ServicesExcludedDirectoryMustExistRule
         assignment value outside the vocabulary: find() with a closure filter, whose every match the rule then walks — only findFirst() reduces to one question
         needs: assignment value outside the vocabulary: find() with a closure filter, whose every match the rule then walks — only findFirst() reduces to one question
@@ -357,10 +357,10 @@ REFUSE  ConstantTypeDeclarationCollector
         needs: access path outside the vocabulary: Expr_ArrayDimFetch
         needs: access path outside the vocabulary: ->getLine()
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getTraitReflection()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getTraitReflection()
 REFUSE  DeclareCollector
-        no iteration mapped for ->getNodes(), which resolved to a hook-node
-        needs: no iteration mapped for ->getNodes(), which resolved to a hook-node
+        no iteration mapped for $node->getNodes(), which resolved to a hook-node
+        needs: no iteration mapped for $node->getNodes(), which resolved to a hook-node
         needs: no iteration mapped for ->declares, which resolved to a expr
         needs: guard body is neither `return []` nor `continue`, but Stmt_Return
         needs: collector returns something other than a list of values
@@ -381,17 +381,17 @@ REFUSE  PropertyTypeDeclarationCollector
         needs: access path outside the vocabulary: Expr_ArrayDimFetch
         needs: access path outside the vocabulary: ->getLine()
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getTraitReflection()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getTraitReflection()
         needs: cannot render a accumulator as a message argument
 EMIT    ReturnTypeCoverageRule
 REFUSE  ReturnTypeDeclarationCollector
         if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Expression
         needs: if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Expression
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getAttribute()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $node->getAttribute()
         needs: collector returns something other than a list of values
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getTraitReflection()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getTraitReflection()
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
-        needs: access path outside the vocabulary: ->getLine()
+        needs: access path outside the vocabulary: $node->getLine()
         needs: cannot render a accumulator as a message argument
 
 ## tomasvotruba/cognitive-complexity — 2 of 3 portable rules the package registers emit, 0 covered by the engine, 1 refuse, 0 unportable in principle, 0 it registers nowhere
@@ -408,8 +408,8 @@ EMIT    FunctionLikeCognitiveComplexityRule
 ## phpstan/phpstan-strict-rules — 22 of 45 portable rules the package registers emit, 0 covered by the engine, 23 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
+        assignment value outside the vocabulary: access path outside the vocabulary: $this->reflectionProvider->getFunction()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->reflectionProvider->getFunction()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ArgumentsNormalizer::reorderFuncArguments()
         needs: if statement that is not a single-statement guard, but 4 statements: Stmt_Expression + Stmt_Expression + Stmt_If + Stmt_Return
@@ -418,7 +418,7 @@ REFUSE  ArrayFilterStrictRule
         needs: access path outside the vocabulary: ->getTypes()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->toBoolean()
         needs: statement outside the vocabulary: Stmt_Break
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeType()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getNativeType()
         needs: cannot read a type as a name
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_String
         needs: sprintf() format is not a literal or a class constant
@@ -430,7 +430,7 @@ REFUSE  BooleanInBooleanAndRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
         needs: no PHP navigation for node.left (kind expr) on a BooleanAndNode node
         needs: expected a string literal
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getRightScope()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $node->getRightScope()
         needs: no PHP navigation for node.right (kind expr) on a BooleanAndNode node
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
 EMIT    BooleanInBooleanNotRule
@@ -440,7 +440,7 @@ REFUSE  BooleanInBooleanOrRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
         needs: no PHP navigation for node.left (kind expr) on a BooleanOrNode node
         needs: expected a string literal
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getRightScope()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $node->getRightScope()
         needs: no PHP navigation for node.right (kind expr) on a BooleanOrNode node
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
 EMIT    BooleanInDoWhileConditionRule
@@ -458,7 +458,7 @@ EMIT    DisallowedEmptyRule
 REFUSE  DisallowedImplicitArrayCreationRule
         statement outside the vocabulary: Stmt_While
         needs: statement outside the vocabulary: Stmt_While
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->hasVariableType()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $scope->hasVariableType()
         needs: method call outside the vocabulary ->no()
         needs: method call outside the vocabulary ->maybe()
         needs: a second message before the first was reported
@@ -541,8 +541,8 @@ REFUSE  RequireParentConstructCallRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
         needs: function call outside the vocabulary property_exists()
 REFUSE  StrictFunctionCallsRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
+        assignment value outside the vocabulary: access path outside the vocabulary: $this->reflectionProvider->getFunction()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->reflectionProvider->getFunction()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ArgumentsNormalizer::reorderFuncArguments()
         needs: null comparison against Expr_Variable, which resolved to a hook-node
@@ -555,7 +555,7 @@ REFUSE  UselessCastRule
         needs: the inferred type of a hook-node
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->generalize()
         needs: no PHP navigation for node.expr (kind expr) on a Cast node
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeType()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getNativeType()
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Closure
 EMIT    VariableMethodCallRule
@@ -568,8 +568,8 @@ EMIT    VariableStaticMethodCallableRule
 EMIT    VariableStaticPropertyFetchRule
 EMIT    VariableVariablesRule
 REFUSE  WrongCaseOfInheritedMethodRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getMethodReflection()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getMethodReflection()
+        assignment value outside the vocabulary: access path outside the vocabulary: $node->getMethodReflection()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $node->getMethodReflection()
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
         needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: access path outside the vocabulary: ->getInterfaces()
@@ -590,8 +590,8 @@ REFUSE  AssertSameWithCountRule
         needs: no node predicate for instanceof PhpParser\Node\Identifier on a name-expr
         needs: a second message before the first was reported
 REFUSE  AttributeRequiresPhpVersionRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getTestMethodReflection()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getTestMethodReflection()
+        assignment value outside the vocabulary: access path outside the vocabulary: $this->testMethodsHelper->getTestMethodReflection()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->testMethodsHelper->getTestMethodReflection()
 REFUSE  ClassAttributeRequiresPhpVersionRule
         could not find the reported message
 REFUSE  ClassCoversExistsRule
@@ -608,17 +608,18 @@ REFUSE  ClassMethodCoversExistsRule
         needs: assignment to something other than a simple local
         needs: assignment value outside the vocabulary: access path outside the vocabulary: array_map()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->fileTypeMapper->getResolvedPhpDoc()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: array_merge()
 NEVER   DataProviderDataRule
         this rule reports nothing: its whole output is $scope->invokeNodeCallback(), which synthesises a node with inferred argument types and hands it back to PHPStan's own analysis so that *other* rules fire on it. An analyzer plugin's only output is report(), and there is no equivalent of feeding a node back into Mago, so no node hook and no vocabulary entry can make this one portable
 REFUSE  DataProviderDeclarationRule
-        access path outside the vocabulary: ->getDataProviderMethods()
-        needs: access path outside the vocabulary: ->getDataProviderMethods()
+        access path outside the vocabulary: $this->dataProviderHelper->getDataProviderMethods()
+        needs: access path outside the vocabulary: $this->dataProviderHelper->getDataProviderMethods()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: array_merge()
 REFUSE  MockMethodCallRule
         count() of something other than an argument list
         needs: count() of something other than an argument list
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getMethodReflection()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getMethodReflection()
         needs: no PHP navigation for node.var (kind expr) on a MethodCall node
 EMIT    NoMissingSpaceInClassAnnotationRule
 EMIT    NoMissingSpaceInMethodAnnotationRule
@@ -634,7 +635,7 @@ REFUSE  ShouldCallParentMethodsRule
 REFUSE  CallWithDeprecatedIniOptionRule
         statement outside the vocabulary: Stmt_TryCatch
         needs: statement outside the vocabulary: Stmt_TryCatch
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getFunction()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getVersionId()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->reflectionProvider->getFunction()
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->phpVersion->getVersionId()
         needs: function call outside the vocabulary array_key_exists()
 EMIT    FetchingDeprecatedConstRule

@@ -140,8 +140,8 @@ final readonly class Translator
     private function describe(Node $node): string
     {
         return match (true) {
-            $node instanceof MethodCall => '->' . $this->memberLabel($node->name) . '()',
-            $node instanceof NullsafeMethodCall => '?->' . $this->memberLabel($node->name) . '()',
+            $node instanceof MethodCall => $this->receiverLabel($node->var) . '->' . $this->memberLabel($node->name) . '()',
+            $node instanceof NullsafeMethodCall => $this->receiverLabel($node->var) . '?->' . $this->memberLabel($node->name) . '()',
             $node instanceof StaticCall => $this->classLabel($node->class) . '::' . $this->memberLabel($node->name) . '()',
             $node instanceof FuncCall => $this->memberLabel($node->name) . '()',
             $node instanceof PropertyFetch => '->' . $this->memberLabel($node->name),
@@ -149,6 +149,37 @@ final readonly class Translator
             $node instanceof ClassConstFetch => $this->classLabel($node->class) . '::' . $this->memberLabel($node->name),
             default => $node->getType(),
         };
+    }
+
+    /**
+     * Who a call was made on, so two calls spelled the same are not read as one capability.
+     *
+     * The same fix {@see noIterationRefusal} carries, one label over. `->getFunction()` named two unrelated
+     * calls: `$scope->getFunction()`, which is the function a node sits in and is mapped, and
+     * `$this->reflectionProvider->getFunction($name, $scope)`, which resolves a function the code names and
+     * is not. Five rules refused under the shared spelling, and sizing the work from it sent a reader to the
+     * mapped one twice — the census's own header warns about a shared outer phrase, and this is the inner
+     * text being shared while the receiver differs.
+     *
+     * Only two receivers, and an arbitrary local is deliberately not one of them. Naming every local split
+     * `->getLine()` four ways — `$classConst`, `$param`, `$property`, `$node` — which is one capability under
+     * four names the rule author happened to pick, and the point of a label is to be comparable across rules.
+     * A property of `$this` is the rule's own collaborator, and `$scope` and `$node` are the two parameters
+     * every `processNode()` receives, so all three mean the same thing wherever they appear.
+     */
+    private const array NAMED_RECEIVERS = ['scope', 'node'];
+
+    private function receiverLabel(Expr $receiver): string
+    {
+        if ($receiver instanceof Variable && in_array($receiver->name, self::NAMED_RECEIVERS, true)) {
+            return '$' . $receiver->name;
+        }
+
+        if ($receiver instanceof PropertyFetch && $this->isThis($receiver->var)) {
+            return '$this->' . $this->memberLabel($receiver->name);
+        }
+
+        return '';
     }
 
     /**

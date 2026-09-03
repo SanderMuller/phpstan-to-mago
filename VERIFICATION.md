@@ -3900,3 +3900,51 @@ what it answers about is a second claim.
 Fires gate 564/564 with the new case in the pair. Suite green. PHPStan 0 errors. Emit-all across all three
 targets unchanged — the fix is runtime, and no emitted byte reads differently for it. No census line moves and
 no count moves; what moves is one shipped rule agreeing with PHPStan where it did not.
+
+### A refusal that names the method but not who it was called on
+
+Two ticks in a row picked a rule to port from the census label `access path outside the vocabulary:
+->getFunction()`, and both times the label pointed at the wrong call. `$scope->getFunction()` — the function a
+node sits in — is mapped and has been for a while. `$this->reflectionProvider->getFunction($name, $scope)` —
+which resolves a function the code *names* — is not, and is what all five refusing rules write. The two share
+their spelling from `->` onward and share no capability at all.
+
+The census header already warns that a shared outer phrase is not a shared capability. This is the same
+failure one level in: the inner text is identical and the receiver is the whole difference.
+
+So `describe()` now names the receiver for a method call, and `noIterationRefusal()`'s docblock is the
+precedent — that message got a discriminator for exactly this reason, one label over.
+
+#### Only two receivers, because naming every local made it worse
+
+The first version named any local. It split `->getLine()` four ways — `$classConst`, `$param`, `$property`,
+`$node` — which is one capability under four names the rule author happened to pick. A label has to be
+comparable *across* rules, and a local's name is the one part of a call site that is not.
+
+The version shipped names a property of `$this`, which is the rule's own collaborator, and the two variables
+every `processNode()` receives:
+
+| receivers named | distinct labels over ~108 occurrences | what split |
+|:--|--:|:--|
+| none (before) | 52 | — |
+| any local | 61 | including `->getLine()` four ways and `->generalize()` three, all by local name |
+| `$this->x`, `$scope`, `$node` | 55 | `->getMethodReflection()`, `->getResolvedPhpDoc()`, `->getLine()` |
+
+Each of the three surviving splits is two different questions that had one name: a PHPStan node's own method
+reflection against the scope's enclosing one, a class reflection's docblock against a `fileTypeMapper`
+lookup, and a node's line against another node's.
+
+#### Mutation checks
+
+Dropping the named-variable arm moves 15 census lines; dropping the collaborator arm moves 23.
+`TracksUpstreamDriftTest` fails on each and passes with both.
+
+#### Verification
+
+Every census line the change touches is relabelled rather than lost — the two that read as removals,
+`no iteration mapped for ->getNodes()`, are the same entry now reading `$node->getNodes()`. Occurrences go
+from 108 to 109 because one entry that used to deduplicate against an identically-spelled other no longer
+does, which is the whole point.
+
+Suite green. PHPStan 0 errors; `Translator` moves from 2331 to 2335 with no new baseline entry. Emit-all
+unchanged across all three targets — a refusal's text reaches no emitted file.
