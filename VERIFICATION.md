@@ -4171,3 +4171,54 @@ So the honest position is that there is no next lever. Coverage past 99 of 169 i
 most serving one rule, and the sizing question is no longer "which cluster first" but whether the corpus is
 worth that at all. This measurement is here so the question gets asked with the numbers rather than with an
 impression — including the impression this same session offered twice.
+
+### A differential over real code, and the one disagreement in 112 it found
+
+The example pairs are authored by the person who wants them to pass, so the guidelines call a green run over
+them the weakest evidence available. The corpus differential is the answer to that, and it had not been run
+since the closure fixes. Run against `nikic/php-parser` — 270 files, 80 emitted rules, 83 identifiers:
+
+    total: agree 1692, only-original 1, only-port 410
+
+Most of the 410 is configuration, not divergence. `complexity.classLike` and `complexity.functionLike`
+account for 34 of them and the report says so itself, printing the two messages side by side: *keep it under
+80* against *keep it under 40*. The emitted plugin carries the package default and this repository's own neon
+sets a higher one. `typeCoverage.constantTypeCoverage` is the other 375, at 0 agreements — a threshold, not a
+finding. Neither is a bug, and both are what `--parameter=` exists to pin.
+
+**One line in the 410 is a real defect**, and it is the kind only real code writes:
+
+    symplify.noConstructorOverride   agree 111  only-original 0  only-port 1
+        only-port  vendor/nikic/php-parser/lib/PhpParser/Internal/TokenPolyfill.php:42
+
+`TokenPolyfill.php` declares its class **twice**. The first, under `if (\PHP_VERSION_ID >= 80000)`, extends
+`\PhpToken`; the file then `return`s, and a second declaration extending nothing follows with the constructor
+at line 42.
+
+PHPStan asks the *scope* for the class the node is in, which is the second, so there is no parent and no
+override. `Reflect::parentHasConstructor()` asked the codebase for the *name*, got whichever declaration the
+metadata kept — the first — and reported a constructor that overrides nothing. A false positive, which is the
+unsafe direction.
+
+The fix asks the declaration before the name: `Inheritance::hasExtends()` reads the enclosing class-like's own
+`extends` off the tree. It is a narrowing guard only — where a name has one declaration the two answers agree,
+and where they differ the node is the one PHPStan is looking at.
+
+`Reflect`'s class docblock said "nothing here reads the CST", so it now names this method as the exception and
+why: the grouping's distinction is between what a *name* resolves to and what the analysed node is, and this
+is that distinction one level out.
+
+#### The other needle was not one
+
+`typeCoverage.paramTypeCoverage` reported 1 only-original against 1053 agreements, in the same file at line
+69 — `public function is($kind): bool`, whose only type is a docblock. The totals differ by 7 possible and 6
+typed, so the two engines disagree about a handful of params across the corpus rather than about that one.
+`Vocabulary`'s type-coverage note records exact agreement on two Laravel consumers, so this corpus is new
+information and it is not the same defect. Left open rather than folded into this commit.
+
+#### Verification
+
+Reproduced in a fixture pair before the fix — the port reported the good example, PHPStan reported nothing —
+and the mutation is that guard: without it, `GoodTwoDeclarationsOfOneName.php` is reported again. Fires gate
+564/564, suite green, PHPStan 0 errors, emit-all unchanged across all three targets. No census line moves and
+no count moves.

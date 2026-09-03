@@ -16,9 +16,14 @@ use Mago\Sdk\Syntax\NodeKind;
 /**
  * What the codebase knows about a class, a method or a parameter.
  *
- * Metadata questions only: nothing here reads the CST. The distinction the group exists to keep is the one a
- * defect turned on — a class *declaring* a method and a class *having* one are different questions, and the
- * port answered the first where PHPStan asks the second.
+ * Metadata questions. The distinction the group exists to keep is the one a defect turned on — a class
+ * *declaring* a method and a class *having* one are different questions, and the port answered the first
+ * where PHPStan asks the second.
+ *
+ * One method reads the CST as well, and says why: {@see parentHasConstructor()} asks the declaration a node
+ * sits in before asking the codebase about its name, because a name can have two declarations and the
+ * metadata keeps one. That is not a crack in the grouping — it is the same distinction one level out, between
+ * what a *name* resolves to and what the analysed node is.
  */
 final class Reflect
 {
@@ -93,6 +98,19 @@ final class Reflect
      */
     public static function parentHasConstructor(NodeAnalysisContext $context, Part|Node|null $node): bool
     {
+        // The declaration is asked before the name is. PHPStan reads the parent off the class the *scope* is
+        // in; asking the codebase for a name instead answers about whichever declaration the metadata kept,
+        // and a name can have more than one. `nikic/php-parser` writes two `TokenPolyfill` classes in one
+        // file under a `PHP_VERSION_ID` guard — the first extends `PhpToken`, the second extends nothing —
+        // and the port reported the second's constructor as overriding the first's parent. One disagreement
+        // against 111 agreements, found by the corpus differential and not by reading.
+        //
+        // Only a narrowing guard: where one name has one declaration the two answers agree, and where they
+        // do not, the node is the one PHPStan is looking at.
+        if (! Inheritance::hasExtends($context, $node)) {
+            return false;
+        }
+
         $parent = self::parentClassName($context, Declares::enclosingClassName($context, $node));
 
         return self::methodExists($context, $parent, '__construct');
