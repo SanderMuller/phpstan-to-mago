@@ -276,7 +276,7 @@ final class Reflect
             return null;
         }
 
-        $declared = $context->codebase->getDeclaringMethod($class, $method);
+        $declared = Mixins::declaringMethod($context->codebase, $class, $method);
         if (! $declared instanceof FunctionLikeMetadata) {
             return null;
         }
@@ -305,7 +305,7 @@ final class Reflect
             return false;
         }
 
-        return $context->codebase->getDeclaringMethod($class, $method) instanceof FunctionLikeMetadata;
+        return Mixins::declaringMethod($context->codebase, $class, $method) instanceof FunctionLikeMetadata;
     }
 
     /**

@@ -5276,3 +5276,63 @@ and `diff -r` names one emitted file — `ParamTypeCoverageRule.php`, lines 19-2
 `--out` path the four `mago.toml.snippet`s embed. The baseline was built by copying the three changed sources
 aside, restoring them from HEAD, emitting, and copying back; a `git worktree` was tried first and was wrong,
 because its `vendor` symlink autoloads this repository's `src` and both runs then read the same code.
+
+### The same premise failed twice, and the second one no corpus contains
+
+`@mixin` closed the parameter over-count because `ClassReflection::hasMethod()` is answered by a core
+reflection extension. That is not a fact about the coverage collector. It is a fact about `hasMethod()`, and
+`Support::methodExists()` — whose docblock says "which is `ClassReflection::hasMethod()`" — is the path
+**every emitted rule** takes for the same question. So the audit was: which shipped rules ask it, and does the
+mixin gap reach them.
+
+Thirteen emitted rules call `methodExists()` or `typeHasMethod()`. Two of them ask it about a parent class,
+and both are wrong in the presence of a mixin, in **opposite directions**. One probe file, one line, both
+rules:
+
+    tests/Fixtures/probe-mixin/Subjects.php:15
+      symplify.noProtectedClassStmt            only-port      -> a false positive
+      symplify.parentMethodVisibilityOverride  only-original  -> a false negative
+
+`NoProtectedClassStmtRule` skips a protected method the parent also declares, reading
+`$parentClassReflection->hasMethod($name)`, so PHPStan skips a method a `@mixin` supplies and the port
+reported it. `PreventParentMethodVisibilityOverrideRule` needs the parent method's *visibility*, so the port
+found no parent method at all, took the `continue`, and said nothing where PHPStan reports.
+
+A second probe settled a property the fix depends on, predicted before it ran: **a mixin is inherited.** With
+the `@mixin` on a grandparent and the question asked of the middle class, both rules behaved exactly as in
+the direct case. So the seed is the class plus its declared ancestry, not the class alone.
+
+`Runtime\Mixins` now holds one walk for both callers. `Mixins::declaringMethod()` tries
+`getDeclaringMethod()` first and walks mixins only when that finds nothing, so nothing that already agreed
+can change; `Reflect::methodExists()`, `Reflect::parameterAt()` and `Members::reflectedMethodVisibility()`
+route through it, and `DeclaredParameters::throughMixins()` is now three lines over the same
+`Mixins::targetsOf()`.
+
+`Reflect::declaringClassName()` is deliberately left alone. PHPStan's `getDeclaringClass()` for a
+mixin-provided method names the mixin class, so following through would be more faithful — and it would
+change what every rule gating on a declaring class decides, on a corpus where the question does not arise.
+Named rather than done.
+
+#### The corpora are unchanged, and that is the point of reporting them
+
+    nikic/php-parser/lib          270 files   1693 agree   0 / 0
+    rector/rector/src             489 files    246 agree   1 / 0
+    laravel Support + Database    367 files   7998 agree   1 / 25
+    nesbot/carbon/src             914 files   1807 agree   3 / 1
+
+11744 against 31, identical to the run before this change. **Neither defect occurs in 2040 files of vendor
+code.** The differential did not find them and cannot confirm them; the audit found them and the example
+pairs are the evidence. So the corpora here are the regression check — the fix touches a path thirteen rules
+use and moved nothing that agreed — rather than the demonstration.
+
+That is worth separating, because a run that reports "no change" is exactly what a fix nobody needed also
+reports. What distinguishes them is the mutation check: emptying the mixin walk fails the good example of
+`NoProtectedClassStmtRule` and the pair of `PreventParentMethodVisibilityOverrideRule`, in the two directions
+above, and nothing else in 564 gate cases.
+
+#### Verification
+
+Suite 939/939, PHPStan 0 with no new baseline entry, pint clean. Emit-all across `php`, `analyzer` and
+`linter` over the four corpus packages plus `tests/Fixtures/Rules`: 213 files each side, and `diff -r` names
+**no emitted file at all** — only the `--out` path the four `mago.toml.snippet`s embed. A Runtime change
+should move zero emitted bytes, and this one does. Baseline built by the copy-aside route again.

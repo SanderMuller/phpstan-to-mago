@@ -353,7 +353,7 @@ final class Members
             return null;
         }
 
-        $declaring = $context->codebase->getDeclaringMethod($class, $method);
+        $declaring = Mixins::declaringMethod($context->codebase, $class, $method);
 
         return $declaring instanceof FunctionLikeMetadata ? $declaring->visibility : null;
     }
