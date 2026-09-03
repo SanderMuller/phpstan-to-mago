@@ -172,6 +172,20 @@ final class Reflect
      *
      * The distinction a rule cares about: a first-party class inheriting a vendor method should be judged on
      * where the method *comes from*, not on the receiver. `getDeclaringMethod()` answers exactly that.
+     *
+     * **`getMethod()` is not a shorter spelling of this.** It answers about the class's own declarations only,
+     * and the difference is silent — a null, not an error. Probed over one class with an inherited method, a
+     * trait method and an interface method:
+     *
+     *     Child::ownMethod       getDeclaringMethod found   getMethod found
+     *     Child::fromBase        getDeclaringMethod found   getMethod null
+     *     Child::fromTrait       getDeclaringMethod found   getMethod null
+     *     Helper::fromTrait      getDeclaringMethod found   getMethod found
+     *
+     * So `getMethod()` is right only where the class asked *is* the one that writes the method — which is
+     * true of both places the runtime calls it, because each reads a method declaration the hook is sitting
+     * on, and the last row is why a method written in a trait is one of those rather than an exception.
+     * Anything asking "does this class have this method" wants this function instead.
      */
     public static function declaringClassOfMethod(NodeAnalysisContext $context, ?string $class, ?string $method): ?string
     {

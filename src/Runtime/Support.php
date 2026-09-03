@@ -431,9 +431,9 @@ final class Support
     /**
      * The name of the function or method the node sits in, or null outside one.
      *
-     * What `$scope->getFunctionName()` gives a rule. A closure and an arrow function are anonymous, so a node
-     * inside one has no enclosing *name* — the walk stops there rather than continuing to the method around it,
-     * which is what PHPStan answers too.
+     * What `$scope->getFunctionName()` gives a rule, which is the *named* function a node sits in however many
+     * closures deep. {@see Declares::enclosingFunctionName()} cites the two lines of `MutatingScope` that say
+     * so; this facade carried the opposite claim for as long as the walk did.
      */
     public static function enclosingFunctionName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {

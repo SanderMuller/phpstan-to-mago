@@ -4089,3 +4089,41 @@ reported one need and this decision would have been made on the belief that the 
 
 **Decision: not built.** Revisit if a rule appears whose only remaining need is declared-order arguments. Until
 then the normalizer is a correctly-sized piece of work with nothing behind it.
+
+### Auditing the claims the runtime makes about PHPStan
+
+Two commits found the same bug in two classes, and both were a docblock asserting PHPStan's behaviour instead
+of citing it. So the runtime was swept for every such assertion rather than waiting for a third to surface.
+
+Nine sites claim what PHPStan answers. Four say "measured" and carry their evidence. The other five were
+checked here.
+
+**One was stale, and it is the shipped surface.** `Support::enclosingFunctionName()` still carried the exact
+sentence proven false — "a node inside one has no enclosing *name* ... which is what PHPStan answers too" —
+because the fix went into `Declares` and the facade delegates. The behaviour was right and the documentation
+of it was wrong, on the class every emitted plugin reads. Fixed to cite `Declares` rather than repeat a claim.
+
+**Two hold.** `Types::typeIsBoolean()` says PHPStan answers `yes` only for a wholly boolean type. Traced:
+`UnionType::isBoolean()` goes through `notBenevolentUnionResults` to `TrinaryLogic::lazyExtremeIdentity`,
+which returns `maybe` when members disagree — so `bool|null` is `maybe`, and `maybe->yes()` is false. The
+runtime's "every atomic is boolean" matches on all three outcomes. `Support::classExists()`'s claim is about
+coverage rather than about an API, and is already hedged as such.
+
+**One turned up a trap worth naming.** `getDeclaringMethod()` does answer over the hierarchy, as claimed —
+probed, not assumed. What the probe also showed is that its neighbour does not, and silently:
+
+    Child::ownMethod       getDeclaringMethod found   getMethod found
+    Child::fromBase        getDeclaringMethod found   getMethod null
+    Child::fromTrait       getDeclaringMethod found   getMethod null
+    Helper::fromTrait      getDeclaringMethod found   getMethod found
+
+Both runtime calls to `getMethod()` are correct, and the last row is why: each reads a method declaration the
+hook is sitting on, and for a method written in a trait the enclosing class-like *is* the trait, which
+declares it. That was the case worth probing — this codebase's trait handling has diverged before — and it
+holds. The distinction is now written on `declaringClassOfMethod()`, because a third call site asking "does
+this class have this method" would answer null for every inherited method and report nothing.
+
+#### Verification
+
+No behaviour changes: two docblocks and one probe. Suite green, PHPStan 0 errors, emit-all unchanged across
+all three targets. No census line moves and no count moves.
