@@ -125,6 +125,9 @@ parameters:
                 - tests/Support/run-render-census.php
                 - tests/Support/HierarchyKnowledge.php
                 - tests/Support/FiresGate.php
+                # And a benchmark, for the same reason once more: what two engines cost is a property of running
+                # them, and no in-process check can time a binary.
+                - tests/Support/run-benchmark.php
                 - tests/Unit/AggregatesConstantCoverageTest.php
                 - tests/Unit/AggregatesDeclareCoverageTest.php
                 - tests/Unit/AggregatesReturnCoverageTest.php

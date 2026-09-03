@@ -5645,3 +5645,55 @@ No code change. `composer sync-ai` reported `wrote=2, unchanged=83, deleted=0`, 
 and `AGENTS.md` is the six edited paragraphs and nothing else — read line by line, because a sync run by a
 composer hook once swallowed 429 lines into an unrelated commit. Suite and analysis untouched by a
 documentation-only change; the last full run in this session was 943/943 with PHPStan at 0.
+
+### The performance table had no instrument in the repository
+
+Every other figure this project publishes has its instrument committed beside it — `run-corpus-differential.php`,
+`run-coverage-corpus.php`, `run-coverage-setdiff.php`, the census generator. The README's performance table
+did not. It was produced by `internal/dogfood-laramago/bench.py`, and `internal/` is gitignored, against a
+project that is not in this repository. A reader could not repeat it, and nothing re-measured it when the
+runtime changed — this session alone added codebase lookups to three hot paths.
+
+`tests/Support/run-benchmark.php` is that instrument. Four rows, wall and CPU, best of `--runs` with the
+spread beside it, both engines reading the consumer's own configuration the way the differential does.
+
+On a corpus this repository actually has:
+
+    nikic/php-parser/lib, 270 files, 80 emitted rules, n=3
+
+                                     wall       CPU
+      mago, engine only             3.84s     3.76s   spread 0.36s
+      mago + the transpiled rules   5.79s     7.17s   spread 0.13s
+      PHPStan, cold result cache    2.69s     9.35s   spread 0.08s
+      PHPStan, warm result cache    0.74s     0.71s   spread 0.11s
+
+**The rules add 1.95s wall and 3.41s CPU**, which is the marginal cost and the number the totals never give.
+Against cold PHPStan the port is 2.2x *slower* on wall clock and 1.3x cheaper on CPU; against warm PHPStan it
+is 7.8x slower and 10x more CPU.
+
+#### This does not correct the README, and saying why is the point
+
+The README reports 20 rules over 1090 files with the engine alone at 0.10s. This run is 80 rules over 270
+files with the engine alone at 3.84s — a different corpus, a different rule count, and an engine baseline
+38 times apart. Replacing one with the other would be the baseline error `measurement.md` warns about, in the
+direction that happens to flatter nothing: a number swapped for a number measured against something else.
+
+What can be said without a second measurement is narrower and still worth writing: the published table is not
+reproducible from a checkout, and on the corpus that is, the engine dominates and the port is not faster than
+PHPStan. Deciding what the README should carry needs both figures side by side, which is a next step rather
+than this one.
+
+#### Two instrument bugs, both caught by the number looking wrong
+
+- **The cold row was not cold.** PHPStan's `tmpDir` comes from the consumer's own configuration, which the
+  generated one includes, so clearing `$sandbox/phpstan-cache` cleared a directory nothing wrote to. Cold and
+  warm printed 0.76s and 0.75s, which reads as "the result cache buys nothing" rather than as a broken
+  harness. The benchmark now writes its own `tmpDir` and owns it: 2.69s against 0.74s.
+- **`--packages=` takes names without `vendor/`.** `CorpusDifferential` prepends it, so the first run refused
+  every package and threw. That one announced itself.
+
+#### Verification
+
+PHPStan 0 — `proc_open()` is forbidden by this project's own configuration, and the benchmark is added to the
+same scoped exception the fires-gate and the differentials sit in, for the same reason: what two engines cost
+is a property of running them. Pint clean. No `src/` change, so no emitted byte moves.
