@@ -6324,3 +6324,39 @@ PHPStan 0, suite 943/943, pint clean. Emit-all across `php`, `analyzer` and `lin
 `diff -r` names no emitted file — only the `--out` path in four snippets. That check matters more than usual
 here, because `ModuleEmitter` *writes* the Rust module and registration files, so a docblock change in it is
 exactly where a silent output change would hide.
+
+### Two more, and the reason the next four are a different job
+
+`Emitter::emit()` declared its hook row as `array<string, string>|array<string, null>|array<string, bool>`.
+`Vocabulary::HOOKS` — the only thing that ever fills it — is typed precisely, ten keys with four optional.
+Under the lossy spelling `$hook['extra'] ?? ''` and `$hook['classOnly'] ?? false` both read as `bool|string`,
+which is the whole of this file's non-complexity baseline. Copying the real shape onto the parameter cleared
+both with no code change.
+
+    baseline    28 entries / 48 errors  ->  26 / 46
+
+That is ten errors in two commits, none of which needed a line of logic changed: a stale docblock winning
+over a precise one, a guard the analyser could not see, and a parameter typed weaker than its only caller.
+Worth naming as a class — **most of what sat in this baseline is a description problem, not a code problem** —
+because it is also why the entries survived: nothing about them looks like a bug when you read the code.
+
+#### `ExampleReader` is where that stops
+
+The remaining four are one shape and they do not yield to a docblock. PHPStan reports `$unit` as
+`array{file: string, header: list<string>, lines: list<string>, open: int}|array{lines: non-empty-list<string>}`
+— the second arm is what `$unit['lines'][] = $line` leaves behind on a variable that is also assigned `null`.
+The `$render` closure carries the right `@param` and PHPStan does not apply it there.
+
+The fix that would work is structural: lift the parsing loop into a method returning
+`list<array{file: …, header: …, lines: …, open: int}>`, which gives the closure a declared shape to receive
+and cuts `forRule()`'s cognitive complexity, currently baselined at 36 against a limit of 20. That is a
+refactor of the method that feeds the linter target's examples, so it wants its own step and its own
+byte-for-byte check rather than being folded into a docblock pass.
+
+Not done here, and named rather than left as a bare baseline entry.
+
+#### Verification
+
+PHPStan 0, suite 943/943, pint clean. Emit-all across `php`, `analyzer` and `linter`: 213 files each side,
+`diff -r` names no emitted file. `Emitter` is the class that writes them, so that check is the one that
+matters for this change.

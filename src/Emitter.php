@@ -741,7 +741,14 @@ PHP;
     }
 
     /**
-     * @param array<string, string>|array<string, null>|array<string, bool> $hook
+     * The hook row this rule was matched to, which is one value of {@see Vocabulary::HOOKS}.
+     *
+     * Typed as that shape rather than as a bag of strings. The lossy spelling it carried before —
+     * `array<string, string>|array<string, null>|array<string, bool>` — made `$hook['extra'] ?? ''` and
+     * `$hook['classOnly'] ?? false` read as `bool|string`, which is two of this file's baseline entries and
+     * neither is a fault in the code.
+     *
+     * @param array{trait: string, method: string, node: string|null, kind: string, adapter?: string, extra?: string, classFrom?: string, classOnly?: bool, each?: string, phpOnly?: bool, gate?: string} $hook
      */
     public function emit(string $className, array $hook): string
     {

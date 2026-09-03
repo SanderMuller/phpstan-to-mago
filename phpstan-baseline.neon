@@ -1,38 +1,8 @@
 parameters:
 	ignoreErrors:
 		-
-			rawMessage: 'Only booleans are allowed in &&, bool|string given on the left side.'
-			identifier: booleanAnd.leftNotBoolean
-			count: 1
-			path: src/Emitter.php
-
-		-
-			rawMessage: 'Parameter #3 $subject of function str_replace expects array<string>|string, bool|string given.'
-			identifier: argument.type
-			count: 1
-			path: src/Emitter.php
-
-		-
 			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\ExampleReader::forRule()" is 36, keep it under 20'
 			identifier: complexity.functionLike
-			count: 1
-			path: src/ExampleReader.php
-
-		-
-			rawMessage: 'Offset ''file'' might not exist on array{file: string, header: list<string>, lines: list<string>, open: int}|array{lines: non-empty-list<string>}.'
-			identifier: offsetAccess.notFound
-			count: 1
-			path: src/ExampleReader.php
-
-		-
-			rawMessage: 'Parameter #2 $array of function implode expects array, mixed given.'
-			identifier: argument.type
-			count: 2
-			path: src/ExampleReader.php
-
-		-
-			rawMessage: 'Parameter #2 $times of function str_repeat expects int, mixed given.'
-			identifier: argument.type
 			count: 1
 			path: src/ExampleReader.php
 
@@ -167,3 +137,22 @@ parameters:
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php
+
+		-
+			rawMessage: 'Offset ''file'' might not exist on array{file: string, header: list<string>, lines: list<string>, open: int}|array{lines: non-empty-list<string>}.'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: src/ExampleReader.php
+
+		-
+			rawMessage: 'Parameter #2 $array of function implode expects array, mixed given.'
+			identifier: argument.type
+			count: 2
+			path: src/ExampleReader.php
+
+		-
+			rawMessage: 'Parameter #2 $times of function str_repeat expects int, mixed given.'
+			identifier: argument.type
+			count: 1
+			path: src/ExampleReader.php
+
