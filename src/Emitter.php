@@ -806,6 +806,17 @@ PHP;
         $body = str_replace('{BAIL}', $bail, $body);
 
         // The whole-run hook has no node to be handed, and a context of its own.
+        //
+        // **No rule in the installed corpus reaches this branch, and a change to it is invisible to the whole
+        // suite.** Measured: replacing the `"generated"` literal below leaves all 943 tests passing, while the
+        // same edit to the node-hook scaffold underneath fails every analyzer snapshot. The five aggregates
+        // never arrive here — `Transpiler::aggregate()` builds a PHP template of its own and returns it under
+        // the `rust` key — and the three other `CollectedDataNode` rules refuse on a Rust target for reasons
+        // that have nothing to do with this scaffold: `->isEnabled`, an unknown local, and an access path.
+        //
+        // So it is dead in practice rather than dead by construction, and the thing that would make it live
+        // is one of those three refusals being closed. The census is what says so: a `CollectedDataNode` rule
+        // moving REFUSE to EMIT is the signal to give this branch a snapshot before trusting it.
         if ($trait === 'AnalysisHook') {
             $body = str_replace('{BAIL}', $bail, $prologue . $this->renderAll());
 

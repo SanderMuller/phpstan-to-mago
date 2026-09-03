@@ -5518,3 +5518,48 @@ from `src/Emitter.php` by copy-restore rather than `git checkout`.
 boost-managed, so the fix belongs in the sync source rather than in the file. Not touched here, and recorded
 so the next reader does not read it as this change's doing. `tests/` is already `export-ignore`d, so the new
 fixture directory adds nothing to the published archive.
+
+### The analyzer scaffold is watched after all, and one branch of it is unreachable
+
+Last step closed the linter gap, so this one asked the same question of the analyzer target: the snapshots
+exist, but nobody had measured what a change to them would be caught by. "A snapshot exists" and "the suite
+catches a change" are different claims, and the linter case had just shown the second can be false.
+
+Mutating `ProviderMeta::new(.., "generated")` in the node-hook scaffold fails all three analyzer snapshots,
+so that half is genuinely covered. The measurement is the answer here rather than a fix — and it is worth
+having, because the same edit to a *different* line of the same file is invisible:
+
+    Emitter.php:840  the node-hook scaffold      3 of 3 analyzer snapshots fail
+    Emitter.php:817  the AnalysisHook scaffold   943 of 943 tests pass
+
+#### Why the second one is invisible, which is not the reason it looked like
+
+The obvious reading is a snapshot gap of the kind the linter had. It is not. **No rule in the installed
+corpus reaches that branch at all.**
+
+The five type-coverage aggregates are the rules that produce `trait === 'AnalysisHook'`, and they never
+arrive: `Transpiler::aggregate()` builds a PHP template of its own and returns it under the `rust` key, so
+the Rust scaffold in `Emitter` is not on their path. Both Rust targets also refuse them outright — `early
+return from a helper that is not a boolean literal` at line 23 — which was measured before the template was
+read, and either fact alone is enough.
+
+That leaves three rules whose node type is `CollectedDataNode` and which are not aggregates. All three refuse
+on both Rust targets, each for its own unrelated reason:
+
+    NewOverSettersRule                    condition outside the vocabulary: ->isEnabled
+    WriteNamedArgumentManifestRule        unknown local $file
+    NarrowPublicClassMethodParamTypeRule  assignment value outside the vocabulary
+
+So the branch is dead in practice rather than dead by construction, and what would make it live is one of
+those three refusals closing. That is recorded on the branch itself, pointing at the census as the signal:
+a `CollectedDataNode` rule moving REFUSE to EMIT is when it needs a snapshot before anyone trusts it.
+
+No test asserts the unreachability. One would fail on progress rather than on regression, and the census
+already reports the move that matters.
+
+#### Verification
+
+Suite 943/943, PHPStan 0, pint clean. The only change is a comment, so there is nothing for an emit-all diff
+to move; both mutations above were reverted by copy-restore. The first mutation of this step was also the
+wrong instrument and is worth naming: `Emitter.php:817` and `:840` hold the same two lines of Rust, so
+picking the first `ProviderMeta::new` a grep returns tests the branch nobody reaches.
