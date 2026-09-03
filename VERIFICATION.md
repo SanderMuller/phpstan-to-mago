@@ -6438,3 +6438,50 @@ there. That is the right split: the baseline is contributor detail and `CLAUDE.m
 
 PHPStan 0 and suite 943/943 on both 1.47.1 and 1.47.5. `git status` clean after the restore, and
 `composer.json` is untouched because the constraint already allowed both.
+
+### Sixteen casts that die on a computed name, and the refusal that said the wrong thing
+
+The largest remaining baseline entry was one message at count 16: `Cannot cast PhpParser\Node\Expr|
+PhpParser\Node\Identifier to string`. Every site is the same idiom — `(string) $node->name` used to compare a
+name — and it is not a description problem. `Identifier` has `__toString()` and `Expr` does not, so the cast
+is a fatal on any node whose name is computed.
+
+Reproduced before touching anything, which is what turns 16 baseline lines into a defect:
+
+    public function processNode(Node $node, Scope $scope): array
+    {
+        if ($node->{'value'} > 3) { …
+
+    REFUSE  DynamicNameComparisonRule: Object of class PhpParser\Node\Scalar\String_
+            could not be converted to string
+
+The transpiler survives — the `Error` is caught and reported as a refusal — so the visible damage is a
+refusal naming a PHP type error instead of the construct. This file already says a refusal naming the wrong
+obstacle is how work gets sized wrongly, and that is what this was.
+
+`identifierName()` answers null for a computed name, the sixteen sites ask instead of cast, and the same
+fixture now refuses with `numeric comparison outside the vocabulary (line 38)` — the refusal the vocabulary
+meant to raise.
+
+#### The regex converted 25 sites and nine of them were fine
+
+Rewriting every `(string) $x->name` in the file was the obvious move and it was wrong: nine more sit where
+the name is already known to be an `Identifier`, and giving those a `?string` pushed a null into
+`Emitter::snake()`, `strtolower()` and three array keys — six new errors, measured by doing it and reading
+them. Only the sixteen PHPStan named are converted.
+
+One of the sixteen did need a decision rather than a mechanical swap. `freshName()` builds the name of a
+generated local, and its `Variable` arm already falls back to `'value'` for a computed name; the
+`PropertyFetch` arm now does the same, which is the existing answer rather than a new one.
+
+    baseline    22 entries / 41 errors  ->  20 / 24
+
+The class complexity entry moves 2337 to 2338, which is the helper. The guidelines call a rising number
+there the cost of coverage; this one is the cost of a fix, and it is one point.
+
+#### Verification
+
+PHPStan 0, suite 944/944 — the new test is the sixteenth site's refusal message, asserted as text because the
+outcome was a refusal either way and only the message says which. Emit-all across `php`, `analyzer` and
+`linter`: 213 files each side, `diff -r` names no emitted file, which is the claim that matters here — no
+rule in the four corpus packages writes a computed property name, so nothing there ever reached these casts.

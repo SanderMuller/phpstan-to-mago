@@ -265,6 +265,26 @@ final class TranspilesToPhpTest extends TestCase
     }
 
     /**
+     * A computed property name refuses by naming the construct, not by dying in a cast.
+     *
+     * `$node->name` is `Identifier|Expr`, and sixteen comparisons in the translator read it as
+     * `(string) $node->name`. An `Identifier` has `__toString()` and an `Expr` does not, so this fixture used
+     * to surface as `Object of class PhpParser\Node\Scalar\String_ could not be converted to string` — a PHP
+     * type error where the refusal should name the shape the rule used.
+     *
+     * The assertion is the *message*, because the outcome was a refusal either way and only its text says
+     * which one. Both figures were checked by running it: the cast reaches this line, and no rule in the four
+     * corpus packages does, which is why sixteen sites carried a latent fault nothing exercised.
+     */
+    public function test_refuses_a_computed_property_name_by_naming_the_construct(): void
+    {
+        $this->expectException(Refusal::class);
+        $this->expectExceptionMessage('numeric comparison outside the vocabulary');
+
+        $this->transpile(self::RULES . '/DynamicNameComparisonRule.php');
+    }
+
+    /**
      * A loose `in_array()` is translated only where `==` and `===` cannot disagree.
      *
      * Two numeric strings compare numerically since PHP 8, so `'0' == '0.0'` holds where `===` does not. The

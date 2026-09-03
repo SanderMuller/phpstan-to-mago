@@ -3902,6 +3902,29 @@ final readonly class Translator
     }
 
     /**
+     * The written name behind a node's `name`, or null when it is computed.
+     *
+     * `$node->name` is `Identifier|Expr` on most of php-parser's nodes, and `(string) $node->name` reads as a
+     * safe way to compare it. It is not: an `Identifier` has `__toString()` and an `Expr` does not, so a rule
+     * written with a dynamic name kills the cast. `$node->{'value'}` in a numeric comparison is enough, and
+     * what reached the terminal was
+     *
+     *     REFUSE  Object of class PhpParser\Node\Scalar\String_ could not be converted to string
+     *
+     * — a PHP type error where the refusal should have named the construct. Sixteen sites cast this way and
+     * now ask instead; a computed name answers null, fails whatever comparison follows, and reaches the
+     * refusal the vocabulary meant to raise.
+     *
+     * Only those sixteen. Nine more casts in this file sit where the name is already known to be an
+     * `Identifier`, and converting them too made six call sites take a `?string` they cannot use — measured,
+     * by doing it and reading the errors.
+     */
+    private static function identifierName(mixed $name): ?string
+    {
+        return $name instanceof Identifier ? $name->toString() : null;
+    }
+
+    /**
      * A descriptor read as the string a name-taking `Support` helper expects.
      *
      * The name a rule hands `hasFunction()` is usually the call's own name *node*, and the helpers take the
@@ -6441,7 +6464,10 @@ final readonly class Translator
 
     private function freshName(Expr $subject, string $kind): string
     {
-        $base = $subject instanceof PropertyFetch ? (string) $subject->name
+        // `'value'` for a computed name, which is what the `Variable` arm beside it already does for the
+        // same reason: this is the name of a generated local, so it has to be *a* name rather than the
+        // node's own.
+        $base = $subject instanceof PropertyFetch ? (self::identifierName($subject->name) ?? 'value')
             : ($subject instanceof Variable && is_string($subject->name) ? $subject->name : 'value');
 
         $short = substr($kind, (int) strrpos('\\' . $kind, '\\'));
@@ -7307,7 +7333,7 @@ final readonly class Translator
     private function takeMessage(Expr $chain): void
     {
         while ($chain instanceof MethodCall) {
-            if ((string) $chain->name === 'identifier' && count($chain->getArgs()) === 1) {
+            if (self::identifierName($chain->name) === 'identifier' && count($chain->getArgs()) === 1) {
                 // Reset first: a rule that reports several things may compute one code and write the next as a
                 // literal, and a flag that only ever turns on left the literal unquoted — a plugin naming an
                 // undefined constant. `interpolatedIdentifier()` turns it back on when it applies.
@@ -7328,7 +7354,7 @@ final readonly class Translator
             // `->line($classMethod->getLine())` moves the finding off the node the hook fired for and onto the
             // member the rule is really talking about. A rule looping a class-like's methods reports one finding
             // per method, and every one of them would otherwise land on the class's own line.
-            if ((string) $chain->name === 'line' && count($chain->getArgs()) === 1) {
+            if (self::identifierName($chain->name) === 'line' && count($chain->getArgs()) === 1) {
                 $this->context->anchor = $this->reportAnchor($chain->getArgs()[0]->value, $chain->getStartLine());
                 $this->context->anchorNeedsLoop = $this->context->inLoop;
             }
@@ -7336,7 +7362,7 @@ final readonly class Translator
             $chain = $chain->var;
         }
 
-        if (! $chain instanceof StaticCall || (string) $chain->name !== 'message') {
+        if (! $chain instanceof StaticCall || self::identifierName($chain->name) !== 'message') {
             throw new Refusal('error builder chain does not start with message()', $chain->getStartLine());
         }
 
@@ -7772,7 +7798,7 @@ final readonly class Translator
         // type could come from. Once any sub-expression can be asked about, the lie emits a helper call with
         // the node where the type belongs — and `getRequirements()` never learns a type was wanted.
         if ($value instanceof MethodCall
-            && (string) $value->name === 'getType'
+            && self::identifierName($value->name) === 'getType'
             && $value->var instanceof Variable
             && $value->var->name === 'scope'
             && count($value->getArgs()) === 1
@@ -7789,7 +7815,7 @@ final readonly class Translator
         // the way PHP does. Binding a descriptor that pretends to be a reflection would put a second
         // spelling of the same lookup in the emitted plugin.
         if ($value instanceof MethodCall
-            && (string) $value->name === 'getConstant'
+            && self::identifierName($value->name) === 'getConstant'
             && count($value->getArgs()) === 2
             && $value->var instanceof PropertyFetch
             && ($this->context->injected[$this->memberName($value->var->name, $line)] ?? null) === 'reflectionProvider'
@@ -7810,7 +7836,7 @@ final readonly class Translator
 
         // $x = $scope->getClassReflection()
         if ($value instanceof MethodCall
-            && (string) $value->name === 'getClassReflection'
+            && self::identifierName($value->name) === 'getClassReflection'
             && $value->var instanceof Variable
             && $value->var->name === 'scope'
         ) {
@@ -7833,7 +7859,7 @@ final readonly class Translator
         }
 
         // $x = $node->getArgs()
-        if ($value instanceof MethodCall && (string) $value->name === 'getArgs') {
+        if ($value instanceof MethodCall && self::identifierName($value->name) === 'getArgs') {
             $this->context->locals[$name] = Transpiler::$target === 'php'
                 ? ['rust' => $this->argListPath($line), 'kind' => 'args', 'php' => $this->argListPath($line)]
                 : ['rust' => $this->argListPath($line), 'kind' => 'args'];
@@ -7889,7 +7915,7 @@ final readonly class Translator
 
         // $x = <expr>->value  (unwrap an Arg node)
         if ($value instanceof PropertyFetch
-            && (string) $value->name === 'value'
+            && self::identifierName($value->name) === 'value'
             && $value->var instanceof Variable
             && ($this->context->locals[$value->var->name]['kind'] ?? null) === 'arg'
         ) {
@@ -7910,7 +7936,7 @@ final readonly class Translator
         }
 
         // $x = $node->name->toString()  (a string local, compared against literals later)
-        if ($value instanceof MethodCall && (string) $value->name === 'toString') {
+        if ($value instanceof MethodCall && self::identifierName($value->name) === 'toString') {
             $subject = $this->resolve($value->var, $line);
             $this->context->locals[$name] = ['rust' => $subject['rust'], 'kind' => $subject['kind'], 'key' => $subject['key'] ?? ''];
             if (isset($subject['php'])) {
@@ -8017,7 +8043,7 @@ final readonly class Translator
     private function argIndexOf(Expr $value): ?array
     {
         $unwrapped = false;
-        if ($value instanceof PropertyFetch && (string) $value->name === 'value') {
+        if ($value instanceof PropertyFetch && self::identifierName($value->name) === 'value') {
             $inner = $value->var;
             if ($inner instanceof ArrayDimFetch) {
                 $value = $inner;
@@ -8032,7 +8058,7 @@ final readonly class Translator
         // The list, so the caller knows *whose* arguments these are: a rule reads `$methodCall->getArgs()[0]` of a
         // call it found, and the hook's own node is not that call.
         $container = $value->var;
-        if ($container instanceof MethodCall && (string) $container->name === 'getArgs') {
+        if ($container instanceof MethodCall && self::identifierName($container->name) === 'getArgs') {
             return [$value->dim->value, $unwrapped, $this->resolve($container, $container->getStartLine())];
         }
 
@@ -9600,7 +9626,7 @@ final readonly class Translator
 
         if ($name === 'is_string' && count($args) === 1) {
             $target = $args[0]->value;
-            if ($target instanceof PropertyFetch && (string) $target->name === 'name') {
+            if ($target instanceof PropertyFetch && self::identifierName($target->name) === 'name') {
                 $subject = $this->resolve($target->var, $expr->getStartLine());
 
                 return Transpiler::$target === 'php'
@@ -9927,7 +9953,7 @@ final readonly class Translator
         }
 
         // <name>->toString() === 'literal'   /   <string local> === 'literal'
-        if ($left instanceof MethodCall && (string) $left->name === 'toString') {
+        if ($left instanceof MethodCall && self::identifierName($left->name) === 'toString') {
             return $this->nameEquals($this->resolve($left->var, $line), $this->stringLiteral($right, $line), $line);
         }
 
@@ -9945,7 +9971,7 @@ final readonly class Translator
             return $this->nameEquals($this->resolve($left->var, $line), $this->stringLiteral($right, $line), $line, true);
         }
 
-        if ($left instanceof PropertyFetch && (string) $left->name === 'name') {
+        if ($left instanceof PropertyFetch && self::identifierName($left->name) === 'name') {
             $subject = $this->resolve($left->var, $line);
             $literal = $this->stringLiteral($right, $line);
             if (Transpiler::$target === 'php') {
@@ -10054,7 +10080,7 @@ final readonly class Translator
             return $numeric[0] . ' ' . $operator . ' ' . $numeric[1];
         }
 
-        if (! $left instanceof PropertyFetch || (string) $left->name !== 'value') {
+        if (! $left instanceof PropertyFetch || self::identifierName($left->name) !== 'value') {
             throw new Refusal('numeric comparison outside the vocabulary', $expr->getStartLine());
         }
 
