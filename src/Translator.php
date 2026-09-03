@@ -8676,15 +8676,24 @@ final readonly class Translator
             throw new Refusal("instanceof {$wanted} on a member selector", $expr->getStartLine());
         }
 
-        // `$node->name instanceof Identifier` on the class-like under analysis asks whether it is named. Mago makes
-        // an anonymous class a separate node kind, so this hook only ever fires for a named one — the same
-        // reasoning that makes `isAnonymous()` unreachable here.
+        // `$node->name instanceof Identifier` on the class-like under analysis asks whether it is named, and
+        // an anonymous class is the one that is not. This folded to always-true while the class hook could
+        // not fire for one; it registers `AnonymousClass` now, so the question is real and the node's own kind
+        // answers it — the same move `isAnonymous()` made, and this comment used to cite that fold as its
+        // reason.
         if ($wanted === Identifier::class
             && ($subject['key'] ?? null) === '$node->name'
             && in_array($this->context->nodeKind, self::CLASS_LIKE_HOOK_KINDS, true)
         ) {
-            return $this->alwaysHolds(
-                'an anonymous class is a separate node kind, so this hook only fires for a named class-like',
+            if (Transpiler::$target !== 'php') {
+                return $this->alwaysHolds(
+                    'the Rust class hook fires for a named class-like only, so a declaration here always has a name',
+                );
+            }
+
+            return '! ' . $this->context->backend->call(
+                'declaration_kind_is',
+                ['$context', '$node', $this->context->backend->bytes('AnonymousClass')],
             );
         }
 
@@ -9300,7 +9309,9 @@ final readonly class Translator
 
             return match ($method) {
                 'isClass' => $this->classHookIsClass(),
-                'isAnonymous' => $this->unreachable('an anonymous class is a separate node kind, so the class declaration hook never fires for one'),
+                // Once the class hook registers `AnonymousClass` this is a real question, and the node's own
+                // kind answers it. It was folded to unreachable while the hook could not fire for one.
+                'isAnonymous' => $this->declarationKindIs('AnonymousClass', 'an anonymous class'),
                 // A trait is never a target: PHPStan's `InClassNode` does not fire for one either, so the
                 // question is settled whichever breadth the rule got.
                 'isTrait' => $this->unreachable('no declaration hook fires for a trait, which InClassNode does not visit either'),
@@ -12229,7 +12240,7 @@ final readonly class Translator
      * definition has one. `Function`, `Closure` and `ArrowFunction` are absent because those genuinely may sit
      * outside a class, and folding the check there would drop a guard the rule needs.
      */
-    private const array HOOK_KINDS_ALWAYS_IN_A_CLASS = ['Class', 'Interface', 'Trait', 'Enum', 'Method'];
+    private const array HOOK_KINDS_ALWAYS_IN_A_CLASS = ['Class', 'Interface', 'Trait', 'Enum', 'Method', 'AnonymousClass'];
 
     /** Node predicates only the PHP runtime carries; the Rust backends have no counterpart. */
     private const array PHP_ONLY_PREDICATES = [

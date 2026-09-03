@@ -369,11 +369,9 @@ final class EmittedRuleFiresTest extends TestCase
     {
         $proven = [
             'Mago parses `f(...)` as a partial application, which never reaches a call hook',
-            'an anonymous class is a separate node kind, so the class declaration hook never fires for one',
             // Same proof, one hook wider: `ExplicitClassPrefixSuffixRule` registers all four class-like kinds,
             // and `NodeKind::AnonymousClass` is none of them. `GoodNames.php` holds one, so the silence is
             // measured rather than argued.
-            'an anonymous class is a separate node kind, so this hook only fires for a named class-like',
             'the class declaration hook fires for classes, never for an interface',
             'a class-like found by a subtree search is always named: Mago models an anonymous class as its own '
             . 'node kind, which a search for classes, interfaces, traits and enums never returns',

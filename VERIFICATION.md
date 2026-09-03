@@ -4430,3 +4430,68 @@ loss, and shipping them with a broken fold would be worse than either.
 
 Reverted, measured, and left here so the next attempt starts from the dependency rather than from the
 symptom.
+
+### Registering the anonymous class, once the folds it invalidates are answered
+
+The previous commit stopped at the dependency: `NoProtectedClassStmtRule` misses 5 protected members inside
+the anonymous classes Laravel's casts return, and registering `NodeKind::AnonymousClass` breaks folds that
+rest on the hook never seeing one. This is that work done in order.
+
+**The blocker was smaller than it looked.** The regression the previous attempt measured —
+`NoMissingSpaceInClassAnnotationRule` and `AttributeRequiresPhpVersionRule` moving to `REFUSE` with `null
+comparison against Expr_Variable, which resolved to a class-reflection` — traces to
+`everyHookKindIsInAClass()`, which walks the target set against `HOOK_KINDS_ALWAYS_IN_A_CLASS`. That list
+lacked `AnonymousClass`, and an anonymous class **is** a class-like: a hook firing on one always carries a
+class reflection. One line, and correct on its own terms rather than as a workaround.
+
+Four changes, in the order the dependencies allow:
+
+| change | why it is right, not just necessary |
+|:--|:--|
+| `HOOK_KINDS_ALWAYS_IN_A_CLASS` gains the kind | a hook on an anonymous class is in a class-like |
+| `isAnonymous()` stops being `unreachable()` | it is a real question once the hook can fire on one, answered from the node's kind |
+| `$node->name instanceof Identifier` stops folding to true | asking whether the declaration is named is exactly the question, and an anonymous class is the one that is not |
+| `Emitter::targets()` gains the kind for `classOnly` | `InClassNode` fires there, so the plugin has to |
+
+The third was found by its own comment. It folded to always-true citing "the same reasoning that makes
+`isAnonymous()` unreachable here" — the assumption I had just removed. A fold that names what it rests on is
+a fold that can be found again.
+
+`Declares::declarationKindIs()` answers `Class` for an anonymous one, because the two questions behind it —
+php-parser's `instanceof Stmt\Class_` and `ClassReflection::isClass()` — are both true of one. `AnonymousClass`
+stays the narrow question, which is what `isAnonymous()` now compiles to.
+
+#### Measured, not assumed, at three widths
+
+The change alters the target list of **20 emitted rules**, so the question is not only whether the five
+appear but whether anything else moved.
+
+    Casts directory only        noProtectedClassStmt   agree 7    only-orig 0   only-port 0
+    Support + Database, before  noProtectedClassStmt   agree 966  only-orig 5   only-port 0
+    Support + Database, after   noProtectedClassStmt   absent from the divergence list — 971 agree
+
+    Support + Database totals   before  agree 7592, only-original 407, only-port 551
+                                after   agree 7597, only-original 402, only-port 551
+
+Every other identifier is unchanged, and `only-port` is *identical* — the 20 retargeted rules produce no new
+finding anywhere on that corpus. The census does not move either: no rule changes outcome.
+
+The emitted diff is 21 files: 20 target lists, plus the rules that asked `isAnonymous()` and had the guard
+dropped, which now emit a real one. The reviewed snapshot for `CompoundClassGuardRule` failed on its target
+list and is updated, because the hook has to fire where PHPStan's does. Two allowlist entries in
+`test_every_dropped_guard_names_why_it_cannot_hold` named folds that no longer exist and are removed; the two
+that remain are about `SEARCHABLE` and the `ClassLike` hook row, neither of which this commit touches.
+
+#### What is deliberately not in this commit
+
+`HOOK_KINDS[ClassLike]` still registers four kinds. The same argument applies to it — php-parser's `ClassLike`
+covers an anonymous class — but that row reaches a different set of rules and would need its own measurement.
+`ExplicitClassPrefixSuffixRule`'s silence on an anonymous class is still asserted by name in the dropped-guard
+allowlist, and it stays true.
+
+#### Verification
+
+Suite 930/930, fires gate green with a new `BadInsideAnonymousClass.php` pair whose three findings both
+engines report. Mutation: without the target-list line the port loses all three and the pair fails. PHPStan 0
+errors — `Translator` moves 2335 to 2337 and `instanceofPredicate()` 114 to 116, both already-baselined
+entries with no new one.

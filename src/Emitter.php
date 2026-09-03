@@ -145,7 +145,7 @@ final readonly class Emitter
         $kind = (string) $hook['kind'];
 
         return ($hook['classOnly'] ?? false) === true
-            ? [$kind, 'Enum', 'Interface']
+            ? [$kind, 'Enum', 'Interface', 'AnonymousClass']
             : [$kind];
     }
 

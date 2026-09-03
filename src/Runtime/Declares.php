@@ -33,8 +33,18 @@ final class Declares
     public static function declarationKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool
     {
         $node = Tree::node($subject);
+        if (! $node instanceof Node) {
+            return false;
+        }
 
-        return $node instanceof Node && $node->kind->value === $kind;
+        // `Class` answers for an anonymous one too, because the questions behind it are php-parser's
+        // `instanceof Stmt\Class_` and PHPStan's `ClassReflection::isClass()`, and an anonymous class is a
+        // `Stmt\Class_` with a null name in the first and not an interface, trait or enum in the second.
+        // Mago gives it a kind of its own, so comparing the kind text alone answered no and every rule
+        // narrowing to a class fell silent inside `new class { .. }`. Asking for `AnonymousClass` is still the
+        // narrow question, which is what `isAnonymous()` translates to.
+        return $node->kind->value === $kind
+            || ($kind === 'Class' && $node->kind === NodeKind::AnonymousClass);
     }
 
     /**
