@@ -5991,3 +5991,40 @@ Suite 943/943, PHPStan 0, four corpora re-run. No `src/` change and no emitted b
 divergence count moves from 29 to 28. Two other upgrades are available and are not taken here, because they
 are majors and a decision: `pestphp/pest` 4 to 5 (with `pest-plugin-arch`) and `phpunit/phpunit` 12 to 13.
 `composer outdated` also marks `mrpunyapal/rector-pest` and `symplify/phpstan-extensions` abandoned.
+
+### Re-reading the three engine-level divergences on 1.47.5, one recorded cause was wrong
+
+A divergence closed on a version bump, so the causes written for the others were worth re-measuring rather
+than assuming only the count moved. A probe plugin over the three files, printing what mago infers for each
+dynamic call's name and what `Types::typeIsCallable()` answers for it:
+
+    Connection.php     $callback()    type=array      typeIsCallable=false
+    Migrator.php       $argument()    type=string     typeIsCallable=false
+    Benchmark.php      $callback()    type=mixed      typeIsCallable=false
+
+All three still diverge, and two of the recorded causes hold: `Migrator.php` reads `string` because mago does
+not narrow on `is_callable()`, and `Benchmark.php` reads `mixed` because the closure parameter is typed only
+through `Collection::map()`'s generics.
+
+**The third was recorded imprecisely.** It said "a parenthesised `@param (\Closure(): ..)` docblock", which
+names the spelling without saying what goes wrong. The type is `array` — the closure's *return* type, not the
+closure. `Connection.php` settles it inside one file, three calls, one variable name:
+
+    :704  @param  \Closure(): TReturn  $callback                                   callable
+    :710  @param  \Closure(): TReturn  $callback                                   callable
+    :736  @param  (\Closure(): array{query: string, …}[])  $callback               array
+
+Same engine, same call shape, same file; only the parentheses differ. So mago resolves a parenthesised
+closure type to what the closure returns, and the rule's exemption then asks whether an `array` is callable
+and correctly says no. That is a mago bug rather than a port gap, and naming it that precisely is what makes
+it reportable — filing it upstream is a decision, not something to do from here.
+
+The other nine only-port findings are the trait-without-an-analysed-user divergence, which is a property of
+PHPStan's traversal rather than of mago, so a mago release cannot move them and none did.
+
+#### Verification
+
+No code change. The probe is a throwaway plugin in the scratch directory, reading `Support::expressionType()`
+and `Types::typeIsCallable()` — the same two calls the emitted rule makes, so it answers the rule's question
+rather than a similar one. The three-call comparison inside `Connection.php` is the control: two spellings
+that work and one that does not, with everything else held.
