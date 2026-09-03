@@ -6637,3 +6637,35 @@ so it is not fixable from here by hand.
 `composer qa-check` green, all five steps, run as the project runs it rather than tool by tool. The emit-all
 diff is what licenses the formatting: 213 files each side across `php`, `analyzer` and `linter`, and no
 emitted file differs.
+
+### The reformatting moved nothing the snapshots could not see
+
+The emit-all diff licensed the rector and pint pass, and it licenses exactly one thing: what the *generator*
+writes. Four of the reformatted files were `src/Runtime/` — `Types`, `TypeCoverage`, `Loops`,
+`Deprecations` — which is the code that runs *inside* an emitted plugin. No snapshot covers that, because a
+snapshot compares generated text and the runtime is a library the generated text calls.
+
+So the corpora were re-run, all five, against the reformatted tree:
+
+    nikic/php-parser/lib   1693 agree   0 / 0
+    rector/rector/src       246 agree   1 / 0
+    laravel Support+Db     7998 agree   1 / 22
+    nesbot/carbon/src      1807 agree   3 / 1
+    phpunit/phpunit/src     561 agree   0 / 0
+
+**12305 against 28, every figure identical to the run before the formatting.**
+
+The five aggregate metrics were checked separately, because `Runtime\TypeCoverage` is one of the files rector
+touched and the differential compares findings rather than totals — a metric can agree on every reported site
+and still count differently underneath:
+
+    parameters   Illuminate, 1694 files   original 17635 / port 17636   +1, the `hscan` residue
+    returns, properties, constants, declares   delta +0 on Illuminate/Database
+
+Nothing moved. That is the expected answer and it was worth the runs anyway: the suite's fires gate exercises
+the runtime for 564 rule pairs, and these five corpora exercise it over 4123 files of vendor code.
+
+#### Verification
+
+No code change. Five differential runs and five coverage runs, each compared against the figure recorded for
+it earlier in this file rather than against a memory of it.
