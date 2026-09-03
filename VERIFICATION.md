@@ -5464,3 +5464,57 @@ Suite 939/939, PHPStan 0 with no new baseline entry, pint clean. Emit-all across
 `linter`: 213 files each side, no emitted file differing — only the `--out` path in four snippets, as a
 Runtime change should be. Mutation-checked: putting `methodExists()` back fails exactly the new line of
 `BadArrayCallable.php` and nothing else in 564 gate cases. Four corpora unchanged at 11744 against 29.
+
+### The linter target had no check at all, and a mutation shows the whole suite misses it
+
+The guidelines have named this since they were written: "The test suite runs the PHP target only, so the
+analyzer and linter branches have no check in it", with the standing answer being to emit all three targets
+by hand and `diff -r` after every step. That works, and it is not a check — it runs when someone remembers to
+run it. Every step in this session has done it manually.
+
+Half of it was already automated and nobody had said so: `TranspilesToRustTest` pins three `analyzer`
+snapshots. The `linter` target had none.
+
+The two Rust targets share the body and nothing else. For the same rule the analyzer emits a `Provider` and a
+hook method; the linter emits a `LintRule` with its own config struct, a `RuleMeta`, a `targets()` and a
+`check()` that destructures the node kind first. So a body change shows in both and a scaffold change shows
+in one — which is exactly the shape a shared snapshot cannot cover.
+
+`tests/Fixtures/expected-lint` now holds the same three rules the analyzer test pins, byte-identical to what
+the CLI writes (checked against the emit-all tree rather than assumed), and `TranspilesToLintTest` compares
+them.
+
+#### Sized by mutation, in two directions
+
+The obvious mutation is the one the guidelines quote — `$reportSpan`'s `with_message("here")`. It fails
+**both** Rust tests, so it does not size the new one: the analyzer snapshots already caught it.
+
+The mutation that does is linter-only. Changing `Category::BestPractices` to `Category::Correctness` in the
+linter scaffold:
+
+    the whole suite minus this test    939 tests, 939 passed
+    this test alone                    4 tests, 3 failed
+
+**A 939-test suite passes on a changed emitted byte.** That is the gap, measured rather than described, and
+it is now closed for the scaffold as well as the body.
+
+The class also asserts four properties apart from the byte comparison — that the file implements `LintRule`
+rather than `Provider`, carries a `check()`, reports under the rule's identifier, and holds no PHP outside
+the example fields. A snapshot compared only whole says nothing about *why* it is right, and updating one to
+make a run green is a single keystroke.
+
+`good_example` and `bad_example` are `"<?php\n"` in these snapshots, because the transpiler is called without
+`--examples`. That is the API path a consumer calling the class directly takes, so it is pinned rather than
+worked around.
+
+#### Verification
+
+Suite 943/943, up from 939 by the four new tests. PHPStan 0, pint clean on the new file. No `src/` change, so
+there is nothing for an emit-all diff to compare — the mutation above is the evidence, and it was reverted
+from `src/Emitter.php` by copy-restore rather than `git checkout`.
+
+`composer validate-gitattributes` fails, and it failed before this change: the managed block is missing
+`.cache/phpstan-dogfood/` and `.cache/phpstan-emitted/` that the validator expects. `.gitattributes` is
+boost-managed, so the fix belongs in the sync source rather than in the file. Not touched here, and recorded
+so the next reader does not read it as this change's doing. `tests/` is already `export-ignore`d, so the new
+fixture directory adds nothing to the published archive.
