@@ -20,10 +20,8 @@ vendor/bin/phpstan-to-mago --survey vendor/hihaho/phpstan-rules/src
                               packages ship
 ```
 
-`--help` lists the rest.
-
 Each target writes into its own subdirectory of `--out`, with a `generated/manifest.json` naming each rule's
-identifier, messages and defaults.
+identifier, messages and defaults. `--help` lists the rest.
 
 **Only the `php` target installs.** It emits a worker plus the `mago.toml` snippet registering it, against
 Mago's supported plugin API. The Rust targets emit source for the registry Mago's own bundled plugins use,
@@ -134,25 +132,25 @@ upstream drift shows up there as a diff rather than here as a stale table.
 | `phpstan/phpstan-phpunit` | 13 | 4 | 9 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-That is 99 of the 169 portable rules: the ones each package registers, minus three that report nothing a
-plugin could carry. `--status` counts whatever *your* project installed instead.
+`--status` counts 99 of 209 here. The table is the seven packages that emit anything;
+`spaze/phpstan-disallowed-calls` (38) and `composer/pcre` (2) are in the denominator and not the table. Run
+it on your own project for its figure.
 
 <details>
 <summary>What the vocabulary covers</summary>
 
 Guard chains, `foreach` with an inline report, `sprintf` messages, `instanceof` narrowing, membership in a
 constant set, comparisons on strings and integers, closures with their declared types, and a subtree search
-with its count. The larger pieces:
+with its count. Larger pieces:
 
 - Helpers inlined from the rule, a trait or a parent class.
-- The enclosing class: hierarchy, namespace, its methods with visibility, attributes and docblocks, and the
-  mixed member list a rule walks to ask each member what it is.
+- The enclosing class: hierarchy, namespace, methods with visibility, attributes and docblocks, and the mixed
+  member list a rule walks to ask each member what it is.
 - Reflection at the use site, from Mago's codebase metadata.
 - A producer handing a `{...}` record to a consumer, including one produced inside a loop.
-- A collaborator that decides *and* builds the findings. The guards still come from the rule; only the
-  reporting becomes a runtime pass.
-- A collector-and-consumer pair. Mago has no collector, so the pair becomes one whole-project pass and the
-  *measurement* is reimplemented. Five of `type-coverage`'s metrics are mapped this way.
+- A collaborator that decides *and* builds the findings; only the reporting becomes a runtime pass.
+- A collector-and-consumer pair. Mago has no collector, so the pair becomes one whole-project pass with the
+  *measurement* reimplemented. Five of `type-coverage`'s metrics are mapped this way.
 
 </details>
 

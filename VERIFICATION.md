@@ -5741,3 +5741,41 @@ cheaper than a wrong count: it is one run of the status command away for whoever
 README 1275 words after the rewrite, trimmed to 1227 against the `readme` skill's ~1200 ceiling — prose
 only, across five sections, with no table, example or caveat cut. No code change, so nothing to emit or
 diff; PHPStan and the suite were last green at 943/943 in the previous step and this one touches neither.
+
+### The coverage denominator was the sum of the table, not what the tool says
+
+Last step published a README that left one figure unverified and said so. This step ran the check.
+
+    php bin/phpstan-to-mago --status
+
+Every per-package row matches the README exactly — symplify 59 of 89, hihaho 6 of 7, type-coverage 5 of 10,
+cognitive-complexity 2 of 3, strict-rules 22 of 45, phpunit 4 of 13, deprecation-rules 1 of 2. The total does
+not:
+
+    runs: 99 of 209 portable rules (target: php)
+
+The README said **99 of 169**. 169 is the sum of the table's own `portable` column, and the tool counts two
+more installed packages that the table does not list: `spaze/phpstan-disallowed-calls` at 0 of 38 and
+`composer/pcre` at 0 of 2. Forty rules in the denominator, none in the numerator.
+
+The direction matters. 99/169 is 59% and 99/209 is 47%, so the omission read in the flattering direction —
+and the sentence beside it told the reader to run `--status`, which prints the other number. A claim that
+disagrees with the command printed next to it is the easiest kind to catch and had gone unchecked anyway.
+
+#### One thing the fix does not say, because a survey and a status run disagree
+
+`spaze/phpstan-disallowed-calls` reads 0 of 38 in `--status` and **15 emitted of 38** when surveyed
+directly. Both are right and they answer different questions: the survey transpiles every rule class in the
+package, while `--status` counts the rules *this project registers*, and this project's neon includes register
+generic disallowed-call rules configured through parameters rather than the 38 classes. `composer/pcre` is 0
+either way — both its rules refuse on `instanceof FullyQualified`.
+
+So "0 of 38" is not "nothing in this package is portable", and the README does not claim it is: it says the
+two packages are in the denominator and not the table, which is the fact `--status` supports. Naming the
+survey figure there would have been the same mistake in the other direction.
+
+#### Verification
+
+README 1242 words after the correction, trimmed back to 1225 against the ~1200 ceiling — prose only, in the
+collapsed vocabulary block and three sentences elsewhere, with no table row, example or caveat removed. The
+`--status` run is the whole evidence and it is one command; no code change, nothing to emit or diff.
