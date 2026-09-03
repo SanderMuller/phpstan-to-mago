@@ -6485,3 +6485,43 @@ PHPStan 0, suite 944/944 — the new test is the sixteenth site's refusal messag
 outcome was a refusal either way and only the message says which. Emit-all across `php`, `analyzer` and
 `linter`: 213 files each side, `diff -r` names no emitted file, which is the claim that matters here — no
 rule in the four corpus packages writes a computed property name, so nothing there ever reached these casts.
+
+### A shipped PHPStan failure, and the same fatal one shape over
+
+**The last commit claimed PHPStan 0 and did not have it.** The fixture it added,
+`DynamicNameComparisonRule`, reads `$node->{'value'}` on a node with no such property — which is the point of
+the fixture — and `phpstan.neon.dist` excludes such fixtures by path. This one was not in the list, so the
+analyser reported `Access to an undefined property PhpParser\Node\Stmt\ClassConst::$value` and the commit
+went out red.
+
+The sequence is the whole lesson: PHPStan ran clean *before* the fixture existed, and after adding it only
+the test filter, the suite, the emit-all and pint were run. The guidelines say to run the command in the
+current message rather than from memory, and this is what it costs — the claim was true when it was measured
+and false when it was written. Excluded now, with the reason its siblings carry.
+
+#### The array-key errors are the cast, again
+
+Four entries at one shape, `Possibly invalid array key type PhpParser\Node\Expr|string`, all in one
+condition:
+
+    $value->var instanceof Variable
+    && ($this->context->locals[$value->var->name]['kind'] ?? null) === 'arg'
+
+`Variable::$name` is `string|Expr` — `$$x` makes it an `Expr` — and an `Expr` as an array key is
+`Illegal offset type`. Same class as the sixteen `(string) $node->name` casts a commit ago: a guard that
+reads as if it had already established a string, in a file where the idiom `instanceof Variable &&
+is_string($subject->name)` is already written three lines away.
+
+One `is_string()` in the condition clears all four, and it is the guard the neighbouring arm uses.
+
+    baseline    20 entries / 24 errors  ->  19 / 20
+
+Both complexity figures move with it — the class 2338 to 2339, `bindLocal()` 74 to 75 — which is one
+condition each.
+
+#### Verification
+
+PHPStan 0, run after every edit including the last. Suite 944/944. Emit-all across `php`, `analyzer` and
+`linter`: 213 files each side, no emitted file differs. No fixture this time: unlike the cast, a dynamic
+*variable* name inside a rule body is refused well before this line, so there is nothing to reproduce and the
+guard is the neighbouring arm's, not a new judgement.

@@ -1,13 +1,13 @@
 parameters:
 	ignoreErrors:
 		-
-			rawMessage: 'Class cognitive complexity is 2338, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 2339, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 74, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 75, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
@@ -94,12 +94,6 @@ parameters:
 			rawMessage: 'Parameter #3 $args of method Sandermuller\PhpstanToMago\Translator::inlineMethod() expects list<PhpParser\Node\Arg>, array<PhpParser\Node\Arg> given.'
 			identifier: argument.type
 			count: 2
-			path: src/Translator.php
-
-		-
-			rawMessage: Possibly invalid array key type PhpParser\Node\Expr|string.
-			identifier: offsetAccess.invalidOffset
-			count: 4
 			path: src/Translator.php
 
 		-

@@ -67,6 +67,10 @@ parameters:
         # Anchors a finding on a loop item and returns it from outside the loop. Being wrong is the fixture: it
         # proves the transpiler refuses that instead of emitting a report on whatever PHP left in the variable.
         - tests/Fixtures/Rules/AnchorEscapesLoopRule.php
+        # Reads `$node->{'value'}` on a node with no such property. Being wrong is the fixture: a computed
+        # property name is what used to kill the transpiler inside `(string) $node->name`, and no rule in the
+        # corpus writes one, so this file is the only place that reaches those sites.
+        - tests/Fixtures/Rules/DynamicNameComparisonRule.php
         # Written with `instanceof ConstantStringType`, which PHPStan deprecates in favour of
         # `Type::getConstantStrings()`. Using the deprecated form is the fixture: three corpus rules write it,
         # and the shape being translated is the `?ClassReflection` helper around it.

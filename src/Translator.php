@@ -7914,9 +7914,14 @@ final readonly class Translator
         }
 
         // $x = <expr>->value  (unwrap an Arg node)
+        // `is_string` on the variable's own name, because `Variable::$name` is `string|Expr` and `$$x`
+        // makes it an `Expr`. Using one as an array key is `Illegal offset type`, the same shape as the
+        // `(string) $node->name` casts a commit ago: a fatal that no corpus rule reaches, inside a guard
+        // that reads as if it had already established a string.
         if ($value instanceof PropertyFetch
             && self::identifierName($value->name) === 'value'
             && $value->var instanceof Variable
+            && is_string($value->var->name)
             && ($this->context->locals[$value->var->name]['kind'] ?? null) === 'arg'
         ) {
             $this->context->locals[$name] = ['rust' => $this->context->locals[$value->var->name]['rust'], 'kind' => 'expr', 'key' => $this->exprKey($value)];
