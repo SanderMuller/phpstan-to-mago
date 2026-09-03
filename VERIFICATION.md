@@ -4962,3 +4962,57 @@ missed inside anonymous classes, a return-type anchor one line out on every attr
 
 No code change. Every number is from a differential run in this session; the three sandboxes are separate and
 each run reads the consumer's own configuration on both sides.
+
+### A fourth corpus: 914 files, five divergences, three traced
+
+`nesbot/carbon/src` — chosen for idioms the other three do not have, and the tightest run yet:
+
+| corpus | files | agree | only-original | only-port |
+|:--|--:|--:|--:|--:|
+| `nesbot/carbon/src` | 914 | 1806 | 4 | 1 |
+
+**`noProtectedClassStmt`, one only-original**, at `MessageFormatterMapper.php:42` —
+`protected function transformLocale(?string $locale): ?string`. The class is
+`final class MessageFormatterMapper extends LazyMessageFormatter`, and `LazyMessageFormatter` is declared
+**twice**, in two files under `vendor/nesbot/carbon/lazy/`, each inside a conditional:
+
+    MessageFormatterMapperStrongType.php   abstract class LazyMessageFormatter implements MessageFormatterInterface
+    MessageFormatterMapperWeakType.php     abstract class LazyMessageFormatter implements ..., ChoiceMessageFormatterInterface
+                                               abstract protected function transformLocale(?string $locale): ?string;
+
+The rule skips a protected method whose name the parent declares. Only the weak-type variant declares
+`transformLocale`, so the answer depends on which declaration each engine's index kept: the port skips, so
+it has the weak-type one; PHPStan reports, so it does not. The same shape as `TokenPolyfill` two corpora
+back — one name, two conditional declarations — except these sit in separate files and the two engines
+resolve them differently rather than one of them losing a body.
+
+**`paramTypeCoverage`, two only-original**, at `TranslatorImmutable.php:24` and `:40`. The chain is
+`TranslatorImmutable extends Translator extends LazyTranslator extends AbstractTranslator`, and
+`LazyTranslator` is the same kind of doubly-declared name.
+
+**The first explanation for that pair was wrong, and it is worth writing down why.** It looked like the
+variants differing: the strong-type one implements `TranslatorStrongTypeInterface` and the weak-type one does
+not. But `AbstractTranslator` — which *both* variants extend — declares `__construct` at line 98 and
+`setLocale` at line 323, so the collector's LSP guard should find an ancestor method whichever variant is
+chosen, and both engines should skip. PHPStan does not. So the port's ancestry reaches `AbstractTranslator`
+and PHPStan's does not, and *why* PHPStan's stops is not established here. Naming the doubly-declared class
+is as far as the evidence goes.
+
+**Two entries are not traced at all**: `noDynamicName` at `Rounding.php:130` (only-original, a call through a
+variable holding a function name — the opposite direction from `Pluralizer.php`, where PHPStan was the silent
+one) and `CarbonInterval.php:3624` (only-port, `$instance->$unit`).
+
+#### Where the four corpora stand
+
+    nikic/php-parser/lib          270 files   1693 agree   0 / 0
+    rector/rector/src             489 files    246 agree   1 / 0
+    laravel Support + Database    367 files   7998 agree   1 / 448
+    nesbot/carbon/src             914 files   1806 agree   4 / 1
+
+11743 agreements against 455 divergences, and 453 of them have a written cause. The two that do not are both
+on this corpus and both named above.
+
+#### Verification
+
+No code change. Every number is from a differential run in this session, each in its own sandbox and reading
+the consumer's configuration on both sides.
