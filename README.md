@@ -22,8 +22,8 @@ vendor/bin/phpstan-to-mago --survey vendor/hihaho/phpstan-rules/src
 
 `--help` lists the rest.
 
-Each target writes into its own subdirectory of `--out`, plus a `generated/manifest.json` naming each rule's
-identifier, message formats and constructor defaults.
+Each target writes into its own subdirectory of `--out`, with a `generated/manifest.json` naming each rule's
+identifier, messages and defaults.
 
 **Only the `php` target installs.** It emits a worker plus the `mago.toml` snippet that registers it, against
 Mago's supported plugin API. The two Rust targets emit source for the registry Mago's own bundled plugins
@@ -169,8 +169,8 @@ Per-rule agreement is gated: for each emitted rule CI runs the real `mago` binar
 the same two files and compares line and message. A rule that emits and reports nothing fails.
 
 Corpus-scale agreement is not proven. [VERIFICATION.md](VERIFICATION.md) has the differential runs, their
-traced gaps, and the defects they found — four in the last round, across `nikic/php-parser` and
-`laravel/framework`. A 9199-file Symfony application runs at 1901 agreeing, 0 either way.
+traced gaps, and the defects they found — four in the last round. Its closest reading is 367 Laravel files at
+7996 agreeing, 3 only the original reports, and six entries with no traced cause.
 
 ## Performance
 
