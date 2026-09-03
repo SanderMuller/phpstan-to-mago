@@ -4495,3 +4495,36 @@ Suite 930/930, fires gate green with a new `BadInsideAnonymousClass.php` pair wh
 engines report. Mutation: without the target-list line the port loses all three and the pair fails. PHPStan 0
 errors — `Translator` moves 2335 to 2337 and `instanceofPredicate()` 114 to 116, both already-baselined
 entries with no new one.
+
+### The `ClassLike` hook row, measured and not shipped
+
+The previous commit left this open: `HOOK_KINDS[ClassLike]` registers four kinds where php-parser's
+`ClassLike` covers five, and the same faithfulness argument applies. It was built and then dropped, because
+the argument for it turned out to rest on a claim that is false.
+
+Registering the kind reaches exactly **one** rule. The first measurement said three —
+`NoAbstractControllerConstructorRule` and `NoControllerMethodInjectionRule` also gained a real
+`$node->name instanceof Identifier` guard — but that was a stale baseline: those two got it from the previous
+commit's fold change, and the tree I diffed against predated it. Rebuilding the baseline from the committed
+state leaves `ExplicitClassPrefixSuffixRule`'s target list, and nothing else.
+
+**The justification was that registering makes the name guard load-bearing rather than decorative.** That is
+testable, so it was tested: neuter the guard in the runtime and the example holding an anonymous class should
+report. It does not. The rule proceeds past the guard, reaches the class branch, and still reports nothing.
+
+Tracing why corrected a comment that has been in the good example since the guard was dropped. It claimed the
+port "would report the missing Abstract prefix if the hook ever fired". It would not — an anonymous class
+cannot be abstract, since `new abstract class` is a syntax error, so the prefix branch never applies, and an
+anonymous class's empty name ends with none of the suffixes the rule looks for.
+
+So the silence there is over-determined three ways: the hook does not fire, the guard would stop it, and no
+branch matches an unnamed non-abstract class. Registering the kind changes no finding on any corpus, and no
+example can distinguish it from not registering. Under "the emitted output is the contract" that is not
+enough to change 21 emitted bytes for.
+
+Reverted. The example's comment and the dropped-guard allowlist now say what the silence proves — an outcome,
+not a mechanism — so the next reader does not build the same argument on it.
+
+#### Verification
+
+No behaviour change: two comments. Suite 930/930, PHPStan 0, emit-all unchanged.
