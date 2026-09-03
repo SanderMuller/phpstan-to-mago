@@ -5779,3 +5779,46 @@ survey figure there would have been the same mistake in the other direction.
 README 1242 words after the correction, trimmed back to 1225 against the ~1200 ceiling — prose only, in the
 collapsed vocabulary block and three sentences elsewhere, with no table row, example or caveat removed. The
 `--status` run is the whole evidence and it is one command; no code change, nothing to emit or diff.
+
+### Two rule packages a checkout has and the census never looked at
+
+`--status` counting 209 where the census counts 190 raised the question the last step did not ask: what is in
+the difference. Forty rules in two packages, and the census's own header called itself "one line per rule in
+the packages this repository installs", which those two are.
+
+They are there for different reasons, and both were traced rather than assumed:
+
+- `spaze/phpstan-disallowed-calls` is a direct dev dependency — `composer why` says
+  `sandermuller/phpstan-to-mago dev-main requires (for development)` — and `phpstan.neon.dist` includes three
+  of its neons. This project runs it on itself.
+- `composer/pcre` ships two rules and is here for none of that: `composer why` says
+  `composer/xdebug-handler 3.0.5 requires composer/pcre`.
+
+**The first draft of this correction got that wrong**, and the wrongness is the ordinary kind: it said both
+packages are "installed for this project to run on itself", which is true of one and invented for the other.
+Two `composer why` calls settled it, and the sentence had already been written before either was run.
+
+#### What is behind the difference, sized rather than adopted
+
+    php bin/phpstan-to-mago --survey vendor/spaze/phpstan-disallowed-calls/src
+    emitted: 15, refused: 23 (target: php)
+
+    php bin/phpstan-to-mago --survey vendor/composer/pcre/src
+    emitted: 0, refused: 2 (target: php)     both on `instanceof FullyQualified`
+
+So 15 rules translate today and no census line watches them. Adding a corpus package is a decision the
+guidelines describe as deliberate — a dev dependency installed so CI resolves what a contributor does — so
+the census now says where the line is instead of moving it.
+
+**`--status` and `--survey` disagree about spaze on purpose, and the census header does not repeat the
+figure.** `--status` reads 0 of 38 because it counts what this project *registers*, and this project's neons
+register generic configured rules rather than those classes; the survey transpiles every class in the
+package. Both answers are right for their own question, which is why the header quotes the survey and names
+it as one.
+
+#### Verification
+
+Suite 943/943, PHPStan 0, pint clean. The census's own alarm did the work: every edit to the header failed
+`TracksUpstreamDriftTest` with the diff, and the file was replaced from the `.actual` beside it each time —
+three times, because the first draft was wrong about `composer/pcre` and the second needed a paragraph break.
+No rule line moved in any of them, which is the check that this is a header change and not a corpus change.
