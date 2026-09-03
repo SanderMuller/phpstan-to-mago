@@ -4877,3 +4877,51 @@ a package. No census line moves and no count moves.
 
 That leaves **one** entry on the Laravel run with no cause written down: `noDynamicName`'s single
 only-original.
+
+### The last entry: a destructuring reassignment the two engines type differently
+
+`noDynamicName`'s single only-original finding, at `QueueFake.php:214`:
+
+    $this->assertPushed($job, function ($job, $pushedQueue) use ($callback, $queue) {
+        ...
+        return $callback ? $callback(...func_get_args()) : true;
+    });
+
+`$callback` is `@param callable|null` and then reassigned in a list destructuring —
+`[$job, $callback] = [$this->firstClosureParameterType($job), $job]` — inside an `instanceof Closure`
+branch, and captured by the closure below.
+
+**Reduced to a 27-line file that reproduces it**, and then asked of each engine rather than reasoned about,
+because reasoning got it wrong twice: first I predicted PHPStan would find the type callable and skip, then
+that its union would carry `Closure` rather than `string`.
+
+| | type for `$callback` at the call | callable? |
+|:--|:--|:--|
+| PHPStan, `dumpType()` | `(callable(): mixed)\|string\|null` | no — `isCallable()->yes()` fails, so it reports |
+| mago, atomics | `CallableType\|NamedObjectType` | yes — the port skips |
+
+PHPStan keeps a `string` alternative through the destructuring; mago does not, and what it keeps is callable
+throughout. The rule's guard is `isClosureOrCallableType()`, so each engine answers its own type truthfully
+and they disagree about the type.
+
+Not closable in the port. `Types::typeIsCallable()` matches `Type::isCallable()->yes()` on every outcome —
+that was traced two commits ago — so the port asks the right question and gets a truthful answer about a
+narrower inference.
+
+#### Every entry on that run now has a cause
+
+    paramTypeCoverage    423 only-port   the reflection-extension over-count, at a 1.11% ceiling
+    noDynamicName         15 only-port   9 unused traits, 6 places mago's inference stops short
+    staticConstFetch       7 only-port   unused traits, one through a trait-to-trait chain
+    noClassReflection...   3 only-port   unused traits
+    noDynamicName          1 only-orig   this one
+
+Nothing on a 367-file corpus is unexplained. Four of the causes are recorded divergences, one is a measured
+ceiling, and the rest are places mago's type inference reaches differently from PHPStan's — in both
+directions, which is worth saying: `Pluralizer.php` is mago inferring less than PHPStan and `QueueFake.php`
+is mago inferring more.
+
+#### Verification
+
+No code change. Both types above are dumped output, not readings of the source; the reduction that produced
+them is a file PHPStan reports on and the port does not.
