@@ -5608,3 +5608,40 @@ Suite 943/943, PHPStan 0. Six mutations, each reverted by copy-restore before th
 it. The sync was run deliberately and its diff read line by line before committing — `wrote=2, unchanged=83,
 deleted=0`, and the diff in each generated file is the one paragraph. That check is not ceremony: a sync run
 by a composer hook once deleted and regenerated both files inside an unrelated commit.
+
+### Four more stale numbers in the guidelines, and one that was right
+
+The last step found a guideline paragraph carrying two false claims, so this one checked the rest of the
+figures in `.ai/guidelines/`. Each is a `grep` away, which is the whole point.
+
+| claim                                              | measured                        |
+|:--|:--|
+| baseline holds **33** entries                      | 32 (`grep -c 'identifier:'`)    |
+| covering **58** errors                             | 58 — right                      |
+| `Translator` scores **1827**                       | 2337                            |
+| `Transpiler` **169**                               | 192                             |
+| `Support` is a facade over **eleven** classes      | the paragraph then lists twelve, and `src/Runtime` holds 38 files |
+| census covers **129** rules in **four** packages   | 190 rules across seven          |
+
+The error count being right is the ordinary case and the reason this kind of drift survives: staleness
+arrives one figure at a time, so a paragraph half-checked reads as checked. The complexity figures are the
+sharpest of them — the guideline's own next sentence says a rising number there is the cost of coverage
+rather than a regression, which is exactly why nobody re-read the numbers while they rose by 28% and 14%.
+
+The `eleven`/twelve mismatch was internal to one sentence and had nothing to do with time: the list beside
+the number has always had twelve names in it.
+
+Where a figure will go stale again the correction prints the command beside it rather than a fresher number
+— the entry and error counts, `ls src/Runtime`, the baseline's own `complexity.classLike` entries, and the
+census's own version list. `phpstan-baseline.neon` is not gitignored, so all of these are answerable from a
+checkout without running anything.
+
+One claim in `dependencies.md` was checked and holds: `rector/type-perfect` is still absent from
+`composer.json`.
+
+#### Verification
+
+No code change. `composer sync-ai` reported `wrote=2, unchanged=83, deleted=0`, and the diff in `CLAUDE.md`
+and `AGENTS.md` is the six edited paragraphs and nothing else — read line by line, because a sync run by a
+composer hook once swallowed 429 lines into an unrelated commit. Suite and analysis untouched by a
+documentation-only change; the last full run in this session was 943/943 with PHPStan at 0.

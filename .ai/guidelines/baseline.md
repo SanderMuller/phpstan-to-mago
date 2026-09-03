@@ -4,23 +4,33 @@
 from 559 by installing the Mago SDK so the runtime type-checks, replacing 92 calls to php-parser's deprecated
 `getLine()`, typing the vocabulary tables and the descriptor shape everything flows through, extracting
 `ExampleReader`, splitting the worst predicate method, and splitting the runtime into twelve classes. It now
-holds 33 entries covering 58 errors.
+holds 32 entries covering 58 errors.
 
 Prefer emptying it over adding to it. Check the current figure rather than quoting this one — a number in a
-guideline goes stale, and the file is one command away.
+guideline goes stale, and the file is one command away:
+
+    grep -c 'identifier:' phpstan-baseline.neon
+    grep -o 'count: [0-9]*' phpstan-baseline.neon | awk '{s+=$2} END {print s}'
+
+The entry count above had gone stale — it read 33 — before anyone ran those, which is the argument for
+printing the command beside a number rather than trusting the number. The error count was still right, and
+that is the ordinary case: staleness arrives one figure at a time, so a paragraph half-checked reads as
+checked.
 
 ## What remains is two classes, and only one of them can be split further
 
-`Translator` scores 1827 against a limit of 80 and `Transpiler` 169. Those are the only two. Each grows with
+`Translator` scores 2337 against a limit of 80 and `Transpiler` 192 — read off the baseline's own
+`complexity.classLike` entries, which are the two that exist. Those are the only two. Each grows with
 every rule shape the vocabulary learns, so a rising number there is the cost of coverage rather than a
 regression — what matters is that no *new* entry appears. Splitting methods inside a class does not move its
 number, because the class total is roughly the sum of its methods.
 
 ### The runtime is out of the baseline, and how it got there transfers
 
-`Runtime\Support` was 448. It is now a facade of one-line delegations over eleven classes — `Tree` for the
-navigation primitives, then `Calls`, `Declares`, `Members`, `Names`, `Inheritance`, `Attributes`,
-`Constants`, `Hints`, `Text`, `Types` and `Reflect` — and every one is under the limit.
+`Runtime\Support` was 448. It is now a facade of one-line delegations over the classes beside it — `Tree`
+held the navigation primitives first, then `Calls`, `Declares`, `Members`, `Names`, `Inheritance`,
+`Attributes`, `Constants`, `Hints`, `Text`, `Types` and `Reflect`, and the split has kept going since: `ls
+src/Runtime` is the count, and none of them is in the baseline, which is what "under the limit" means here.
 
 Three things made that work, and they apply to the next split as much as they did to this one:
 
@@ -36,8 +46,9 @@ Three things made that work, and they apply to the next split as much as they di
 The four jobs `Transpiler` used to do are now three classes. `TranslationContext` holds the mutable state they
 share (`$locals`, `$lines`, `$indent`, `$refinements`, `$nodeKind` and sixty-five more), `Emitter` turns
 finished state into a file, and `Translator` does the translating. `Transpiler` orchestrates. Splitting a
-class over the limit into two leaves two over it: 1961 became 169 plus 1792, and the sum is conserved by
-construction.
+class over the limit into two leaves two over it: 1961 became 169 plus 1792 at the time, and the sum is
+conserved by construction. Both halves have grown with coverage since — see the figures above — which is
+the point rather than a contradiction.
 
 ### The fourth boundary is a design change, not a move
 
