@@ -7100,3 +7100,74 @@ Four full benchmark tables, two per version, alternating 2.2.13 / 2.2.12 / 2.2.1
 session cannot align with the version. Each row best-of-three with its wall spread printed. `composer.lock`
 is gitignored here, so the installed version is not tracked and CI resolves 2.2.13 on its own; the local tree
 was returned to 2.2.13 after the last control run, checked with `phpstan --version` rather than assumed.
+
+### The unmapped tail does not cluster on PHPStan's interfaces
+
+A peer session ranked the remaining coverage work and asked one question worth a query: do the unmapped
+methods cluster by declaring class? If most sit on `Scope`, `ClassReflection` or `Type`, mapping an
+interface's surface systematically beats per-method work and the ceiling changes shape.
+
+It does not. Every method call named in a census `needs:` line, by receiver:
+
+    collaborator ($this->x->)   17
+    $scope->                     7
+    $node->                      6
+
+Seventeen of thirty are on **collaborators a rule package wrote for itself** — `$this->standard->
+prettyPrintExpr()` (php-parser's printer, 3), `$this->reflectionProvider->getFunction()` (3),
+`$this->classConstructorTypesResolver->resolveClassConstructorNamesToTypes()` (2), then `testMethodsHelper`,
+`repositoryClassResolver`, `seePhpDocTagNodesFinder`, `phpDocResolver`, `parentClassMethodNodeResolver`,
+`fileTypeMapper`, `dataProviderHelper` and `phpVersion` at one each. Different class, different package, one
+or two rules apiece. `Scope` is the only real interface cluster, and it is seven calls over five methods.
+
+So the tail is linear, and most of it is not "map a method" but "resolve a call into a package's own
+collaborator" — the family already measured at line 4372 of this file, where cross-class resolution was
+implemented on the theory that it was a whole package's blocker and **changed the count by zero**.
+
+Stated standing: 30 calls with a parseable receiver out of 45 distinct methods named. The other 15 appear in
+needs text that names no receiver, and are unresolved. A heavy `Scope` skew among those would shift the
+picture; nothing here rules it out.
+
+#### And the blocker set was already whole, which retires the enabler above it
+
+The peer's first item was multi-blocker reporting, on the premise that every ranking either side holds is a
+first-blocker histogram. Not here — the census has printed the full set per refused rule since the descent:
+
+    80 refused rules, 269 distinct need entries, mean 3.36
+
+     0 needs   2 rules       4 needs  14 rules
+     1 need   22 rules       5 needs   6 rules
+     2 needs  13 rules       6 needs   6 rules
+     3 needs   8 rules       7 needs   7 rules
+                            11 needs   1 rule
+                            15 needs   1 rule
+
+**22 of 80 are single-need.** A count of rules blocked by exactly one unsupported *method* is a different
+number on a different axis — a rule blocked by one method plus a statement kind is single-method and not
+single-need — and the two are not interchangeable in a ranking.
+
+#### What the same exchange did not settle
+
+Two of the five items are not measurement questions and are recorded as open rather than answered.
+
+**Partial emission.** A rule covering three of four operand reads fails
+`EmittedRuleFiresTest::test_the_emitted_plugin_agrees_with_phpstan`, which is an `assertSame` over the
+example pair — but only *if the pair exercises the fourth*. So emitting partial rules needs a gate exemption
+or an example pair that avoids the missing read, and the second is an example curated to hide a gap. Refusing
+stays the answer, on the invariant's own argument: a plausible-but-wrong rule is the failure mode to design
+against because you would trust it. `ACCEPTED_DIVERGENCE` is metric-level for the related reason — a metric's
+bound is checkable, a rule's is "sometimes misses".
+
+**Selection by transpilability rather than by value.** Conceded, and it is the one item neither session can
+currently measure. Every candidate either of us ranked is ranked by how few vocabulary entries it needs, not
+by whether anyone relies on the rule. `--from-config` is the nearest instrument — it reports what a project
+actually registers, which is a usage signal — and it has been run against one project. Several would be an
+answer; nobody has collected them. Recorded because it makes every other item on that list an optimisation
+of a number whose relationship to usefulness is unestablished.
+
+#### Verification
+
+No code change. Two parses of the committed census: one extracting every `$receiver->method()` in a `needs:`
+line and bucketing by receiver kind, one counting distinct needs per `REFUSE` block. The `Refusal::$permanent`
+and gate-granularity claims are reads of `src/Refusal.php`, `src/PackageCoverage.php:139` and
+`tests/Unit/EmittedRuleFiresTest.php` rather than inferences from their names.
