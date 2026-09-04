@@ -6939,3 +6939,65 @@ green and the predicate red on all four rows. Mutation-checked by dropping the `
 the `is_string` control true and fails. Full suite 946/946, PHPStan 0, pint clean, baseline still 14 entries
 and 14 errors with no new complexity entry. Emit-all across php, analyzer and linter — 127, 34 and 25 files —
 byte-identical apart from the `--out` path the snippet embeds, which is what a runtime change should be.
+
+### Finding 3 was never a divergence, and eight rows plus the real site say so
+
+The third engine-level entry has stood as "a template-inferred closure lost across a `use` capture", reduced
+to five rows and offered as reportable. A peer session could not reproduce it. Re-measured at the atomics,
+because the entry above proves a rendering is not evidence, it does not survive in any form.
+
+Eight rows, one generic container, one thing varied at a time, both engines on the same file:
+
+    A  self<Closure> element, read directly        PHPStan Closure   mago CallableType
+    B  self<Closure> element, through `use`        PHPStan Closure   mago CallableType
+    C  declared Closure, read directly            PHPStan Closure   mago CallableType
+    D  declared Closure, through `use`            PHPStan Closure   mago CallableType
+    E  mixed element, read directly               PHPStan mixed     mago MixedType
+    F  mixed element, through `use`               PHPStan mixed     mago MixedType
+    G  `iterable<array-key, TWrap>|TWrap`, direct  PHPStan mixed     mago MixedType
+    H  the same union, through `use`               PHPStan mixed     mago MixedType
+
+**The `use` capture does nothing.** Every pair of rows differing only in the capture agrees with itself — A/B,
+C/D, E/F, G/H — so the mechanism named in the earlier entry is not a mechanism. What moves the answer is the
+element type, and rows G and H carry Laravel's own annotation from
+`Collections/Traits/EnumeratesValues.php:127-130`, where the template appears bare and as an element in one
+union. Both engines bind it to `mixed` there. That is agreement, not a gap.
+
+Then the real site rather than a model of it, `Illuminate/Support/Benchmark.php`:
+
+    mago      $callback() inside measure()   MixedType,   typeIsCallable false
+    mago      $callback() inside value()     CallableType, typeIsCallable TRUE
+    PHPStan   the same statement in measure() mixed
+
+The `value()` row is the control: it carries `@param (callable(): TReturn) $callback` and mago reads it, so
+the `mixed` next to it is not mago failing to read docblocks. **PHPStan reads the same `mixed`.** Whatever
+made the recorded run report on one side and not the other, it is not that one engine's inference reaches
+further than the other's — at that statement they reach the identical answer.
+
+And on the trees available now the site is not a divergence at all: `Benchmark.php` appears in both the
+before and after Laravel runs only as *same site, different message*, which the instrument counts as
+agreement, and never as only-port.
+
+#### What is retracted and what is unknown
+
+Retracted: the cause, and the claim that the construction is reportable. The five-row table it rested on is
+withdrawn with the six-row one above it.
+
+**Unknown, and marked as such:** why the recorded run produced an only-port finding there. Two candidates and
+no evidence separating them — the recorded corpus is a different Laravel version, so its
+`Collection::wrap()` annotation may have bound the template differently; or the attribution of that finding
+to this line was wrong when it was written. Settling it needs the exact tree the recorded run used, which
+this repository does not hold. It is not settled by anything above, and the sentence stays until it is.
+
+So of the four engine-level divergences this file has carried, two are filed upstream by a peer session on
+measurements that held, one turned out to be this repository's own defect, and one was never a divergence.
+That is the whole of them; none is left open as a mago bug awaiting a report.
+
+#### Verification
+
+No code change. Two runs over one eight-row subject — the real `mago` binary through a probe reading
+`Type::$atomicTypes`, and PHPStan's own `dumpType()` at the identical positions — plus the same pair over an
+unmodified copy of `Benchmark.php` resolved against a real Laravel tree. Row A/B, C/D, E/F and G/H pairings
+were the prediction and each was written before its run. The `value()` reading is a control inside the same
+file rather than a separate fixture, so it cannot come from a different configuration than the `measure()`
+reading beside it.
