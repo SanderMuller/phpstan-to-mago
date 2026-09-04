@@ -14,3 +14,7 @@ the real finding it stands for rather than claiming to be it.
 ## callable-string-refinement  AGREE
         rule: Symplify\PHPStanRules\Rules\NoDynamicNameRule
         both      Subject.php:35  symplify.noDynamicName
+
+## truthy-narrowed-callable  AGREE
+        rule: Symplify\PHPStanRules\Rules\NoDynamicNameRule
+        both      Subject.php:33  symplify.noDynamicName

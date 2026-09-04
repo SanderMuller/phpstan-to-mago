@@ -177,16 +177,25 @@ final class DivergenceCases
         mkdir($sandbox . '/plugins', 0o777, true);
         symlink($this->root . '/vendor', $sandbox . '/vendor');
 
+        // Keyed by rule, not by case. Two cases may name one rule — three of the planned ones name
+        // `NoDynamicNameRule` — and a plugin file per case would `require` two files both declaring
+        // `\Transpiled\<Rule>`, which is a fatal on the second, while PHPStan would register the class
+        // twice and report each finding twice. Attribution is by directory, so one plugin serves every case
+        // that names it and nothing else moves.
         $requires = [];
         $plugins = [];
         $services = [];
         foreach ($cases as $name => $case) {
             $this->copyInto($case['path'] . '/subject', $sandbox . '/cases/' . $name);
 
+            if (isset($requires[$case['rule']])) {
+                continue;
+            }
+
             $short = $this->transpile($case['rule'], $sandbox, $name);
-            $requires[] = "require __DIR__ . '/plugins/{$name}.php';";
-            $plugins[] = "new \\Transpiled\\{$short}()";
-            $services[] = '    -' . PHP_EOL . '        class: ' . $case['rule'] . PHP_EOL
+            $requires[$case['rule']] = "require __DIR__ . '/plugins/{$short}.php';";
+            $plugins[$case['rule']] = "new \\Transpiled\\{$short}()";
+            $services[$case['rule']] = '    -' . PHP_EOL . '        class: ' . $case['rule'] . PHP_EOL
                 . '        tags: [phpstan.rules.rule]';
         }
 
@@ -232,7 +241,7 @@ final class DivergenceCases
             );
         }
 
-        copy($plugin, $sandbox . '/plugins/' . $case . '.php');
+        copy($plugin, $sandbox . '/plugins/' . $short . '.php');
 
         return $short;
     }
