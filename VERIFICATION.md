@@ -7591,3 +7591,46 @@ dispatch from its shape cost nothing and was wrong twice.
 the four installed packages with each outcome taken from the committed census rather than assumed —
 `NoDynamicNameRule` is `EMIT` there. No code changed for this entry: it is the measurement that stopped a
 change being made.
+
+### Widening `Expr` coverage costs nothing measurable, which halves the design question
+
+The entry above stopped a change and left a design decision open: either `Expr` covers more kinds for
+everyone, or registration may depend on a body checked to read uniformly. Half of that was an assertion — I
+said widening the shared list "makes `NoDynamicNameRule` fire on two node kinds whose bodies it was never
+read against", which is true of the registration and says nothing about what it *reports*.
+
+Measured, by making the change and reading the tool rather than the code. `Binary` and `Assignment` added to
+`HOOK_KINDS[Expr::class]`, then reverted:
+
+    emitted diff, NoDynamicNameRule    one line — the `getTargets()` list. Body identical.
+    fires gate                         564 / 564
+    Laravel Support + Database         agree 7798, 1 / 23   — identical to the baseline
+    symplify.noDynamicName             agree 171, 1 / 6     — identical
+    per-finding lists                  diff clean
+
+**Zero movement on 337 real files.** The instrument's sensitivity is the same 24-to-23 control recorded
+earlier this session, so a single finding would have shown.
+
+So the false-positive cost I implied is not there on this corpus. It is not proof for every corpus, and the
+honest scope is: on the one tree available, a wider `Expr` registration changes nothing a rule reports.
+
+#### Reverted anyway, and why that is not a contradiction
+
+Widening alone makes no rule emit — the six still need their dispatch translated. Committing it would change
+a shipped plugin's emitted bytes for no functional gain, which is the one thing the emitted-output invariant
+exists to stop. The change pays off *with* the dispatch or not at all, so it belongs in that commit rather
+than ahead of it.
+
+What the measurement bought is a cheaper decision: the option that looked risky is measurably free on real
+code, and the argument for it is now stronger than the docblock against it. `HOOK_KINDS` says the kinds a
+node type covers are "a fact about the type" — but PHPStan's `Rule<Expr>` visits every expression, so a
+six-kind list is a narrowing chosen for the corpus, and adding two makes the table *more* faithful to what
+PHPStan would have visited rather than less.
+
+#### Verification
+
+The emitted diff is one file before and after, the same rule, on the same target. The differential is the
+same consumer, paths and sandbox shape as the baseline run it is compared against, and compared on the
+per-finding list as well as the total, because equal totals can hide a compensating pair. `src/Vocabulary.php`
+was restored from a copy taken before the edit and the tree confirmed clean, so nothing here is left in the
+working state.
