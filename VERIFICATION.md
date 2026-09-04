@@ -7879,3 +7879,41 @@ Nothing here changes what is emitted. It is a gap in what is *reported* about wh
 One emit run of `phpstan-strict-rules` on the `php` target, its `manifest.json` decoded and keyed, and a
 case-insensitive search of the whole output tree for any word naming a refusal. The 22-of-45 figure is that
 run's own count, and matches the census.
+
+### An upper bound on what a triage pass would drop, from data already collected
+
+A peer session proposed inverting the architecture: run the cheap engine to pick candidate files, then run
+PHPStan only on those. Rule-level fidelity stops mattering — a false positive costs one wasted PHPStan file,
+and only a **false negative** is unsound, because PHPStan never sees the file and the finding is not late, it
+is gone.
+
+For the variant where the transpiled rules do the picking, that is already measured. A false negative is a
+file where PHPStan reports and the port reports nothing — which is what `only-original` counts:
+
+    Laravel Support + Database   337 files    1 only-original   QueueFake.php:167          NoDynamicNameRule
+    nesbot/carbon/src            914 files    1 only-original   MessageFormatterMapper:42  NoProtectedClassStmtRule
+
+Neither file carries an `only-port` finding either. So **at most 2 of 1251 files would be wrongly skipped**,
+about 0.16%.
+
+**Upper bound, not a rate, and the instrument is why.** The differential prints divergences and only *counts*
+agreements, so a file with an agreement elsewhere in it would still be selected by the triage pass and is
+invisible in this output. If either of those two files agrees somewhere, the true figure is lower — possibly
+zero. Getting the exact number means printing agreement locations, which this instrument does not do.
+
+That limitation is the same one that made "never appears as only-port" unable to separate *both report* from
+*neither reports* a few entries above. Same instrument, same silence, and worth naming twice because it has
+now bitten two different questions.
+
+#### What it does not cover
+
+Only the transpiled-rules variant. The peer's actual proposal was a *type-based* prefilter using mago's own
+analysis, which is a different selector with a different false-negative set, and nothing here measures it.
+Their prior work says a kind-based prefilter fails because a few rules reach every file; whether types change
+that is open and untested.
+
+#### Verification
+
+Both figures are read from the 1.47.6 differential runs recorded earlier in this file, not re-run — the same
+output whose totals and per-finding lists are quoted above. The "neither file carries an only-port finding"
+claim is a grep for each basename across both runs' finding lists.
