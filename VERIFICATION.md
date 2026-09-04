@@ -7634,3 +7634,64 @@ same consumer, paths and sandbox shape as the baseline run it is compared agains
 per-finding list as well as the total, because equal totals can hide a compensating pair. `src/Vocabulary.php`
 was restored from a copy taken before the edit and the tree confirmed clean, so nothing here is left in the
 working state.
+
+### spaze's rules are not permanent, and the refusal points at the wrong party
+
+A peer session proposed marking spaze's config-driven rules `permanent`, on the grounds that a rule whose
+findings come from consumer configuration cannot be derived from source by any version of this tool, with the
+package's own `extension.neon` as evidence. The evidence is real — `disallowedFunctionCalls: []` defaults, a
+`parametersSchema`, and factory wiring from `%disallowed*%` — and the conclusion does not follow, because
+this tool has `--from-config` precisely for values that live in a consumer rather than a package.
+
+So it was run, against this repository, which registers spaze through three of its own `includes`.
+
+    php bin/phpstan-to-mago --target=php --from-config=.
+    emitted: 34, refused: 85
+
+`FunctionCalls` and `MethodCalls` still refuse with *"$disallowedCalls is computed in the constructor and the
+package wires no configured values for this rule, so there is nothing to derive from"*. Probed further, at
+the discovery layer:
+
+    spaze rules registered by this project        38
+    of those, with carried constructor arguments   0
+    other rules with carried arguments           106
+    other rules without                          353
+
+**So the configuration exists, the rules are discovered, and the values do not arrive.** That is not
+permanence. `Refusal::$permanent` means no vocabulary, hook or body change could ever move a rule, and here a
+change to how discovery carries values would move it — which is exactly why the docblock makes provisional
+the default and warns that a refusal wrongly called permanent stops someone looking. Marking these would have
+stopped someone looking at a live gap.
+
+#### And the refusal names the wrong party
+
+*"the package wires no configured values for this rule"* is true of the package and false of the situation
+under `--from-config`: this project **does** configure these rules, through spaze's own preset neons. A
+reader of that line goes to `extension.neon`, finds empty defaults, and concludes correctly about the package
+and wrongly about their own run.
+
+This file's oldest recurring lesson is that a refusal naming the wrong obstacle is how work gets sized
+wrongly, and this is an instance inside the instrument rather than in a rule.
+
+**Why the values do not arrive is not established.** The obvious candidate is spaze's `factory:` wiring
+against the ordinary `class:` form the 106 use, and that is a hypothesis, not a finding: it was not traced
+through the discovery path and is recorded here as the next thing to check rather than the answer.
+
+#### What this settles, and what it does not
+
+Settles: the long-pending `--from-config` run has happened, against a project that registers 38 rules the
+package-only path cannot configure. The four unwired-configuration rules are no longer waiting on a run;
+they are waiting on this gap.
+
+Does not settle: whether any spaze rule would emit once values arrive. Two of the three that carry the
+package's real usage refuse on the configured value, and the third, `StaticCalls`, refuses on
+`$this->disallowedMethodRuleErrors->get()` — a collaborator call, which is the family measured earlier as
+changing the count by zero. So the gap being closed is necessary and may well not be sufficient, and no rule
+count should be attached to it.
+
+#### Verification
+
+The `--from-config` run is against this repository with its committed `phpstan.neon.dist`, so the three spaze
+includes are the project's own rather than added for the probe. The 38/0/106/353 figures are a direct call to
+`RegisteredRules::argumentsFor()` over every discovered rule, counted rather than sampled. The `factory:`
+hypothesis is marked as one because it was not traced.
