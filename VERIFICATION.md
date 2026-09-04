@@ -7799,3 +7799,44 @@ it on its own.
 The four auto-included neons are read from `symplify/phpstan-rules/composer.json`, and each was opened to
 confirm none includes the chain that wires the rule. `configurable-rules.neon`'s wiring and
 `symplify-rules.neon`'s include list are both quoted from the installed package rather than remembered.
+
+### The carryable fix has no payoff for the rules that motivated it
+
+The defect is real — configuration exists on the instance and `$carryable` drops it — and the case for fixing
+it rested on spaze's two most-used rules, `FunctionCalls` and `MethodCalls`, which 18 of 21 projects in a
+peer's sample configure. Read rather than assumed, both bodies are:
+
+    // FunctionCalls
+    $errors = $this->disallowedFunctionRuleErrors->get($node, $scope, $this->disallowedCalls);
+    $paramErrors = $this->disallowedCallableParameterRuleErrors->getForFunction($node, $scope);
+    return $errors || $paramErrors ? array_merge($errors, $paramErrors) : [];
+
+    // MethodCalls — the same shape, one more argument
+    $errors = $this->disallowedMethodRuleErrors->get($node->var, $node, $scope, $this->disallowedCalls);
+
+**Neither body makes a decision.** Each calls two collaborator services and merges the results; every guard,
+every message and every comparison lives in `DisallowedFunctionRuleErrors` and its siblings. So the value the
+fix would carry is passed straight into a collaborator, and this is the family measured earlier at line 4372
+as changing the count by **zero** when cross-class resolution was implemented for it.
+
+Carrying `$disallowedCalls` therefore unblocks nothing here. The fix is necessary for those rules and nowhere
+near sufficient, and its justification cannot be spaze coverage.
+
+#### What that closes
+
+The configuration lane is one defect, not a coverage opportunity:
+
+- **spaze** — a real discovery defect, fix shape known (descend, depth bound, cycle detection), payoff for the
+  motivating rules now measured at zero.
+- **Symplify's `ForbiddenFuncCallRule`** — not a defect at all; the wiring sits in a neon the package does not
+  auto-include, and the refusal says so correctly.
+
+A peer session reached the delegation finding independently for spaze's seven control-structure rules, from
+the message-refusal side. It is the same mechanism, and it holds for the two call rules as well — which means
+the family covers both of spaze's refusal clusters, the 11 message refusals and the configured-value ones.
+
+#### Verification
+
+Both bodies are quoted from the installed package in full; neither is longer than the three lines shown. The
+zero-movement claim for the collaborator family is the run recorded at line 4372 of this file, not a new
+measurement — what is new is that these two rules belong to it, which is a read of their source.
