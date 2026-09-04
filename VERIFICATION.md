@@ -3771,6 +3771,9 @@ What is in the remaining 21 has not been read rule by rule, and the census says 
 refuse inside one expression, and some — `NewOverSettersRule` for one — refuse before any statement is
 reached at all.
 
+> **Superseded.** Counted rather than guessed, and the shape was right: 12 of them refuse before the body
+> is reachable and 8 inside it. See *"The twenty the survey adds nothing to, counted"* below.
+
 #### Verification
 
 Emit-all across `php`, `analyzer` and `linter` over the four corpus packages plus `tests/Fixtures/Rules`:
