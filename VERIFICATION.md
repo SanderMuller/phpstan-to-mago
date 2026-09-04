@@ -7367,3 +7367,66 @@ versioning decision with a semver consequence, and no run changes it.
 `mago --version` read before each pair and after the restore rather than assumed, and the pin is back at
 1.47.5. Findings compared three ways — total, per-finding list, per-rule row — because the first alone cannot
 see a compensating move. `composer.lock` is gitignored, so no tracked file records either version.
+
+### The cheapest rule in the largest refusal family is unreachable, and the needs list could not say so
+
+The hook-mapping family is the largest first-blocker group, and `OverwriteVariablesWithForLoopInitRule` was
+its cheapest member: one rule, one kind, `For` already in the SDK enum beside two mapped siblings. Mapping the
+hook moved it to `no mapping for ->init`. Reading the rule rather than the refusal shows why that is still not
+the bottom.
+
+`processNode` walks `$node->init`, keeps the `Assign` entries, and for each target asks:
+
+    $expr instanceof Node\Expr\Variable
+    && is_string($expr->name)
+    && $scope->hasVariableType($expr->name)->yes()
+
+**The rule reports only where the loop variable was already defined**, which is the whole finding — a `for`
+that introduces a fresh `$i` is fine and one that clobbers an existing `$i` is not. So a port needs to ask
+whether a variable is already defined at that point.
+
+Probed rather than assumed, two methods differing in exactly that:
+
+    $i = 'already here'   lhs=$i  type=NULL     defined before the loop
+    $i = 0                lhs=$i  type=NULL     the loop's own init, same name
+    $j = 0                lhs=$j  type=NULL     never defined before
+
+All three read `NULL`, so the assignment target's type cannot separate the case that reports from the case
+that does not. And the SDK exposes no query that can: `LifecycleContext` carries `phpVersion`, `codebase`,
+`types` and `cancellation`, and a search of the whole `Sdk/` tree finds **no public method with `variable` in
+its name at all**.
+
+So this rule is three capabilities deep — a hook, an iteration over `->init`, and a scope query that does not
+exist — and the third is upstream work rather than vocabulary work. Not marked `permanent`: an SDK addition
+would move it, and `Refusal::$permanent` means a property of the rule rather than a gap in the host, with
+provisional the safe direction.
+
+#### And the needs list said one thing
+
+    REFUSE  OverwriteVariablesWithForLoopInitRule
+            no mapping for ->init on a hook-node
+            needs: no iteration mapped for ->init, which resolved to a expr
+
+One need, and the `hasVariableType` query is not in it. That is the documented lower bound working as
+written — the pass steps over a refusing *statement* and reads on, but a second obstacle inside one
+*expression* never appears, and `->init` fails inside an expression. It is worth restating because both this
+session and a peer session have been ranking work off these lists: **a needs list is a lower bound, and it is
+systematically shortest exactly where the first blocker is expression-level.**
+
+The fix two entries above made the list complete for refusals that *end* the pass. It does nothing for this
+shape, and nothing here suggests a cheap way to.
+
+#### What this does to the hook family's cost
+
+The family is 25 first blockers, 17 of them in a package the census does not cover. Of the 8 in census
+packages, three name PHPStan virtual nodes with no mago equivalent (`ClassConstantsNode`, `BooleanAndNode`,
+`BooleanOrNode`), one names `BinaryOp`, which is several kinds rather than one, and one names `Expr\Cast`,
+which the enum has no case for at all — checked. This entry accounts for a sixth. **A hook row was never the
+unit of work here**, and the count of rules a hook push would emit is not 25, not 8, and is not known.
+
+#### Verification
+
+The rule's requirement is a read of its source, quoted above rather than summarised. The three probe rows are
+one file through the real binary, differing in one thing each. The SDK claim is two greps over the whole
+`Sdk/` tree plus the `LifecycleContext` constructor, made after a probe rather than instead of one, because
+"the API does not have X" is the claim shape this file has recorded going wrong four times.
