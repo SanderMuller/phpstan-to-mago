@@ -326,6 +326,36 @@ Reachability is the usual gap. "The field is there", "the method answers", "the 
 about what the value *means*, whether two values are comparable, or whether the question is the one the rule
 asks. Where a value is going to be compared against something, probe the comparison.
 
+## The instrument can be silent about the distinction you need
+
+The rules above are about explanations. This one is about the observation itself, and it is the harder
+failure: three times in one session a measurement was an artifact of the thing measuring it, and reading the
+source caught none of the three.
+
+- **A rendering dropped the field the decision turned on.** `ScalarType::__toString()` returns
+  `$this->kind->value`, so a `callable-string` renders as `string` and so does an un-narrowed one. Six rows
+  of `(string) $type` produced a table reading "mago does not narrow on `is_callable()`". It does. The defect
+  was in this repository, in a predicate that reached the refinement and read `literalValue` off it but never
+  `callable` four lines below.
+- **A reproducer varied the wrong axis.** Five rows moved a `use` capture and appeared to show a template
+  lost across it. The rows held the element type constant only by accident of how each was written; once
+  varied, the capture does nothing and the element type is the whole effect. Both engines agree.
+- **An aggregate counted what it did not print.** The corpus differential prints each divergence and only
+  counts agreements, so "the site never appears as only-port" cannot separate *both engines report* from
+  *neither reports*. It was the first, which inverts which side of a recorded divergence had changed.
+
+**Read the model, never a rendering, wherever a value will be compared or branched on.** A rendering is a
+lossy projection chosen for a human, and `__toString()` on a type is the most tempting one here.
+
+**And build a control pair, not a control.** One row that varies the axis under test, and one beside it that
+must *not* move. Vary a single axis per pair, and prefer a control inside the same file over a second
+fixture — `is_string` beside `is_callable`, `value()` beside `measure()`, a declared type beside an inferred
+one. A passing control that passes for the wrong reason looks exactly like a passing control, and a pair is
+what tells them apart.
+
+Where an aggregate is the instrument, ask what it does not print before reading a zero off it. Then confirm
+the one case at the smallest granularity that can answer: one rule, one file, both engines.
+
 ## A wrong "why" is worse than none
 
 Reproduction steps, tests and the fix all get built on the stated cause. When you have not traced it, say
