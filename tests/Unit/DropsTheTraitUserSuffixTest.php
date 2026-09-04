@@ -6,6 +6,7 @@ namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Sandermuller\PhpstanToMago\Tests\Support\CorpusDifferential;
 
@@ -20,6 +21,7 @@ use Sandermuller\PhpstanToMago\Tests\Support\CorpusDifferential;
  * A filter that silences too much is the failure here, so the cases below are mostly about what it keeps.
  */
 #[CoversClass(CorpusDifferential::class)]
+#[Group('engine')]
 final class DropsTheTraitUserSuffixTest extends TestCase
 {
     /** @return iterable<string, array{string, string}> */

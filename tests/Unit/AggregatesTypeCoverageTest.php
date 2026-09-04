@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use RuntimeException;
@@ -39,6 +40,7 @@ use Sandermuller\PhpstanToMago\Vocabulary;
  * the magic-method skip, the variadic skip and a dedup all left it green. Each of those now changes the total
  * and breaks the comparison, which is the only reason to trust that the filters are doing anything.
  */
+#[Group('engine')]
 final class AggregatesTypeCoverageTest extends TestCase
 {
     private const string FIXTURE = __DIR__ . '/../Fixtures/aggregate';

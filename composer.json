@@ -69,7 +69,7 @@
         "phpstan-emitted": "vendor/bin/phpstan analyse --memory-limit=2G --configuration=phpstan-emitted.neon",
         "format": "vendor/bin/pint",
         "rector": "vendor/bin/rector process",
-        "test": "vendor/bin/phpunit",
+        "test": "vendor/bin/phpunit --exclude-group engine",
         "test-coverage": "vendor/bin/phpunit --coverage-html=coverage",
         "sync-ai": "vendor/bin/boost sync",
         "validate-gitattributes": "vendor/bin/lean-package-validator validate",
@@ -84,9 +84,10 @@
             "vendor/bin/pint --test",
             "@phpstan-simplified",
             "@validate-gitattributes",
-            "@test"
+            "@test-full"
         ],
-        "transpile": "bin/phpstan-to-mago"
+        "transpile": "bin/phpstan-to-mago",
+        "test-full": "vendor/bin/phpunit"
     },
     "config": {
         "sort-packages": true,

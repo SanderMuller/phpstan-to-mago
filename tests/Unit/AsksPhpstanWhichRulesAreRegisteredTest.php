@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use Sandermuller\PhpstanToMago\Refusal;
@@ -26,6 +27,7 @@ use Sandermuller\PhpstanToMago\Transpiler;
  * resolution, includes and extension discovery are PHPStan's own and reimplementing them is how the answer
  * goes quietly wrong.
  */
+#[Group('engine')]
 final class AsksPhpstanWhichRulesAreRegisteredTest extends TestCase
 {
     private const string PROJECT = __DIR__ . '/../Fixtures/RegisteredProject';

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
 use PHPUnit\Framework\Attributes\CoversNothing;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sandermuller\PhpstanToMago\Tests\Support\Subprocess;
@@ -26,6 +27,7 @@ use Sandermuller\PhpstanToMago\Tests\Support\Subprocess;
  * and with it being hard-coded true, and the same six-row table would pass either way.
  */
 #[CoversNothing]
+#[Group('engine')]
 final class ReadsTheCallableStringRefinementTest extends TestCase
 {
     /** What mago sets on the string atomic's refinement at each of the six positions. */

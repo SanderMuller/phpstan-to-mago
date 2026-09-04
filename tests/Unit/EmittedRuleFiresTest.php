@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Sandermuller\PhpstanToMago\Tests\Support\FiresGate;
 use Sandermuller\PhpstanToMago\Tests\Support\LockedCorpus;
@@ -23,6 +24,7 @@ use Throwable;
  * It is red on purpose for the rules that cannot fire yet. That is the point: they were emitted and
  * counted for a long time while reporting nothing, and no static check noticed.
  */
+#[Group('engine')]
 final class EmittedRuleFiresTest extends TestCase
 {
     private const string EXAMPLES = __DIR__ . '/../Fixtures/examples';

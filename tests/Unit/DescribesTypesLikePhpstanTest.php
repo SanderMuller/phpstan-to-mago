@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Sandermuller\PhpstanToMago\Tests\Support\TypeDescriptions;
 
@@ -49,6 +50,7 @@ use Sandermuller\PhpstanToMago\Tests\Support\TypeDescriptions;
  * and the atomics ceasing to carry a fact a renderer would need. A dated note in a file nobody runs would
  * catch neither.
  */
+#[Group('engine')]
 final class DescribesTypesLikePhpstanTest extends TestCase
 {
     /** @var array<string, array{string, string, string, string}>|null */

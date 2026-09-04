@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sandermuller\PhpstanToMago\Tests\Support\PhpstanReport;
@@ -31,6 +32,7 @@ use Sandermuller\PhpstanToMago\Vocabulary;
  * anchors coincide, one attributed method where they do not, and one closure — which the collector counts
  * because its node type is `FunctionLike`, and which has no name for an anchor to read.
  */
+#[Group('engine')]
 final class AggregatesReturnCoverageTest extends TestCase
 {
     private const string FIXTURE = __DIR__ . '/../Fixtures/aggregate/project-returns';

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
 use PHPUnit\Framework\Attributes\CoversNothing;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sandermuller\PhpstanToMago\Tests\Support\Subprocess;
@@ -26,6 +27,7 @@ use Sandermuller\PhpstanToMago\Tests\Support\Subprocess;
  * any disagreement about methods rather than this one.
  */
 #[CoversNothing]
+#[Group('engine')]
 final class TraitMethodHookDivergesTest extends TestCase
 {
     private const string FIXTURES = __DIR__ . '/../Fixtures/TraitDivergence';
