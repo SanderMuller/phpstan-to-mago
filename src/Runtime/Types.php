@@ -76,7 +76,29 @@ final class Types
     {
         return $atomic instanceof CallableType
             || ($atomic instanceof NamedObjectType && strcasecmp(ltrim($atomic->name, '\\'), 'Closure') === 0)
+            || self::stringIsRefinedToCallable($atomic)
             || self::literalNamesACallable($context, self::literalStringOfAtomic($atomic));
+    }
+
+    /**
+     * A `callable-string`, which is what `is_callable()` narrowing produces for a string it cannot resolve.
+     *
+     * PHPStan spells it `CallableStringType` and answers `isCallable()` yes for it. Mago spells it as a
+     * `ScalarType` of kind `String` carrying `callable: true` on its `StringType` refinement, and
+     * `ScalarType::__toString()` renders only the kind — so a `callable-string` and a plain `string` render
+     * identically, and the flag is the only thing that distinguishes them.
+     *
+     * Measured rather than inferred, because a probe reading the rendering said the opposite.
+     * `ReadsTheCallableStringRefinementTest` asserts the flag at six starting types, with `is_string` as the
+     * row where it must stay false.
+     */
+    private static function stringIsRefinedToCallable(object $atomic): bool
+    {
+        if (! $atomic instanceof ScalarType || $atomic->kind !== ScalarTypeKind::String) {
+            return false;
+        }
+
+        return $atomic->refinement instanceof StringType && $atomic->refinement->callable;
     }
 
     /**

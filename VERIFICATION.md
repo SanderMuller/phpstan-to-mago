@@ -4673,6 +4673,10 @@ Probed rather than reasoned, on the five shapes a callable arrives in:
 | `@param list<Closure>` iterated | `CallableType` | true |
 | `foreach (['mb_strtolower', 'ucfirst'] as $f)` | two constant `ScalarType`s | **false** |
 
+> **Superseded** by *The callable check was reading a rendering, and the flag was there all along* at the end
+> of this file. The `is_callable()` row here probes `mixed`, which narrows to a `CallableType`; a `string`
+> narrows to a `callable-string`, which this table never looked at and the port answered `false` for.
+
 So the port's check is not missing a case for docblocks, for `is_callable()` narrowing, or for element
 types — mago answers all four. The one shape it answers false for is a constant string naming a function,
 which is `Pluralizer.php:93` and `:94` and nothing else in the fifteen.
@@ -6103,6 +6107,12 @@ upstream issue as it stands.
 Two site-read causes have turned out imprecise in as many days, so the remaining engine-level entries got the
 same treatment: a file that varies one thing at a time.
 
+> **Superseded** by *The callable check was reading a rendering, and the flag was there all along* at the end
+> of this file. The three rows below were read with a probe printing `(string) $type`, and
+> `ScalarType::__toString()` renders only the kind — so the `viaIsCallable` row's `string|callable` is a
+> narrowed `callable-string` rendered as `string`. mago narrows on both spellings; the port did not read the
+> flag. The conclusion drawn here, that this is a mago narrowing gap, is wrong.
+
 **`is_callable()` narrowing**, `Migrator.php:857`. Three methods, one union parameter, one guard each:
 
     unguarded         string|Closure, no guard        string|callable   both engines report      agree
@@ -6858,3 +6868,74 @@ command.
 No code change. One parse of `tests/Fixtures/expected/census.md`, counting rules whose whole `needs` list is
 their first refusal, bucketed by what that refusal names. The eight body-level ones are printed in full above
 rather than summarised, because "they do not cluster" is a claim a reader should be able to check.
+
+### The callable check was reading a rendering, and the flag was there all along
+
+Three days of this file describe `Migrator.php` as a **mago** narrowing gap: "mago narrows on `instanceof`
+and not on `is_callable()`". A peer session ran the shipped binary against the same construction and
+contradicted it — mago's own `invalid-argument` message names the narrowed type, and it is `callable-string`.
+
+The instrument was the fault, and it is one line of the SDK:
+
+    final class ScalarType implements AtomicType
+    {
+        public function __toString(): string
+        {
+            return $this->kind->value;
+        }
+    }
+
+**A `callable-string` renders as `string`.** So does a `numeric-string`, a `non-empty-string` and a literal —
+`ScalarType::__toString()` returns the kind and drops the refinement entirely. Every reading in the superseded
+entries came from a probe printing `(string) $type`, which cannot distinguish a narrowed string from an
+un-narrowed one. The six-row table sent to that peer is retracted whole, not only its conclusion.
+
+Re-measured at the atomics, same six methods, same node position, with `Types::typeIsCallable()` answering
+beside the flag:
+
+    mixed $a                CallableType                            port true
+    string $b               ScalarType(callable=TRUE)               port FALSE
+    string|Closure $c       ScalarType(callable=TRUE)|CallableType   port FALSE
+    string|int $d           ScalarType(callable=TRUE)               port FALSE
+    callable|string $e      ScalarType(callable=TRUE)|CallableType   port FALSE
+    mixed $f, is_string     ScalarType(callable=false)              port false
+
+`mixed` is the one row a rendered name gets right, and it is the only row the earlier probe table looked at —
+which is why that table concluded the port was not missing an `is_callable()` case. The `is_string` row is the
+control: the flag discriminates rather than standing true everywhere.
+
+So there was never a mago bug here. `Types::isCallableAtomic()` reached the `StringType` refinement already
+and read only `literalValue` off it, never `callable`. One clause fixes it.
+
+#### What it closes, before and after, on the same trees
+
+    Laravel Support + Database   337 files   agree 7798   1 / 24  ->  1 / 23
+    nesbot/carbon/src            914 files   agree 1924   1 /  1  ->  1 /  1
+
+One finding removed, `Migrations/Migrator.php:818`, and nothing else moves across 1251 files: no agreement
+lost, no new only-original. The removed finding does not become an agreement, because PHPStan reports nothing
+there either — an exemption on both sides is silence on both sides.
+
+Against the recorded five-corpus figures that makes it **12305 agreeing against 27**, split 19 traits / 3
+inference gaps / 5 the port misses. The agreement count is unchanged for the reason above, measured rather
+than assumed.
+
+#### The shape worth carrying
+
+Four wrong causes have now been published in this file and to that peer, and all four are one shape: a
+mechanism that explains the measurement, asserted before the convention it rests on was checked. This one
+adds the sharper version — **the measurement itself can be an artifact of the instrument, and a source read
+cannot catch that.** Both refuted findings survived reading the analyser's source and died to one run of the
+shipped binary.
+
+The rule that follows is narrow enough to act on: where a value will be compared or branched on, read the
+*model*, never a rendering. A rendering is a lossy projection chosen for a human, and `__toString()` on a
+type is the most tempting one in this codebase.
+
+#### Verification
+
+Test before fix, and the failing run is recorded: `ReadsTheCallableStringRefinementTest` asserted the flag
+green and the predicate red on all four rows. Mutation-checked by dropping the `->callable` read, which turns
+the `is_string` control true and fails. Full suite 946/946, PHPStan 0, pint clean, baseline still 14 entries
+and 14 errors with no new complexity entry. Emit-all across php, analyzer and linter — 127, 34 and 25 files —
+byte-identical apart from the `--out` path the snippet embeds, which is what a runtime change should be.

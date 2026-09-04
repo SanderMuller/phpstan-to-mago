@@ -139,4 +139,7 @@ parameters:
                 - tests/Unit/AnalysesTheEmittedPluginsTest.php
                 # The trait divergence is a fact about two engines, so measuring it means running both.
                 - tests/Unit/TraitMethodHookDivergesTest.php
+                # And what `is_callable()` narrowing sets on a type is a fact about the analyser, readable only
+                # from inside a plugin the analyser started.
+                - tests/Unit/ReadsTheCallableStringRefinementTest.php
             reportUnmatched: false
