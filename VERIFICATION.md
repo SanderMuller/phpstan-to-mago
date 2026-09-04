@@ -7695,3 +7695,63 @@ The `--from-config` run is against this repository with its committed `phpstan.n
 includes are the project's own rather than added for the probe. The 38/0/106/353 figures are a direct call to
 `RegisteredRules::argumentsFor()` over every discovered rule, counted rather than sampled. The `factory:`
 hypothesis is marked as one because it was not traced.
+
+### The carryable filter drops value objects, and the obvious fix does not terminate
+
+The entry above left "why the configured values do not arrive" unknown, with `factory:` versus `class:`
+wiring as the candidate. **That hypothesis is wrong**, and the mechanism is one closure.
+
+`resources/registered-rules.php:114` reflects over the *built instance* — `$property->getValue($rule)` on an
+object the container has already constructed — so how a service was wired cannot matter, which is also why
+106 rules carry values through the same path. What drops them is `$carryable` a few lines above: scalars and
+null pass, arrays pass only if every item passes, everything else fails. And spaze holds its configuration as
+arrays of value objects:
+
+    FunctionCalls        private array $disallowedCalls      list<DisallowedCall>
+    IfControlStructure   private array $disallowedKeywords   list<DisallowedKeyword>
+
+Each item is neither scalar nor array, so the property is dropped whole. That is the clean 0 of 38: every
+spaze rule holds its config this way.
+
+#### The fix's guard is load-bearing, measured by leaving it out
+
+A peer session proposed descending into an object only where every one of its own properties is carryable
+under the same rule, **with a depth bound**. I implemented the first half and not the bound, on the reasoning
+that "every property carryable" is itself a sufficient guard.
+
+It is not. `$carryable` recurses while *checking*, so a cycle is traversed before any verdict is reached, and
+nothing in the all-properties rule stops it. The run went from roughly two minutes to **fourteen and counting
+before it was killed** — no output, no error, just a graph the checker was still walking.
+
+So the caution was not decoration. A PHPStan rule instance reaches a container, a `Scope`, a
+`ReflectionProvider`, and the object graph behind those is effectively unbounded. Any version of this fix
+needs a depth bound and cycle detection, and neither is optional.
+
+`resources/registered-rules.php` was restored from a copy taken before the edit; nothing here is committed
+beyond this entry.
+
+#### And a second refusal that may name the wrong party
+
+Symplify's `ForbiddenFuncCallRule` refuses with *"`$forbiddenFunctions` is a constructor parameter the
+package's neon does not wire"*. The package's `config/configurable-rules.neon` wires it:
+
+    class: Symplify\PHPStanRules\Rules\ForbiddenFuncCallRule
+    arguments:
+        forbiddenFunctions: ['d', 'dd', 'dump', 'var_dump']
+
+included through `config/symplify-rules.neon`. The property is `private array $forbiddenFunctions`, a list of
+strings — carryable under the *current* filter, with no descent needed.
+
+**Marked likely, not established.** That refusal is raised on the package-source path, and which neons that
+path reads has not been traced here; it may legitimately read a different file. The check that settles it is
+one `argumentsFor()` call, which timed out only because it boots PHPStan and was competing with the
+experiment above. If it holds, it is a second refusal naming the wrong party, in a different rule and for a
+different reason from spaze's.
+
+#### Verification
+
+The property types are read from `ReflectionClass` against the installed package, and `DisallowedCall`'s
+constructor is read the same way. The non-termination is a wall-clock observation against the same command's
+own two-minute baseline from the entry above, on the same project, differing only in that closure. The
+`factory:` retraction is a read of `resources/registered-rules.php`, which reflects instances and never
+parses config.
