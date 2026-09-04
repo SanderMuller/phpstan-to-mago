@@ -513,39 +513,39 @@ EMIT    OperandInArithmeticPreIncrementRule
 EMIT    OperandInArithmeticUnaryMinusRule
 EMIT    OperandInArithmeticUnaryPlusRule
 REFUSE  OperandsInArithmeticAdditionRule
-        a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null. Both kinds hold their operands in the same two positions, so the dispatch is not the obstacle — the operand type is
-        needs: a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null
+        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
         needs: no PHP navigation for node.var (kind expr) on a Expr node
         needs: no PHP navigation for node.expr (kind expr) on a Expr node
         needs: access path outside the vocabulary: ->getArrays()
         needs: a second identifier before the first was reported
 REFUSE  OperandsInArithmeticDivisionRule
-        a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null. Both kinds hold their operands in the same two positions, so the dispatch is not the obstacle — the operand type is
-        needs: a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null
+        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
         needs: no PHP navigation for node.var (kind expr) on a Expr node
         needs: no PHP navigation for node.expr (kind expr) on a Expr node
         needs: a second identifier before the first was reported
 REFUSE  OperandsInArithmeticExponentiationRule
-        a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null. Both kinds hold their operands in the same two positions, so the dispatch is not the obstacle — the operand type is
-        needs: a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null
+        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
         needs: no PHP navigation for node.var (kind expr) on a Expr node
         needs: no PHP navigation for node.expr (kind expr) on a Expr node
         needs: a second identifier before the first was reported
 REFUSE  OperandsInArithmeticModuloRule
-        a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null. Both kinds hold their operands in the same two positions, so the dispatch is not the obstacle — the operand type is
-        needs: a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null
+        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
         needs: no PHP navigation for node.var (kind expr) on a Expr node
         needs: no PHP navigation for node.expr (kind expr) on a Expr node
         needs: a second identifier before the first was reported
 REFUSE  OperandsInArithmeticMultiplicationRule
-        a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null. Both kinds hold their operands in the same two positions, so the dispatch is not the obstacle — the operand type is
-        needs: a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null
+        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
         needs: no PHP navigation for node.var (kind expr) on a Expr node
         needs: no PHP navigation for node.expr (kind expr) on a Expr node
         needs: a second identifier before the first was reported
 REFUSE  OperandsInArithmeticSubtractionRule
-        a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null. Both kinds hold their operands in the same two positions, so the dispatch is not the obstacle — the operand type is
-        needs: a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the value the expression produces rather than as the operand itself: measured, the right-hand side of `$a /= $b` answers `int|float` for a bool and `mixed` for a null
+        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
         needs: no PHP navigation for node.var (kind expr) on a Expr node
         needs: no PHP navigation for node.expr (kind expr) on a Expr node
         needs: a second identifier before the first was reported

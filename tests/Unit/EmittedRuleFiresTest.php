@@ -296,12 +296,16 @@ final class EmittedRuleFiresTest extends TestCase
         // — by emitting, once a record folded across a loop became locals rather than expressions. Their
         // pairs had been running nothing until then, which is what this check exists to say out loud.
         //
-        // What is left was written before the rule that would use it, and what it is waiting for has been
-        // measured since. Not the operand-binding shape, which dissolved — a `Binary` and an `Assignment`
-        // hold their operands in the same two positions. Mago types the right-hand operand of a compound
-        // assignment as the value the assignment produces, so the rule's second check cannot be asked, and
-        // `Translator::refuseAnOperatorDispatch()` says so by name. `internal/probe-binary-operands.php`
-        // prints the measurement.
+        // What is left was written before the rule that would use it, and what it is waiting for has moved
+        // twice. Not the operand-binding shape, which dissolved — a `Binary` and an `Assignment` hold their
+        // operands in the same two positions. Not the operand *type* either, which was mago reporting a
+        // compound assignment's right-hand operand as the value the assignment produces: fixed upstream in
+        // 1.47.6, which is why this package requires it.
+        //
+        // What blocks it now is the dispatch itself — `if ($node instanceof BinaryOpDiv) { .. } elseif
+        // ($node instanceof AssignOpDiv) { .. } else { return []; }`, which needs a plugin registering two
+        // kinds and binding the same two positions in each arm. That is a translator change rather than a
+        // vocabulary row, and until it lands this pair has nothing to run.
         $expected = [
             'OperandsInArithmeticDivisionRule',
         ];

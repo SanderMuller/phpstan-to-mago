@@ -7396,8 +7396,12 @@ that does not. And the SDK exposes no query that can: `LifecycleContext` carries
 `types` and `cancellation`, and a search of the whole `Sdk/` tree finds **no public method with `variable` in
 its name at all**.
 
-So this rule is three capabilities deep — a hook, an iteration over `->init`, and a scope query that does not
-exist — and the third is upstream work rather than vocabulary work. Not marked `permanent`: an SDK addition
+> **Corrected** by *The definedness gap is a wire, not an engine* at the end of this file. The query is
+> absent from the SDK, which is what was measured; it is not absent from mago, which is what the next
+> sentence went on to say.
+
+So this rule is three capabilities deep — a hook, an iteration over `->init`, and a scope query the SDK does
+not expose — and the third is upstream work rather than vocabulary work. Not marked `permanent`: an SDK addition
 would move it, and `Refusal::$permanent` means a property of the rule rather than a gap in the host, with
 provisional the safe direction.
 
@@ -7430,3 +7434,98 @@ The rule's requirement is a read of its source, quoted above rather than summari
 one file through the real binary, differing in one thing each. The SDK claim is two greps over the whole
 `Sdk/` tree plus the `LifecycleContext` constructor, made after a probe rather than instead of one, because
 "the API does not have X" is the claim shape this file has recorded going wrong four times.
+
+### The definedness gap is a wire, not an engine
+
+The entry above measured that no SDK method answers "is this variable defined here", probed that the type
+read cannot stand in for it, and concluded the rule needs upstream work. The measurement holds. The word
+"exist" in it does not.
+
+A peer session read mago's Rust tree, which this repository does not vendor — the composer package ships the
+PHP SDK and downloads a binary, so `crates/` is not here to check. Their finding, **reported as theirs and
+not verified by me**:
+
+- `crates/analyzer/src/plugin/context.rs` gives `HookContext::get_variable_type(&self, name: &[u8]) ->
+  Option<&Rc<TUnion>>`, reading `block_context.locals`. `Some` is defined-with-a-type, `None` is not defined.
+- `crates/analyzer/src/context/block.rs` carries `locals`, `variables_possibly_in_scope` and
+  `possibly_assigned_variable_ids` — the definite and possible halves of PHPStan's trinary.
+- They flag as unverified how `variables_possibly_in_scope` is populated and whether it matches PHPStan's
+  `maybe`. The `locals`-to-`yes()` correspondence is the half the rule needs.
+
+So mago computes local definedness and exposes it to an in-tree Rust hook. What is missing is the wire: no
+requirement flag marshals locals over the extension-host protocol, which is exactly why a search of the PHP
+SDK found no method with `variable` in its name.
+
+**The measurement was right and the inference from it was not.** An absence at the boundary was written up as
+an absence in the engine, and those are different claims with different consequences — one is a feature
+request against an analysis engine, the other is "the data is already computed, please surface it". Same
+shape as the enum error that came the other way earlier in this exchange: a fact about one layer read as a
+fact about the system.
+
+It changes nothing about the family cost. A hook row is still not the unit of work, the three PHPStan virtual
+nodes still have no equivalent, `Expr\Cast` still has no case, and the rule still needs three things. What
+changes is that the third is a protocol addition rather than an engine one.
+
+#### Verification
+
+The correction is a read of a peer session's report, and it is marked as such throughout because this
+repository cannot check it: `vendor/carthage-software/mago` contains `composer/` and no `crates/`, verified.
+What *is* checked here stands unchanged — the three probe rows and the two SDK searches are in the entry
+above, and neither is contradicted.
+
+### Adopting 1.47.6 was a deletion, and the six moved to their real blocker
+
+The floor is now `^1.47.6` and `KINDS_WITHOUT_OPERAND_TYPES` is gone. What the six rules refuse with changed
+rather than disappearing:
+
+    before   a dispatch onto Binary and Assignment, where mago types operand 1 of `Assignment` as the
+             value the expression produces rather than as the operand itself
+    after    if statement that is not a single-statement guard, but a chain of 1 elseif and an else
+
+That is progress of a specific kind — the refusal now names an obstacle that is present rather than one that
+was fixed upstream — and it is not emission. Nothing new emits.
+
+#### The table did not survive being emptied, and PHPStan said so before I did
+
+The first version of this kept the table as `[]` with a docblock arguing it was "the mechanism a future kind
+with the same problem needs". PHPStan rejected that in two lines: `Offset string on array{} on left side of
+?? does not exist`, then `Unreachable statement - code above always terminates`. With no rows, the loop body
+in `refuseAnOperatorDispatch()` cannot run.
+
+So the whole chain went: `KINDS_WITHOUT_OPERAND_TYPES`, `OPERATOR_KINDS`, `refuseAnOperatorDispatch()`,
+`operatorKindOf()` and `returnsNothing()`, each used only by the next. Keeping a table for a rule shape nobody
+has is speculative generality, and the dead-code rule is what caught the argument I had already written down.
+
+`Translator`'s complexity went **2337 to 2325** — the baseline records the smaller figure, still 14 entries
+and 14 errors.
+
+#### What the six need now, stated so it is not re-derived
+
+    if ($node instanceof BinaryOpDiv) { $left = $node->left; $right = $node->right; }
+    elseif ($node instanceof AssignOpDiv) { $left = $node->var; $right = $node->expr; }
+    else { return []; }
+
+Both arms bind the same two operand positions and everything after is kind-agnostic, so this is a plugin
+registering two kinds with one binding, not a redesign. It is a translator change rather than a vocabulary
+row. `internal/handoff-multi-kind-hook-is-not-a-redesign.md` covers the method-call version of this shape and
+not this one.
+
+#### A near-miss worth recording against myself
+
+The first deletion attempt matched `s.index("    /**\n     * Refuse")`, which found an earlier docblock, and
+removed **1283 lines** of `Translator.php`. Caught on the line count, reverted with `git checkout
+src/Translator.php`.
+
+That recovery was safe only because `Translator.php` held no uncommitted work of mine — the file had not been
+touched this session, only `Vocabulary.php` had. The git-safety guidance in `CLAUDE.md` says exactly this:
+`git checkout -- <file>` discards uncommitted work with no confirmation, and the rule is to copy a file aside
+before mutating it on purpose. I got the safe case by luck rather than by checking, and the redone deletion
+used explicit line numbers with a copy aside first.
+
+#### Verification
+
+PHPStan 0 with the baseline at 14/14. Emit-all across php, analyzer and linter over five packages plus the
+fixtures, byte-identical to HEAD apart from the `--out` path — a refusal that changes wording changes no
+emitted file, which is the check that the deletion removed only dead code. Drift and fires-gate suites green
+at 566, full suite below. `mago --version` reads 1.47.6 and `composer.json` requires `^1.47.6`, so the floor
+and the installed binary agree rather than one being assumed from the other.

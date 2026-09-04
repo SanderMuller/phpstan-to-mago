@@ -111,13 +111,12 @@ A construct outside the vocabulary is refused, naming it and its line:
   REFUSE  ClosureUsesThisRule: no mapping for ->static on a hook-node (line 26)
 ```
 
-Read the refusals next to the `emitted` count, never alone. Two checks produce them: the generator refuses a
-construct it cannot translate, the backend an operand it cannot render.
+Read the refusals next to the `emitted` count, never alone.
 
 ## What it can translate
 
 Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md`, which a test regenerates, so
-upstream drift shows up there as a diff rather than here as a stale table.
+upstream drift shows up there rather than here as a stale table.
 
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
@@ -166,7 +165,7 @@ a written cause: 19 are traits PHPStan never analyses, 2 are inference gaps, 5 a
 ## Performance
 
 `php tests/Support/run-benchmark.php <project>` runs both engines over your own code. Here, on
-`vendor/nikic/php-parser/lib` — 270 files, 80 emitted rules, mago 1.47.5 against PHPStan 2.2.13, best of six:
+`vendor/nikic/php-parser/lib` — 270 files, 80 emitted rules, against PHPStan 2.2.13, best of six:
 
 | | wall | CPU |
 |:--|--:|--:|
@@ -176,16 +175,18 @@ a written cause: 19 are traits PHPStan never analyses, 2 are inference gaps, 5 a
 | PHPStan, warm result cache | 0.89s | 0.87s |
 
 **Read the CPU column**: this ran at a load average near 5, so the wall figures are pessimistic and
-unequally so. All four rows come from the same two runs. The rules add **3.34s CPU** — the marginal cost,
-which no total gives — and the engine baseline moves with your `includes` rather than your sources.
+unequally so. All four rows come from the same two runs, on mago 1.47.5; the two mago rows reproduce within
+2% on 1.47.6. The rules add **3.34s CPU** — the marginal cost, which no total gives — and the engine baseline
+moves with your `includes` rather than your sources.
 
 **Not a speed win on this corpus**: 1.20x cheaper than a cold PHPStan on CPU, dearer than a warm one,
 because `mago analyze` has no result cache. Measure your own.
 
 ## Requirements
 
-PHP 8.4 for the transpiler, the floor the rule packages set. Generated plugins run under Mago 1.47.1 or
-later. Skip 1.47.0: its release carries no Linux binary, so it installs and then cannot run.
+PHP 8.4 for the transpiler, the floor the rule packages set. Generated plugins need Mago 1.47.6 or later:
+that is where a compound assignment's operands started reporting their own type, and a plugin reading one is
+silently wrong on anything earlier.
 
 ## Contributing
 
