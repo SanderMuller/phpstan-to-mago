@@ -7228,3 +7228,53 @@ as a need — and the unconditional version was caught by the census alarm rathe
 947/947, PHPStan 0, pint clean, and emit-all across php, analyzer and linter byte-identical apart from the
 `--out` path, which a change to a measurement instrument should be. The `HOOKS` figures are a read of
 `Vocabulary::HOOKS` through the autoloader rather than a grep, after a grep is what produced the wrong one.
+
+### A hook row is not a rule, measured on the one that looked cheapest
+
+The hook-mapping family is the largest first-blocker group across the installed packages — 25 of 124 refusals
+— and a peer session established that every `NodeKind` it names already exists in the SDK enum, calling the
+work "table entries against an enum that already has the cases". That is true and it is not the same as a
+rule emitting, which they said and which is now measured.
+
+`OverwriteVariablesWithForLoopInitRule` was the cheapest case in the corpus: one rule, one kind, and `For`
+sits in the enum beside `Foreach` and `While`, which are already mapped. Adding the row:
+
+    before   no hook mapping for node type PhpParser\Node\Stmt\For_
+    after    no mapping for ->init on a hook-node
+
+**The rule still refuses.** The hook was never the whole blocker; it was the first one, and behind it is a
+field mapping for the three child slots of a `for` — which needs a `Support` helper, a PHP rendering and a
+Rust one, not a table row. So the family's cost is a hook row *plus* whatever each rule reads off the node,
+and the second half is invisible until the first is done. Nobody should quote a rule count for this work.
+
+#### Why the row stayed anyway
+
+It changes exactly one census line, and that line now names the obstacle that is actually there. A refusal
+naming a solved obstacle is how work gets sized wrongly, which is this file's oldest recurring lesson.
+
+The row is also exercised rather than asserted. No emitted plugin uses it, so its `trait`, `method` and
+`kind` strings would never have been loaded by mago and a wrong one would sit undetected — the same silence
+as a rule that emits and never runs. A probe registering `NodeKind::For` against a file holding all three
+loop forms:
+
+    For       for ($i = 0; $i < 3; $i++) { echo $i; }
+    Foreach   foreach ($xs as $x) { echo $x; }
+    While     while (false) { echo 1; }
+
+`Foreach` and `While` are the control: both are mapped and shipping, so a run where only they appeared would
+mean the target list works and `For` does not. All three dispatch. The `trait` and `method` values are copied
+verbatim from the three `StatementHook` rows already in the table.
+
+#### A side finding, and a one-line fix
+
+`--status` writes `phpstan-to-mago/index.md` and `index.html` under `--out`, which defaults to the current
+directory. That is documented behaviour and the README tells a reader to run it — but neither file was
+gitignored here, so following the README in this repository left two untracked files. Named in `.gitignore`
+rather than the directory, per the rule that an exclude should name what you own.
+
+#### Verification
+
+Census diff read before it was accepted: one line, the refusal text. Emit-all across php, analyzer and linter
+over five packages plus the fixtures, byte-identical apart from the `--out` path — no rule's output moved,
+which is what a row nothing emits with should do. Suite, PHPStan and pint below. The dispatch probe is the
+running binary rather than a reading of the enum, because the enum is what was already known.

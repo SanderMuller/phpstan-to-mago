@@ -129,9 +129,9 @@ upstream drift shows up there as a diff rather than here as a stale table.
 | `phpstan/phpstan-phpunit` | 13 | 4 | 9 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-`--status` counts 99 of 209 here. The table is the seven packages that emit anything;
-`spaze/phpstan-disallowed-calls` (38) and `composer/pcre` (2) are in the denominator and not the table. Run
-it on your own project for its figure.
+`--status` counts 99 of 209 here and writes a page under `--out`. The table is the seven packages that emit
+anything; `spaze/phpstan-disallowed-calls` (38) and `composer/pcre` (2) are in the denominator and not the
+table. Run it on your own project for its figure.
 
 <details>
 <summary>What the vocabulary covers</summary>

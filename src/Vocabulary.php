@@ -53,6 +53,7 @@ use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Const_;
 use PhpParser\Node\Stmt\Do_;
 use PhpParser\Node\Stmt\ElseIf_;
+use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Function_;
 use PhpParser\Node\Stmt\If_;
@@ -207,6 +208,7 @@ final class Vocabulary
         ElseIf_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'IfStatementBodyElseIfClause', 'phpOnly' => true],
         While_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'While', 'phpOnly' => true],
         Do_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'DoWhile', 'phpOnly' => true],
+        For_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'For', 'phpOnly' => true],
         Switch_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'Switch', 'phpOnly' => true],
         Ternary::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'Conditional', 'phpOnly' => true],
         BooleanNot::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '!')", 'phpOnly' => true],

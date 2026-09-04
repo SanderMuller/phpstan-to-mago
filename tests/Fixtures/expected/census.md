@@ -540,7 +540,7 @@ REFUSE  OperandsInArithmeticSubtractionRule
         needs: no PHP navigation for node.expr (kind expr) on a Expr node
         needs: a second identifier before the first was reported
 REFUSE  OverwriteVariablesWithForLoopInitRule
-        no hook mapping for node type PhpParser\Node\Stmt\For_
+        no mapping for ->init on a hook-node
         needs: no iteration mapped for ->init, which resolved to a expr
 REFUSE  OverwriteVariablesWithForeachRule
         guard body is neither `return []` nor `continue`, but Stmt_Foreach
