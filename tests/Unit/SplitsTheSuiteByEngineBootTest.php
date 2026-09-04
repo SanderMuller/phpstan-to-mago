@@ -36,6 +36,7 @@ final class SplitsTheSuiteByEngineBootTest extends TestCase
         'HierarchyKnowledge',
         'TypeDescriptions',
         'RegisteredRules',
+        'DivergenceCases',
     ];
 
     public function test_every_test_that_boots_an_engine_is_grouped(): void
