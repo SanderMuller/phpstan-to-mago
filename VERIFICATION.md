@@ -7917,3 +7917,53 @@ that is open and untested.
 Both figures are read from the 1.47.6 differential runs recorded earlier in this file, not re-run — the same
 output whose totals and per-finding lists are quoted above. The "neither file carries an only-port finding"
 claim is a grep for each basename across both runs' finding lists.
+
+### Two triage predicates, two very different soundness figures
+
+The entry above bounded a triage pass at **0.16% of files** wrongly skipped. A peer session then measured
+**11.4%** and killed the idea's cheap form. Both are right, and they are not the same experiment — a reader
+who quotes one for the other gets the architecture question backwards.
+
+    predicate                                     selector                    false-negative files
+    "a transpiled rule found something here"      PHPStan's own rules, ported  <= 2 of 1251   0.16%
+    "Mago's native analysis found something here" Mago's own diagnostics        4 of 35      11.4%
+
+**The selector is the whole difference.** The transpiled rules *are* PHPStan rules, so their finding set
+tracks PHPStan's by construction — that is what the corpus differential exists to measure, and 12305
+agreements is what tracking looks like. Mago's native diagnostics check different things, so there is no
+reason for their finding set to cover PHPStan's, and it does not.
+
+The peer's figures, reported as theirs and not reproduced here: `nesbot/carbon/src`, 914 files, PHPStan level
+9 with carbon's own autoload against Mago 1.47.5 defaults — 35 flagged files against Mago's 475, 439 skipped
+(48% of the corpus), 4 of the 35 never analysed, 6 of 1118 errors lost.
+
+**The file figure is the soundness one**, on the argument I gave them: a skipped file's finding is gone rather
+than late, so 48% saving for 11.4% blindness is not a trade a correctness tool takes.
+
+What it kills is the cheap instantiation, not the idea. A sound version needs a predicate provably
+conservative over PHPStan's rule set; Mago's diagnostics are not one, and the 0.16% row is not a candidate
+either — it is an *upper bound from an instrument that cannot see agreements*, on a selector that presupposes
+the rules are already ported, which is the thing the architecture was meant to avoid needing.
+
+#### The instrument note, because it is the fourth of these
+
+Their first run of the same experiment reported **0.0%** false negatives. It was computed against a PHPStan
+set of one file, because large PHPStan stdout is wrapped and truncated in this environment, and the truncated
+form looks like complete output. The fix was `--generate-baseline`, which writes to disk and bypasses stdout:
+931 entries, 1118 errors, 35 files.
+
+A 0.0% and an 11.4% out of one experiment an hour apart, separated only by noticing that 35 files cannot be
+1 file. Same shape as `(string) $type` rendering a `callable-string` as `string`: the instrument was lossy
+and the loss looked like a result.
+
+A second artefact they hit is worth carrying too: narrowing the corpus to one directory to shrink the output
+made every finding a `trait.unused`, because the using classes were no longer analysed. **Changing the corpus
+changed what PHPStan reports about it** — a shape this file has recorded from the other direction, where
+traits with no user in scope are 19 of 28 divergences.
+
+#### Verification
+
+The 0.16% row is this repository's own 1.47.6 runs, already recorded above. The 11.4% row is a peer's
+measurement on a corpus this repository also uses, reported here and **not reproduced** — no run behind it on
+this side. The distinction between the two predicates is a statement about what each selector is, checkable
+against the differential's own design rather than against either number.
