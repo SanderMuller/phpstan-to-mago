@@ -7967,3 +7967,55 @@ The 0.16% row is this repository's own 1.47.6 runs, already recorded above. The 
 measurement on a corpus this repository also uses, reported here and **not reproduced** — no run behind it on
 this side. The distinction between the two predicates is a statement about what each selector is, checkable
 against the differential's own design rather than against either number.
+
+### Every corpus-resolution divergence resisted minimisation, and each for a different reason
+
+The divergence harness shipped with three cases. Two of the three were written to reproduce a recorded
+divergence and **record agreement instead**, and a fourth was abandoned before it was written. That is not
+three unlucky attempts — the failures are the same class of divergence failing four different ways.
+
+    QueueFake.php                mechanism absent      the construct agrees once reduced
+    MessageFormatterMapper.php   mechanism agrees      both engines report both guarded branches
+    SimpleStaticType.php:13      direction inverted    an unresolvable parent silences PHPStan too
+    TranslatorImmutable.php      cause never traced    "the same resolution chain" is not a mechanism
+
+**The inverted one is the sharpest.** A peer session measured, from `phpstan-src`, that a rule reading an
+unresolvable parent gets a valid `ClassReflection` whose `getParentClass()` is null, so
+`fast_has_parent_constructor()` is false and the rule returns `[]` — PHPStan goes *silent*. But
+`SimpleStaticType.php:13` is only-**original**: PHPStan reports and the port does not, because
+`PHPStan\Type\StaticType` lives inside `phpstan.phar`, which PHPStan reads and mago does not open. So the
+mechanism is not "a parent nothing resolves" but "a parent one engine resolves and the other cannot", and a
+synthesis making it unresolvable to both reproduces agreement. Both of us had specified the wrong subject,
+and the measurement caught it before either was written.
+
+#### The one that could have been written, and why it was not
+
+The visibility mechanism *is* reproducible without a phar: PHPStan's `scanDirectories` and mago's
+`[source] excludes` both exist, so a parent can be visible to one engine and not the other by configuration.
+
+It was not written. The observable behaviour would match and the cause would not — the original's invisibility
+is a phar mago does not open, the synthesis's is a directory the case tells mago to skip. Two consequences,
+and the second is worse: if mago ever reads phars the original divergence disappears while the case keeps
+passing, and a case that pins *its own configuration choice* produces a green meaning only that the exclusion
+still works. That is not a fact about either engine.
+
+#### What the harness is for, stated because three cases in it record agreement
+
+A case that stands for the wrong thing is worse than a missing case, because it passes. So a failed
+minimisation is kept, renamed to what it actually pins, and its README says plainly which original it fails to
+reproduce and what the reduction drops. The next person to reduce that finding starts after the shape rather
+than at it, and the original stays in this file as unreproduced rather than being quietly marked covered.
+
+Two harness defects were caught the same way and are worth naming, because both would have produced confident
+wrong records. Attribution required a leading `/cases/`, which matched PHPStan's absolute paths and not mago's
+relative ones, so every case read as a false `DIVERGE` — caught by a control row both engines must report. And
+a control written as a `callable` parameter is exempt from the rule under test, so the case recorded silence
+on both sides and read as agreement — caught by the guard that refuses a case recording nothing.
+
+#### Verification
+
+Three cases in `tests/Fixtures/expected/divergences.md`, each with a control, regenerated and diffed by
+`RecordsDivergencesTest`. The regression guard is mutation-checked: reverting `f62f331` flips it to `DIVERGE`.
+The PHPStan-side behaviour of the unresolvable parent and of the guarded double declaration are a peer
+session's measurements from `phpstan-src`, reported as theirs; the port-side rows and every recorded row are
+this repository's own runs.
