@@ -7529,3 +7529,65 @@ fixtures, byte-identical to HEAD apart from the `--out` path — a refusal that 
 emitted file, which is the check that the deletion removed only dead code. Drift and fires-gate suites green
 at 566, full suite below. `mago --version` reads 1.47.6 and `composer.json` requires `^1.47.6`, so the floor
 and the installed binary agree rather than one being assumed from the other.
+
+### The dispatch is not "two targets and one binding", and I said it was twice
+
+The entry above closed by describing what the six arithmetic rules need as "a plugin registering two kinds
+and binding the same two operand positions in each arm — a translator change rather than a vocabulary row".
+Measured before building it, that is wrong, and the reason is one table.
+
+`Vocabulary::HOOK_KINDS[Expr::class]` is:
+
+    ClassConstantAccess, StaticPropertyAccess, MethodCall, StaticMethodCall, FunctionCall, PropertyAccess
+
+**Six call and access kinds, and neither `Binary` nor `Assignment`.** A rule returning `Expr::class` registers
+those six, so the six arithmetic rules would emit a plugin that never fires on `$a / $b` or `$a /= $b` — the
+dispatch could translate perfectly and the result would report nothing.
+
+#### Widening the table is not free, which is the part I had not checked
+
+Eight rules in the installed corpus return `Expr::class`: the six, plus `NoInstanceOfStaticReflectionRule`
+(refused) and **`NoDynamicNameRule`, which emits and ships**. Adding `Binary` and `Assignment` to the shared
+list changes what that plugin registers and therefore its emitted bytes, and makes it fire on two node kinds
+whose bodies it was never read against. That is a shipped rule's behaviour, not a table row.
+
+#### And the codebase disagrees with itself about the alternative
+
+The alternative is deriving targets from the rule's own `instanceof` set. Two places take opposite views.
+
+`HOOK_KINDS`'s own docblock rejects it: *"the kinds a node type covers are a fact about the type, and letting
+a rule's own `instanceof` decide the registration would make the targets depend on the body rather than on
+what PHPStan would have visited."*
+
+`Transpiler::multiKindRefusal()`'s message assumes it: *"A plugin can register several targets, so the shape
+is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same
+child in every branch."* A body that reads the same child in every branch is a statement about the body
+deciding whether the registration is sound.
+
+**The stated principle is also not what the table does.** PHPStan's `Rule<Expr>` visits every expression —
+that is exactly the "trick to allow multiple node types" `NoDynamicNameRule` documents, and it is how the six
+receive `BinaryOp` and `AssignOp` at all. So a six-kind list is already a pragmatic narrowing chosen for the
+corpus, not a fact about `Expr`. The docblock describes a principle the table does not follow.
+
+That tension is the decision, and it is a design one rather than a measurement: either `Expr` covers more
+kinds for everyone, or registration may depend on a body once the body is checked to read uniformly. Nothing
+here settles which, and both have consequences for rules that already ship.
+
+#### The pattern, since this is mine
+
+Five cost estimates in this exchange have failed on contact with the thing estimated — a peer's "table
+entries against an enum that already has the cases", their message-capability ranking, my own "a hook row is
+the unit of work" correction, and now my "two targets and one binding", twice: once in a commit message and
+once in a reply. Each was reasoned from the shape of the code and each was wrong in the same direction,
+cheaper than reality.
+
+The one that keeps working is unglamorous: make the smallest real change and read what the tool says. Adding
+the `For` row and following one rule to the bottom cost minutes and settled a family. Estimating the
+dispatch from its shape cost nothing and was wrong twice.
+
+#### Verification
+
+`HOOK_KINDS[Expr::class]` is read from the table, and the eight `return Expr::class` rules are a grep over
+the four installed packages with each outcome taken from the committed census rather than assumed —
+`NoDynamicNameRule` is `EMIT` there. No code changed for this entry: it is the measurement that stopped a
+change being made.
