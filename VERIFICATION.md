@@ -6980,6 +6980,10 @@ agreement, and never as only-port.
 
 #### What is retracted and what is unknown
 
+> **Narrowed** by *The Benchmark unknown, narrowed to one place it cannot be* below. The version branch is
+> closed for the call site as well as the annotation, and the site is an agreement today rather than quiet on
+> both sides — both engines report there. Read that entry for what is left unknown.
+
 Retracted: the cause, and the claim that the construction is reportable. The five-row table it rested on is
 withdrawn with the six-row one above it.
 
@@ -7001,3 +7005,46 @@ unmodified copy of `Benchmark.php` resolved against a real Laravel tree. Row A/B
 were the prediction and each was written before its run. The `value()` reading is a control inside the same
 file rather than a separate fixture, so it cannot come from a different configuration than the `measure()`
 reading beside it.
+
+### The Benchmark unknown, narrowed to one place it cannot be
+
+The entry above left "why the recorded run reported on one side only" unknown, with two candidates: the
+recorded Laravel version bound the template differently, or the attribution was wrong. A peer session closed
+the first on the annotation text. Checked here independently and extended, because the annotation is not the
+only thing that could have moved:
+
+    12.65.0  12.69.1  13.7.0  13.17.0  13.26.1  13.29.0   `wrap()` docblock identical in all six
+    12.65.0  12.69.1  13.7.0           13.29.0            `measure()` identical, `$callback();` at line 27
+
+Six local Laravel trees for the annotation and four for the call site. `wrap()`'s signature gained `...$args`
+in 13, and its docblock did not change. **The recorded `Benchmark.php:27` is this exact statement**, so the
+version branch is closed for the site and not only for the annotation it resolves through.
+
+Then the direct measurement the entry above should have made, one rule and one file rather than a corpus:
+
+    port      Transpiled\NoDynamicNameRule   Benchmark.php:27  symplify.noDynamicName
+    original  Symplify ... NoDynamicNameRule Benchmark.php:27  symplify.noDynamicName
+
+**Both engines report there, same identifier, same message.** So the site is an agreement today — not a
+divergence that closed by going quiet on the port side, which is what "never as only-port" left open above.
+The port still reports; PHPStan now reports with it.
+
+That inverts which side has to have changed. The recorded finding was only-port, so the port reported then as
+it does now, and it is PHPStan's answer that differs between then and now. `composer.json`'s `phpstan/phpstan`
+constraint has not moved across the range, and `composer.lock` is gitignored here, so which version was
+installed for the recorded run is not recoverable from this repository.
+
+**Still unknown, and now the only branch left:** whether PHPStan declined at that statement in the version
+installed then, or the finding was attributed to the wrong line when written. Nothing here separates those.
+What is no longer unknown is the part that mattered — both engines read `mixed` at that statement and both
+report on it, so no version of this can be an inference gap between them.
+
+#### Verification
+
+Two `grep` sweeps over six and four installed Laravel trees, printed above rather than summarised. Then one
+transpile of `NoDynamicNameRule` alone, run through the real `mago` binary over an unmodified copy of
+`Benchmark.php` resolved against a real Laravel tree, and the original rule registered alone in a PHPStan
+config over the same copy. One rule and one file on both sides, so neither answer can come from another
+rule's finding at a nearby line — which is what made the corpus reading above weaker than it looked: an
+agreement is counted and not printed there, so "never as only-port" cannot distinguish "both report" from
+"neither reports". It was the former.
