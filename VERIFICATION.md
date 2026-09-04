@@ -7171,3 +7171,60 @@ No code change. Two parses of the committed census: one extracting every `$recei
 line and bucketing by receiver kind, one counting distinct needs per `REFUSE` block. The `Refusal::$permanent`
 and gate-granularity claims are reads of `src/Refusal.php`, `src/PackageCoverage.php:139` and
 `tests/Unit/EmittedRuleFiresTest.php` rather than inferences from their names.
+
+### The message capability is one rule, and the fix that showed it nearly said sixty
+
+A peer session ranked `could not find the reported message` as the highest-leverage capability in the tool,
+from a first-blocker count of 12 across the installed packages. The needs pass could not check that, because
+it never records a refusal that *ends* the pass — everything stepped over is collected and whatever finally
+stops it was discarded. So the family appeared as a need exactly zero times.
+
+Fixed, and the first version of the fix was wrong in the worst available direction.
+
+**Recording the terminal refusal unconditionally added the label to most refused rules in the corpus.** The
+message a rule reports is built by a statement, so any rule with a stepped-over statement reaches the end
+without one and terminates on that same refusal. It is a third artefact of stepping over a statement, beside
+`unknown local $x` and `outside a loop`, which this pass already filters for the identical reason.
+
+Had it shipped, the family would have gone from 0 needs to roughly 60 and read as the largest capability here
+by a wide margin — **confirming the peer's ranking, with a number, from the instrument built to stop exactly
+that kind of ranking.** They could not have distinguished it from a real result. Neither could a reader of
+this file.
+
+Conditioned on the pass having stepped over nothing — where nothing can have removed the message — it adds
+**two lines**, and both are rules that carried a reason and no needs line. Those two were the only such
+entries in the file, which is the consistency check the unconditional version failed and the conditional one
+passes.
+
+#### What the sizing then says
+
+    message family, as a first blocker, 9 installed packages   12   (11 of them spaze)
+    message family, as a need, the 7 census packages            1
+
+So it is one rule where needs data exists, and the 12 is real but concentrated in a package the census does
+not cover. `LockedCorpus::PACKAGES` is seven packages by design — spaze is in the census's denominator and
+out of its table because it emits nothing — so sizing spaze's eleven means changing what that file is for,
+which is not a measurement decision.
+
+Recorded because the number will be quoted, and because "12" and "1" are both true of the same capability on
+different axes. Print the axis next to the count.
+
+#### The peer's own corrections, for the record
+
+`Vocabulary::HOOKS` maps **39 distinct `NodeKind` cases of 227**, not the 62 first reported — that figure came
+from an unscoped grep catching `'kind'` keys in three other tables. 17% of the node surface rather than 27%.
+Their two structural findings hold and are checked in the enum: ten kinds carry a `*Construct` suffix
+(`IssetConstruct`, `PrintConstruct`, `ExitConstruct` and so on), so a name-based lookup from `Expr\Isset_`
+misses all ten, and `Else` is two cases rather than one.
+
+And the bound on what mapping those buys: 17 of spaze's 38 refuse at the hook and the other 21 refuse
+elsewhere, so every kind mapped moves that package from 0 emitted to **at most** 17 and plausibly fewer. No
+number until it is run.
+
+#### Verification
+
+Test before fix, failing on the right assertion — `ClassAttributeRequiresPhpVersionRule` reports the message
+as a need — and the unconditional version was caught by the census alarm rather than by review. Suite
+947/947, PHPStan 0, pint clean, and emit-all across php, analyzer and linter byte-identical apart from the
+`--out` path, which a change to a measurement instrument should be. The `HOOKS` figures are a read of
+`Vocabulary::HOOKS` through the autoloader rather than a grep, after a grep is what produced the wrong one.

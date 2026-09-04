@@ -90,8 +90,8 @@ asks. Where a value is going to be compared against something, probe the compari
 ## The instrument can be silent about the distinction you need
 
 The rules above are about explanations. This one is about the observation itself, and it is the harder
-failure: three times in one session a measurement was an artifact of the thing measuring it, and reading the
-source caught none of the three.
+failure: four times in one session a measurement was an artifact of the thing measuring it, and reading the
+source caught none of them.
 
 - **A rendering dropped the field the decision turned on.** `ScalarType::__toString()` returns
   `$this->kind->value`, so a `callable-string` renders as `string` and so does an un-narrowed one. Six rows
@@ -104,6 +104,17 @@ source caught none of the three.
 - **An aggregate counted what it did not print.** The corpus differential prints each divergence and only
   counts agreements, so "the site never appears as only-port" cannot separate *both engines report* from
   *neither reports*. It was the first, which inverts which side of a recorded divergence had changed.
+
+A fourth instance is the one to fear, because it would have *agreed*. Recording a needs pass's terminal
+refusal unconditionally would have taken one capability from 0 needs to about 60 and made it the largest in
+the tool — confirming a ranking a peer session had just proposed, with a number, from the instrument built to
+stop that error. The artefact had a cause: the message a rule reports is built by a statement, so any rule
+with a stepped-over statement reaches the end without one and terminates on the same refusal. It is a third
+artefact of stepping over a statement, beside the two already filtered.
+
+**An artefact that confirms the hypothesis is the dangerous one**, and whoever receives the number cannot
+tell it from a real result — only the person who can run the instrument can. So when a measurement supports
+what you expected, that is the moment to ask what else would produce it.
 
 **Read the model, never a rendering, wherever a value will be compared or branched on.** A rendering is a
 lossy projection chosen for a human, and `__toString()` on a type is the most tempting one here.
