@@ -197,4 +197,44 @@ Stop and report — do not improvise — if any of these proves false during imp
 
 ## Findings
 
-<!-- Notes added during implementation. Do not remove this section. -->
+**Shipped.** `0ad4ae7` suite split · `78b376a` runner + first case · `38d3172` dedupe + second case ·
+`b79396d` third case · `5b7f7a4` the cross-case finding · `a35f2dc` fourth case, `ignore:` format, timeout fix.
+
+### Phase 3 produced four cases and none of the planned synthesised ones
+
+The spec listed three synthesised cases for the corpus-resolution port-misses. **All three are deferred or
+landed as failed minimisations**, each failing differently:
+
+| planned | outcome |
+|---|---|
+| `SimpleStaticType.php:13`, parent in a phar | **direction inverted** — an unresolvable parent silences PHPStan too, so the synthesis reproduces agreement. Deferred. |
+| `MessageFormatterMapper.php:42`, class declared twice | **mechanism agrees** — both engines report both guarded branches. Shipped as a failed minimisation. |
+| `TranslatorImmutable.php:24/:40` | **cause never traced** — "the same resolution chain" is not a mechanism. Deferred, as the spec anticipated. |
+| `QueueFake.php` (minimisable, per the spec) | **mechanism absent** — the construct agrees once reduced. Shipped as a failed minimisation. |
+
+A peer session's triage rule explains all four and is the reusable part: **if a recorded cause names a
+version, a path, or an install, it is environment-dependent — do not minimise it.** Minimisation works by
+removing environment, so it removes the cause by construction.
+
+### What shipped instead
+
+Four cases, three recording `AGREE`. The regression guard is mutation-checked. The fourth pins the
+null-parent path that invalidated the first synthesis, so nobody re-derives it. Failed minimisations are kept
+and renamed to what they pin, with their originals left unreproduced in `VERIFICATION.md`.
+
+### Defects the design caught, and one it did not
+
+Caught: attribution required a leading `/cases/`, matching PHPStan's absolute paths and not mago's relative
+ones — every case read as a false `DIVERGE`, turned red by a control row. A control written as a `callable`
+parameter is exempt from the rule under test, so its case recorded silence and read as agreement — named by
+the silence guard. Two cases naming one rule would have declared `\Transpiled\<Rule>` twice and fatalled.
+
+Not caught by anything: `composer test-full` carried composer's 300s default and crossed it on the fourth
+case. Broken from creation, with earlier runs at 287s and 295s — green and green-without-margin are
+indistinguishable. Now pinned by assertion.
+
+### Still open
+
+Open Question 1 stands: the large-corpus runner is unbuilt, and `tests/Fixtures/expected/divergences.md` is
+the baseline format it was meant to reuse. Open Question 2 is answered — the batch runs in
+`upstream-parity.yml`, since both workflows call `test-full`.
