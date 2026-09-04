@@ -87,7 +87,10 @@
             "@test-full"
         ],
         "transpile": "bin/phpstan-to-mago",
-        "test-full": "vendor/bin/phpunit"
+        "test-full": [
+            "Composer\\Config::disableProcessTimeout",
+            "vendor/bin/phpunit"
+        ]
     },
     "config": {
         "sort-packages": true,

@@ -81,7 +81,7 @@ final class RecordsDivergencesTest extends TestCase
     }
 
     /**
-     * @param array<string, array{path: string, rule: string, namespace: string}> $cases
+     * @param array<string, array{path: string, rule: string, namespace: string, ignore: list<string>}> $cases
      * @param array<string, array{port: list<string>, original: list<string>}>    $findings
      */
     private function render(array $cases, array $findings, string $versions): string

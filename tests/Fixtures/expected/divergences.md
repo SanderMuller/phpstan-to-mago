@@ -21,6 +21,12 @@ the real finding it stands for rather than claiming to be it.
         both      Subject.php:17  symplify.noProtectedClassStmt
         both      Subject.php:27  symplify.noProtectedClassStmt
 
+## null-parent-silences-the-rule  DIVERGE
+        rule: Symplify\PHPStanRules\Rules\Complexity\NoConstructorOverrideRule
+        port      Subject.php:30  symplify.noConstructorOverride
+        original  Subject.php:17  class.notFound
+        original  Subject.php:30  symplify.noConstructorOverride
+
 ## truthy-narrowed-callable  AGREE
         rule: Symplify\PHPStanRules\Rules\NoDynamicNameRule
         both      Subject.php:33  symplify.noDynamicName

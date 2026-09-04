@@ -70,7 +70,7 @@ final class DivergenceCases
             level: 0
             reportUnmatchedIgnoredErrors: false
             paths:
-                - cases
+                - cases{ignores}
         services:
         {services}
         NEON;
@@ -81,7 +81,7 @@ final class DivergenceCases
     /**
      * The case directories, by name.
      *
-     * @return array<string, array{path: string, rule: string, namespace: string}>
+     * @return array<string, array{path: string, rule: string, namespace: string, ignore: list<string>}>
      */
     public function cases(): array
     {
@@ -92,6 +92,7 @@ final class DivergenceCases
                 'path' => $path,
                 'rule' => $this->ruleOf($path),
                 'namespace' => $this->namespaceOf($path),
+                'ignore' => $this->ignoreOf($path),
             ];
         }
 
@@ -127,6 +128,29 @@ final class DivergenceCases
     }
 
     /**
+     * Identifiers a case ignores on the PHPStan side, scoped to that case's own files.
+     *
+     * A core PHPStan rule can fire on the same condition as the rule under test —
+     * `constructor.missingParentCall` and `symplify.noConstructorOverride` both want a child constructor
+     * that does not call its parent — so a control necessarily triggers both and the core one arrives as a
+     * second PHPStan-only row that has nothing to do with the case.
+     *
+     * Scoped by path rather than declared globally: an identifier one case must ignore is one another case
+     * might be about, and a shared `ignoreErrors` would silence it everywhere.
+     *
+     * @return list<string>
+     */
+    private function ignoreOf(string $path): array
+    {
+        $file = $path . '/case.neon';
+        if (! is_file($file) || preg_match_all('/^ignore:\s*(\S+)\s*$/m', (string) file_get_contents($file), $matches) < 1) {
+            return [];
+        }
+
+        return $matches[1];
+    }
+
+    /**
      * The namespace a case's subjects declare, which is what keeps one case out of another's analysis.
      */
     private function namespaceOf(string $path): string
@@ -144,7 +168,7 @@ final class DivergenceCases
     /**
      * Refuse two cases sharing a namespace, before either engine starts.
      *
-     * @param array<string, array{path: string, rule: string, namespace: string}> $cases
+     * @param array<string, array{path: string, rule: string, namespace: string, ignore: list<string>}> $cases
      */
     public function refuseCollidingNamespaces(array $cases): void
     {
@@ -166,7 +190,7 @@ final class DivergenceCases
     /**
      * One sandbox holding every case, with every rule transpiled into one worker.
      *
-     * @param array<string, array{path: string, rule: string, namespace: string}> $cases
+     * @param array<string, array{path: string, rule: string, namespace: string, ignore: list<string>}> $cases
      */
     public function sandbox(array $cases): string
     {
@@ -185,8 +209,14 @@ final class DivergenceCases
         $requires = [];
         $plugins = [];
         $services = [];
+        $ignores = [];
         foreach ($cases as $name => $case) {
             $this->copyInto($case['path'] . '/subject', $sandbox . '/cases/' . $name);
+
+            foreach ($case['ignore'] as $identifier) {
+                $ignores[] = '        -' . PHP_EOL . '            identifier: ' . $identifier . PHP_EOL
+                    . '            paths:' . PHP_EOL . '                - cases/' . $name;
+            }
 
             if (isset($requires[$case['rule']])) {
                 continue;
@@ -207,6 +237,7 @@ final class DivergenceCases
         file_put_contents($sandbox . '/mago.toml', self::MAGO_CONFIG);
         file_put_contents($sandbox . '/phpstan.neon', strtr(self::PHPSTAN_CONFIG, [
             '{services}' => implode(PHP_EOL, $services),
+            '{ignores}' => $ignores === [] ? '' : PHP_EOL . '    ignoreErrors:' . PHP_EOL . implode(PHP_EOL, $ignores),
         ]));
 
         return $sandbox;
@@ -263,7 +294,7 @@ final class DivergenceCases
      * visible in the record is interference someone can act on — filtering it out would hide exactly the
      * failure batching risks.
      *
-     * @param array<string, array{path: string, rule: string, namespace: string}> $cases
+     * @param array<string, array{path: string, rule: string, namespace: string, ignore: list<string>}> $cases
      *
      * @return array<string, array{port: list<string>, original: list<string>}>
      */

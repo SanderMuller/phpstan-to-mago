@@ -94,7 +94,14 @@ final class SplitsTheSuiteByEngineBootTest extends TestCase
         $scripts = $composer['scripts'] ?? [];
 
         $this->assertSame('vendor/bin/phpunit --exclude-group engine', $scripts['test'] ?? null);
-        $this->assertSame('vendor/bin/phpunit', $scripts['test-full'] ?? null);
+
+        // The full suite runs both engines over every divergence case and grows with the corpus, so it must
+        // not carry composer's 300-second default. That default is why this assertion pins the disabling
+        // call: `test-full` crossed 300s on its fourth case, and every verification before that had passed
+        // with seconds of headroom — a green that meant "under the limit today" and read as "correct".
+        $full = (array) ($scripts['test-full'] ?? []);
+        $this->assertContains('Composer\\Config::disableProcessTimeout', $full);
+        $this->assertContains('vendor/bin/phpunit', $full);
 
         // The gate before a commit has to be the full one. Splitting the suite moved the fires gate out of
         // `test`, and that gate is this project's answer to "'It emitted' is not a result" — a bare
