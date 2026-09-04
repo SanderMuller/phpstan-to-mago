@@ -7840,3 +7840,42 @@ the family covers both of spaze's refusal clusters, the 11 message refusals and 
 Both bodies are quoted from the installed package in full; neither is longer than the three lines shown. The
 zero-movement claim for the collaborator family is the run recorded at line 4372 of this file, not a new
 measurement — what is new is that these two rules belong to it, which is a read of their source.
+
+### The silent gap is at the bundle level, and nothing on disk records it
+
+A peer session asked whether the argument used to refuse a partial *rule* applies to a partial rule *set*.
+Checked rather than reasoned about, on `phpstan-strict-rules` — 22 emit, 23 refuse:
+
+    generated/manifest.json      22 keys, one per emitted rule
+    entry shape                  identifier, identifiers, messages, parameters
+    anything naming a refusal    nothing, anywhere in the output tree
+
+**A consumer receives 22 rules and no record that 23 exist.** The refusals are printed to the terminal when
+the command runs, and that output does not travel with the artefact — the person who installs a bundle need
+not be the person who generated it, and nobody reads a plugin directory to count what is absent.
+
+That is the same shape as the partial-rule argument, one level up. The reason a rule covering three of four
+operand reads was refused is that a plugin which under-reports is a plugin you would trust; a bundle covering
+22 of 45 rules under-reports in exactly that way, and the manifest that exists to describe it is silent.
+`README.md` says it — *"a Mago-clean commit can still fail the deferred run, because a refused rule reports
+nothing"* — so the consequence is documented in prose the consumer may never read, and absent from the file
+the tooling writes.
+
+It is arguably worse at this level for two reasons. A rule's under-reporting is bounded by one rule's subject;
+a bundle's is bounded by nothing. And the per-rule case has a gate — `EmittedRuleFiresTest` proves each
+emitted rule fires — while no check anywhere asserts that the *set* is complete or says what it omits.
+
+#### What this does not settle
+
+Whether to fix it, and how. The manifest already carries per-rule data a worker reads, so a refused list is
+not obviously the right shape — a count, a names list, and a reasons list are three different artefacts with
+three different maintenance costs, and one of them duplicates the census. Recorded as a hole rather than a
+plan.
+
+Nothing here changes what is emitted. It is a gap in what is *reported* about what is emitted.
+
+#### Verification
+
+One emit run of `phpstan-strict-rules` on the `php` target, its `manifest.json` decoded and keyed, and a
+case-insensitive search of the whole output tree for any word naming a refusal. The 22-of-45 figure is that
+run's own count, and matches the census.
