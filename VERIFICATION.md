@@ -7278,3 +7278,46 @@ Census diff read before it was accepted: one line, the refusal text. Emit-all ac
 over five packages plus the fixtures, byte-identical apart from the `--out` path — no rule's output moved,
 which is what a row nothing emits with should do. Suite, PHPStan and pint below. The dispatch probe is the
 running binary rather than a reading of the enum, because the enum is what was already known.
+
+### mago 1.47.6 fixes the compound-assignment operand, and the six now cost a floor rather than a policy
+
+`#2311` was filed by a peer session and fixed the same day, released in 1.47.6. Verified here against the
+external index the CLI does not expose, which is the only instrument that can see it — one probe file, both
+versions, nothing else changed:
+
+    row                              1.47.5        1.47.6
+    $a /= $b   right operand         int|float     null|int
+    $c += $d   right operand         int           null|int
+    $g / $h    right operand         null|int      null|int      control, binary form
+    $e = $f ?? 0  right side         int           int           control, plain assignment
+    $u = $g / $h  whole expression   int|float     int|float     control, the result type
+
+Both compound rows now answer the operand's **own** type and match the binary control exactly. The three
+controls do not move, which is what separates "the compound-assignment read was fixed" from "the probe reads
+types differently now" — and the last control matters most: `int|float` is still what the *expression*
+produces, so the fix did not remove that type, it stopped the operand read returning it.
+
+#### What it changes, and what it does not
+
+The partial-emission question is retired rather than decided. The objection was that a rule covering three of
+four operand reads is a plausible-but-wrong rule, and the fires gate's `assertSame` over the example pair
+leaves only a gate exemption or an example curated to hide the gap. On 1.47.6 there is no fourth read to
+miss.
+
+The refusal is one table row — `Vocabulary::KINDS_WITHOUT_OPERAND_TYPES = ['Assignment' => 1]` — so clearing
+it is an edit, not a feature. **What is not cheap is the consequence.** An emitted plugin that reads an
+`Assignment` operand is correct on 1.47.6 and silently wrong on 1.47.1 through 1.47.5, where the same read
+answers the expression's result type. The README's `1.47.1 or later` is a shipped claim, and six rules that
+need 1.47.6 either raise that floor for everyone or need a per-rule statement the manifest has no field for.
+
+That is a versioning decision, not a measurement, and it is left open here deliberately. Adopting 1.47.6 also
+moves the differential baseline: the release carries roughly fifteen other analyzer fixes — narrowing, isset
+roots, reconciliation precision, foreach array types — several of which could move corpus findings either
+way. None of that is measured, and the bump should be measured before it is taken rather than after.
+
+#### Verification
+
+Both runs are the same probe file, the same worker and the same `mago.toml`, differing only in the installed
+binary, with `mago --version` read on each side rather than assumed. The pin was restored to 1.47.5
+afterwards and the version re-read to confirm it. `composer.lock` is gitignored here, so nothing tracked
+records either version and no committed file changed for this entry.
