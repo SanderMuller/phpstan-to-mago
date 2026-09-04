@@ -6698,3 +6698,35 @@ down". Naming the mechanism instead of the symptom is what made the alternative 
 The whole gate, run as the project runs it: rector 0 changed, pint clean, `phpstan-simplified` 0,
 `validate-gitattributes` valid, suite 944/944. `AnalysesTheEmittedPluginsTest` passes, which is the test that
 spawns PHPStan with the config whose `tmpDir` moved.
+
+### "Not built" was built the same day, and I relayed it twice as an open decision
+
+Line 872 of this file says of the unwired-configuration cluster: *"Not built. It changes what a coverage
+figure counts … and that denominator is a decision rather than a measurement."* That was `da98469`. The
+commit after it, `039c5f0` on the same day, is *"Read a rule's configuration off the project that registered
+it"* — and it built exactly the thing.
+
+`Transpiler::takeConsumerValue()` exists, `Transpiler::$consumerConfiguration` is set by `Cli` from
+`--from-config`, `RegisteredRules` captures `arguments` off the constructed rule objects, and the docblock on
+`takeConsumerValue()` states the case in the note's own words: *"This is for the rules a package registers
+nowhere, where the consumer is the only place values exist."*
+`AsksPhpstanWhichRulesAreRegisteredTest::test_the_emitted_plugin_carries_what_the_project_configured()` is
+the test.
+
+The denominator worry dissolved rather than being decided: the tool has two modes and always did. A package
+run refuses the rule, a `--from-config` run carries the consumer's value, and the two counts answer different
+questions — which is what `--status` and `--from-config` are documented to mean.
+
+**This session reported that cluster to the user twice as four rules blocked on a decision.** Both times from
+this file, both times without checking whether the note was still true. A dated record of a measurement stays
+valid; a sentence about what is *not built* expires the moment someone builds it, and nothing marks the
+difference when you are reading.
+
+What is genuinely unmeasured is narrower and worth stating as such: whether those four particular rules emit
+under a consumer that registers them has not been run here, because no project in this repository registers
+them. The mechanism is tested on a fixture; the four are inferred from the mechanism.
+
+#### Verification
+
+No code change. Two `git log -S` runs order the note and the feature, and the ancestry check confirms the
+note came first. The feature's own test passes in the suite.
