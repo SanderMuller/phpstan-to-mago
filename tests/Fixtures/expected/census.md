@@ -129,6 +129,7 @@ REFUSE  FormTypeClassNameRule
         needs: trinary tail on an unsupported query ->isSuperTypeOf()
 REFUSE  NewOverSettersRule
         no aggregate mapped for the collector NewWithFollowingSettersCollector
+        needs: no aggregate mapped for the collector NewWithFollowingSettersCollector
 REFUSE  NewWithFollowingSettersCollector
         PhpParser\Node covers several node kinds, and this rule narrows to 7 of them with `instanceof`: ClassMethod, Function_, If_, ElseIf_, While_, Foreach_, For_. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
         needs: condition outside the vocabulary: ->isEnabled
@@ -604,6 +605,7 @@ REFUSE  AttributeRequiresPhpVersionRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->testMethodsHelper->getTestMethodReflection()
 REFUSE  ClassAttributeRequiresPhpVersionRule
         could not find the reported message
+        needs: could not find the reported message
 REFUSE  ClassCoversExistsRule
         assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()

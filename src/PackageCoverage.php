@@ -165,10 +165,13 @@ final readonly class PackageCoverage
         try {
             $transpiler = new Transpiler($file);
 
+            $terminal = null;
+
             try {
                 $transpiler->transpile();
-            } catch (Refusal) {
-                // The verdict is the caller's; this pass is only here for the list it collected on the way.
+            } catch (Refusal $refusal) {
+                // The verdict is the caller's. The message is kept for the one case below.
+                $terminal = $refusal->getMessage();
             }
 
             $needs = array_map(
@@ -192,6 +195,24 @@ final readonly class PackageCoverage
                 static fn (string $need): bool => ! str_contains($need, 'unknown local $')
                     && ! str_contains($need, 'outside a loop'),
             );
+
+            // The refusal that *ended* the pass, and only where the pass stepped over nothing.
+            //
+            // A third artefact of stepping over a statement, and the reason this is conditional rather than
+            // unconditional. Whatever finally stops the pass is discarded, so a rule whose body translates
+            // and then fails at the end reported an empty list — and an empty list reads as "nothing else
+            // needed" rather than as "this cannot be seen from here". `could not find the reported message`
+            // is that case, and across the corpus it was the largest first-blocker family after the two
+            // vocabulary ones while appearing as a need exactly zero times.
+            //
+            // Recording it unconditionally is wrong, and measured to be: the message is built by a statement,
+            // so any rule with a stepped-over statement reaches the end without one and terminates on the
+            // same refusal. That added the label to most refused rules in the corpus and would have inflated
+            // the family it exists to size. Where nothing was stepped over, nothing can have removed the
+            // message, and the refusal is the rule's own.
+            if ($needs === [] && $terminal !== null) {
+                $needs = [trim((string) preg_replace('/ \(line \d+\)/', '', $terminal))];
+            }
 
             // First sentence only. A needs entry is a *label* for sizing, and one refusal's full text runs to
             // a paragraph — repeated across the 27 rules that share it, a report would be mostly that

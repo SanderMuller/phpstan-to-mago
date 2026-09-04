@@ -247,4 +247,46 @@ final class ReportsInstalledCoverageTest extends TestCase
             $this->assertSame([], $outcome->needs, $outcome->name . ' carries needs it can never use');
         }
     }
+
+    /**
+     * A refusal that ends the pass is a need too, and it used to be the one kind that never appeared.
+     *
+     * The needs pass collects what a body takes by stepping over each refusing statement and translating on,
+     * then catching whatever finally stops it. Everything it *steps over* is recorded; the one that stops it
+     * was discarded. So a rule whose body translates cleanly and then fails on something at the end — the
+     * message lookup is the case — reported an empty needs list, and an empty list reads as "nothing else
+     * needed" rather than as "the instrument cannot see this".
+     *
+     * That mattered because the needs list exists to stop work being sized off first blockers. Across the
+     * corpus `could not find the reported message` was the largest single first-blocker family after the two
+     * vocabulary ones and appeared as a need exactly zero times, so the one instrument built to size it was
+     * the one instrument blind to it.
+     *
+     * `ClassAttributeRequiresPhpVersionRule` is the corpus rule with that shape. Asserted by name rather than
+     * by scanning for any empty list, because a rule legitimately reaching no needs at all is possible and
+     * this test should fail when the terminal refusal goes missing, not when the corpus shifts.
+     */
+    public function test_a_refusal_that_ends_the_pass_is_listed_as_a_need(): void
+    {
+        $coverage = PackageCoverage::forPackage(
+            'phpstan/phpstan-phpunit',
+            self::ROOT . '/vendor/phpstan/phpstan-phpunit',
+        );
+
+        $outcome = null;
+        foreach ($coverage->outcomes as $candidate) {
+            if ($candidate->name === 'ClassAttributeRequiresPhpVersionRule') {
+                $outcome = $candidate;
+            }
+        }
+
+        $this->assertNotNull($outcome, 'The rule this asserts on is no longer in the package.');
+        $this->assertSame(RuleOutcome::REFUSE, $outcome->verdict);
+        $this->assertContains(
+            'could not find the reported message',
+            $outcome->needs,
+            'The refusal that ended the needs pass is missing from the list it produced, so this rule reports '
+            . 'no needs while having one.',
+        );
+    }
 }
