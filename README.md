@@ -55,7 +55,7 @@ final class ForbiddenStaticConstFetchRule implements Plugin, NodeAnalysisHook
 
 It does not make an existing PHPStan run cheaper: dropping rules does not drop the parsing and type
 inference underneath. And the pre-filter does not gate — a Mago-clean commit can still fail the deferred run,
-because a refused rule reports nothing, and so does a translated rule that under-reports.
+because a refused rule reports nothing, and so does one that under-reports.
 
 ## Running a generated plugin
 
@@ -166,21 +166,21 @@ a written cause: 19 are traits PHPStan never analyses, 2 are inference gaps, 5 a
 ## Performance
 
 `php tests/Support/run-benchmark.php <project>` runs both engines over your own code. Here, on
-`vendor/nikic/php-parser/lib` — 270 files, 80 emitted rules, best of three:
+`vendor/nikic/php-parser/lib` — 270 files, 80 emitted rules, mago 1.47.5 against PHPStan 2.2.13, best of six:
 
 | | wall | CPU |
 |:--|--:|--:|
-| mago, engine only | 3.84s | 3.76s |
-| mago + the 80 transpiled rules | 5.79s | 7.17s |
-| PHPStan, cold result cache | 2.69s | 9.35s |
-| PHPStan, warm result cache | 0.74s | 0.71s |
+| mago, engine only | 4.00s | 3.87s |
+| mago + the 80 transpiled rules | 6.03s | 7.21s |
+| PHPStan, cold result cache | 2.74s | 8.64s |
+| PHPStan, warm result cache | 0.89s | 0.87s |
 
-The rules add **1.95s wall and 3.41s CPU** — the marginal cost, which no total gives. Five whole-codebase
-aggregates are 1.21s of that wall; the other 75 rules cost 0.70s together. The engine baseline tracks the
-resolution set, so it moves with your `includes` rather than your sources.
+**Read the CPU column**: this ran at a load average near 5, so the wall figures are pessimistic and
+unequally so. All four rows come from the same two runs. The rules add **3.34s CPU** — the marginal cost,
+which no total gives — and the engine baseline moves with your `includes` rather than your sources.
 
-**This is not a speed win on this corpus**: 2.2x slower than a cold PHPStan on wall clock, 1.3x cheaper on
-CPU, slower on both than a warm one, because `mago analyze` has no result cache. Measure your own.
+**Not a speed win on this corpus**: 1.20x cheaper than a cold PHPStan on CPU, dearer than a warm one,
+because `mago analyze` has no result cache. Measure your own.
 
 ## Requirements
 

@@ -7048,3 +7048,55 @@ config over the same copy. One rule and one file on both sides, so neither answe
 rule's finding at a nearby line — which is what made the corpus reading above weaker than it looked: an
 agreement is counted and not printed there, so "never as only-port" cannot distinguish "both report" from
 "neither reports". It was the former.
+
+### PHPStan 2.2.13 is 13% cheaper cold, and the warm row is not separable
+
+The README's performance table was a 2.2.12 measurement. Re-measured on 2.2.13, and because a single pair of
+runs makes the *version* comparison n=1 however many times each row is repeated, the pair was run twice in
+alternating order. `vendor/nikic/php-parser/lib`, 270 files, 80 emitted rules, n=3 per row per run.
+
+    row                            2.2.13 (a, b)      2.2.12 (a, b)     read
+    mago, engine only     CPU      3.87  3.95         3.82  3.98        control, interleaved
+    mago + 80 rules       CPU      7.21  7.34         7.27  7.55        control, interleaved
+    PHPStan cold          CPU      8.64  8.83         9.80  10.21       no overlap, -13%
+    PHPStan cold          wall     2.74  2.78         2.88   3.13       no overlap,  -7%
+    PHPStan warm          CPU      0.87  0.88         0.72   0.81       not established
+    PHPStan warm          wall     0.89  0.90         0.76   0.89       not established
+
+**The two mago rows are the control, and they are what makes the cold delta readable.** PHPStan's version
+cannot change them, so a machine drifting under the comparison would show up there. It does not: both
+versions' mago readings interleave, within 4%.
+
+**Cold holds. Warm does not, and the reason is worth stating rather than rounding away.** Both 2.2.13 warm
+readings sit above both 2.2.12 readings, so the direction is *slower*. But 2.2.12's own two runs differ by
+0.09s on a 0.72s baseline — 12%, larger than the 0.06s gap to 2.2.13's pair — and the widest wall spread in
+any row measured all session was 0.43s on one of those warm rows. n=2 against that noise establishes
+nothing. Reported as not established rather than as a small regression.
+
+#### The machine was contended, and by something not ours
+
+Load average ran 3.6 to 9.9 throughout, first from this session's own differential and suite runs and later
+from an IDE at 105% CPU. There was no idle window to wait for. That is exactly the case the measurement
+guidelines name — CPU and counts survive contention, wall clock does not — so the README now says to read
+the CPU column and prints the load with it.
+
+What contention cannot do is manufacture the cold separation. It inflates both versions, and the mago
+controls show it inflated them by the same few percent while cold CPU moved by 13%.
+
+#### What the README says now
+
+All four rows are the minimum across the two 2.2.13 runs, so they come from one configuration rather than
+being assembled from the best of each. The marginal cost is restated in CPU alone at **3.34s**, and the
+comparison against a cold PHPStan moves from 1.3x to **1.20x cheaper**.
+
+Two claims were **deleted rather than carried forward**: the wall-clock marginal cost, and the split of it
+into "five aggregates are 1.21s, the other 75 rules 0.70s". Both belonged to the 2.2.12 run. The split is not
+re-derivable from this instrument, and keeping it beside a changed total would have left three numbers that
+no longer add up.
+
+#### Verification
+
+Four full benchmark tables, two per version, alternating 2.2.13 / 2.2.12 / 2.2.13 / 2.2.12 so drift over the
+session cannot align with the version. Each row best-of-three with its wall spread printed. `composer.lock`
+is gitignored here, so the installed version is not tracked and CI resolves 2.2.13 on its own; the local tree
+was returned to 2.2.13 after the last control run, checked with `phpstan --version` rather than assumed.
