@@ -7732,6 +7732,10 @@ beyond this entry.
 
 #### And a second refusal that may name the wrong party
 
+> **Retracted** by *The second refusal is correct, and I checked the wrong half* below. The wiring exists in
+> a neon the package does not auto-include, so no default reaches a generated plugin and the refusal is
+> right.
+
 Symplify's `ForbiddenFuncCallRule` refuses with *"`$forbiddenFunctions` is a constructor parameter the
 package's neon does not wire"*. The package's `config/configurable-rules.neon` wires it:
 
@@ -7755,3 +7759,43 @@ constructor is read the same way. The non-termination is a wall-clock observatio
 own two-minute baseline from the entry above, on the same project, differing only in that closure. The
 `factory:` retraction is a read of `resources/registered-rules.php`, which reflects instances and never
 parses config.
+
+### The second refusal is correct, and I checked the wrong half
+
+The entry above called Symplify's `ForbiddenFuncCallRule` refusal *likely* wrong, because
+`config/configurable-rules.neon` wires `forbiddenFunctions` with four strings. Checked properly, the refusal
+is right and the check I ran was the wrong one.
+
+`PackageConfiguration` reads the neons named by the package's `composer.json` `extra.phpstan.includes`, then
+follows their own `includes:` chains. Symplify names four:
+
+    config/services/services.neon   config/ctor-rules.neon
+    config/mock-rules.neon          config/phpstan-extensions.neon
+
+**None of them reaches `configurable-rules.neon`.** That file is included by `config/symplify-rules.neon`,
+which is not in the auto-included set — a consumer opts into it. So the package ships wiring for this rule and
+does not apply it by default, and there is no value a generated plugin could carry without a consumer saying
+so. The refusal describes that correctly.
+
+What I did was find the wiring, stop, and conclude the refusal was wrong — without asking whether the file
+holding it is one the tool reads. That is the same shape as reading a kind out of an enum and calling the work
+a table row: a fact established at one layer, carried to a conclusion about another.
+
+The `--from-config` probe could not have caught it either, and its output says why in one line:
+`ForbiddenFuncCallRule is NOT registered by this project`. This repository does not include
+`symplify-rules.neon`, so the rule is not in its container at all. An instrument that returns nothing because
+the subject is absent looks exactly like one that returns nothing because there is nothing to find.
+
+#### One wording nit, left alone
+
+The text reads *"the package's neon does not wire"*, and a package neon does wire it — just not an
+auto-included one. The transpiler already distinguishes those elsewhere: `ForbiddenNewArgumentRule` refuses
+with *"no neon the package ships names this rule at all"*, which is the stronger statement. So the wording
+could be sharper here, and the substance is right, and changing refusal text moves census lines — not worth
+it on its own.
+
+#### Verification
+
+The four auto-included neons are read from `symplify/phpstan-rules/composer.json`, and each was opened to
+confirm none includes the chain that wires the rule. `configurable-rules.neon`'s wiring and
+`symplify-rules.neon`'s include list are both quoted from the installed package rather than remembered.
