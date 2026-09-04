@@ -6817,3 +6817,41 @@ nine CLI runs — agree on the number. That is worth more than either figure alo
 
 No code change. One `--from-config` run, nine package runs, one `comm`. The 107 is `sort -u` over the CLI
 output and `grep -c '^EMIT'` over the committed census.
+
+### The twenty the survey adds nothing to, counted
+
+`Before the descent, 28 of 80 refused rules said only what their emit run already said; 21 do now. What is in
+that 21 has not been read rule by rule` — that sentence has stood since the descent landed, and the count is
+a parse of the committed census rather than a reading of twenty rules.
+
+It is 20 today, not 21, because the census has moved since. The split:
+
+     8  configuration the package never wires
+     8  inside the body
+     2  a PHPStan service
+     1  the rule delegates its findings to a helper that builds them
+     1  a value the vocabulary cannot read
+
+**12 of the 20 refuse before the body is reachable at all.** That is the useful half: no body-level
+capability moves them, so a ranking built from what their bodies need would count twelve rules that no such
+work reaches. The file's guess — "some refuse inside one expression, and some before any statement is
+reached" — was right in shape and is now a number.
+
+The 8 that are in the body do not cluster either. Two are access paths (`->getType()`,
+`->getTraitAliases()`), two are assignment values built from a `find()` or a search filter, one is a helper's
+`if` shape, one a missing node predicate, one a `foreach` guard body, one a helper call on an injected
+collaborator. Eight rules, eight capabilities — the same answer the census gave from every other angle this
+session.
+
+#### What this was worth
+
+Nothing here changed behaviour, and the reason to do it anyway is that "has not been read rule by rule" is a
+sentence a reader treats as a *gap*, and it was not one: the census already held the answer, and the answer
+agrees with everything else measured about this corpus. A parse turned an admission into a figure in one
+command.
+
+#### Verification
+
+No code change. One parse of `tests/Fixtures/expected/census.md`, counting rules whose whole `needs` list is
+their first refusal, bucketed by what that refusal names. The eight body-level ones are printed in full above
+rather than summarised, because "they do not cluster" is a claim a reader should be able to check.
