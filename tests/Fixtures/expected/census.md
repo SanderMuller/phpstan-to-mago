@@ -22,6 +22,16 @@ Sizing work from the first obstacle alone has been wrong three times here — a 
 like one customer, a five-rule family that looked like one missing navigation, a corpus that looked
 absent. Grep a capability to count what it is worth before building it.
 
+**A needs list is a lower bound, and it is short in a direction rather than at random.** The pass
+steps over a refusing *statement* and translates on, so obstacles in different statements all
+appear — but a second obstacle inside one *expression* never does, because the expression stops
+the pass where it fails. So a rule whose first blocker is expression-level under-reports, and
+every ranking built from these lists inherits that bias in the same direction.
+
+Measured, not deduced: `OverwriteVariablesWithForLoopInitRule` lists one need, and its body also
+asks `$scope->hasVariableType()`, which no SDK method answers. Reading the rule found a capability
+the list omits. Where a count decides work, read the rules it is made of.
+
 Grep the whole line, not the label it starts with. Some needs share an outer phrase and nothing
 else: `assignment value outside the vocabulary` covers seven rules and seven unrelated problems —
 a statement kind, four different access paths, an array search and a guard shape. Counted by its
