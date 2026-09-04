@@ -15,6 +15,12 @@ the real finding it stands for rather than claiming to be it.
         rule: Symplify\PHPStanRules\Rules\NoDynamicNameRule
         both      Subject.php:35  symplify.noDynamicName
 
+## class-declared-twice  AGREE
+        rule: Symplify\PHPStanRules\Rules\Explicit\NoProtectedClassStmtRule
+        both      Subject.php:11  symplify.noProtectedClassStmt
+        both      Subject.php:17  symplify.noProtectedClassStmt
+        both      Subject.php:27  symplify.noProtectedClassStmt
+
 ## truthy-narrowed-callable  AGREE
         rule: Symplify\PHPStanRules\Rules\NoDynamicNameRule
         both      Subject.php:33  symplify.noDynamicName
