@@ -4,6 +4,17 @@ The README states what this tool emits. This file states how much of that is pro
 and the original rule still disagree. Two kinds of evidence live here: a per-rule gate that runs in CI, and
 differential runs over code nobody wrote for this project.
 
+**It is append-only, so a later entry beats an earlier one and nothing above is edited to match.** That is
+right for a measurement — a run happened, and its numbers stay what they were — and it expires anything
+written about what does *not* exist yet. "Not built", "left open", "the instrument for this is X" are claims
+with a shelf life, and the sentence does not change when someone builds it.
+
+Grep accordingly: find the phrase, then check whether a later section revisits it. Two claims here were read
+as current after being superseded, and one of them was relayed to the user twice as an open decision that had
+been closed the same day it was written. Where a later entry supersedes an earlier one, the earlier one now
+carries a pointer — add one when you supersede something, because the reader who needs it is grepping rather
+than reading forward.
+
 ## The per-rule gate
 
 Every emitted rule is proven to *run*. The gate transpiles it, starts the real `mago` binary with a worker
@@ -873,6 +884,9 @@ the configured values are readable off the instances rather than parsed out of a
 Not built. It changes what a coverage figure counts — a rule that emits only under a consumer's
 configuration is not the same outcome as one that emits from the package alone — and that denominator is a
 decision rather than a measurement.
+
+> **Superseded.** `039c5f0`, the next commit, built it: `Transpiler::takeConsumerValue()` reads the values
+> off the project named by `--from-config`. See *"'Not built' was built the same day"* below.
 
 #### A record that leaves the loop that produced it, and the two divergences the examples found
 
@@ -5143,6 +5157,9 @@ was uninformative for a reason worth writing down: pointed at a single trait fil
 because a trait with no using class in scope is counted zero times by *both*. Naming the 1310 needs a file
 where the port over-counts on its own.
 
+> **Superseded.** The instrument was the wrong one: bisecting `Illuminate` by directory put +1261 of +1310 in
+> three directories of 38, and the cause is `@mixin`. See *"`@mixin` was the +1310"* below.
+
 So the cause is not established, and the note now says that rather than implying the 1.11% covers it. The
 figure ships inside the emitted plugin, and `AggregatesTypeCoverageTest` asserts both numbers rather than
 one — a single assertion on "up to 1.11%" is what let the narrower figure stand as though it were general.
@@ -6730,3 +6747,37 @@ them. The mechanism is tested on a fixture; the four are inferred from the mecha
 
 No code change. Two `git log -S` runs order the note and the feature, and the ancestry check confirms the
 note came first. The feature's own test passes in the suite.
+
+### Sweeping this file for claims that expire
+
+One stale "not built" was found by accident, so the rest of the file was swept for the same shape:
+`Not built`, `left open`, `decided against`, `not attempted`, `is the instrument`, `no plugin can close`.
+
+Nine matches, and the encouraging part is that seven had already been superseded by a later section, which
+is this file's convention working:
+
+- `Left open rather than folded into this commit` — the next entry opens with *"Last commit left
+  `paramTypeCoverage` open as 'a different defect ... new information'. It was neither."*
+- `the number is not reproduced by anything I could build` — two lines later: *"That number is traced now,
+  and it was the instrument."*
+- `Not closable in the port` (QueueFake) — re-measured on mago 1.47.5 this session and still true.
+- `Not a defect to fix` (the trait divergence) — still the position, and `TraitMethodHookDivergesTest`
+  asserts it.
+
+Two were not, and both misled a reader — me. The unwired-configuration cluster, corrected in the entry above
+this one, and `run-coverage-setdiff.php` named as *the* instrument for the +1310 when the answer turned out
+to be a directory bisect. Both now carry a `> **Superseded.**` pointer at the claim itself.
+
+#### The convention was working and unwritten
+
+Appending a correction is what this file does, and nothing said so. A reader arrives by `grep`, lands on a
+sentence, and has no way to know a later section revisits it — which is exactly how one sentence became two
+reports to the user of a decision that had already been made.
+
+The header now states it: append-only, later beats earlier, and a superseding entry leaves a pointer behind.
+That is cheaper than editing the record, which would destroy what makes it a record.
+
+#### Verification
+
+No code change. Nine `grep` matches read in place, four confirmed still true, two given pointers, three
+already carrying their own correction in the following paragraph.
