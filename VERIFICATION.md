@@ -7321,3 +7321,49 @@ Both runs are the same probe file, the same worker and the same `mago.toml`, dif
 binary, with `mago --version` read on each side rather than assumed. The pin was restored to 1.47.5
 afterwards and the version re-read to confirm it. `composer.lock` is gitignored here, so nothing tracked
 records either version and no committed file changed for this entry.
+
+### The 1.47.6 bump moves nothing that ships, and the zero has a control
+
+The peer session that filed `#2311` expected its release to be "noisier than this one fix" — roughly fifteen
+other analyzer changes in 1.47.6, several of which could move corpus findings either way. Unmeasured, and
+that is the thing standing between the fix and a decision, so it was measured rather than expected.
+
+Four differential runs, two corpora, one version each, the same trees and the same consumer configuration:
+
+    Laravel Support + Database   337 files   1.47.5   agree 7798   1 / 23
+                                             1.47.6   agree 7798   1 / 23
+    nesbot/carbon/src            914 files   1.47.5   agree 1924   1 /  1
+                                             1.47.6   agree 1924   1 /  1
+
+**Identical on every axis**, not only in total: the per-finding lists diff clean and so do the per-rule rows,
+so nothing moved position and nothing cancelled out. Equal counts hiding a compensating pair is the failure
+this checks for, and it is not what happened.
+
+#### Why the zero is evidence here, when agreement on zero usually is not
+
+Two tools reporting nothing is equally consistent with "nothing moved" and "the instrument never looked", and
+this file's own rule says so. Two things separate them.
+
+**The instrument is known-sensitive at a granularity of one.** Earlier in this session the same instrument on
+the same two corpora moved 24 to 23 only-port on Laravel and stayed put on carbon, for a one-line runtime
+change. A single finding is detectable, and was detected.
+
+**And the compound-assignment fix is invisible to this measurement by construction**, which is the honest
+qualifier rather than a hedge. The differential runs emitted rules; no emitted rule reads an `Assignment`
+operand, because the six that would are refused for exactly that reason. So the fix cannot show up here, and
+the zero is a statement about the *other* fifteen changes — which is the thing that was unknown.
+
+#### What this does and does not settle
+
+Settled: adopting 1.47.6 does not disturb any of the 99 rules that currently emit, across 1251 files.
+
+Not settled, and still not a measurement: the floor. A plugin reading an `Assignment` operand is correct on
+1.47.6 and silently wrong on 1.47.1 through 1.47.5. Six rules needing 1.47.6 either raise `1.47.1 or later`
+for every consumer or need a per-rule version statement the manifest has no field for. That remains a
+versioning decision with a semver consequence, and no run changes it.
+
+#### Verification
+
+`mago --version` read before each pair and after the restore rather than assumed, and the pin is back at
+1.47.5. Findings compared three ways — total, per-finding list, per-rule row — because the first alone cannot
+see a compensating move. `composer.lock` is gitignored, so no tracked file records either version.
