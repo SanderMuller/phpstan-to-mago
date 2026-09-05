@@ -8175,3 +8175,49 @@ The three rows above are this repository's own run, reading `Type::$atomicTypes`
 after a peer session reported the same three from a different instrument. The maintainer's wording remains
 their report and is still not read here — but the retraction does not depend on it, because the measured
 difference between the two parenthesisations is enough on its own.
+
+### The two callable findings are one upstream behaviour, and there is a third case
+
+`TreeNode` and the monolog fix presented identically — `NamedObjectType | CallableType`, `typeIsCallable`
+false — and were written up as opposite defects: mago retaining a non-callable arm, and this repository's
+predicate failing to recognise a callable one. A peer session proposed they are one thing seen from two sides,
+and predicted a third case. Tested, three arms on one subject under `is_callable()`:
+
+    the object arm              PHPStan                              mago        port (after 1855257)
+    final, no __invoke          removed, provably not callable       untouched   reports
+    non-final, no __invoke      refined to callable&Class            untouched   reports
+    final, with __invoke        retained as the class, it is callable untouched   exempt
+
+**PHPStan does three different things to the object atomic; mago does nothing in any of them.** That is one
+behaviour with two symptoms, which is why they read as unrelated: the same untouched atom makes the predicate
+answer false whether the class is callable or not.
+
+#### The predicted third case exists, and runs the other way
+
+The peer predicted a non-final `__invoke`-less class would diverge as *only-original* — port silent, PHPStan
+reporting. Measured, it is **only-port**: PHPStan exempts all three arms and the port reports the first two.
+Same direction as `TreeNode`, not the opposite.
+
+PHPStan's silence was checked with a control before being read as agreement — an unnarrowed dynamic call in
+the same file, which it does report. Without that, "PHPStan reports nothing on all three" is equally
+consistent with the rule never having run.
+
+#### What it changes
+
+The issue's claim moves from "mago retains a provably non-callable arm" to "mago's `is_callable()` narrowing
+does not act on object atomics", which is harder to answer with a preference about narrowing aggressiveness —
+the non-final row shows the assertion being dropped rather than applied conservatively. The **final,
+no-`__invoke`** row stays the spine, because it is the only one where the retained arm is provably impossible;
+whether to refine an unprovable atom is a defensible choice and the draft does not ask for it.
+
+It also means `1855257` is compensating on this side for an upstream gap. That is worth knowing before
+someone reads `isCallableAtomic()` later and wonders why it performs a codebase lookup mago could have done —
+the answer is that mago does not, and until it does, the lookup is what makes an invokable object callable
+here.
+
+#### Verification
+
+The three port rows are this repository's run reading `Type::$atomicTypes` from a plugin; the three PHPStan
+rows are a peer session's measurement, reproduced here to the extent of which arms PHPStan's rule exempts,
+with a control proving the rule runs. The unification was their inference from both sets and is now measured
+rather than inferred.
