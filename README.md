@@ -49,7 +49,7 @@ final class ForbiddenStaticConstFetchRule implements Plugin, NodeAnalysisHook
 
 ## What this is for
 
-- A package that transpiles completely needs no PHPStan at all. `tomasvotruba/cognitive-complexity` and
+- A package that transpiles completely needs no PHPStan. `tomasvotruba/cognitive-complexity` and
   `phpstan/phpstan-deprecation-rules` are each one rule short.
 - As a pre-filter: transpiled rules on save and push, full PHPStan on merge or nightly.
 
@@ -140,13 +140,12 @@ constant set, comparisons on strings and integers, closures with their declared 
 with its count. Larger pieces:
 
 - Helpers inlined from the rule, a trait or a parent class.
-- The enclosing class: hierarchy, namespace, methods with visibility, attributes and docblocks, and the mixed
-  member list a rule walks to ask each member what it is.
+- The enclosing class: hierarchy, namespace, members with visibility, attributes and docblocks.
 - Reflection at the use site, from Mago's codebase metadata.
 - A producer handing a `{...}` record to a consumer, including one produced inside a loop.
 - A collaborator that decides *and* builds the findings; only the reporting becomes a runtime pass.
-- A collector-and-consumer pair. Mago has no collector, so the pair becomes one whole-project pass with the
-  *measurement* reimplemented. Five of `type-coverage`'s metrics are mapped this way.
+- A collector-and-consumer pair, which becomes one whole-project pass with the *measurement* reimplemented —
+  Mago has no collector. Five of `type-coverage`'s metrics are mapped this way.
 
 </details>
 
@@ -155,16 +154,17 @@ measured bound: `run-coverage-corpus.php <project> --metric=<name>`.
 
 ## How far this is verified
 
-Per-rule agreement is gated: for each emitted rule CI runs the real `mago` binary against real PHPStan over
-the same two files, comparing line and message. A rule that emits and reports nothing fails.
+Three things run, and each records rather than asserts:
 
-Corpus-scale agreement is not proven, but it is reproducible rather than quoted:
-`php tests/Support/run-corpus-sweep.php` runs seven trees this package installs, so `composer install`
-reproduces the run. Today, **11327 agreeing against 31 divergences**, each listed in
-[the recorded sweep](tests/Fixtures/expected/corpus-sweep.md).
+| | |
+|:--|:--|
+| **per rule** | CI runs the real `mago` against real PHPStan over one example pair, comparing line and message. A rule that emits and reports nothing fails. |
+| **per divergence** | each one found is pinned as a minimal case, so it survives the corpus moving on. [The record](tests/Fixtures/expected/divergences.md) goes red in either direction — a divergence closing is as worth reading as one opening. |
+| **per corpus** | `run-corpus-sweep.php` reads seven trees this package installs, so `composer install` reproduces it: **11327 agreeing against 31 divergences**, [each listed](tests/Fixtures/expected/corpus-sweep.md). |
 
-Size is not what makes a corpus useful — the two smallest trees carry most of the divergences and 1003 files
-of PHPUnit carry none. [VERIFICATION.md](VERIFICATION.md) has the runs and the eleven defects they found.
+Corpus-scale agreement is still not proven, and size is not what buys it — the two smallest trees carry most
+of the divergences while 1003 files of PHPUnit carry none. [VERIFICATION.md](VERIFICATION.md) has the runs and
+the eleven defects they found.
 
 ## Performance
 

@@ -21,9 +21,21 @@ the real finding it stands for rather than claiming to be it.
         both      Subject.php:17  symplify.noProtectedClassStmt
         both      Subject.php:27  symplify.noProtectedClassStmt
 
+## instanceof-keeps-unresolvable-arm  DIVERGE
+        rule: Symplify\PHPStanRules\Rules\NoDynamicNameRule
+        port      Subject.php:27  symplify.noDynamicName
+        port      Subject.php:47  symplify.noDynamicName
+        original  Subject.php:47  symplify.noDynamicName
+
 ## invokable-object-is-callable  AGREE
         rule: Symplify\PHPStanRules\Rules\NoDynamicNameRule
         both      Subject.php:39  symplify.noDynamicName
+
+## is-callable-keeps-object-arm  DIVERGE
+        rule: Symplify\PHPStanRules\Rules\NoDynamicNameRule
+        port      Subject.php:30  symplify.noDynamicName
+        port      Subject.php:38  symplify.noDynamicName
+        original  Subject.php:38  symplify.noDynamicName
 
 ## null-parent-silences-the-rule  DIVERGE
         rule: Symplify\PHPStanRules\Rules\Complexity\NoConstructorOverrideRule
