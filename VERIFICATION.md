@@ -8074,6 +8074,10 @@ they were not traced.
 
 ### All six symfony-console findings traced, and the #2310 workaround does not work
 
+> **Retracted in part** by *The #2310 workaround does work, and I misread which parentheses* at the end of
+> this file. The four `QuestionHelper` findings, the native-hint severity and the `TreeNode` gap all stand.
+> The claim that the workaround fails does not: symfony never applied it.
+
 The five remaining findings from the sweep's first run resolve into one more mago narrowing gap and **four
 instances of a filed issue, plus a fifth showing its published workaround does not hold.**
 
@@ -8122,3 +8126,52 @@ Four probes, each a minimal subject with the two spellings side by side, read th
 from inside a plugin. The `TreeNode` case additionally has PHPStan's own `dumpType()` at the same position;
 the `#2310` cases do not, because the port-side reading alone establishes what the docblock does to mago and
 PHPStan's behaviour on that spelling is what `#2310` already records.
+
+### The #2310 workaround does work, and I misread which parentheses
+
+The entry above claims symfony/console applies `#2310`'s published workaround and that it fails. **The second
+half is wrong**, and a peer session caught it by checking the maintainer's wording rather than the punctuation.
+
+The workaround parenthesises the **return type**. Symfony parenthesises the **whole callable**, which the
+`|null` union requires. Same punctuation, different edit, and the inner `string[]` is untouched either way.
+Three spellings on one subject, measured here after the peer measured them independently:
+
+    (callable(string):string[])|null      array|null      typeIsCallable false   symfony's spelling
+    (callable(string):(string[]))|null    callable|null   typeIsCallable TRUE    the workaround
+    callable(string):(string[])           callable        typeIsCallable TRUE    the workaround, unwrapped
+
+So the remedy holds and symfony has simply never applied it. The draft comment has been deleted rather than
+edited: its whole argument was that a widely-installed package had applied the fix and been let down, and
+nothing of that survives.
+
+#### The error, which is the second of this exact shape today
+
+I saw parentheses in symfony's docblock, matched them against "the maintainer said parenthesise", and
+concluded the workaround was applied — without checking *where* the parentheses went.
+
+That is the same mistake as the `ForbiddenFuncCallRule` retraction earlier: finding the wiring in
+`configurable-rules.neon`, concluding the refusal was wrong, and never asking whether that neon is one the
+tool reads. Both times a fact was established at one level and carried to a conclusion about another, and both
+times the marker `likely` rather than `established` is the only reason it cost a retraction rather than a
+wrong fix.
+
+The rule that would have caught both: when a claim rests on matching something you found against something
+someone said, check that the two are the same thing before they are the same sentence.
+
+#### What survives, which is most of it
+
+- Four `QuestionHelper` sites are `#2310` in the wild, on `symfony/console` — a second real-world instance
+  independent of Laravel.
+- **The native-hint severity stands and is the strongest part.** Those parameters are declared `callable` in
+  PHP and the docblock overrides that to `array`. There is no reading of that source where the author meant
+  an array of callables while the signature says `callable`, which makes it unambiguously wrong in a way that
+  loose parsing of an unannotated value is not.
+- The `TreeNode` narrowing gap is untouched by any of this — both engines were measured at that shape before
+  anything was concluded.
+
+#### Verification
+
+The three rows above are this repository's own run, reading `Type::$atomicTypes` from inside a plugin, made
+after a peer session reported the same three from a different instrument. The maintainer's wording remains
+their report and is still not read here — but the retraction does not depend on it, because the measured
+difference between the two parenthesisations is enough on its own.
