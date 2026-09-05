@@ -8221,3 +8221,41 @@ The three port rows are this repository's run reading `Type::$atomicTypes` from 
 rows are a peer session's measurement, reproduced here to the extent of which arms PHPStan's rule exempts,
 with a control proving the rule runs. The unification was their inference from both sets and is now measured
 rather than inferred.
+
+### The last untraced finding is a third mechanism: `!instanceof` against an unresolvable class
+
+`MandrillHandler.php:41` was the one sweep finding with no written cause. It is neither of the other two.
+
+    protected function __construct(string $apiKey, callable|Swift_Message $message, ...)
+    if (!$message instanceof Swift_Message) { $message = $message(); }
+
+**`Swift_Message` is not installed** — swiftmailer is absent from the tree, so the class cannot be resolved.
+Probed with a resolvable control in the same file:
+
+    !instanceof Known                 callable                        typeIsCallable TRUE   arm eliminated
+    !instanceof Totally\Missing\Thing callable|Thing (ReferenceType)  typeIsCallable false  arm survives
+
+PHPStan exempts both, with a control proving its rule ran — an unnarrowed dynamic call it does report.
+
+**`!$x instanceof T` removes `T` by pure logic.** It requires nothing about `T`: if the value is not an
+instance of `T`, the `T` arm is gone whether or not the class can be resolved. Mago eliminates the arm when
+the class resolves and keeps it when it does not, so the assertion is being conditioned on knowledge it does
+not need.
+
+#### Three mechanisms, and whether they are one
+
+    is_callable() vs an object atomic      untouched, whatever the class          TreeNode, and two more arms
+    the port's own predicate               did not ask about __invoke             fixed in 1855257
+    !instanceof vs an unresolvable class   arm survives; resolvable control works MandrillHandler
+
+A tempting unification is "mago's assertions do not act on atomics it cannot reason about". It fits, and it is
+**not claimed here**: the `is_callable()` case leaves object atomics untouched even for classes it resolves
+perfectly well, which the resolvable `!instanceof` control shows is not a general inability. Two mechanisms
+that share a symptom have already been written up here as one thing and as two, in both directions, and the
+honest position is that these are two measured behaviours whose relationship is unmeasured.
+
+#### Verification
+
+Both engines on one subject carrying a resolvable and an unresolvable arm, so the difference is the resolution
+and not the shape. PHPStan's silence carries a positive control in the same file. The absence of
+`Swift_Message` is `ls vendor/swiftmailer` plus a grep for its declaration across the whole tree.

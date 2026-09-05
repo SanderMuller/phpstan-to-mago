@@ -101,7 +101,7 @@ public function __construct(
 ```
 
 Nothing from a consuming project is baked in; override in the worker, which `manifest.json` names. A rule
-taking a PHPStan service is refused by name — no worker can supply a `ReflectionProvider`.
+taking a PHPStan service is refused by name — no worker can supply one.
 
 ## Refusals
 
@@ -111,7 +111,7 @@ A construct outside the vocabulary is refused, naming it and its line:
   REFUSE  ClosureUsesThisRule: no mapping for ->static on a hook-node (line 26)
 ```
 
-Read the refusals next to the `emitted` count, never alone.
+Read them next to the `emitted` count, never alone.
 
 ## What it can translate
 
@@ -158,9 +158,13 @@ measured bound: `run-coverage-corpus.php <project> --metric=<name>`.
 Per-rule agreement is gated: for each emitted rule CI runs the real `mago` binary against real PHPStan over
 the same two files, comparing line and message. A rule that emits and reports nothing fails.
 
-Corpus-scale agreement is not proven. Five vendor trees read 12305 agreeing against 26 divergences, each with
-a written cause: 19 are traits PHPStan never analyses, 2 are inference gaps, 5 are findings the port misses.
-[VERIFICATION.md](VERIFICATION.md) has the runs and the nine defects they found.
+Corpus-scale agreement is not proven, but it is reproducible rather than quoted:
+`php tests/Support/run-corpus-sweep.php` runs seven trees this package installs, so `composer install`
+reproduces the run. Today, **11327 agreeing against 31 divergences**, each listed in
+[the recorded sweep](tests/Fixtures/expected/corpus-sweep.md).
+
+Size is not what makes a corpus useful — the two smallest trees carry most of the divergences and 1003 files
+of PHPUnit carry none. [VERIFICATION.md](VERIFICATION.md) has the runs and the eleven defects they found.
 
 ## Performance
 
@@ -175,9 +179,9 @@ a written cause: 19 are traits PHPStan never analyses, 2 are inference gaps, 5 a
 | PHPStan, warm result cache | 0.89s | 0.87s |
 
 **Read the CPU column**: this ran at a load average near 5, so the wall figures are pessimistic and
-unequally so. All four rows come from the same two runs, on mago 1.47.5; the two mago rows reproduce within
-2% on 1.47.6. The rules add **3.34s CPU** — the marginal cost, which no total gives — and the engine baseline
-moves with your `includes` rather than your sources.
+unequally so. All four rows come from the same two runs, on mago 1.47.5. The rules add **3.34s CPU** — the
+marginal cost, which no total gives — and the engine baseline moves with your `includes` rather than your
+sources.
 
 **Not a speed win on this corpus**: 1.20x cheaper than a cold PHPStan on CPU, dearer than a warm one,
 because `mago analyze` has no result cache. Measure your own.
