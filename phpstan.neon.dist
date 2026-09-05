@@ -136,6 +136,9 @@ parameters:
                 # And the divergence batch, which boots both engines once over every case for the same
                 # reason: what two engines say about code is a property of running them.
                 - tests/Support/DivergenceCases.php
+                # And the corpus sweep, which starts a differential per pinned tree. Reading what two
+                # engines say about a corpus is a property of running them, once more.
+                - tests/Support/run-corpus-sweep.php
                 # And a benchmark, for the same reason once more: what two engines cost is a property of running
                 # them, and no in-process check can time a binary.
                 - tests/Support/run-benchmark.php
