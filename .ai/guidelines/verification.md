@@ -128,6 +128,37 @@ what tells them apart.
 Where an aggregate is the instrument, ask what it does not print before reading a zero off it. Then confirm
 the one case at the smallest granularity that can answer: one rule, one file, both engines.
 
+## A claim can be damaged by an edit that was not about it
+
+Every rule above is about making a claim carefully. This one is about the claims you are not making: a figure
+or a caveat already in a document, touched while editing that document for some other reason.
+
+Two instances, from one file on one day:
+
+- **A count carried along.** A README said "the nine defects they found", then "the eleven", the second
+  written while rewriting the sentence around it for an unrelated figure. It was never counted, and it was not
+  countable — "defect" there spanned three different populations with no criterion committed anywhere.
+- **A caveat trimmed away.** A performance table named the version it was measured on, with a clause saying
+  the figures still held on the newer version the package had come to require. The clause was cut while
+  trimming the page under its word budget, leaving a table a reader on the supported version could not
+  reproduce.
+
+Neither edit was about the claim it damaged. That is what makes this failure quiet: **carrying a figure feels
+like preserving it rather than asserting it**, and cutting a clause for length feels like editing rather than
+deciding. Nothing about either edit looks like a claim, so nothing prompts a check — unlike a wrong cause or a
+bad measurement, which at least announce themselves as claims when you make them.
+
+Two cheap countermeasures, both used to find the pair above:
+
+- **After editing a document for any reason, re-derive its figures from their sources.** Not re-read —
+  re-derive, by parsing the file the number comes from. One command per figure.
+- **A number that cannot be re-derived should not be in the document.** If "defect" or "case" or "rule" has no
+  committed definition, the count has no configuration to print beside it, and the honest form is a pointer to
+  the file rather than a tally.
+
+Length is never a reason to drop a caveat. Where a page is genuinely over budget, cut a restatement, an
+example, or a rationale — never the sentence that tells a reader when a number stops applying.
+
 ## A wrong "why" is worse than none
 
 Reproduction steps, tests and the fix all get built on the stated cause. When you have not traced it, say
