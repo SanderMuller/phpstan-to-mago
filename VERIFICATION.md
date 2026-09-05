@@ -8337,3 +8337,27 @@ standing, so the draft says so explicitly rather than letting a reader who trips
 PHPStan's three rows are this repository's own run, made after a peer session reported the same three from
 their own subject; the mago rows are the matrix recorded above. The two sets are on the same union shape, which
 is what makes them comparable — a different union on either side would compare two engines on two questions.
+
+### A count I published without counting
+
+The README carried "the nine defects they found", then "the eleven". The second number was written while
+editing the sentence around it and **never counted** — I incremented a figure rather than re-deriving it.
+
+It is also not mechanically derivable. "Defect" in that sentence has spanned defects in this port that a
+differential caught, gaps in mago that a corpus exposed, and at least once a divergence later shown to be
+neither. Three populations, one number, and no definition committed anywhere that a reader could apply.
+
+So the number is gone rather than corrected. The sentence now points at the file and says what is in it,
+which is checkable by opening it. This file's own rule — *a count belongs to its configuration; print the
+configuration next to the number, or a reader will conclude the tool is inconsistent* — applies to prose
+counts as much as to tool output, and a curated tally with no stated criterion has no configuration to print.
+
+Worth naming the mechanism, because it is quieter than the wrong-cause failures recorded above: a figure in a
+sentence being edited for another reason gets carried along, and carrying it feels like preserving it rather
+than asserting it. Nothing in the edit looked like a claim, which is why nothing triggered a check.
+
+#### Verification
+
+`git log -S'nine defects'` dates the original figure to `f62f331` and the increment to `83e3aab`, whose diff
+shows the sentence rewritten for the corpus-sweep figure with the count changed in passing. No commit between
+them adds a tally either could be read off.

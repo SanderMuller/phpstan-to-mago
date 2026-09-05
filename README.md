@@ -163,8 +163,8 @@ Three things run, and each records rather than asserts:
 | **per corpus** | `run-corpus-sweep.php` reads seven trees this package installs, so `composer install` reproduces it: **11327 agreeing against 31 divergences**, [each listed](tests/Fixtures/expected/corpus-sweep.md). |
 
 Corpus-scale agreement is still not proven, and size is not what buys it — the two smallest trees carry most
-of the divergences while 1003 files of PHPUnit carry none. [VERIFICATION.md](VERIFICATION.md) has the runs and
-the eleven defects they found.
+of the divergences while 1003 files of PHPUnit carry none. [VERIFICATION.md](VERIFICATION.md) has every run
+and what it found, including the defects in this port that the differential caught first.
 
 ## Performance
 
