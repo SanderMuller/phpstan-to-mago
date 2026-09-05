@@ -76,8 +76,31 @@ final class Types
     {
         return $atomic instanceof CallableType
             || ($atomic instanceof NamedObjectType && strcasecmp(ltrim($atomic->name, '\\'), 'Closure') === 0)
+            || self::objectDeclaresInvoke($context, $atomic)
             || self::stringIsRefinedToCallable($atomic)
             || self::literalNamesACallable($context, self::literalStringOfAtomic($atomic));
+    }
+
+    /**
+     * An object whose class declares `__invoke`, which PHP calls and PHPStan reports as callable.
+     *
+     * Mago types `(callable)|Processor` and `(callable)|Plain` identically — `NamedObjectType | CallableType`
+     * either way — so the type alone cannot say whether the object arm is invokable. The codebase can, and
+     * `Reflect::methodExists()` is the same lookup the mixin walk already uses, so an inherited or trait
+     * `__invoke` answers here too.
+     *
+     * Found by the corpus sweep on `monolog`, whose processors are
+     * `array<(callable(LogRecord): LogRecord)|ProcessorInterface>` and whose `ProcessorInterface` declares
+     * `__invoke`. Three sites, and the port reported all three while PHPStan exempted them.
+     *
+     * `Closure` is still matched by name above rather than through this: it is the one class where the answer
+     * is a language fact rather than a codebase lookup, and a corpus that cannot resolve `Closure` would
+     * otherwise silently start reporting every closure call.
+     */
+    private static function objectDeclaresInvoke(NodeAnalysisContext $context, object $atomic): bool
+    {
+        return $atomic instanceof NamedObjectType
+            && Reflect::methodExists($context, $atomic->name, '__invoke');
     }
 
     /**

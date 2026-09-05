@@ -31,15 +31,31 @@ require __DIR__ . '/../../vendor/autoload.php';
 /**
  * The pinned corpora, and why each is here.
  *
- * Four trees this repository already installs, chosen for shape rather than size: a parser with no framework,
- * a test framework, a rule-heavy codebase whose own rules this project transpiles, and a framework component.
- * Adding one is a line here plus a regenerated record.
+ * Chosen for **shape rather than size**, which is the correction that produced this list. `symfony/console`
+ * is 174 files and found six divergences on its first run — one previously unknown narrowing gap and four
+ * live instances of a filed issue — while 1251 files of Laravel and carbon had shown nothing when the same
+ * area was fixed, because neither tree contains the shape. Agreement on a tree already run carries almost no
+ * information; a tree nobody has run carries most of it.
+ *
+ * So: a parser with no framework, a test framework, a rule-heavy codebase whose own rules this project
+ * transpiles, a framework component, the two Laravel subtrees this project's recorded figures were measured
+ * against, a markdown parser built from small final classes, and a logger whose idioms are its own.
+ *
+ * The Laravel entry is deliberately the recorded *subset* rather than all 1694 files: it makes the most-quoted
+ * figures in `VERIFICATION.md` reproducible here, where they were originally measured against a client
+ * project's vendor tree that nobody else can check out.
+ *
+ * Adding one is a line here plus a regenerated record. A corpus that finds nothing is not a failure — three of
+ * the first four find nothing, and that is the control against the sweep reporting noise on every tree.
  */
 const CORPORA = [
     'php-parser' => 'vendor/nikic/php-parser/lib',
     'phpunit' => 'vendor/phpunit/phpunit/src',
     'rector' => 'vendor/rector/rector/src',
     'symfony-console' => 'vendor/symfony/console',
+    'laravel-support-database' => 'vendor/laravel/framework/src/Illuminate/Support,vendor/laravel/framework/src/Illuminate/Database',
+    'commonmark' => 'vendor/league/commonmark/src',
+    'monolog' => 'vendor/monolog/monolog/src',
 ];
 
 const RECORD = __DIR__ . '/../Fixtures/expected/corpus-sweep.md';
@@ -97,7 +113,12 @@ function sweep_one(string $root, string $name, string $path): array
 
     $findings = [];
     foreach ($each as $one) {
-        $findings[] = sprintf('%-9s %s', $one[1], str_replace($path . '/', '', $one[2]));
+        $short = $one[2];
+        foreach (explode(',', $path) as $prefix) {
+            $short = str_replace($prefix . '/', '', $short);
+        }
+
+        $findings[] = sprintf('%-9s %s', $one[1], $short);
     }
 
     sort($findings);

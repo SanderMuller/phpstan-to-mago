@@ -29,3 +29,36 @@ opening. Every divergence is listed, because a count alone cannot show a compens
         port      Helper/QuestionHelper.php:385
         port      Helper/TreeNode.php:76
         port      Question/Question.php:169
+
+## laravel-support-database  367 files  agree 7998, only-original 1, only-port 21
+        vendor/laravel/framework/src/Illuminate/Support,vendor/laravel/framework/src/Illuminate/Database
+        original  Testing/Fakes/QueueFake.php:214
+        port      Benchmark.php:27
+        port      Concerns/ManagesTransactions.php:127
+        port      Connection.php:736
+        port      Eloquent/BroadcastsEvents.php:24
+        port      Eloquent/Factories/HasFactory.php:21
+        port      Eloquent/Factories/HasFactory.php:49
+        port      Eloquent/Factories/HasFactory.php:49
+        port      Eloquent/Factories/HasFactory.php:57
+        port      Eloquent/MassPrunable.php:34
+        port      Eloquent/Prunable.php:44
+        port      Eloquent/SoftDeletes.php:145
+        port      Eloquent/SoftDeletes.php:148
+        port      Eloquent/SoftDeletes.php:174
+        port      Eloquent/SoftDeletes.php:207
+        port      Eloquent/SoftDeletes.php:282
+        port      Traits/ReadsClassAttributes.php:21
+        port      Traits/ReadsClassAttributes.php:25
+        port      Traits/ReadsClassAttributes.php:26
+        port      Traits/ReadsClassAttributes.php:31
+        port      Traits/ReadsClassAttributes.php:37
+        port      Traits/ReadsClassAttributes.php:63
+
+## commonmark  302 files  agree 118, only-original 1, only-port 0
+        vendor/league/commonmark/src
+        original  Environment/Environment.php:411
+
+## monolog  121 files  agree 367, only-original 0, only-port 1
+        vendor/monolog/monolog/src
+        port      Monolog/Handler/MandrillHandler.php:41
