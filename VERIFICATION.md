@@ -8259,3 +8259,51 @@ honest position is that these are two measured behaviours whose relationship is 
 Both engines on one subject carrying a resolvable and an unresolvable arm, so the difference is the resolution
 and not the shape. PHPStan's silence carries a positive control in the same file. The absence of
 `Swift_Message` is `ls vendor/swiftmailer` plus a grep for its declaration across the whole tree.
+
+### The narrowing gaps are two mechanisms, and the matrix settles it
+
+Three findings shared a symptom — an atomic surviving an assertion that should have removed or refined it —
+and the entry above declined to unify them, saying the relationship was unmeasured. It is measurable. Five
+rows, one subject, each an assertion over a union carrying one interesting atomic:
+
+    is_callable   string atomic              string|callable   ScalarType | CallableType     ACTS, refines
+    is_callable   resolvable object atomic   callable|Plain    CallableType | NamedObject     does not act
+    !instanceof   resolvable object atomic   callable          CallableType                  ACTS, eliminates
+    !instanceof   unresolvable atomic        callable|Gone     CallableType | ReferenceType   does not act
+    instanceof    resolvable object atomic   Plain             NamedObjectType               ACTS, eliminates
+
+**Two blind spots, and they do not coincide:**
+
+- **`is_callable` does not act on object atomics**, resolvable or not. It refines a string atomic in the same
+  breath, so this is not an inability to touch the union.
+- **`instanceof` does not act on unresolvable atomics**, in either polarity. It eliminates a resolvable object
+  arm correctly, so this is not an inability to touch objects.
+
+**The tempting unification is refuted rather than declined.** "Mago's assertions do not act on atomics it
+cannot reason about" fails on row two: `Plain` is `final`, declared in the analysed file, and perfectly
+reasonable about — and `is_callable` still leaves it. "Mago's assertions do not act on object atomics" fails on
+rows three and five, where `instanceof` eliminates exactly such an atomic.
+
+#### What that does to the report
+
+It strengthens it, in the way that matters most for a maintainer reading it. The `is_callable` claim is no
+longer "your narrowing is not aggressive enough about objects" — `instanceof` shows the machinery already
+removes object arms from unions when an assertion warrants it. So the question becomes why one assertion
+participates and another does not, which is a question about a gap rather than about a preference.
+
+The unresolvable-`instanceof` finding stays a separate report. Its mechanism is different, and joining them
+would ask a maintainer to accept two unrelated things at once.
+
+#### Why this was worth measuring rather than judging
+
+Two findings in this file have already been written up as one thing and as two, in both directions, on the
+strength of a shared symptom. A symptom shared by two mechanisms and a symptom caused by one look identical
+from the outside, and the only thing that separates them is a row where the two predict different answers.
+Rows three and five are those rows.
+
+#### Verification
+
+One subject, five methods differing in exactly the assertion and the atomic under it, read through
+`Type::$atomicTypes` from inside a plugin on mago 1.47.6. The `is_callable`-over-a-string row is included
+deliberately as the positive control for that assertion: without it, "`is_callable` does not act" would be
+indistinguishable from "`is_callable` was not reached".
