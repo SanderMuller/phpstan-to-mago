@@ -8071,3 +8071,54 @@ Two probes on one minimal subject reproducing `TreeNode`'s declaration: the port
 position. The six findings are `run-corpus-sweep.php`'s recorded output, attributed to the rule by a second
 differential run. No cause is claimed for the four `QuestionHelper` sites beyond their sharing the rule —
 they were not traced.
+
+### All six symfony-console findings traced, and the #2310 workaround does not work
+
+The five remaining findings from the sweep's first run resolve into one more mago narrowing gap and **four
+instances of a filed issue, plus a fifth showing its published workaround does not hold.**
+
+#### Four are `#2310` in the wild
+
+`QuestionHelper` declares `@param callable(string):string[] $autocomplete` on a parameter whose **native type
+hint is `callable`**. Measured on that shape against the unambiguous spelling:
+
+    callable(string):string[]        mago reads array      KeyedArrayType     typeIsCallable false
+    callable(string):array<string>   mago reads callable   CallableType       typeIsCallable TRUE
+
+The trailing `[]` binds to the whole callable rather than to its return type, which is `#2310`. **The
+docblock overrides a correct native `callable` hint**, which the issue as filed does not say — it is not
+imprecision on an unannotated value, it is a malformed docblock defeating a declaration mago already had.
+
+#### The fifth shows the workaround failing
+
+`Question.php:169` reads a value from `getAutocompleterCallback()`, declared:
+
+    /** @return (callable(string):string[])|null */
+    public function getAutocompleterCallback(): ?callable
+
+**Parenthesised — which is the maintainer's stated workaround for `#2310`** — and with a native `?callable`
+return type. Measured:
+
+    the returned value              array|null   KeyedArrayType | SimpleAtomicType   typeIsCallable false
+    after `if ($callback)`          array        KeyedArrayType                      typeIsCallable false
+
+So the parentheses do not rescue it. symfony/console has already applied the remedy the issue thread
+recommends, and mago still reads `array`. That is checkable by anyone and belongs on the issue, because a
+workaround that does not work is worse than none — a project applying it believes it is fixed.
+
+Standing: the maintainer's reply is reported by a peer session and not read here; what is measured is that the
+parenthesised spelling still reads as `array`.
+
+#### What the corpus was worth
+
+Six findings, one previously unknown mago gap, four live instances of a filed issue, and one refutation of its
+workaround — from a corpus that had never been run, on the instrument's first execution. The other three
+corpora reproduced their recorded figures exactly and found nothing new, which is the control: the sweep is
+not simply reporting noise on every tree.
+
+#### Verification
+
+Four probes, each a minimal subject with the two spellings side by side, read through `Type::$atomicTypes`
+from inside a plugin. The `TreeNode` case additionally has PHPStan's own `dumpType()` at the same position;
+the `#2310` cases do not, because the port-side reading alone establishes what the docblock does to mago and
+PHPStan's behaviour on that spelling is what `#2310` already records.
