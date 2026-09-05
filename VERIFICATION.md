@@ -8307,3 +8307,33 @@ One subject, five methods differing in exactly the assertion and the atomic unde
 `Type::$atomicTypes` from inside a plugin on mago 1.47.6. The `is_callable`-over-a-string row is included
 deliberately as the positive control for that assertion: without it, "`is_callable` does not act" would be
 indistinguishable from "`is_callable` was not reached".
+
+### The two engines agree on `instanceof` and diverge only on `is_callable`
+
+The matrix above measured mago alone. A peer session measured PHPStan on the same union and the pairing is
+sharper than either half. Reproduced here, `Plain|(callable(): \Generator)` with `Plain` final and no
+`__invoke`, PHPStan level 9 via `dumpType`, mago via `Type::$atomicTypes`:
+
+    assertion                  PHPStan                  mago              
+    $i instanceof Plain        Plain                    Plain             agree
+    ! ($i instanceof Plain)    callable(): Generator    callable          agree
+    is_callable($i)            callable(): Generator    callable|Plain    DIVERGE
+
+**Mago's `instanceof` reaches the reference implementation's answer on this union, in both polarities.** Its
+`is_callable` does not. One engine, one union, two assertions, one of them agreeing and the other not.
+
+That is the hardest form of the claim to answer with a design preference, because the preference would have to
+explain why it applies to one assertion and not the other on identical input. Every weaker framing this report
+passed through — "narrows objects conservatively", "assertions skip object atomics" — is refuted by the two
+rows where mago and PHPStan agree.
+
+#### Two findings, labelled
+
+The unresolvable-`instanceof` gap is **not** part of this. A maintainer could fix `is_callable` and leave it
+standing, so the draft says so explicitly rather than letting a reader who trips over it read it as one claim.
+
+#### Verification
+
+PHPStan's three rows are this repository's own run, made after a peer session reported the same three from
+their own subject; the mago rows are the matrix recorded above. The two sets are on the same union shape, which
+is what makes them comparable — a different union on either side would compare two engines on two questions.
