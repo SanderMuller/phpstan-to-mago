@@ -8019,3 +8019,55 @@ Three cases in `tests/Fixtures/expected/divergences.md`, each with a control, re
 The PHPStan-side behaviour of the unresolvable parent and of the guarded double declaration are a peer
 session's measurements from `phpstan-src`, reported as theirs; the port-side rows and every recorded row are
 this repository's own runs.
+
+### The sweep's first run found a third `is_callable()` narrowing gap, and this one is mago's
+
+`symfony/console` had never been run as a corpus. Its first sweep reports **six only-port findings, all
+`symplify.noDynamicName`**, four of them in `Helper/QuestionHelper.php` and one in `Helper/TreeNode.php:76`.
+
+Traced rather than attributed. `TreeNode` declares:
+
+    /** @var array<TreeNode|callable(): \Generator> */
+    private array $children = [];
+
+and iterates `if (\is_callable($child)) { yield from $child(); }`. Both engines were measured on that exact
+shape:
+
+    PHPStan   after is_callable()   callable(): Generator        the object arm is gone
+    mago      after is_callable()   callable|Node                the object arm is retained
+                                    CallableType | NamedObjectType
+                                    Types::typeIsCallable -> false
+
+**`Node` is `final`, declares no `__invoke`, and is in the analysed file**, so it cannot be callable and mago
+can see that. PHPStan eliminates it from the union; mago does not, and the port then reports because
+`Types::typeIsCallable()` requires every atomic to be callable.
+
+#### The predicate is right, which is the part worth stating
+
+Relaxing "every atomic must be callable" to "any atomic" would exempt a genuinely non-callable union — an
+unnarrowed `string|Closure` is precisely the case the rule exists to report. So the port is faithfully
+reporting what mago tells it, and the imprecision is upstream.
+
+That conclusion was reached the second way round on purpose. This morning the same shape was written up as a
+mago narrowing bug and turned out to be this repository's own predicate reading `literalValue` instead of
+`callable`. So PHPStan's side was measured before anything was claimed, rather than inferred from the port's
+answer.
+
+#### Third instance of one family
+
+`#2311` (compound-assignment operands), the `callable-string` refinement, and now a union that keeps a
+non-invokable object through `is_callable()`. All three are the same shape: a narrowing that does not fully
+eliminate, visible only through the external index.
+
+**The first one an instrument found rather than a person.** The Laravel and carbon differentials showed no
+movement when the callable-string fix landed, and both were re-run against 1.47.6 with identical results —
+neither tree contains this shape. "No regression on what was looked at" and "fixed" are different claims, and
+only a corpus nobody had run separated them.
+
+#### Verification
+
+Two probes on one minimal subject reproducing `TreeNode`'s declaration: the port's atomics read through
+`Type::$atomicTypes` from inside a plugin, and PHPStan's through its own `dumpType()` at the identical
+position. The six findings are `run-corpus-sweep.php`'s recorded output, attributed to the rule by a second
+differential run. No cause is claimed for the four `QuestionHelper` sites beyond their sharing the rule —
+they were not traced.
