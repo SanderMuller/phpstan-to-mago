@@ -179,7 +179,8 @@ and what it found, including the defects in this port that the differential caug
 | PHPStan, warm result cache | 0.89s | 0.87s |
 
 **Read the CPU column**: this ran at a load average near 5, so the wall figures are pessimistic and
-unequally so. All four rows come from the same two runs, on mago 1.47.5. The rules add **3.34s CPU** — the
+unequally so. All four rows come from the same two runs, on mago 1.47.5; the two mago rows reproduce within
+2% on the 1.47.6 this package requires. The rules add **3.34s CPU** — the
 marginal cost, which no total gives — and the engine baseline moves with your `includes` rather than your
 sources.
 

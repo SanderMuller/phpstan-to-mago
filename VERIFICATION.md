@@ -8361,3 +8361,40 @@ than asserting it. Nothing in the edit looked like a claim, which is why nothing
 `git log -S'nine defects'` dates the original figure to `f62f331` and the increment to `83e3aab`, whose diff
 shows the sentence rewritten for the corpus-sweep figure with the count changed in passing. No commit between
 them adds a tally either could be read off.
+
+### Auditing the README's other figures, and finding a caveat I trimmed away
+
+Having removed one uncounted figure, the rest were checked against their sources rather than assumed to be
+the only bad one. Recomputed mechanically:
+
+    sweep totals      11327 agreeing, 31 divergences   recomputed from corpus-sweep.md, exact
+    phpunit 1003 files, 0 divergences                  same file, exact
+    coverage table    7 rows                           every row matched against census.md, 0 mismatches
+    --status 99 of 209                                 re-run today
+    versions          floor ^1.47.6, README 1.47.6+, installed 1.47.6   consistent
+
+**One real gap, and I put it there.** The performance table states it was measured on mago 1.47.5, and this
+package now requires `^1.47.6` — so a reader on the supported version could not reproduce it. A clause saying
+the mago rows hold within 2% on 1.47.6 was added when the floor was raised in `2f40774` and **cut in
+`83e3aab`**, the commit where the README was trimmed back under its word budget.
+
+That is precisely the failure the README guidance names: *never cut a caveat to hit a number*. The cut did not
+feel like removing a caveat — it felt like removing a version clause from a sentence that already named a
+version. Restored, with the 1.47.6 figures behind it (`3.97s/3.79s` against the published `4.00s/3.87s`).
+
+#### The pattern across both audit findings
+
+Both defects entered while editing prose for a different purpose — a count carried along during a rewrite, a
+caveat dropped during a trim. Neither edit was about the claim it damaged, which is why neither triggered a
+check. The wrong-cause failures recorded elsewhere in this file all came from claims made deliberately; these
+came from claims *touched* incidentally, and they are harder to catch because nothing about the edit looks
+like an assertion.
+
+The cheap countermeasure is the one used here: after editing a document for any reason, re-derive its figures
+from their sources. It took one command per figure and found two defects in a file that had been reviewed
+repeatedly.
+
+#### Verification
+
+The sweep and coverage figures are recomputed by parsing the committed records, not by reading them.
+`git log -S'reproduce within'` dates the clause's addition and removal to the two commits named.
