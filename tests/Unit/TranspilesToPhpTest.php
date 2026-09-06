@@ -76,6 +76,12 @@ final class TranspilesToPhpTest extends TestCase
         // for, so the Rust targets refuse this rule rather than emitting a call that cannot compile.
         yield 'gated on the declared namespace' => ['NamespacePrefixRule'];
         yield 'membership in a constant set' => ['ConstantSetRule'];
+        // A rule constant written as `Foo::class` rather than as a quoted string. PHP resolves it at compile
+        // time, so it *is* a string constant, and the transpiler refused it as one until the collector learned
+        // to. Snapshotted because the interesting part is the value: the short name is resolved through the
+        // rule file's own `use` map, and getting that wrong emits a comparison against a name no class has —
+        // a plugin that loads, runs and matches nothing.
+        yield 'a rule constant written as a ::class fetch' => ['ClassConstantIsAStringRule'];
         yield 'a report code carrying a classification' => ['ClassifiedCodeRule'];
         yield 'a loop inside an inlined predicate helper' => ['AnyConstantHelperRule'];
         yield 'a reflection question answered by the codebase' => ['AsksTheCodebaseRule'];

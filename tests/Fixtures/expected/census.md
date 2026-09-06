@@ -296,8 +296,7 @@ REFUSE  PreferredClassRule
 EMIT    PreventParentMethodVisibilityOverrideRule
 EMIT    PublicStaticDataProviderRule
 REFUSE  RectorCheaperGuardsFirstRule
-        self::ABSTRACT_RECTOR_CLASS is not a string constant of this rule
-        needs: self::ABSTRACT_RECTOR_CLASS is not a string constant of this rule
+        foreach with a key
         needs: foreach with a key
         needs: assignment value outside the vocabulary: count() of a subtree compared numerically
         needs: statement outside the vocabulary: Stmt_For

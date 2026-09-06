@@ -1270,38 +1270,68 @@ final readonly class Translator
     {
         foreach ($class->getConstants() as $const) {
             foreach ($const->consts as $c) {
-                if ($c->value instanceof String_) {
-                    $this->context->constants[(string) $c->name] = $c->value->value;
-
-                    continue;
-                }
-
-                if ($c->value instanceof Int_) {
-                    $this->context->intConstants[(string) $c->name] = $c->value->value;
-
-                    continue;
-                }
-
-                if ($c->value instanceof Array_) {
-                    $this->collectConstantKeys((string) $c->name, $c->value);
-
-                    $values = [];
-                    foreach ($c->value->items as $item) {
-                        if ($item === null) {
-                            continue 2;
-                        }
-
-                        try {
-                            $values[] = $this->rawStringLiteral($item->value, $c->getStartLine());
-                        } catch (Refusal) {
-                            continue 2; // not resolvable to strings; leave the constant unresolved
-                        }
-                    }
-
-                    $this->context->arrayConstants[(string) $c->name] = $values;
-                }
+                $this->collectOneConstant((string) $c->name, $c->value, $c->getStartLine());
             }
         }
+    }
+
+    /**
+     * One `const NAME = <value>;`, into whichever table its value shape belongs to.
+     *
+     * A value this cannot resolve is left uncollected rather than refused here: the refusal belongs at the
+     * use site, which names the constant that failed and the line that reached for it.
+     */
+    private function collectOneConstant(string $name, Expr $value, int $line): void
+    {
+        if ($value instanceof String_) {
+            $this->context->constants[$name] = $value->value;
+
+            return;
+        }
+
+        // `const FOO = Bar::class;` is a string constant whose value is statically known, and the resolver
+        // already turns `Bar::class` into an FQCN through the rule file's own imports. Refusing it as "not a
+        // string constant" was a claim about the language rather than about the rule, and the kind of refusal
+        // that sizes work wrongly: it named an obstacle that was not there and hid the one that was.
+        if ($value instanceof ClassConstFetch) {
+            try {
+                $this->context->constants[$name] = $this->resolveClassConstant($value, $value->getStartLine());
+            } catch (Refusal) {
+            }
+
+            return;
+        }
+
+        if ($value instanceof Int_) {
+            $this->context->intConstants[$name] = $value->value;
+
+            return;
+        }
+
+        if ($value instanceof Array_) {
+            $this->collectConstantArray($name, $value, $line);
+        }
+    }
+
+    /** The string members of a constant array, or nothing when any member is not resolvable to one. */
+    private function collectConstantArray(string $name, Array_ $value, int $line): void
+    {
+        $this->collectConstantKeys($name, $value);
+
+        $values = [];
+        foreach ($value->items as $item) {
+            if ($item === null) {
+                return;
+            }
+
+            try {
+                $values[] = $this->rawStringLiteral($item->value, $line);
+            } catch (Refusal) {
+                return; // not resolvable to strings; leave the constant unresolved
+            }
+        }
+
+        $this->context->arrayConstants[$name] = $values;
     }
 
     /**
