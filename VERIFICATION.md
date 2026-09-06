@@ -9520,6 +9520,23 @@ above show what that costs: the span gets the right-hand side's type and the ove
 So it is not a quirk of span keying. **The value went to a store the protocol does not carry**, which is a
 different fact and a more useful one: it says asking for it is coherent rather than merely desirable.
 
+#### The cause, stated so it survives its own counterexample
+
+A first version of that reading said `BlockContext::locals` is not marshalled. That is refutable in one
+command: `possiblyUndefined` demonstrably crosses the protocol, and it is a `locals`-derived fact. The
+version that survives is narrower — **the protocol carries span-keyed expression types only; `locals` is
+consulted to produce those at use sites and is never itself carried, so a value that exists only in `locals`
+at a given node is invisible at that node.** `possiblyUndefined` rides on a union that *was* written to a
+span at a use site, so it is evidence that span-keyed types are carried rather than that `locals` is.
+
+Checked here: nothing under `crates/analyzer/src/external/` reads `block_context.locals` — all six files
+(`error.rs`, `lifecycle.rs`, `metadata.rs`, `mod.rs`, `protocol.rs`, `scan.rs`) return zero matches.
+
+It is still a **reading of two symptoms rather than a measurement of one cause**, and surviving one
+refutation is not the same as being measured. The draft in `internal/` is written to that standing: one
+issue, two symptoms, each with its own evidence line, the cause offered as a reading with the source beside
+it, so a maintainer who rejects the reading can still act on either symptom.
+
 #### What that means for the rule
 
 The exemption is still not reachable. Comparing the target's type to the value's type is the right question
