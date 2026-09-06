@@ -9640,3 +9640,56 @@ rule: *grep a capability to count what it is worth before building it.*
 `bin/phpstan-to-mago --out=DIR <seven packages>` twice, once with the stub active. The stub is not committed:
 it is two lines at the refusal site and an `getenv()` guard, reverted after the run. `tests/Fixtures/Rules`
 is excluded from both runs so a fixture written for a fold cannot move the figure.
+
+
+### Both engine columns of the `is_callable` report are now measured here
+
+The draft's opening line claims every claim in it is measured in this repository. Two tables in it were not:
+the three-arm PHPStan column arrived from a peer session, and the practical-impact sentence generalised from
+one shape to "any project". With the drafts about to be filed by that session, both were closed.
+
+#### The three arms, both engines, one file
+
+    arm                        PHPStan 2.2.13 level 9, dumpType     mago 1.47.6, Type::$atomicTypes
+    final, no __invoke         callable(): Generator                CallableType | NamedObjectType
+    non-final, no __invoke     (Open&callable(): mixed)|(callable   CallableType | NamedObjectType
+                                 (): Generator)
+    final, with __invoke       FinalWithInvoke|(callable():         CallableType | NamedObjectType
+                                 Generator), plus
+                                 function.alreadyNarrowedType
+
+PHPStan removes, refines and retains — three answers to what it can prove. Mago returns the object atomic
+unchanged in all three. The draft's table matches row for row, and both columns are now this repository's.
+
+The `function.alreadyNarrowedType` on the third arm was not in the draft and is worth having: PHPStan says
+the guard is *always true* for an invokable final class, which is the strongest form of "it considered the
+question".
+
+#### Which shapes produce the false error, and which fail silently
+
+"A false `impossible-type-comparison` on any project where that dependency is not installed" generalised over
+shapes. Measured, one file, an unresolvable `\Gone\Klass` guarded four ways:
+
+    \Gone\Klass $i               impossible-type-comparison, then invalid-callable on the call
+    ?\Gone\Klass $i              the same two
+    ?\Gone\Klass via a property  the same two
+    \Gone\Klass|callable $i      NO error — the arm is dropped silently, narrowing to `callable`
+
+So the wrong diagnostic appears wherever the guarded type has **no callable member**, and the union that has
+one fails the other way instead: silently, by dropping an arm that may have been the right one. Both failure
+modes in one file, and the draft now carries the table rather than the generalisation.
+
+#### The definedness draft's one inference is gone rather than marked
+
+It carried a shared-cause reading — that both symptoms are values `BlockContext::locals` holds and the
+protocol does not carry — marked as a reading. Every fact under that heading is a verified source read; only
+the connection between them was inferred. With the issue about to be filed the connection is removed rather
+than labelled: the four source facts are stated alone, including `variable.rs:142-145,232-234`, and what a
+maintainer concludes from them is theirs. The standing table now says nothing in the issue is inferred,
+which is a claim that had to be made true rather than written.
+
+#### Verification
+
+The three-arm subject is one file with three parameters, run under PHPStan at level 9 and under a node hook
+on `NodeKind::FunctionCall` reading `Type::$atomicTypes`. The four-shape subject is one file run under
+`mago analyze` with no plugin. Both are reproducible from the tables above.
