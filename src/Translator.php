@@ -5902,11 +5902,27 @@ final readonly class Translator
             return Transpiler::$target === 'php' ? $this->context->backend->bytes($raw) : '"' . addcslashes($raw, '"\\') . '"';
         }
 
+        // `sprintf('.. line %s', $node->getStartLine())` — a line number interpolated into the message.
+        //
+        // Rust only, and it has to say so here. A `Span` carries byte offsets, `SourceFile` exposes no
+        // line lookup, and `Support::anchor()` positions a finding rather than rendering a number — so the
+        // PHP target has nothing to put in the string. Without this guard it emitted the Rust call into a
+        // `.php` file, which *parses*: `support::line_text(..)` reads as a static call on an undefined
+        // class and `node.span()` as a concatenation. A file that parses while still containing Rust is
+        // the outcome this repository rates worse than one that does not, because it loads and misbehaves.
         if ($expr instanceof MethodCall
             && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getLine', 'getStartLine'], true)
             && $expr->var instanceof Variable
             && $expr->var->name === 'node'
         ) {
+            if (Transpiler::$target === 'php') {
+                throw new Refusal(
+                    'a line number interpolated into the message, which the PHP target cannot render: a '
+                    . 'Span carries byte offsets and the SDK exposes no line lookup',
+                    $line,
+                );
+            }
+
             return 'support::line_text(context, node.span())';
         }
 

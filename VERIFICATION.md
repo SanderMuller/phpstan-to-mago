@@ -9924,3 +9924,51 @@ store was not found by looking for docblocks; it was found by asking how else a 
 It also aims this file's positional rule one notch higher. *A value can be right and still be the answer to a
 question nobody asked* — and, now measured, **the whole document can be built on such a value with every
 figure in it correct**.
+
+### Auditing for the leaked-Rust shape found a second one, and it emitted
+
+The definedness fix came from a refusal that named a leaked Rust operand. The shape is mechanical to search
+for — a handler returning a `support::` string with no PHP branch — so it was searched:
+
+    7 sites in Translator.php return raw Rust
+    5 guarded by an explicit target check
+    1 reachable only through definednessTest(), which now refuses on php before it
+    1 unguarded and reachable
+
+The unguarded one is `$node->getLine()` / `$node->getStartLine()` interpolated into a message. It did not
+refuse. It **emitted**:
+
+    Issue::new(Support::viaTraitUsers($context, $node, sprintf('Method at line %s',
+        support::line_text(context, node.span()))), $node->span, 'here'),
+
+**That is a `.php` file containing Rust, and it parses.** `support::line_text(..)` reads as a static call on
+an undefined class; `node.span()` reads as a concatenation of an undefined constant and an undefined
+function. So nothing before execution catches it — which is the outcome this repository's own invariant rates
+worse than a file that does not parse, because it loads and misbehaves.
+
+Latent: no corpus rule interpolates a line number into a message, and `grep 'support::'` over the 159 emitted
+php plugins and every reviewed snapshot returns nothing. Found by writing a rule that does.
+
+#### Refused rather than implemented
+
+The PHP target has nothing to render. A `Span` carries byte offsets, `SourceFile` exposes no line lookup, and
+`Support::anchor()` positions a finding rather than producing a number. Implementing one would mean counting
+newlines to an offset — a new capability with no consumer in the corpus — so the honest fix is the refusal,
+which turns a silently broken emission into a named one. Both Rust targets still emit; they have the helper.
+
+#### What the audit says about the two fixes together
+
+Both defects were invisible to every check this repository runs. The snapshots compare bytes that were
+already correct, the census records a refusal that already fires, and the fires gate runs plugins that
+already emit. **A defect that only appears for input no rule in the corpus supplies is outside all three**,
+and the way it was found was writing the input — twice, once for each shape.
+
+That generalises the sizing instrument from earlier today. Stubbing measured what a capability is *worth*;
+this measured what a handler *does when reached*, which needs a rule that reaches it. The corpus cannot
+supply one by definition, since a rule that reached it would already be broken.
+
+#### Verification
+
+`grep -n 'return "support::' src/Translator.php`, seven hits, each read for a target guard in the twelve
+lines above it. The emission is from a two-guard fixture written for the purpose, transpiled at each target.
+Emit-all across all three targets is byte-identical before and after both fixes.
