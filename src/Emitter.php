@@ -25,14 +25,6 @@ final readonly class Emitter
     public function __construct(private TranslationContext $context) {}
 
     /**
-     * The generated plugin's constructor, or nothing when the rule reads no configured value.
-     *
-     * Each parameter carries the rule package's own default, so a worker that constructs the plugin with no
-     * arguments behaves like PHPStan at package defaults. The consumer overrides by passing values in its
-     * worker — from `[extension-hosts.<name>.environment]` or argv — which is what keeps the generated file
-     * free of any one project's configuration.
-     */
-    /**
      * The rule's own constants, declared on the plugin so a copied expression has something to refer to.
      *
      * Written with the rule's name and values, because what reads them is copied verbatim — a threshold
@@ -50,6 +42,18 @@ final readonly class Emitter
         return $constants;
     }
 
+    /**
+     * The generated plugin's constructor, or nothing when the rule reads no configured value.
+     *
+     * Each parameter carries the rule package's own default, so a worker that constructs the plugin with no
+     * arguments behaves like PHPStan at package defaults. The consumer overrides by passing values in its
+     * worker — from `[extension-hosts.<name>.environment]` or argv — which is what keeps the generated file
+     * free of any one project's configuration.
+     */
+    /**
+     * A rule reading its own constant but taking no configured value gets the constants and no constructor;
+     * PHP supplies the one it does not need.
+     */
     private function emitConstructor(): string
     {
         // A carried constant is enough on its own, and is all a rule that takes no configured value has.

@@ -637,15 +637,20 @@ final readonly class Translator
             return null;
         }
 
-        $map = $this->constantMapOperand($expr->var, $line);
-        if ($map === null) {
+        $name = $this->constantMapName($expr->var);
+        if ($name === null) {
             return null;
         }
+
+        // The key is resolved before the constant is recorded, so a read this cannot finish leaves nothing
+        // declared: {@see numericOperands()} calls this speculatively and swallows the refusal, and a
+        // constant carried there would sit unused on the emitted plugin.
+        $key = $this->operand($this->resolve($expr->dim, $line));
 
         return [
             'rust' => self::PHP_ONLY,
             'kind' => 'number',
-            'php' => $map . '[' . $this->operand($this->resolve($expr->dim, $line)) . ']',
+            'php' => $this->carryConstantMap($name) . '[' . $key . ']',
         ];
     }
 
@@ -657,7 +662,7 @@ final readonly class Translator
      * case that reaches here. Null when the expression is not such a constant, so the caller falls through
      * to whatever it would otherwise do.
      */
-    private function constantMapOperand(Expr $expr, int $line): ?string
+    private function constantMapName(Expr $expr): ?string
     {
         if (Transpiler::$target !== 'php'
             || ! $expr instanceof ClassConstFetch
@@ -668,12 +673,20 @@ final readonly class Translator
         }
 
         $name = $this->identifierName($expr->name);
-        $map = $name === null ? null : ($this->context->constantMaps[$name] ?? null);
-        if ($map === null) {
-            return null;
-        }
 
-        $this->context->carriedConstants[$name] = $map;
+        return $name !== null && isset($this->context->constantMaps[$name]) ? $name : null;
+    }
+
+    /**
+     * Records the constant onto the plugin and names it, which is the point of no return.
+     *
+     * Kept apart from finding it, because finding one is speculative — a caller may look and then refuse on
+     * something else — and a constant recorded there would be declared on the emitted plugin with nothing
+     * reading it.
+     */
+    private function carryConstantMap(string $name): string
+    {
+        $this->context->carriedConstants[$name] = $this->context->constantMaps[$name];
 
         return 'self::' . $name;
     }
@@ -10200,10 +10213,11 @@ final readonly class Translator
         // constant itself, so the test is the original's, verbatim — no list is rebuilt and nothing about the
         // map's values has to be understood to answer membership.
         if ($name === 'array_key_exists' && count($args) === 2) {
-            $map = $this->constantMapOperand($args[1]->value, $expr->getStartLine());
+            $map = $this->constantMapName($args[1]->value);
             if ($map !== null) {
-                return 'array_key_exists('
-                    . $this->operand($this->resolve($args[0]->value, $expr->getStartLine())) . ', ' . $map . ')';
+                $key = $this->operand($this->resolve($args[0]->value, $expr->getStartLine()));
+
+                return 'array_key_exists(' . $key . ', ' . $this->carryConstantMap($map) . ')';
             }
         }
 
