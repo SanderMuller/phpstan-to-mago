@@ -560,6 +560,12 @@ final class Support
         return Names::nameParts($name);
     }
 
+    /** The analysed PHP version, in PHPStan's encoding. {@see Versions::phpstanVersionId} */
+    public static function phpstanVersionId(NodeAnalysisContext $context): int
+    {
+        return Versions::phpstanVersionId($context);
+    }
+
     /** Whether a binary expression's operator is the one written, which Mago keeps in a child node. */
     public static function binaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
     {

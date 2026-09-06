@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago;
 
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
@@ -115,6 +116,17 @@ final class TranslationContext
      * @var array<string, list<string>>
      */
     public array $constantKeys = [];
+
+    /**
+     * Constant maps the rule declares, by name, as the array node that declared them.
+     *
+     * `constantKeys` answers membership and is enough for a rule that only asks whether a key is there. A
+     * rule reading the *value* needs the map, and the plugin gets it by carrying the constant verbatim —
+     * which is why the node is kept rather than a resolved list.
+     *
+     * @var array<string, Array_>
+     */
+    public array $constantMaps = [];
 
     /**
      * String literals bound to a helper's parameters, by parameter name.

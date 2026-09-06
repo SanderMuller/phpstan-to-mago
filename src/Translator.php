@@ -623,6 +623,62 @@ final readonly class Translator
     }
 
     /**
+     * `self::MAP[<key>]` as the value it reads, or null when the expression is not that.
+     *
+     * The map is the rule's own data and the plugin carries it, so the read is the original's. Only the
+     * *value* side needs this: membership goes through `array_key_exists()` beside it, and neither has to
+     * understand what the values mean — which is what keeps a threshold table out of this transpiler.
+     *
+     * @return Descriptor|null
+     */
+    private function constantMapValue(Expr $expr, int $line): ?array
+    {
+        if (! $expr instanceof ArrayDimFetch || ! $expr->dim instanceof Expr) {
+            return null;
+        }
+
+        $map = $this->constantMapOperand($expr->var, $line);
+        if ($map === null) {
+            return null;
+        }
+
+        return [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'number',
+            'php' => $map . '[' . $this->operand($this->resolve($expr->dim, $line)) . ']',
+        ];
+    }
+
+    /**
+     * `self::NAME` where NAME is a constant map the rule declares, as the plugin's own `self::NAME`.
+     *
+     * The constant is carried onto the generated plugin rather than resolved into a list, because a rule
+     * reading a map wants its *values* and those are the rule's own data — a threshold table, in the one
+     * case that reaches here. Null when the expression is not such a constant, so the caller falls through
+     * to whatever it would otherwise do.
+     */
+    private function constantMapOperand(Expr $expr, int $line): ?string
+    {
+        if (Transpiler::$target !== 'php'
+            || ! $expr instanceof ClassConstFetch
+            || ! $expr->class instanceof Name
+            || ! in_array($expr->class->toString(), ['self', 'static'], true)
+        ) {
+            return null;
+        }
+
+        $name = $this->identifierName($expr->name);
+        $map = $name === null ? null : ($this->context->constantMaps[$name] ?? null);
+        if ($map === null) {
+            return null;
+        }
+
+        $this->context->carriedConstants[$name] = $map;
+
+        return 'self::' . $name;
+    }
+
+    /**
      * A loose `in_array()` is translated only where `==` and `===` cannot disagree.
      *
      * Rules do write the loose form, and treating it as the strict one would be an approximation — except
@@ -1326,6 +1382,7 @@ final readonly class Translator
 
         if ($keys !== []) {
             $this->context->constantKeys[$name] = $keys;
+            $this->context->constantMaps[$name] = $value;
         }
     }
 
@@ -3662,6 +3719,61 @@ final readonly class Translator
         }
 
         return ($this->context->caches[$table->name]['kind'] ?? null) === 'unfilled-cache' ? $table->name : null;
+    }
+
+    /**
+     * `try { $x = <a lookup>; } catch (<anything>) { return []; }` as the binding plus the guard it implies.
+     *
+     * The rule writes a `try` because PHPStan's lookup throws where it finds nothing, and the catch is how it
+     * declines. A plugin's equivalent lookup returns null instead, so the two halves translate to a binding
+     * and a null guard — the catch is *not* dropped, which would widen the rule onto every name the codebase
+     * does not know.
+     *
+     * Narrow on purpose. One statement in the `try`, a plain local binding, and every catch doing nothing but
+     * taking the rule's own exit; anything else falls through to the refusal that names the statement. A
+     * `finally`, or a catch that does work, is a different shape and this does not guess at it.
+     *
+     * @return bool whether the statement was taken, so the caller emits nothing more for it
+     */
+    private function bindsThroughACatch(TryCatch $stmt): bool
+    {
+        if ($stmt->finally !== null || $stmt->catches === [] || count($stmt->stmts) !== 1) {
+            return false;
+        }
+
+        $bound = $stmt->stmts[0];
+        if (! $bound instanceof Expression || ! $bound->expr instanceof Assign) {
+            return false;
+        }
+
+        $assignment = $bound->expr;
+        if (! $assignment->var instanceof Variable || ! is_string($assignment->var->name)) {
+            return false;
+        }
+
+        $name = $assignment->var->name;
+
+        foreach ($stmt->catches as $catch) {
+            if (! $this->isReturnEmptyArray($catch->stmts)) {
+                return false;
+            }
+        }
+
+        $this->bindLocal($assignment, $bound->getStartLine());
+
+        $local = $this->context->locals[$name] ?? null;
+        if ($local === null) {
+            throw new Refusal('a caught binding whose value the plugin does not carry', $stmt->getStartLine());
+        }
+
+        // Emitted as a guard directly rather than through a synthesised `isset()`: the value is a local the
+        // plugin computed, and `isset()` in this vocabulary reads an array offset.
+        $this->context->lines[] = new Stm('guard', [
+            'condition' => $this->operand($local) . ' === null',
+            'exit' => $this->context->backend->bail(),
+        ], $this->context->indent);
+
+        return true;
     }
 
     /**
@@ -6513,6 +6625,13 @@ final readonly class Translator
         // `static $cache = [];` part-way through a helper. Nothing is emitted: a cache is invisible to the
         // answer, and what it stands for is settled by its fill and read back at each use.
         if ($stmt instanceof Static_ && $this->takesACacheStatement($stmt)) {
+            return;
+        }
+
+        // `try { $x = <a lookup>; } catch (NotFound) { return []; }` — a lookup that throws where it finds
+        // nothing, and a rule that declines when it does. {@see bindsThroughACatch()} says why the catch
+        // becomes a guard rather than being dropped.
+        if ($stmt instanceof TryCatch && $this->bindsThroughACatch($stmt)) {
             return;
         }
 
@@ -10077,6 +10196,17 @@ final readonly class Translator
             return $this->nameEquals($this->resolve($args[0]->value, $expr->getStartLine()), $literal, $expr->getStartLine());
         }
 
+        // `array_key_exists(<key>, self::MAP)` over a constant map the rule declares. The plugin carries the
+        // constant itself, so the test is the original's, verbatim — no list is rebuilt and nothing about the
+        // map's values has to be understood to answer membership.
+        if ($name === 'array_key_exists' && count($args) === 2) {
+            $map = $this->constantMapOperand($args[1]->value, $expr->getStartLine());
+            if ($map !== null) {
+                return 'array_key_exists('
+                    . $this->operand($this->resolve($args[0]->value, $expr->getStartLine())) . ', ' . $map . ')';
+            }
+        }
+
         throw new Refusal("function call outside the vocabulary {$name}()", $expr->getStartLine());
     }
 
@@ -10480,11 +10610,13 @@ final readonly class Translator
             return null;
         }
 
-        $numeric = ['int', 'config-number'];
+        // `number` is a value the plugin computes rather than one the rule wrote — the analysed PHP version
+        // is the one that reaches here, and a carried constant map's value is the other side of it.
+        $numeric = ['int', 'config-number', 'number'];
         $line = $expr->getStartLine();
         try {
-            $left = $this->resolve($expr->left, $line);
-            $right = $this->resolve($expr->right, $line);
+            $left = $this->constantMapValue($expr->left, $line) ?? $this->resolve($expr->left, $line);
+            $right = $this->constantMapValue($expr->right, $line) ?? $this->resolve($expr->right, $line);
         } catch (Refusal) {
             return null;
         }
@@ -11559,6 +11691,60 @@ final readonly class Translator
 
         if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getParts') {
             return $this->qualifiedNameParts($expr, $line);
+        }
+
+        // `$this->reflectionProvider->getFunction($node->name, $scope)` — the function a call names, as the
+        // codebase knows it. The service itself has no injectable equivalent, but this one question does:
+        // `Support::functionName()` was written for it and says so, resolving a namespaced call the way PHP
+        // does. What comes back is the *name*, because that is the only thing the rules reaching here read
+        // off the reflection, and null where PHPStan throws.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getFunction'
+            && $expr->var instanceof PropertyFetch
+            && $this->identifierName($expr->var->name) === 'reflectionProvider'
+            && count($expr->getArgs()) >= 1
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a function reflection, which only the PHP target carries', $line);
+            }
+
+            $named = $this->resolve($expr->getArgs()[0]->value, $line);
+            if (! in_array($named['kind'], ['name-expr', 'bytes', 'class-name', 'resolved-name'], true)) {
+                throw new Refusal("getFunction() of a {$named['kind']}", $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'function-reflection',
+                'php' => 'Support::functionName($context, ' . $this->nameText($named, $line) . ')',
+            ];
+        }
+
+        // `->getName()` on one. The descriptor already holds the resolved name, so this is the identity.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getName'
+            && $expr->getArgs() === []
+        ) {
+            $of = $this->resolve($expr->var, $line);
+            if ($of['kind'] === 'function-reflection') {
+                return ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'php' => $this->operand($of)];
+            }
+        }
+
+        // `$this->phpVersion->getVersionId()` — the analysed PHP version, converted to PHPStan's encoding.
+        // The conversion is the whole point: {@see Runtime\Versions} has the two packings side by side, and
+        // the rules reaching here compare against thresholds written in PHPStan's.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getVersionId'
+            && $expr->var instanceof PropertyFetch
+            && $this->identifierName($expr->var->name) === 'phpVersion'
+            && $expr->getArgs() === []
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('the analysed PHP version, which only the PHP target carries', $line);
+            }
+
+            return ['rust' => self::PHP_ONLY, 'kind' => 'number', 'php' => 'Support::phpstanVersionId($context)'];
         }
 
         // `getMethods()` on the class-like under analysis — the methods written in its body, which is what a

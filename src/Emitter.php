@@ -32,21 +32,43 @@ final readonly class Emitter
      * worker — from `[extension-hosts.<name>.environment]` or argv — which is what keeps the generated file
      * free of any one project's configuration.
      */
-    private function emitConstructor(): string
+    /**
+     * The rule's own constants, declared on the plugin so a copied expression has something to refer to.
+     *
+     * Written with the rule's name and values, because what reads them is copied verbatim — a threshold
+     * table stays the rule's data rather than becoming this transpiler's.
+     */
+    private function carriedConstants(): string
     {
-        if (! $this->context->usesConfiguration) {
-            return '';
+        $constants = '';
+        foreach ($this->context->carriedConstants as $name => $value) {
+            $constants .= "\n" . "    /** Carried from the rule, whose derivation names it. */\n"
+                . '    private const array ' . $name . ' = '
+                . (new Standard(['shortArraySyntax' => true]))->prettyPrintExpr($value) . ";\n";
         }
 
-        $derived = [];
+        return $constants;
+    }
+
+    private function emitConstructor(): string
+    {
+        // A carried constant is enough on its own, and is all a rule that takes no configured value has.
+        // Gating the constants on configuration too emitted a plugin naming `self::DEPRECATED_OPTIONS`
+        // without declaring it — valid PHP that fatals on the first file it matches, which is the shape this
+        // repository refuses rather than ships. PHP supplies the constructor such a plugin does not need.
+        if (! $this->context->usesConfiguration) {
+            return $this->carriedConstants();
+        }
+
+        $derived = '';
         $assignments = [];
         foreach ($this->context->pure as $property => $expression) {
             // Typed, because the generated plugin is analysed and a bare `array` fails at level 8. Every
             // producer the vocabulary allows here builds a set keyed by the names the rule listed —
             // `array_fill_keys([..], true)` and `array_flip([..])` — so the value type is what a membership
             // test reads, and `isset()` is the only thing that ever reads it.
-            $derived[] = '    /** @var array<string, mixed> */';
-            $derived[] = '    private readonly array $' . $property . ';';
+            $derived .= "    /** @var array<string, mixed> */\n"
+                . '    private readonly array $' . $property . ";\n";
             $assignments[] = '        $this->' . $property . ' = '
                 . (new Standard(['shortArraySyntax' => true]))->prettyPrintExpr($expression) . ';';
         }
@@ -78,17 +100,7 @@ final readonly class Emitter
         // names are kept, which is what lets the derivation be copied rather than rewritten.
         $body = $assignments === [] ? ' {}' : " {\n" . implode("\n", $assignments) . "\n    }";
 
-        // A constant the derivation names, declared here so the copy has something to refer to. Written with
-        // the rule's own name and values, because the derivation is copied verbatim.
-        $constants = [];
-        foreach ($this->context->carriedConstants as $name => $value) {
-            $constants[] = '    /** Carried from the rule, whose derivation names it. */';
-            $constants[] = '    private const array ' . $name . ' = '
-                . (new Standard(['shortArraySyntax' => true]))->prettyPrintExpr($value) . ';';
-            $constants[] = '';
-        }
-
-        $properties = implode("\n", $constants) . ($derived === [] ? '' : implode("\n", $derived) . "\n");
+        $properties = ltrim($this->carriedConstants(), "\n") . $derived;
         // A rule may derive a property without taking any configured value, and an empty parameter list read
         // as a formatting accident rather than as "this takes nothing".
         $signature = $parameters === []

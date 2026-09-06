@@ -425,8 +425,7 @@ EMIT    FunctionLikeCognitiveComplexityRule
 ## phpstan/phpstan-strict-rules — 22 of 45 portable rules the package registers emit, 0 covered by the engine, 23 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
-        assignment value outside the vocabulary: access path outside the vocabulary: $this->reflectionProvider->getFunction()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->reflectionProvider->getFunction()
+        assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ArgumentsNormalizer::reorderFuncArguments()
         needs: if statement that is not a single-statement guard, but 4 statements: Stmt_Expression + Stmt_Expression + Stmt_If + Stmt_Return
@@ -556,8 +555,7 @@ REFUSE  RequireParentConstructCallRule
         needs: function call outside the vocabulary property_exists()
         needs: statement outside the vocabulary: Stmt_While
 REFUSE  StrictFunctionCallsRule
-        assignment value outside the vocabulary: access path outside the vocabulary: $this->reflectionProvider->getFunction()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->reflectionProvider->getFunction()
+        assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ArgumentsNormalizer::reorderFuncArguments()
         needs: null comparison against Expr_Variable, which resolved to a hook-node
@@ -645,12 +643,7 @@ REFUSE  ShouldCallParentMethodsRule
         needs: access path outside the vocabulary: ->getStmts()
         needs: condition outside the vocabulary: Expr_Variable
 
-## phpstan/phpstan-deprecation-rules — 1 of 2 portable rules the package registers emit, 0 covered by the engine, 1 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-deprecation-rules — 2 of 2 portable rules the package registers emit, 0 covered by the engine, 0 refuse, 0 unportable in principle, 0 it registers nowhere
 
-REFUSE  CallWithDeprecatedIniOptionRule
-        statement outside the vocabulary: Stmt_TryCatch
-        needs: statement outside the vocabulary: Stmt_TryCatch
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->reflectionProvider->getFunction()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->phpVersion->getVersionId()
-        needs: function call outside the vocabulary array_key_exists()
+EMIT    CallWithDeprecatedIniOptionRule
 EMIT    FetchingDeprecatedConstRule
