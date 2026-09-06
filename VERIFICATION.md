@@ -9719,3 +9719,77 @@ lead-in, in different words, which is why a search for the corrected sentence wo
 
 `grep -c 'false positive on any project'` returns 0 after the edit and returned 1 before it. The prediction
 that made it worth looking is the peer session's, quoted above.
+### A second party verified both drafts, and found three defects in one of them
+
+Both drafts were handed to the peer session for verification before filing, on this repository's exact mago
+build — the official 1.47.6 release binary, `sha256 da54b7fd…`, which `composer require
+carthage-software/mago:1.47.6` reproduces. They had 1.45.0 installed and said so before running anything;
+1.47.6 is the release that fixed #2311, so a 1.45.0 run would have been a different experiment rather than a
+check.
+
+**The `is_callable` draft reproduced end to end**, including tables not on the priority list — the minimal
+subject, the `instanceof` ladder in both polarities on both engines, PHPStan's intersection refinement, both
+mago retention controls, and the diagnostics inversion. All six 1.47.6 line numbers verified against source
+fetched from the tag independently.
+
+**The definedness draft had three defects. All three reproduce here.**
+
+#### 1. Symptom B's control did not reproduce, because the channel was never named
+
+They hooked `NodeKind::Assignment` and read `$context->targetType`; this repository hooked
+`NodeKind::ExpressionStatement` and read the span-keyed type of each side. Re-run here, both are right:
+
+    $context->targetType, no TargetExpressionTypes    all three assignments   NULL
+    $context->targetType, with it                     all three assignments   Animal
+    span-keyed, per side                              NULL, NULL, Animal
+
+Different channels, different answers, and the draft named neither. **A maintainer would have refuted the
+table by running a documented channel it did not mention.**
+
+Their row is also the better evidence, which is the part worth keeping: `TargetExpressionTypes` is the SDK's
+channel *built for* the target's type, and on the `@var Dog` assignment it answers `Animal`. The override is
+hidden from the dedicated channel rather than merely absent from a general one. The draft now leads with that
+and keeps the span-keyed rows as the control.
+
+#### 2. The `mixed` claim was a generalisation over shapes, again
+
+*"A variable declared `mixed` and definitely assigned is indistinguishable from one that does not exist"* was
+never measured — the only `mixed` row in the probe was the undefined one. Five definitely-assigned shapes,
+reproduced here row for row:
+
+    $v = json_decode($s)   possiblyUndefined=false  populated=false   indistinguishable
+    $v = unserialize($s)   possiblyUndefined=false  populated=false   indistinguishable
+    $v = $mixedParam       possiblyUndefined=false  populated=true    distinguishable
+    $v = anyMixed()        possiblyUndefined=false  populated=true    distinguishable
+    $v = $arr['k']         possiblyUndefined=true                     distinguishable
+
+Three of five separate on `populated`. The draft now names `json_decode()` as the witness in the sentence, so
+the claim is true of a shape rather than of a category. **This is the same failure the other draft's lead-in
+had, in the draft where it had already been fixed once.**
+
+#### 3. `possibly_undefined_variable_ids` is at `:240`, not `:239`
+
+`:239` is `if variable_type.possibly_undefined()`; the ids check is the line after. They checked whether the
+identifier had been invented — the failure class flagged about this session's own work — and it had not: it
+is absent from 1.47.1 entirely, which is independent evidence the source read was of genuine 1.47.6.
+
+#### Smaller, all verified here
+
+`symfony/console` is **v8.1.6** and the guard is at **`TreeNode.php:75`**, not 76; the line moves between
+patch releases, so the draft pins the version. Their PHPStan is `2.2.x-dev@bba3c00` rather than 2.2.13 —
+every row matched anyway, and both drafts now state which build each column came from.
+
+#### The duplicate search neither draft had done
+
+**#2037**, *False invalid-callable after narrow down to callable type (with is_callable)*, closed 2026-07-04.
+Its shape is `(callable(): void)|null` — a *null* arm, not an object arm — so it is not a duplicate, and its
+reproducer still passes at 1.47.6 so this is not a regression report. It is now cited anyway: the maintainers
+have accepted this class once, which is the cheapest credibility the report can buy. The old `Related` line
+also claimed a `callable-string` gap was *"reported separately"*; no such open report was found, so the claim
+is gone rather than left standing.
+
+#### The cut paragraph stays cut
+
+They declined to restore it: the draft never named which rule it was about, and reconstructing the rule and
+then finding a subject where it fires is inventing evidence to fit a sentence that already exists. The corpus
+finding that replaced it is confirmed — the symfony shape is real and identical.
