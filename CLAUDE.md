@@ -475,6 +475,20 @@ control, a file outside the step's configured paths, was better and still not cl
 scope, not traversal, and nothing in it rules out another stage reaching the same file. Configured scope is
 evidence about intent; only tracing the run is evidence about what happened.
 
+The same species lives in this repository's own tables: a `'phpOnly' => true` row asserts that Mago's analyzer
+cannot carry a hook, and it is a line we wrote rather than a thing we measured. **A declaration in your own
+config reads exactly like a measurement of the system it describes**, and it is the easier of the two to
+write. The first attempt to size that here was itself withdrawn — see *"A `phpOnly` audit I published from the
+wrong table"* — which is the next rule.
+
+**After locating a structure by name, assert that what you found is that structure.** The audit above parsed
+its table by taking the first occurrence of the constant's name in the source. That occurrence was a *comment
+mentioning* the constant, inside a different table, so every figure described one structure and was measured
+on another. Nothing downstream can tell those apart: the numbers were internally consistent, mechanically
+derived, reproducible by re-running the script, and agreed with a second source. **An instrument pointed at
+the wrong object produces all the same signals as one pointed at the right object**, so the assertion has to
+happen at the point of location, not in the results.
+
 ## A wrong "why" is worse than none
 
 Reproduction steps, tests and the fix all get built on the stated cause. When you have not traced it, say

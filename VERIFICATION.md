@@ -9086,3 +9086,56 @@ session that owned it, so the join was two reports before it was one run; what m
 both subjects are written out above, and re-running either takes a config file and a copy-paste. An earlier
 version of this entry marked the PHPStan half peer-reported and told a reader to re-run it before quoting it.
 That instruction was right, and following it is what removed the need for it.
+
+### A `phpOnly` audit I published from the wrong table
+
+A peer session, closing an exchange about configured scope versus observed behaviour, noted that this
+repository makes the same move in its own tables: *a row saying a hook is PHP-only is a declaration about our
+table, not a measurement of Mago.* The observation is worth acting on. What was written here first was not.
+
+The audit reported 34 rows, 28 of them `phpOnly`, and 22 whose stated reason this repository's own
+`ModuleEmitter` contradicted. **Every one of those figures came from the wrong constant**, so they are
+recorded here as what a broken run printed and not as findings. They have not been re-derived for this entry
+and should not be: the row counts follow from the faulty slice below, and the `22` came from a further pass
+matching each row's `'trait'` against `ModuleEmitter::module()`'s match arms, whose output is not preserved.
+This was the locating step, which is the part worth keeping:
+
+    s = open('src/Vocabulary.php').read()
+    i = s.index('HOOK_KINDS'); j = s.index('];', i); block = s[i:j]
+
+`s.index('HOOK_KINDS')` matched a *comment mentioning* `HOOK_KINDS` at `src/Vocabulary.php:127`, inside the
+body of `Vocabulary::HOOKS`, which starts at line 78. So `block` was a truncated slice of `HOOKS` — a
+different table with different rows — while every sentence built on it named `HOOK_KINDS`. The constant it
+named starts at line 1003.
+
+A second reader caught it, along with three consequences the misparse had made invisible: one of the "22
+contradicted" rows uses `ClassLikeMemberHook`, which an audit already in this file records as *invented by
+this repository*; the claim that `Trait_` is the only row ever checked against Mago's registry contradicts an
+earlier peer registry inspection recorded above; and the `git log -S` command offered as history cannot show a
+`phpOnly` removal, because removing a flag from a retained row does not change the occurrence count of
+`Trait_::class`.
+
+The section is withdrawn rather than patched. Its foundation was a string match, not a parse, and correcting
+the arithmetic on top of that would have produced a more careful wrong answer.
+
+#### Why this one is worth keeping in the record
+
+It was written in the working tree on top of `cbe91bd`, **one commit after** `42ae170` extended the guideline
+about claims that outrun their rows, and it is a
+cleaner instance than any in that section: no clause of it was licensed by any row, because the rows were from
+another table. It also passed every check this file normally relies on. The figures were internally
+consistent, mechanically derived, reproducible by re-running the same script, and cross-checked against a
+second source — `ModuleEmitter`'s match arms — which is the shape of a well-evidenced finding. **An
+instrument pointed at the wrong object produces all the same signals as one pointed at the right object.**
+
+The check that would have caught it is one line: after locating a structure by name, assert that what you
+found is that structure. `s.index('HOOK_KINDS')` finding a comment and `s.index('HOOK_KINDS')` finding the
+constant are indistinguishable to everything downstream.
+
+The underlying question stands and is unanswered. `phpOnly` asserts something about Mago's analyzer registry.
+Two things are measured about reaching it from here: `find vendor -name '*.rs'` returns nothing, and the
+binary's own surface offers `mago extension list` / `validate`, which cover *configured external extensions*
+rather than the bundled analyzer's hook registry. Neither rules out some other local route — a probe against
+the binary, or metadata not looked for — so the position is that no route has been found, not that none
+exists. Sizing the question needs the audit run again against the right constant, and answering it needs a
+route to the registry.
