@@ -3779,6 +3779,19 @@ final readonly class Translator
             throw new Refusal('a caught binding whose value the plugin does not carry', $stmt->getStartLine());
         }
 
+        // The rewrite is only sound where the plugin's own reading answers *null* for exactly the failure the
+        // catch was there to take. That is a fact about the reading, not about the `try`, so the kinds are
+        // listed rather than inferred from the shape: any other assignment reaching here would get a null
+        // guard that fires where the original continued, or never fires where the original caught — silent
+        // in both directions. A rule wanting one is refused until its reading is known to answer null.
+        if (! in_array($local['kind'], self::NULL_ON_LOOKUP_FAILURE, true)) {
+            throw new Refusal(
+                "a caught binding of a {$local['kind']}, whose reading is not known to answer null where the "
+                . 'catch would have taken over',
+                $stmt->getStartLine(),
+            );
+        }
+
         // Emitted as a guard directly rather than through a synthesised `isset()`: the value is a local the
         // plugin computed, and `isset()` in this vocabulary reads an array offset.
         $this->context->lines[] = new Stm('guard', [
@@ -12950,6 +12963,16 @@ final readonly class Translator
     private const array HOOK_KINDS_ALWAYS_IN_A_CLASS = ['Class', 'Interface', 'Trait', 'Enum', 'Method', 'AnonymousClass'];
 
     /** Node predicates only the PHP runtime carries; the Rust backends have no counterpart. */
+    /**
+     * Descriptor kinds whose reading answers null where PHPStan's equivalent throws.
+     *
+     * What {@see bindsThroughACatch()} is allowed to rewrite a `catch` into a null guard for. One entry so
+     * far, and it earns its place by measurement rather than by looking safe: `Support::functionName()`
+     * returns null for a name the codebase does not know, which is the `FunctionNotFoundException` the rules
+     * reaching this shape catch.
+     */
+    private const array NULL_ON_LOOKUP_FAILURE = ['function-reflection'];
+
     private const array PHP_ONLY_PREDICATES = [
         'is_dir_constant', 'is_literal_string', 'is_class_constant_declaration', 'is_property_declaration',
     ];
