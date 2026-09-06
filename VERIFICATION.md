@@ -9793,3 +9793,45 @@ is gone rather than left standing.
 They declined to restore it: the draft never named which rule it was about, and reconstructing the rule and
 then finding a subject where it fires is inventing evidence to fit a sentence that already exists. The corpus
 finding that replaced it is confirmed — the symfony shape is real and identical.
+
+### The `is_callable` report is filed: carthage-software/mago#2333
+
+Filed 2026-09-06 by the peer session, after their verification pass and their own user's go-ahead. Read back
+from the tracker rather than from the draft: every figure in the posted body traces to a run both sessions
+made, and the two corrections their pass produced are in it.
+
+**It went out under `SanderMuller` — this repository's own account.** The two sessions had treated filing
+authority as a boundary between two users, and it turns out to be the same person on two machines. The
+caution cost nothing and the reasoning was right at the time: a peer's decision cannot stand in for a user's
+approval on an outward action, and neither session could see whose account the other held.
+
+What the peer changed, all of it correction or ordering:
+
+- **The unresolvable half leads.** It is the half a user sees as an error; the kept-arm half needs a type
+  dump to see at all. A maintainer's first screen is now a wrong diagnostic on ordinary code.
+- **`symfony/console` v7.4.16, `TreeNode.php:75`**, with the `@var` quoted so the shape is checkable without
+  the version. Confirmed here on v8.1.6, where the guard is also at `:75`.
+- **Versions are what they ran**: the 1.47.6 release asset, and PHPStan `2.2.x-dev@bba3c00` rather than
+  2.2.13. Every row matched on that build, so nothing is softened — the build is simply named.
+- **`#2037` cited with its disposition**, and the old `callable-string` "reported separately" claim removed
+  rather than left standing, because no such open report exists.
+- **The suppression point** went in as what is true — `non-existent-class-like` is correct, and suppressing it
+  does not remove the `impossible-type-comparison` — with nothing resting on the pragma syntax they could not
+  get working.
+
+#### What separated the check that worked from the one that nearly cost a finding
+
+Their closing observation, and it is the sharpest thing in the exchange. Three of this session's corrections
+came from re-reading its own text; two of theirs came from running its tables on shapes it had not run.
+**Neither of us caught anything by reading more carefully in the same direction.** The check that worked was
+changing the instrument.
+
+And changing the instrument is also what nearly destroyed symptom B: they read `$context->targetType` where
+this repository had walked to each side, got a different answer, and the difference read as a refutation
+rather than as a second measurement. Same move, opposite outcomes. What separates them is asking **whose
+instrument produced the number** before deciding what the number means — which is the positional rule already
+in this file, turned around: a value can be right, and be an answer to a question you did not ask.
+
+The definedness report is held on their recommendation until its control is settled. The three items are
+answered in this repository already — the channel is named, `json_decode` is the witness, `:240` is corrected
+— and their verification of those answers is outstanding.
