@@ -9693,3 +9693,29 @@ which is a claim that had to be made true rather than written.
 The three-arm subject is one file with three parameters, run under PHPStan at level 9 and under a node hook
 on `NodeKind::FunctionCall` reading `Type::$atomicTypes`. The four-shape subject is one file run under
 `mago analyze` with no plugin. Both are reproducible from the tables above.
+
+
+### The correction reached the claim and not its summary
+
+A peer session, told both drafts were about to be filed, predicted where "nothing rests on an assumption"
+would still be false: *the sentences that only join measured facts together — provenance headers, symmetry
+rows, mechanism glue* — and named the `is_callable` draft's lead-in as where a four-row table most easily
+grows a fifth claim it did not measure.
+
+It had. The four-shape table replaced *"a false error on any project where that dependency is not installed"*
+in the body. The summary paragraph two screens above still said it, and the body now contradicts it: a union
+that already includes `callable` produces **no** error at all.
+
+The instance is worth its own line because the failure is not the original overstatement — that was found and
+fixed — but that **the fix was applied where the claim was made and not where it was summarised**. A summary
+is exactly where a reader takes a number from, and it is the part least likely to be re-read when the
+evidence under it changes.
+
+The countermeasure is the one already in this file for figures, widened: after correcting a claim, grep the
+document for the claim's *other* spellings before calling it fixed. The body said "any project"; so did the
+lead-in, in different words, which is why a search for the corrected sentence would not have found it.
+
+#### Verification
+
+`grep -c 'false positive on any project'` returns 0 after the edit and returned 1 before it. The prediction
+that made it worth looking is the peer session's, quoted above.
