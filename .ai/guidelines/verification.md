@@ -286,6 +286,14 @@ snapshots, census lines, emitted plugins. The documents *about* it have been wro
 every cross-session message, none of which any test touches. **The failure rate tracks whether a thing is
 executed, not whether it was written carefully.**
 
+**A rule you have to remember while writing is the instrument that already failed.** The countermeasure for
+generalising over shapes was written down, and then the same failure happened again in the next draft — in
+drafting, which is the activity the rule is about, so it was in scope and still did not fire. That is not
+missing coverage. It is that remembering a rule at the moment of writing uses the same faculty that produced
+the error. What caught it both times was someone else running the table on a shape the author had not chosen,
+which is not a rule and cannot be written as one. So where a claim matters, budget for a second party rather
+than for a more careful self-review.
+
 Two things follow:
 
 - **A claim leaving the repository deserves the check the artefact gets.** Before a number goes into a

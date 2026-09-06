@@ -9835,3 +9835,41 @@ in this file, turned around: a value can be right, and be an answer to a questio
 The definedness report is held on their recommendation until its control is settled. The three items are
 answered in this repository already — the channel is named, `json_decode` is the witness, `:240` is corrected
 — and their verification of those answers is outstanding.
+
+### A third instrument settles symptom B, and it is better than either of the first two
+
+The peer session confirmed the control without the probe that was sent, on an instrument neither of us had
+used: a hook registered for `PropertyAccess` and `DirectVariable`, calling `getExpressionType($node->span)`
+per node. No walk, no `targetType`. Reproduced here:
+
+    $this->pet    assignment target, a PropertyAccess    Asg\Animal
+    $tagged       defining occurrence                    NULL
+    $untagged     defining occurrence                    NULL
+    $tagged       at a later use                         Asg\Dog
+    $untagged     at a later use                         Asg\Animal
+
+**All three parts of the symptom are in those five rows** — the override applied and visible at a use, absent
+at the assignment, and the by-design answer refuted by the property target typing in the same reading.
+
+It is better than either earlier table for a reason worth naming: **the divergence that cost a day is not in
+it**. Every row is the same call on a different node, so there is no channel for a reader to have picked
+differently. The span-keyed walk and the `targetType` row are now corroboration rather than the spine, and
+`targetType` keeps its sharpest form as a closing fact — the channel built for the target's type answers
+`Animal` on the `Dog` row.
+
+#### Why the countermeasure did not fire
+
+The rule against generalising over shapes was already written down when the same failure happened again, in
+the next draft. Their diagnosis is the useful one and it is now in the guidelines: **that failure was in
+scope**. Drafting is the activity the rule is about. It did not fire because remembering a rule at the moment
+of writing uses the same faculty that produced the error.
+
+What caught it both times was someone else running the table on a shape the author had not chosen. That is
+not a rule and cannot be written as one, so the practical form is: where a claim matters, budget for a second
+party rather than for a more careful self-review.
+
+#### One citation that is stable and one that is not
+
+`symfony/console` is v8.1.6 here and v7.4.16 there, and `TreeNode.php:75` in both. #2333 cites theirs. The
+line agreeing across two versions is luck rather than stability — **the `@var` annotation is the durable
+citation and the line number is not**, which is why the filed issue quotes the annotation.
