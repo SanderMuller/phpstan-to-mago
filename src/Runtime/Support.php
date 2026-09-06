@@ -561,9 +561,9 @@ final class Support
     }
 
     /** The declared name of the function a call names. {@see Names::calledFunctionName} */
-    public static function calledFunctionName(NodeAnalysisContext $context, ?string $name): ?string
+    public static function calledFunctionName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
-        return Names::calledFunctionName($context, $name);
+        return Names::calledFunctionName($context, $subject);
     }
 
     /** The analysed PHP version, in PHPStan's encoding. {@see Versions::phpstanVersionId} */

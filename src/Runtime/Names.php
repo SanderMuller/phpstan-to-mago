@@ -320,27 +320,43 @@ final class Names
      * a rule comparing it against `request` sees through a namespaced call that falls back to the global one.
      */
     /**
-     * The declared name of the function a *call* names, or null where the answer would be a guess.
+     * The declared name of the function a *call* names — `$reflectionProvider->getFunction()->getName()`.
      *
-     * {@see functionName()} tries the written name and then its last segment, which is how PHP resolves an
-     * **unqualified** call: `request()` inside `namespace Acme` is `Acme\request()` and falls back to the
-     * global `request()`. PHP applies that fallback to unqualified names only, so `Other\ini_get()` is
-     * `Other\ini_get()` and nothing else — and letting it fall back would answer `ini_get` for a call PHPStan
-     * resolves to nothing, which is a finding the original does not make.
+     * PHP resolves a call by how it is written, and both halves are needed to say which. Taken from the node
+     * rather than from a name, because the written spelling and the resolved one answer different halves and
+     * neither is recoverable from the other.
      *
-     * A qualified name is declined rather than resolved exactly, because the written text is not the resolved
-     * one: `Other\ini_get()` inside `namespace Acme` means `Acme\Other\ini_get()`, and this is handed the
-     * text. Declining is the under-reporting direction, which is the one to take when a rule reports.
-     *
-     * A leading `\` is not qualification — `\ini_get()` is the global function, written explicitly.
+     * - **Unqualified** — `ini_get()` inside `namespace App` means `App\ini_get()` *if that is declared*, and
+     *   the global `ini_get()` otherwise. Probed, and the reason this cannot be done from the text alone:
+     *   Mago resolves the name to `App\ini_get` **whether or not it exists**, so the resolved name is the
+     *   namespaced candidate and the fallback is still this function's to apply. Reading only the text got
+     *   the other error — it tried the global name first and never saw a namespaced declaration shadowing it.
+     * - **Qualified or fully qualified** — `Other\ini_get()` and `\ini_get()` get no fallback: each is the
+     *   function it names or nothing. Mago resolves the first to `App\Other\ini_get` and the second to
+     *   `ini_get`, both of which are exactly PHP's answer.
      */
-    public static function calledFunctionName(NodeAnalysisContext $context, ?string $name): ?string
+    public static function calledFunctionName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
-        if ($name === null) {
+        $written = self::writtenName($context, $subject);
+        if ($written === null || $written === '') {
             return null;
         }
 
-        return str_contains(ltrim($name, '\\'), '\\') ? null : self::functionName($context, $name);
+        $candidate = self::resolvedName($context, $subject) ?? ltrim($written, '\\');
+        $declared = $context->codebase->getFunction($candidate);
+        if ($declared instanceof FunctionLikeMetadata) {
+            return $declared->originalName;
+        }
+
+        // The global fallback, which only an unqualified call gets. A separator in the *written* name is what
+        // rules it out — the resolved name has one either way.
+        if (str_contains(ltrim($written, '\\'), '\\')) {
+            return null;
+        }
+
+        $global = $context->codebase->getFunction(ltrim($written, '\\'));
+
+        return $global instanceof FunctionLikeMetadata ? $global->originalName : null;
     }
 
     public static function functionName(NodeAnalysisContext $context, ?string $name): ?string

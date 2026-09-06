@@ -10464,7 +10464,26 @@ A second round found two more of the same species, and both were right:
   explicitly, and the bad example now holds one so that cell is measured: both engines report five findings
   on that file, four without it.
 
-Three rounds, five findings, and **not one of them was reachable by any check this repository runs**. Emit-all
-stayed byte-identical through the first two and moved by one helper name in the third; the suite, the census
-and the fires gate were green throughout. Each was a rule that does not exist yet meeting a fold written for
-the rule that does.
+A third round found the sharpest one, and it was about a helper that predates this work.
+`Support::functionName()` tries the written name and then its last segment, which reads like PHP's rule and
+is not. For `ini_get()` inside `namespace App` it asks for the *global* function first, so a file declaring
+`App\ini_get()` gets the global answer — and this rule, which compares that answer against five global
+names, reports a deprecation PHPStan does not.
+
+Probed rather than reasoned about, and the probe is the reason the fix is not what it first looked like:
+
+    namespace App;                    resolved name
+    ini_get('..')   with App\ini_get declared    App\ini_get
+    ini_get('..')   with it *not* declared       App\ini_get
+    \ini_get('..')                               ini_get
+
+**Mago resolves the unqualified call to the namespaced candidate whether or not it exists**, so the resolved
+name is not PHP's answer either — the global fallback is still the caller's to apply, and only for a call
+written unqualified. `calledFunctionName()` now takes the node, tries the resolved candidate, and falls back
+to the bare name only when the written spelling has no separator. Measured on the discriminating pair: with
+`App\ini_get()` declared both engines are silent, and on `\ini_get()` in the same file both report.
+
+Four rounds, six findings, and **not one of them was reachable by any check this repository runs**. Emit-all
+stayed byte-identical through the first two and moved only inside this one rule after that; the suite, the
+census and the fires gate were green throughout. Every one was a rule that does not exist yet — or a file
+nobody had written — meeting a fold built for the case in front of it.

@@ -11752,15 +11752,18 @@ final readonly class Translator
                 throw new Refusal('a function reflection, which only the PHP target carries', $line);
             }
 
+            // The *node*, not its text: how PHP resolves a call depends on how it was written and on what the
+            // file declares, and {@see Runtime\Names::calledFunctionName()} needs both. A descriptor that has
+            // already been reduced to a string has lost one of them, so only the node position is accepted.
             $named = $this->resolve($expr->getArgs()[0]->value, $line);
-            if (! in_array($named['kind'], ['name-expr', 'bytes', 'class-name', 'resolved-name'], true)) {
-                throw new Refusal("getFunction() of a {$named['kind']}", $line);
+            if ($named['kind'] !== 'name-expr') {
+                throw new Refusal("getFunction() of a {$named['kind']} rather than of a written name", $line);
             }
 
             return [
                 'rust' => self::PHP_ONLY,
                 'kind' => 'function-reflection',
-                'php' => 'Support::calledFunctionName($context, ' . $this->nameText($named, $line) . ')',
+                'php' => 'Support::calledFunctionName($context, ' . $this->operand($named) . ')',
             ];
         }
 
