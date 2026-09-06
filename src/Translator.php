@@ -8924,6 +8924,23 @@ final readonly class Translator
      *
      * @param 'no'|'yes' $tail
      */
+    /**
+     * The whole-type shape tests, by the PHPStan query that asks them.
+     *
+     * Each is the union rule PHPStan's `yes` means: every atomic has to qualify, so `bool|null` is a `maybe`
+     * there and is not one here either. Value is the runtime helper and the noun a refusal names.
+     *
+     * `isLiteralString()` reads the same refinement `getConstantStrings()` does, so a rule that asks both
+     * questions gets consistent answers; `isObject()` carries one divergence, stated on `Types::typeIsObject()`.
+     *
+     * @var array<string, array{0: string, 1: string}>
+     */
+    private const array TYPE_SHAPE_QUERIES = [
+        'isBoolean' => ['type_is_boolean', 'boolean-type'],
+        'isLiteralString' => ['type_is_literal_string', 'literal-string'],
+        'isObject' => ['type_is_object', 'object-type'],
+    ];
+
     private function trinaryTailPredicate(MethodCall $inner, string $tail, int $line): string
     {
         $name = $this->memberName($inner->name, $line);
@@ -9007,29 +9024,17 @@ final readonly class Translator
             );
         }
 
-        // `$type->isBoolean()->yes()` — whether the whole type is boolean. Every atomic has to be one, which
-        // is what PHPStan's `yes` means: `bool|null` is a `maybe` there and is not one here either.
-        if ($name === 'isBoolean' && $args === []) {
+        // The whole-type shape tests, which share one form: every atomic has to qualify, which is what
+        // PHPStan's `yes` means, and the runtime helper is the only thing that differs between them.
+        $shape = self::TYPE_SHAPE_QUERIES[$name] ?? null;
+        if ($shape !== null && $args === []) {
             if (Transpiler::$target !== 'php') {
-                throw new Refusal('a boolean-type test, which only the PHP target carries', $line);
+                throw new Refusal("a {$shape[1]} test, which only the PHP target carries", $line);
             }
 
             return $this->negateUnless(
                 $tail === 'yes',
-                $this->context->backend->call('type_is_boolean', [$this->operand($this->resolve($inner->var, $line))]),
-            );
-        }
-
-        // `$type->isLiteralString()->yes()` — whether every part of the type is a written string. The same
-        // refinement `getConstantStrings()` reads, so a rule that asks both questions gets consistent answers.
-        if ($name === 'isLiteralString' && $args === []) {
-            if (Transpiler::$target !== 'php') {
-                throw new Refusal('a literal-string test, which only the PHP target carries', $line);
-            }
-
-            return $this->negateUnless(
-                $tail === 'yes',
-                $this->context->backend->call('type_is_literal_string', [$this->operand($this->resolve($inner->var, $line))]),
+                $this->context->backend->call($shape[0], [$this->operand($this->resolve($inner->var, $line))]),
             );
         }
 

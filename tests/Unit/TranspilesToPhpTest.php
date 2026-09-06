@@ -93,6 +93,10 @@ final class TranspilesToPhpTest extends TestCase
         // `nthExpression(nthExpression(..))` is the assignment's left side reached through the statement —
         // one level flatter and the plugin tests the assignment where it means to test its target.
         yield 'a rule hooked on an expression statement' => ['AssignmentStatementRule'];
+        // `$type->isObject()->yes()`, the union question asked of a whole type. Snapshotted for the operand
+        // it lands on: `nthExpression(nthExpression($node, 0), 1)` is the assignment's *right* side reached
+        // through the statement, and index 0 there would type the target instead.
+        yield 'a whole-type object test' => ['ObjectTypedAssignRule'];
         yield 'a report code carrying a classification' => ['ClassifiedCodeRule'];
         yield 'a loop inside an inlined predicate helper' => ['AnyConstantHelperRule'];
         yield 'a reflection question answered by the codebase' => ['AsksTheCodebaseRule'];

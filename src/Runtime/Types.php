@@ -7,10 +7,15 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
+use Mago\Sdk\Analyzer\Type\AnyObjectType;
 use Mago\Sdk\Analyzer\Type\CallableType;
 use Mago\Sdk\Analyzer\Type\ClassLikeStringType;
 use Mago\Sdk\Analyzer\Type\ClassLikeStringVariant;
+use Mago\Sdk\Analyzer\Type\EnumType;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
+use Mago\Sdk\Analyzer\Type\ObjectShapeType;
+use Mago\Sdk\Analyzer\Type\ObjectWithMethodType;
+use Mago\Sdk\Analyzer\Type\ObjectWithPropertyType;
 use Mago\Sdk\Analyzer\Type\ScalarType;
 use Mago\Sdk\Analyzer\Type\ScalarTypeKind;
 use Mago\Sdk\Analyzer\Type\SimpleAtomicType;
@@ -282,6 +287,40 @@ final class Types
      * one. A literal `true` is — its atomic is a boolean scalar carrying a refinement, and the refinement is
      * what makes it literal rather than what makes it a different kind.
      */
+    /**
+     * Whether every part of a type is an object — PHPStan's `Type::isObject()->yes()`.
+     *
+     * Every atomic has to be one, which is what `yes` means: `Foo|null` is a `maybe` there and is not one
+     * here either, and an empty type is not an object.
+     *
+     * **`ReferenceType` is deliberately not one of them, and that is a divergence.** PHPStan gives an
+     * `ObjectType` for a class name it cannot resolve, so it answers `yes`; this answers `no`. The reason is
+     * that a reference is not known to be a class: `ReferenceTypeKind` is `Symbol`, `Member` or `Global`, so
+     * the same atomic stands for a global constant's type as for a class-like's, and reading it as an object
+     * would be reading a kind it does not carry. The direction is under-reporting — a rule gated on this
+     * declines where PHPStan proceeds — which is the direction this repository takes when one must be chosen.
+     */
+    public static function typeIsObject(?Type $type): bool
+    {
+        if (! $type instanceof Type || $type->atomicTypes === []) {
+            return false;
+        }
+
+        foreach ($type->atomicTypes as $atomic) {
+            if (! $atomic instanceof AnyObjectType
+                && ! $atomic instanceof NamedObjectType
+                && ! $atomic instanceof EnumType
+                && ! $atomic instanceof ObjectShapeType
+                && ! $atomic instanceof ObjectWithMethodType
+                && ! $atomic instanceof ObjectWithPropertyType
+            ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public static function typeIsBoolean(?Type $type): bool
     {
         if (! $type instanceof Type || $type->atomicTypes === []) {

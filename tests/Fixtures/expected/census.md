@@ -216,8 +216,7 @@ REFUSE  NoIntegerRefactorReturnRule
         needs: statement outside the vocabulary: Stmt_Expression
         needs: assignment value outside the vocabulary: access path outside the vocabulary: array_diff()
 REFUSE  NoJustPropertyAssignRule
-        trinary tail on an unsupported query ->isObject()
-        needs: trinary tail on an unsupported query ->isObject()
+        no node predicate for instanceof PhpParser\Node\Expr on a bytes
         needs: no node predicate for instanceof PhpParser\Node\Expr on a bytes
 EMIT    NoLeadingBackslashInNameRule
 EMIT    NoListenerWithoutContractRule
