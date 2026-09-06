@@ -9087,11 +9087,7 @@ final readonly class Translator
             $name === 'hasVariableType' && count($args) === 1
             && $inner->var instanceof Variable && $inner->var->name === 'scope'
         ) {
-            // The rule asks about the scope *before* this node, which only the pre hook can answer.
-            $this->context->readsPriorScope = true;
-            $variable = $this->variableNameExpression($args[0]->value, $line);
-
-            return $this->negateUnless($tail === 'no', "support::variable_is_undefined(context, {$variable})");
+            return $this->definednessTest($args[0]->value, $tail, $line);
         }
 
         throw new Refusal("trinary tail on an unsupported query ->{$name}()", $line);
@@ -9113,6 +9109,34 @@ final readonly class Translator
      * `yes` only. The SDK answers a bool where PHPStan answers a trinary, so `! isContainedBy()` is *maybe or
      * no*, and reading it as `no` would claim a proof the comparator never gave.
      */
+    /**
+     * `$scope->hasVariableType($name)->yes()`, which only the analyzer target can answer.
+     *
+     * The rule asks about the scope *before* this node, which only the pre hook reaches.
+     *
+     * **The PHP target refuses here rather than downstream.** `support::variable_is_undefined` is an
+     * analyzer-side helper with no PHP counterpart: an extension-host plugin receives span-keyed types and
+     * nothing that separates a definitely-defined variable from an undefined one — which is what
+     * `carthage-software/mago#2334` asks for, measured. Without this the php target built the Rust call
+     * anyway and refused two layers later naming a leaked Rust operand, so the census recorded a downstream
+     * shape as the obstacle for a rule whose real blocker is its first guard.
+     */
+    private function definednessTest(Expr $argument, string $tail, int $line): string
+    {
+        if (Transpiler::$target === 'php') {
+            throw new Refusal(
+                'a definedness test, which the PHP target has no way to answer: a plugin receives '
+                . 'span-keyed types and no definedness (carthage-software/mago#2334)',
+                $line,
+            );
+        }
+
+        $this->context->readsPriorScope = true;
+
+        return $this->negateUnless($tail === 'no', 'support::variable_is_undefined(context, '
+            . $this->variableNameExpression($argument, $line) . ')');
+    }
+
     private function superTypeQuery(MethodCall $inner, Expr $argument, string $tail, int $line): string
     {
         if (Transpiler::$target !== 'php') {

@@ -556,8 +556,8 @@ REFUSE  OverwriteVariablesWithForLoopInitRule
         no mapping for ->init on a hook-node
         needs: no iteration mapped for ->init, which resolved to a expr
 REFUSE  OverwriteVariablesWithForeachRule
-        guard body is neither `return []` nor `continue`, but Stmt_Foreach
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Foreach
+        a definedness test, which the PHP target has no way to answer: a plugin receives span-keyed types and no definedness (carthage-software/mago#2334)
+        needs: a definedness test, which the PHP target has no way to answer: a plugin receives span-keyed types and no definedness (carthage-software/mago#2334)
 REFUSE  RequireParentConstructCallRule
         function call outside the vocabulary property_exists()
         needs: function call outside the vocabulary property_exists()
