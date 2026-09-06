@@ -9873,3 +9873,54 @@ party rather than for a more careful self-review.
 `symfony/console` is v8.1.6 here and v7.4.16 there, and `TreeNode.php:75` in both. #2333 cites theirs. The
 line agreeing across two versions is luck rather than stability — **the `@var` annotation is the durable
 citation and the line number is not**, which is why the filed issue quotes the annotation.
+
+### Symptom B has a workaround, and the sentence justifying it was false
+
+The peer session, checking for workarounds before filing, found `SourceFile::getTrivia()`. Reproduced here on
+this repository's own subject, under the `SourceText` requirement the probes already request:
+
+    TRIVIA DocBlockComment  start=344  /** @var Dog $tagged */
+    ASSIGN                  start=376  $tagged = $h->pet
+
+So the annotation is readable and associable by position. `NoJustPropertyAssignRule`'s exemption — *the
+docblock says something more specific, so the assignment is deliberate* — **can be honoured today**: read the
+trivia, match the span, parse the `@var`.
+
+The draft said *"an exemption that cannot be read is an exemption that cannot be honoured"*. That was the one
+false sentence in either document, and it justified half of one of them.
+
+The residual is real and much smaller: raw text is not the analyzer's resolved type, so honouring it means
+redoing alias and imported-type resolution. A different and weaker ask.
+
+#### What was filed instead
+
+**carthage-software/mago#2334**, symptom A alone. Symptom B appears in it under *Checked before filing*, named
+with its workaround and explicitly not requested — volunteering the thing that weakens the ask, rather than
+being handed it by a maintainer who finds `getTrivia()` in a minute and closes the whole report.
+
+Symptom A got stronger on the way, from the same workaround hunt. Reading span-keyed types at the variable
+nodes rather than the flags:
+
+    $definite       int      $neverAssigned   mixed
+    $maybe          int      $mixedDef        mixed   ($mixedDef = json_decode('1'), definitely assigned)
+
+An undefined variable gets a span entry typed `mixed`; a definitely-assigned genuinely-`mixed` variable gets
+a span entry typed `mixed`. Neither the entry's presence nor its type separates them, and no flag does
+either. A second independent demonstration, and it closes the obvious *"just check whether it has a type"*
+answer before it is asked.
+
+#### The failure this is, which is not the one already recorded
+
+Every figure in both drafts was verified. Twice, on two machines, with three instruments, on inputs the
+author had not chosen. **No pass asked whether the gap had a workaround**, because verifying a claim and
+testing whether the claim matters are different questions and only the first looks like verification.
+
+The countermeasure recorded this morning — *have a second party run the table on a shape you did not choose*
+— cannot reach it. Re-running the author's inputs never asks whether a different route exists. It is now a
+guideline section of its own, because the practical form is a different question rather than a better check:
+**is there another route to the same answer**, searched for by outcome rather than by concept. The trivia
+store was not found by looking for docblocks; it was found by asking how else a rule could see one.
+
+It also aims this file's positional rule one notch higher. *A value can be right and still be the answer to a
+question nobody asked* — and, now measured, **the whole document can be built on such a value with every
+figure in it correct**.

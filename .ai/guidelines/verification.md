@@ -303,6 +303,38 @@ Two things follow:
   are not are the ones you have to run yourself, and they are exactly the ones that feel safest because they
   have never failed loudly.
 
+## Verifying a claim is not testing whether the claim matters
+
+Two sessions verified every figure in two issue drafts. Both machines, three instruments, every table re-run
+on inputs the author had not chosen, every line number fetched from the tag. One draft asked for a capability
+whose absence was demonstrated beyond argument.
+
+**Not one of those passes asked whether the gap had a workaround.** It did. `SourceFile::getTrivia()` returns
+`DocBlockComment` trivia with spans, under a requirement the probes already carried, so the rule whose
+exemption "could not be honoured" could honour it today by reading the annotation and associating it by
+position. The sentence that justified half the request was the only false sentence in either document, and it
+survived every check because **checking a claim and asking whether the claim matters are different questions,
+and only the first one looks like verification**.
+
+The countermeasure recorded above — *have a second party run the table on a shape the author did not choose*
+— cannot reach this. No amount of re-running the author's inputs asks whether a different route exists. The
+reader who catches it is not being more careful; they are being adversarial about the framing rather than
+about the figures.
+
+So before a claim of absence leaves the repository, ask the question the author did not:
+
+- **Is there another route to the same answer?** Not another way to measure the gap — another way for a
+  consumer to get what the gap withholds. Search the API surface for the *outcome*, not for the concept:
+  the trivia store was not found by looking for docblocks, it was found by asking how else a rule could see
+  one.
+- **Volunteer what weakens the ask.** The filed issue names the workaround itself, in a section headed
+  *Checked before filing*, and explicitly does not request that half. A maintainer who finds it in a minute
+  and closes the whole report costs more than the paragraph does.
+
+The positional rule this file already carries — *a value can be right and still be the answer to a question
+nobody asked* — is right and was aimed one notch too low. **The whole document can be built on such a value**,
+with every figure in it correct.
+
 ## A wrong "why" is worse than none
 
 Reproduction steps, tests and the fix all get built on the stated cause. When you have not traced it, say
