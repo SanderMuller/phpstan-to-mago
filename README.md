@@ -2,8 +2,8 @@
 
 You run [Mago](https://github.com/carthage-software/mago) and you still run PHPStan, because your team's
 conventions exist only as PHPStan rules. This moves them: a rule's *decisions* usually reduce to guards over
-the syntax tree plus a few questions about the enclosing class, and that much translates into a Mago plugin.
-The rule object itself cannot travel — it reaches into thousands of classes Mago does not expose to PHP.
+the syntax tree plus a few questions about the enclosing class, and that much becomes a Mago plugin. The rule
+object itself cannot travel — it reaches into classes Mago does not expose to PHP.
 
 ```bash
 composer require --dev sandermuller/phpstan-to-mago
@@ -17,7 +17,7 @@ vendor/bin/phpstan-to-mago --survey vendor/hihaho/phpstan-rules/src
 | `--survey` | report what each rule would need, writing nothing |
 | `--from-config=DIR` | the rules a project registers, not the ones its packages ship |
 
-`--help` lists the rest. Each target writes into its own subdirectory of `--out`, with a
+`--help` lists the rest. Each target writes its own subdirectory of `--out`, with a
 `generated/manifest.json` naming each rule's identifier, messages and defaults.
 
 **Only the `php` target installs.** It emits a worker plus the `mago.toml` snippet registering it, against
@@ -100,8 +100,8 @@ public function __construct(
 ) {}
 ```
 
-Nothing from a consuming project is baked in; override in the worker, which `manifest.json` names. A rule
-taking a PHPStan service is refused by name — no worker can supply one.
+Override in the worker, which `manifest.json` names. A rule taking a PHPStan *service* is refused — no
+worker can supply one.
 
 ## Refusals
 
@@ -115,14 +115,11 @@ Read them next to the `emitted` count, never alone.
 
 ## What it can translate
 
-Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md`. A test re-derives it and asserts
-against the committed copy, skipping when the installed corpus is not the one recorded — so an ordinary
-`composer update` neither fails nor rewrites it. The nightly drift watch installs a different corpus on
-purpose and compares anyway, which is where a diff surfaces.
+Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and re-derived by a test.
 
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
-| `symplify/phpstan-rules` | 89 | 59 | 29 | 1 |
+| `symplify/phpstan-rules` | 89 | 61 | 27 | 1 |
 | `hihaho/phpstan-rules` | 7 | 6 | 1 | 0 |
 | `tomasvotruba/type-coverage` | 10 | 5 | 5 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
@@ -130,9 +127,9 @@ purpose and compares anyway, which is where a diff surfaces.
 | `phpstan/phpstan-phpunit` | 13 | 4 | 9 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 1 | 1 | 0 |
 
-`--status` counts 99 of 209 here and writes a page under `--out`. The table is the seven packages that emit
-anything; `spaze/phpstan-disallowed-calls` (38) and `composer/pcre` (2) are in the denominator and not the
-table. Run it on your own project for its figure.
+`--status` counts 101 of 209 here and writes a page under `--out`. The table is the seven packages that emit anything;
+`spaze/phpstan-disallowed-calls` (38) and `composer/pcre` (2) are in the denominator only. Run it on your own
+project.
 
 <details>
 <summary>What the vocabulary covers</summary>
@@ -164,9 +161,9 @@ Three things run, and each records rather than asserts:
 | **per divergence** | each one found is pinned as a minimal case, so it survives the corpus moving on. [The record](tests/Fixtures/expected/divergences.md) goes red in either direction. |
 | **per corpus** | `run-corpus-sweep.php` reads seven trees this package installs, so `composer install` reproduces it: **11327 agreeing against 31 divergences**, [each listed](tests/Fixtures/expected/corpus-sweep.md). |
 
-Corpus-scale agreement is still not proven, and size is not what buys it — the two smallest trees carry most
-of the divergences while 1003 files of PHPUnit carry none. [VERIFICATION.md](VERIFICATION.md) has every run
-and what it found, including the defects in this port that the differential caught first.
+Size is not what buys agreement: the two smallest trees carry most of the divergences and 1003 files of
+PHPUnit carry none. [VERIFICATION.md](VERIFICATION.md) has every run, including the defects in this port the
+differential caught first.
 
 ## Performance
 
@@ -183,8 +180,7 @@ and what it found, including the defects in this port that the differential caug
 **Read the CPU column**: this ran at a load average near 5, so the wall figures are pessimistic and
 unequally so. All four rows come from the same two runs, on mago 1.47.5; the two mago rows reproduce within
 2% on the 1.47.6 this package requires. The rules add **3.34s CPU** — the
-marginal cost, which no total gives — and the engine baseline moves with your `includes` rather than your
-sources.
+marginal cost, which no total gives.
 
 **Not a speed win on this corpus**: 1.20x cheaper than a cold PHPStan on CPU, dearer than a warm one,
 because `mago analyze` has no result cache. Measure your own.
