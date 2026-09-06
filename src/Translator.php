@@ -56,6 +56,7 @@ use PhpParser\Node\InterpolatedStringPart;
 use PhpParser\Node\IntersectionType;
 use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
+use PhpParser\Node\Scalar\Float_;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
@@ -1393,10 +1394,34 @@ final readonly class Translator
             $keys[] = $item->key->value;
         }
 
-        if ($keys !== []) {
-            $this->context->constantKeys[$name] = $keys;
-            $this->context->constantMaps[$name] = $value;
+        if ($keys === []) {
+            return;
         }
+
+        $this->context->constantKeys[$name] = $keys;
+
+        // Only a map whose values are literals is recorded as one, because a *carried* constant is copied
+        // into the plugin verbatim: `['x' => self::LIMIT]` would emit a map naming a constant the plugin does
+        // not declare, and an imported class constant would resolve in the wrong namespace there. Membership
+        // above needs the keys alone and is unaffected; a rule reading a value out of anything richer refuses
+        // rather than emitting a copy that cannot stand on its own.
+        foreach ($value->items as $entry) {
+            if ($entry !== null && ! $this->isLiteralConstantValue($entry->value)) {
+                return;
+            }
+        }
+
+        $this->context->constantMaps[$name] = $value;
+    }
+
+    /** Whether a constant-map value is a literal, and so survives being copied into the generated plugin. */
+    private function isLiteralConstantValue(Expr $value): bool
+    {
+        if ($value instanceof ConstFetch) {
+            return in_array(strtolower($value->name->toString()), ['true', 'false', 'null'], true);
+        }
+
+        return $value instanceof Int_ || $value instanceof String_ || $value instanceof Float_;
     }
 
     public function collectConstants(ClassLike $class): void

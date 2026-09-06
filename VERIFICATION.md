@@ -10483,7 +10483,13 @@ written unqualified. `calledFunctionName()` now takes the node, tries the resolv
 to the bare name only when the written spelling has no separator. Measured on the discriminating pair: with
 `App\ini_get()` declared both engines are silent, and on `\ini_get()` in the same file both report.
 
-Four rounds, six findings, and **not one of them was reachable by any check this repository runs**. Emit-all
+A fourth round found the constant carry accepting more than it can copy: any array with string keys became
+a readable map, but only the *keys* were checked. `['x' => self::LIMIT]` would have been copied onto the
+plugin naming a constant the plugin does not declare, and an imported class constant would resolve in the
+wrong namespace there. Only literal values are recorded as a map now; membership needs the keys alone and is
+unaffected.
+
+Five rounds, seven findings, and **not one of them was reachable by any check this repository runs**. Emit-all
 stayed byte-identical through the first two and moved only inside this one rule after that; the suite, the
 census and the fires gate were green throughout. Every one was a rule that does not exist yet — or a file
 nobody had written — meeting a fold built for the case in front of it.
