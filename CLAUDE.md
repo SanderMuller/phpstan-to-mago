@@ -398,6 +398,45 @@ Two cheap countermeasures, both used to find the pair above:
 Length is never a reason to drop a caveat. Where a page is genuinely over budget, cut a restatement, an
 example, or a rationale — never the sentence that tells a reader when a number stops applying.
 
+## Every number right, and the sentence still wrong
+
+The rules above are about getting a measurement right. This one is about the sentence built on top of a
+measurement that *was* right, which is a different failure and the one a control pair cannot catch.
+
+Instances, each recorded in `VERIFICATION.md` under the heading named:
+
+- **A generalisation to an unmeasured cell** — *"The narrowing gaps are two mechanisms, and the matrix settles
+  it"*. "`is_callable` does not act on object atomics, resolvable or not" was written from four measured
+  cells. The fifth had never been run, and when it was, it ran the opposite way. Every one of the four cells
+  was correct; the phrase "or not" had no row under it.
+- **A unification that fit every cell anyone had run** — *"The last untraced finding is a third mechanism"*.
+  Two findings sharing a symptom, written up as one mechanism. The row where the two candidates predicted
+  different answers refuted it.
+- **A conclusion drawn from a runtime that never runs** — *"The fourth row"*. "Mago lets the invocation
+  through, and `$i()` is a fatal at run time." The guard is `is_callable()` on a class with no `__invoke`, so
+  it is false and the body is dead code. The narrowing figures behind the sentence were all correct.
+
+In each, no instrument was wrong and no figure was carried. **The defect was in the sentence, and a sentence
+is not a thing you can run.** A control pair separates two mechanisms; a discriminating row settles which of
+two explanations holds. Neither looks at whether the sentence says more than its rows support.
+
+This is not the "wrong why" rule below. That one is about asserting a cause you never traced. Here the cause
+may be honestly labelled as untraced two paragraphs earlier and the sentence still overreaches — by
+generalising a measured range, or by asserting a consequence the setup makes unreachable.
+
+Two things catch it:
+
+- **A second reader who does not know what the sentence is meant to say.** The runtime-fatal claim was caught
+  twice within minutes, by a peer session and by an independent review tool, neither of which held the model
+  the sentence came from. The author cannot be that reader: the sentence reads as true to whoever built the
+  model behind it.
+- **Asking, per clause, which measured row licenses it.** "Resolvable or not" had a row for *resolvable* and
+  none for *or not*, which is visible on inspection once the question is asked clause by clause rather than
+  claim by claim.
+
+Mark a superseded claim where it stands rather than editing it away. The marker carries the reason the phrase
+did not hold, which a clean edit deletes along with the error.
+
 ## A wrong "why" is worse than none
 
 Reproduction steps, tests and the fix all get built on the stated cause. When you have not traced it, say

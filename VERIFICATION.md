@@ -8624,7 +8624,7 @@ comes from the line rather than from output order. Joined with the six rows abov
 than "diverge in opposite directions" — each engine applies elimination to precisely the case the other does
 not:
 
-                                                      mago (measured here)          PHPStan (peer-reported)
+                                                      mago                          PHPStan
     is_callable, resolvable, provably not callable    retains callable|Plain        `never`
     is_callable, unresolvable                         `never`                       refines to
                                                                                     callable(): mixed & Klass
@@ -8644,11 +8644,11 @@ and a reviewer testing the paraphrase would find it does not match the output.
 
 #### The inversion is visible at the diagnostic level, not only in the inferred types
 
-Every PHPStan figure in this section is **peer-reported**, not run here; the Standing note below says what
-that costs. The peer session re-ran their half on the **released** 2.2.13 rather than the `2.2.x-dev` tree
-the earlier rows came from — their own catch, made because the version label was about to go into a public
-document — and reported every cell identical. On the resolvable row they report PHPStan not only narrowing to
-`never` but emitting:
+The peer session re-ran their half on the **released** 2.2.13 rather than the `2.2.x-dev` tree the earlier
+rows came from — their own catch, made because the version label was about to go into a public document — and
+reported every cell identical. They then sent their subjects and raw output, so **their column has since been
+re-run here** and is no longer peer-reported; both subjects, the config and the run's output are below. On the
+resolvable row PHPStan does not only narrow to `never`, it emits:
 
     Call to function is_callable() with Only2\Plain will always evaluate to false.
     [identifier: function.impossibleType]
@@ -8694,6 +8694,141 @@ measured here — a parameter declared as an unresolvable class, guarded by `is_
 optional dependency that way is ordinary; whether every spelling of that guard reaches the same diagnostic is
 not measured.
 
+#### The PHPStan half, reproduced here
+
+The peer session sent its subjects rather than only its numbers, which is what made the join checkable. Run
+on this tree's own `phpstan/phpstan` 2.2.13 (`vendor/bin/phpstan --version` says so), level 9, against a
+throwaway config naming only the subject's path:
+
+```php
+<?php declare(strict_types=1);
+
+namespace Only2;
+
+final class Plain {}
+
+/** @param \Totally\Gone\Klass $x */
+function unresolvableOnly($x): void
+{
+    if (is_callable($x)) {
+        \PHPStan\dumpType($x);   // TRUE branch, unresolvable
+        return;
+    }
+    \PHPStan\dumpType($x);       // FALSE branch, unresolvable
+}
+
+function resolvableOnly(Plain $z): void
+{
+    if (is_callable($z)) {
+        \PHPStan\dumpType($z);   // TRUE branch, resolvable final no __invoke
+        return;
+    }
+    \PHPStan\dumpType($z);       // FALSE branch, resolvable
+}
+```
+
+Exact command, from the directory holding `src/` and this config:
+
+```neon
+parameters:
+    level: 9
+    paths:
+        - src
+```
+
+    vendor/bin/phpstan analyse -c phpstan.neon --no-progress --error-format=raw
+
+The run's own output, verbatim. This environment wraps PHPStan's reporter in JSON whatever `--error-format`
+asks for, so this is what the command above prints — eight diagnostics, seven from subject A and one from
+subject B, with only the harness's trailing `instructions` blob removed:
+
+    {
+      "tool": "phpstan",
+      "result": "failed",
+      "errors": 8,
+      "error_details": {
+        "/tmp/ps-peer/src/A.php": [
+          {
+            "line": 8,
+            "message": "Out of 3 possible param types, only 2 - 66.6 % actually have it. Add more param types to get over 99 %",
+            "identifier": "typeCoverage.paramTypeCoverage"
+          },
+          {
+            "line": 8,
+            "message": "Parameter $x of function Only2\\unresolvableOnly() has invalid type Totally\\Gone\\Klass.",
+            "identifier": "class.notFound"
+          },
+          {
+            "line": 11,
+            "message": "Dumped type: callable(): mixed&Totally\\Gone\\Klass",
+            "identifier": "phpstan.dumpType",
+            "ignorable": false
+          },
+          {
+            "line": 14,
+            "message": "Dumped type: Totally\\Gone\\Klass",
+            "identifier": "phpstan.dumpType",
+            "ignorable": false
+          },
+          {
+            "line": 19,
+            "message": "Call to function is_callable() with Only2\\Plain will always evaluate to false.",
+            "identifier": "function.impossibleType"
+          },
+          {
+            "line": 20,
+            "message": "Dumped type: *NEVER*",
+            "identifier": "phpstan.dumpType",
+            "ignorable": false
+          },
+          {
+            "line": 23,
+            "message": "Dumped type: Only2\\Plain",
+            "identifier": "phpstan.dumpType",
+            "ignorable": false
+          }
+        ],
+        "/tmp/ps-peer/src/B.php": [
+          {
+            "line": 9,
+            "message": "Call to function is_callable() with Repro\\Plain will always evaluate to false.",
+            "identifier": "function.impossibleType"
+          }
+        ]
+      }
+    }
+
+The branches are on their own lines so attribution comes from the line rather than from output order.
+
+Two rows need a word. `typeCoverage.paramTypeCoverage` is this repository's own noise — `tomasvotruba/type-coverage`
+is installed here and registers itself through the extension installer, so it appears only in a run where that
+extension is registered too. And `class.notFound` is expected output for a subject whose type deliberately
+does not exist. **The peer session described that row as non-ignorable; the run here disproves it.** Adding
+`ignoreErrors: [{identifier: class.notFound}]` to the config removes that row and leaves the other seven
+untouched. That was run rather than read off the JSON above: `ignorable: false` appearing on only the
+`dumpType` rows is evidence about a flag, not about what a config can suppress.
+
+Subject B, in full, is the guard reproducer — its single row is the last one above:
+
+```php
+<?php declare(strict_types=1);
+
+namespace Repro;
+
+final class Plain {}
+
+function guard(Plain $i): void
+{
+    if (is_callable($i)) {
+        $i();
+    }
+}
+```
+
+**Nothing at line 10**, where the call is. That is the precision the peer session insisted on, and it is
+worth having: "PHPStan catches the fatal call" would be wrong in a way a maintainer disproves in ten seconds.
+The true branch is `never`, so the body is not analysed and the diagnostic lands on the guard.
+
 #### Controls
 
 Four of them, and each must answer the way it does for the axis row to mean what it says. The single-axis
@@ -8714,24 +8849,21 @@ Four of them, and each must answer the way it does for the axis row to mean what
 
 #### Standing
 
-The two columns come from two sessions and neither depends on the transpiler. The PHPStan column is the peer
-session's, with branch-level attribution rather than order-inferred, and is **not reproduced here**; the mago
-column is this repository's measurement, on mago 1.47.6.
-
-Three subjects, because they answer different questions, and all three are written out above rather than
+Three mago subjects, because they answer different questions, and all three are written out above rather than
 pointed at — the six-method file behind the type table, the unresolvable reproducer, and the resolvable one —
 along with the plugin the first one needs. The other two need none. Each ran under `mago analyze` on 1.47.6 with a `mago.toml` naming `src` as its
 only path and nothing else configured.
 
-**Two engine columns, and no session ran both.** Every mago cell is this repository's measurement; every
-PHPStan cell is the peer session's, branch-attributed and re-run on the released 2.2.13 after they caught
-their own version label naming a `2.2.x-dev` tree. Neither engine is reproduced across, and neither depends
-on the transpiler. That is a stronger evidence structure than one session measuring both — but it means the
-inversion claim **joins two sessions' measurements**, and a reader who assumes one session ran everything will
-misjudge which half to check.
+**Both columns are measured here.** The mago cells are this repository's throughout, on 1.47.6. The PHPStan
+cells were the peer session's first — branch-attributed, and re-run by them on the released 2.2.13 after they
+caught their own version label naming a `2.2.x-dev` tree — and they then sent the subjects rather than only
+the numbers, so subject A's seven rows and subject B's one have since been run on this tree's own PHPStan 2.2.13
+and matched. That is the run this entry quotes. Their earlier `2.2.x-dev` and released-2.2.13
+runs are reported, not repeated here; the cells they cover are the same cells. Neither column depends on the
+transpiler.
 
-The asymmetry is worth stating plainly rather than only at the end: **the mago half is reproducible from this
-file and the PHPStan half is not.** Every PHPStan type, `never`, diagnostic text and identifier quoted above
-is a peer-reported result, without its subject, configuration or raw output here. Read those as reported, and
-re-run them before quoting them anywhere they matter. What this repository stands behind alone is the mago
-cells and the diagnostics they print.
+**The asymmetry that remains is one of order, not of evidence.** Each engine was measured first by the
+session that owned it, so the join was two reports before it was one run; what makes it checkable now is that
+both subjects are written out above, and re-running either takes a config file and a copy-paste. An earlier
+version of this entry marked the PHPStan half peer-reported and told a reader to re-run it before quoting it.
+That instruction was right, and following it is what removed the need for it.
