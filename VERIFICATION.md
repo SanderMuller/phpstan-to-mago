@@ -9373,3 +9373,49 @@ in advance is the one instrument that separates them, and it works exactly once 
 annotation; `vendor/symfony/console/Helper/QuestionHelper.php:259` and `installed.json` for the pin; the four
 line numbers from `tests/Fixtures/expected/corpus-sweep.md`. The upstream discussion and the maintainer's own
 independent confirmation of the precedence claim are the peer session's, reported and not reproduced here.
+
+### `possiblyUndefined` is not the definedness question, measured on three states
+
+A peer session traced local definedness from mago's analyzer through the protocol into the SDK and found
+`Type::$flags->possiblyUndefined` — `@api`, public, on every type a plugin already receives. Their chain is
+right and reproduces here: `TypeCodec.php:113-114` writes bits 3 and 4, `:765-766` reads them back, and
+`Type/TypeFlags.php:17-18` exposes both. They then withdrew the upstream ask on the strength of it, and asked
+for the two things they could not run.
+
+Run, on one file with three variables in three definedness states, read from a node hook's `argumentTypes`:
+
+    $definite = 1;  probeDefinite($definite);        int    possiblyUndefined = false
+    if ($c) { $maybe = 2; }  probeMaybe($maybe);     int    possiblyUndefined = TRUE
+    probeUndefined($neverAssigned);                  mixed  possiblyUndefined = false
+
+Mago's own diagnostics agree about the file — `possibly-undefined-variable` on the second and
+`undefined-variable` on the third — so the three states are the three states.
+
+**The flag does not give the trinary.** A variable that was never assigned arrives with
+`possiblyUndefined = false`, the same answer as one that is definitely defined. Every one of the eleven
+`TypeFlags` fields is identical between those two rows; the only difference is the type itself, `mixed`
+against `int`, and a variable declared `mixed` and definitely assigned is then indistinguishable from one
+that does not exist.
+
+So the flag answers *maybe*, and collapses *yes* and *no* into its negation. What
+`OverwriteVariablesWithForeachRule` and `OverwriteVariablesWithForLoopInitRule` ask is
+`hasVariableType($name)->yes()` — definitely defined — which is exactly the half this cannot separate.
+
+#### What that changes
+
+The upstream ask is **not** dissolved; it is narrowed, and the narrowing makes it easier to argue. The SDK
+already carries the harder half across the protocol, so what is missing is not a new capability but the other
+bit beside one that is already there.
+
+It also confirms, by measurement rather than by failing to find a method, the note in this repository's
+guidelines that those two rules are blocked on `hasVariableType()`. That was written from an absence — no SDK
+method with `variable`, `locals` or `scope` in its name — and an absence is what the peer session correctly
+identified as the weakest kind of evidence, having reached the opposite conclusion from the same kind of
+search. The rows above are the positive form of it.
+
+#### Verification
+
+One subject, three variables, one node hook on `NodeKind::FunctionCall` requiring `ArgumentTypes` and
+`ExpressionTypes`, dumping `get_object_vars($type->flags)` for each argument; mago 1.47.6. The SDK lines are
+read from `vendor/carthage-software/mago/composer/src/Sdk`. The analyzer and protocol lines in the peer's
+chain are theirs and are not reproduced here — the SDK end is, and it is the end this conclusion rests on.
