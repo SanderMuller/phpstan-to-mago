@@ -115,8 +115,10 @@ Read them next to the `emitted` count, never alone.
 
 ## What it can translate
 
-Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md`, which a test regenerates, so
-upstream drift shows up there rather than here as a stale table.
+Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md`. A test re-derives it and asserts
+against the committed copy, skipping when the installed corpus is not the one recorded — so an ordinary
+`composer update` neither fails nor rewrites it. The nightly drift watch installs a different corpus on
+purpose and compares anyway, which is where a diff surfaces.
 
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
@@ -159,7 +161,7 @@ Three things run, and each records rather than asserts:
 | | |
 |:--|:--|
 | **per rule** | CI runs the real `mago` against real PHPStan over one example pair, comparing line and message. A rule that emits and reports nothing fails. |
-| **per divergence** | each one found is pinned as a minimal case, so it survives the corpus moving on. [The record](tests/Fixtures/expected/divergences.md) goes red in either direction — a divergence closing is as worth reading as one opening. |
+| **per divergence** | each one found is pinned as a minimal case, so it survives the corpus moving on. [The record](tests/Fixtures/expected/divergences.md) goes red in either direction. |
 | **per corpus** | `run-corpus-sweep.php` reads seven trees this package installs, so `composer install` reproduces it: **11327 agreeing against 31 divergences**, [each listed](tests/Fixtures/expected/corpus-sweep.md). |
 
 Corpus-scale agreement is still not proven, and size is not what buys it — the two smallest trees carry most

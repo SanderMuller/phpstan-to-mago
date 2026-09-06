@@ -8276,6 +8276,10 @@ rows, one subject, each an assertion over a union carrying one interesting atomi
 
 - **`is_callable` does not act on object atomics**, resolvable or not. It refines a string atomic in the same
   breath, so this is not an inability to touch the union.
+  **Superseded — see "The fourth row" below.** The five rows here never put `is_callable` against an
+  unresolvable atomic; "resolvable or not" generalised from four measured cells to a fifth that was not. It
+  was later measured and is the opposite: `is_callable` *eliminates* an unresolvable object arm. The half of
+  this bullet that survives is the resolvable one.
 - **`instanceof` does not act on unresolvable atomics**, in either polarity. It eliminates a resolvable object
   arm correctly, so this is not an inability to touch objects.
 
@@ -8462,3 +8466,272 @@ built, and also changed the count by zero.
 `bin/phpstan-to-mago --out=DIR vendor/spaze/phpstan-disallowed-calls/src` before and after, read in full
 rather than by its total. Emit-all over the seven packages plus `tests/Fixtures/Rules` plus spaze, three
 targets, `diff -r` against a baseline built from `HEAD`'s `src/Vocabulary.php`.
+
+### The fourth row: mago's `is_callable` over-acts where PHPStan refines
+
+A peer session measured PHPStan on the one cell the matrix above left open — `is_callable` against a union
+carrying an **unresolvable** class atomic — and asked this repository to confirm mago's half. It does not
+match either candidate they named. Mago neither retains the arm nor refines it. It **eliminates** it, and
+says so out loud.
+
+No plugin, mago 1.47.6. The whole subject, and a `mago.toml` of `[source]` / `paths = ["src"]` beside it:
+
+```php
+<?php declare(strict_types=1);
+
+namespace DraftCheck;
+
+final class A
+{
+    public function f(\Totally\Gone\Klass $i): void
+    {
+        if (is_callable($i)) {
+            $i();
+        }
+    }
+}
+```
+
+`mago analyze` reports three errors — the expected `non-existent-class-like` on the type, and these two:
+
+    error[impossible-type-comparison]: Impossible type assertion: `$i` of type
+        `unknown-ref(Totally\Gone\Klass)` can never be `(callable(...mixed): mixed)`.
+    error[invalid-callable]: Expression of type `never` cannot be called as a function or method.
+
+The narrowed types behind those errors come from a second subject, in full:
+
+```php
+<?php declare(strict_types=1);
+
+namespace UnresProbe;
+
+final class Plain { public function value(): int { return 1; } }
+
+final class Subject
+{
+    public function unresolvableUnderIsCallable(\Totally\Gone\Klass|callable $i): void
+    {
+        if (is_callable($i)) { probeUnresolvableIsCallable($i); }
+    }
+
+    public function resolvableUnderIsCallable(Plain|callable $i): void
+    {
+        if (is_callable($i)) { probeResolvableIsCallable($i); }
+    }
+
+    public function unresolvableUnderNotInstanceof(\Totally\Gone\Klass|callable $i): void
+    {
+        if (! $i instanceof \Totally\Gone\Klass) { probeUnresolvableNotInstanceof($i); }
+    }
+
+    public function stringUnderIsCallable(string|callable $i): void
+    {
+        if (is_callable($i)) { probeStringIsCallable($i); }
+    }
+
+    public function unresolvableAloneUnderIsCallable(\Totally\Gone\Klass $i): void
+    {
+        if (is_callable($i)) { probeUnresolvableAlone($i); }
+    }
+
+    public function unresolvableUnderNotIsCallable(\Totally\Gone\Klass|callable $i): void
+    {
+        if (! is_callable($i)) { probeUnresolvableNotCallable($i); }
+    }
+}
+
+function probeUnresolvableIsCallable(mixed $x): void {}
+function probeResolvableIsCallable(mixed $x): void {}
+function probeUnresolvableNotInstanceof(mixed $x): void {}
+function probeStringIsCallable(mixed $x): void {}
+function probeUnresolvableAlone(mixed $x): void {}
+function probeUnresolvableNotCallable(mixed $x): void {}
+```
+
+The reader is the whole plugin, run as an extension host (`command = ["php", "probe.php"]`). Above what
+follows go `require 'vendor/autoload.php';` and imports of `Mago\Sdk\Analyzer\{FileAnalysisRequirement,
+NodeAnalysisContext, NodeAnalysisHook, Plugin, PluginDefinition, PluginRegistry}`, `Mago\Sdk\Syntax\NodeKind`
+and `Mago\Sdk\{Extension, Worker}`. Pasted with those, it reproduces the six rows below verbatim, which is
+how they were checked before being written down here:
+
+```php
+final class P implements Plugin, NodeAnalysisHook
+{
+    public function getDefinition(): PluginDefinition { return new PluginDefinition('probe/type', 'P', 'type'); }
+    public function register(PluginRegistry $r): void { $r->registerNodeAnalysisHook($this); }
+    public function getTargets(): array { return [NodeKind::FunctionCall]; }
+
+    public function getRequirements(): array
+    {
+        return [FileAnalysisRequirement::ArgumentTypes, FileAnalysisRequirement::ExpressionTypes,
+            FileAnalysisRequirement::TargetSubtree, FileAnalysisRequirement::SourceText];
+    }
+
+    public function analyze(NodeAnalysisContext $c): void
+    {
+        $text = (string) $c->source->getText($c->node);
+        if (! str_contains($text, 'probe')) { return; }
+
+        $out = fopen('result.txt', 'a');
+        fwrite($out, "\n=== {$text}\n");
+        foreach ($c->argumentTypes as $t) {
+            fwrite($out, '    ' . ($t === null ? 'NULL' : (string) $t) . "\n");
+            foreach (($t?->atomicTypes ?? []) as $atomic) {
+                fwrite($out, '      ' . (new ReflectionClass($atomic))->getShortName() . " \"{$atomic}\"\n");
+                if (property_exists($atomic, 'refinement') && $atomic->refinement !== null) {
+                    fwrite($out, '        refinement callable=' . var_export($atomic->refinement->callable, true) . "\n");
+                }
+            }
+        }
+        fclose($out);
+    }
+}
+
+(new Worker(new Extension('probe/type', 'p', '0.0.0', analyzerPlugins: [new P()])))->run();
+```
+
+Read on mago 1.47.6:
+
+    assertion       declared union                     inside the true branch
+    is_callable     \Totally\Gone\Klass|callable       callable                        arm ELIMINATED
+    is_callable     Plain|callable                     callable|UnresProbe\Plain       arm retained
+    !instanceof     \Totally\Gone\Klass|callable       callable|Totally\Gone\Klass     arm retained
+    is_callable     string|callable                    string|callable                 acts: callable=true
+    is_callable     \Totally\Gone\Klass                never                           whole type ELIMINATED
+    !is_callable    \Totally\Gone\Klass|callable       Totally\Gone\Klass              arm retained
+
+Row five is the one that isolates the axis. With the unresolvable class as the *only* arm, the true branch of
+`is_callable()` is `never`, and mago's own message spells the assertion out: a value of type
+`unknown-ref(Totally\Gone\Klass)` *can never be* callable.
+
+That much is measured. **Why** mago answers that way is not — nothing here reads its implementation.
+"Resolution failure is treated as proof of non-callability" is an *interpretation*, and every later sentence
+in this entry that phrases it as something mago "reads" or "can prove" is that interpretation restated, not a
+second observation.
+
+Rows one and two are the single-axis evidence for it: same `object|callable` shape, resolvability the only
+difference, opposite outcomes. Row five is not part of that pair — it drops the callable arm as well — and it
+establishes something narrower and worth having on its own: with the unresolvable class alone, the whole type
+becomes `never`.
+
+What the rows establish without any interpretation is that the answer is wrong. An unresolvable class may
+declare `__invoke`, so `never` is not a sound conclusion whatever produces it.
+
+#### The two engines are inverted, not merely divergent
+
+The peer session re-ran their half with the true and false branches pinned on separate lines, so attribution
+comes from the line rather than from output order. Joined with the six rows above, the pattern is sharper
+than "diverge in opposite directions" — each engine applies elimination to precisely the case the other does
+not:
+
+                                                      mago (measured here)          PHPStan (peer-reported)
+    is_callable, resolvable, provably not callable    retains callable|Plain        `never`
+    is_callable, unresolvable                         `never`                       refines to
+                                                                                    callable(): mixed & Klass
+
+PHPStan emits `never` where it **can** prove non-callability and refines where it cannot. Mago does the
+reverse in both cells. Read as a disposition — and this is the interpretation flagged above, not a further
+measurement — mago treats *cannot resolve* as *provably not callable* where PHPStan treats it as *cannot
+prove not callable*, and the second is the sound reading.
+
+That is what makes it a defect rather than a policy. "We narrow conservatively" cannot explain the
+unresolvable row, where mago is more aggressive than PHPStan on the case with **less** information; "we
+narrow aggressively" cannot explain the resolvable row. No single disposition produces both.
+
+The intersection is worth quoting rather than paraphrasing. `callable(): mixed & Totally\Gone\Klass` asserts
+that the value is callable *and* is that class — a stronger and more specific claim than "possibly callable",
+and a reviewer testing the paraphrase would find it does not match the output.
+
+#### The inversion is visible at the diagnostic level, not only in the inferred types
+
+Every PHPStan figure in this section is **peer-reported**, not run here; the Standing note below says what
+that costs. The peer session re-ran their half on the **released** 2.2.13 rather than the `2.2.x-dev` tree
+the earlier rows came from — their own catch, made because the version label was about to go into a public
+document — and reported every cell identical. On the resolvable row they report PHPStan not only narrowing to
+`never` but emitting:
+
+    Call to function is_callable() with Only2\Plain will always evaluate to false.
+    [identifier: function.impossibleType]
+
+Both engines therefore ship an impossible-type diagnostic for `is_callable`, **and they fire on opposite
+cases**: PHPStan on the resolvable class, mago on the unresolvable one. That pairing is observation; which
+engine could have proved what is the interpretation above. A maintainer can put the two messages side by side
+without reading a type dump.
+
+That narrows the ask. Mago is not missing an impossible-type diagnostic for `is_callable` — it has one, and
+it points at the wrong case.
+
+Measured here on the resolvable case, so the "mago reports nothing" half of that pairing is this repository's
+row rather than an inference from the peer's. On mago 1.47.6 the file below is **`No issues found`**:
+
+```php
+final class Plain { public function value(): int { return 1; } }
+
+final class B
+{
+    public function f(Plain $i): void
+    {
+        if (is_callable($i)) {   // PHPStan: function.impossibleType, always false
+            $i();                // never reached
+        }
+    }
+}
+```
+
+**The `$i()` is dead code, not a fatal.** `is_callable()` on a `Plain` with no `__invoke` is false at run
+time, so the body never executes — an earlier draft of this entry claimed a runtime fatal here and was wrong.
+PHPStan reports the *guard*, at the `is_callable()` line, and nothing at the call, because the true branch is
+`never` and the body is not analysed. Mago reports neither.
+
+That is the sharper statement anyway: the two engines disagree about whether this file has anything wrong
+with it at all, not about where.
+
+That is a sharper report than the one the draft carried, not a weaker one. The finding is no longer "mago's
+`is_callable` is conservative about objects" — it is not conservative at all where it cannot resolve the
+class, and the over-acting half reaches the user as a **wrong diagnostic** rather than as a missed narrowing.
+`impossible-type-comparison` on a class the analyser simply could not find is a false positive on the shape
+measured here — a parameter declared as an unresolvable class, guarded by `is_callable()`. Guarding an
+optional dependency that way is ordinary; whether every spelling of that guard reaches the same diagnostic is
+not measured.
+
+#### Controls
+
+Four of them, and each must answer the way it does for the axis row to mean what it says. The single-axis
+*pair* is rows one and two; these four are what stop that pair reading as something it is not:
+
+- **Row three** holds the atomic constant and changes the assertion. `!instanceof` retains the same
+  unresolvable arm, so the elimination in row one is `is_callable`'s doing and not a general disposal of
+  unresolvable atomics.
+- **Row six** holds the assertion and flips the polarity. The arm survives in the false branch, so it exists
+  in the declared type and was removed rather than never present — which is the reading a single row cannot
+  separate.
+- **Row four** is the positive control for the assertion itself: without it, "`is_callable` eliminated the
+  arm" is indistinguishable from "`is_callable` was not reached". Read off the model rather than the
+  rendering, because `__toString()` prints `string|callable` either way — the `ScalarType`'s refinement is a
+  `StringType` whose `callable` field is `true` after the guard, which is the only place the action shows.
+- **Row two** is the previously recorded resolvable case, re-run here so both halves come from one file on
+  one version rather than from two runs compared across time.
+
+#### Standing
+
+The two columns come from two sessions and neither depends on the transpiler. The PHPStan column is the peer
+session's, with branch-level attribution rather than order-inferred, and is **not reproduced here**; the mago
+column is this repository's measurement, on mago 1.47.6.
+
+Three subjects, because they answer different questions, and all three are written out above rather than
+pointed at — the six-method file behind the type table, the unresolvable reproducer, and the resolvable one —
+along with the plugin the first one needs. The other two need none. Each ran under `mago analyze` on 1.47.6 with a `mago.toml` naming `src` as its
+only path and nothing else configured.
+
+**Two engine columns, and no session ran both.** Every mago cell is this repository's measurement; every
+PHPStan cell is the peer session's, branch-attributed and re-run on the released 2.2.13 after they caught
+their own version label naming a `2.2.x-dev` tree. Neither engine is reproduced across, and neither depends
+on the transpiler. That is a stronger evidence structure than one session measuring both — but it means the
+inversion claim **joins two sessions' measurements**, and a reader who assumes one session ran everything will
+misjudge which half to check.
+
+The asymmetry is worth stating plainly rather than only at the end: **the mago half is reproducible from this
+file and the PHPStan half is not.** Every PHPStan type, `never`, diagnostic text and identifier quoted above
+is a peer-reported result, without its subject, configuration or raw output here. Read those as reported, and
+re-run them before quoting them anywhere they matter. What this repository stands behind alone is the mago
+cells and the diagnostics they print.
