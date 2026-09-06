@@ -9166,8 +9166,17 @@ against thirteen `register_*_hook` methods in `registry.rs`, and reproducing the
 **The 23 agree exactly across two sessions and two instruments.** The totals do not. The peer reported 47, 31
 and 8 — their figures, not rerun here — and the gap is three rows in each. The three their absent-trait list
 omits are `ArrayHook`, `AttributeListHook` and `BinaryHook`, whose rows (`Array_`, `AttributeGroup`, `Concat`)
-are the three in this table written across several lines rather than one. That is a correspondence, not a
-diagnosis: their extractor has not been seen here, and why it missed them is theirs to say.
+are the three in this table written across several lines rather than one. That was recorded here as a
+correspondence rather than a diagnosis, and they then diagnosed it: their row regex ran without `re.DOTALL`,
+so `(.*?)` could not cross a newline and every multi-line row was invisible. With the flag they get 50, 34
+and 11, and the three that appear are those three by name.
+
+**The agreement on 23 was luck, and that is the part worth keeping.** All three rows their extractor dropped
+named *absent* traits, so the whole error landed in the other bucket. Comparing only that subtotal would have
+shown an exact match across two sessions and two instruments and certified both as sound. **An exact
+agreement on a subtotal is not evidence about the totals.** It is a sharper form of the *agreement on zero*
+rule recorded above: a zero from two tools fails to reveal a difference, and this matching subtotal actively
+concealed one.
 
 The earlier entry lists eight of these names rather than eleven, and the same three are the difference. A
 chronological explanation was drafted here and was wrong — `git log -S` dates all three rows to 18 and 20 and
@@ -9275,6 +9284,12 @@ checked against the traits Mago declares at `1.47.6`:
     expected-rust/QuotedClassNameMessageRule.rs      Provider, ExpressionHook          both exist
     expected-rust/UppercaseConstantRule.rs           Provider, ClassLikeMemberHook     ABSENT
     expected-lint/*.rs                               Config, Default, LintRule         all exist
+
+This round is a weaker one and says so: `codex-review` could not run — the account hit its usage limit. The
+external reader is the check that caught the wrong-table audit two entries above, which is the largest defect
+recorded in this exchange, so a round without it is a round with a **known weaker check** rather than merely
+one fewer, and a later reader comparing rounds should not treat them as equivalent. The in-house pass did find a defect here: a `Config`
+line cite true of one build configuration and silently false of the other.
 
 `Provider` is `crates/analyzer/src/plugin/provider/mod.rs:29`; `LintRule` is
 `crates/linter/src/rule/mod.rs:65`, and `Config` is declared twice in that file behind

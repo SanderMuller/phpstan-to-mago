@@ -176,6 +176,13 @@ Instances, each recorded in `VERIFICATION.md` under the heading named:
 - **A conclusion drawn from a runtime that never runs** — *"The fourth row"*. "Mago lets the invocation
   through, and `$i()` is a fatal at run time." The guard is `is_callable()` on a class with no `__invoke`, so
   it is false and the body is dead code. The narrowing figures behind the sentence were all correct.
+- **A subtotal that agreed by luck and hid the discrepancy** — *"The audit, rerun"*. Two sessions counted the
+  same table on different instruments and matched exactly on one subtotal, 23. The totals differed by three,
+  because one extractor's row regex ran without `re.DOTALL` and could not see a multi-line row — and all three
+  rows it dropped happened to fall in the *other* bucket. Comparing only the matching subtotal would have
+  certified both instruments. **An exact agreement on a subtotal is not evidence about the totals** — the
+  sharper form of *agreement on zero is not evidence*: a shared zero fails to reveal a difference, a matching
+  subtotal can conceal one.
 - **A cell stated as a property, from both sides at once** — *"The PHPStan half, reproduced here"*. One
   session wrote that `class.notFound` is non-ignorable; the other measured a subject where it is ignorable and
   corrected that. A file carrying both occurrences settles it: under one `ignoreErrors` entry, one row
