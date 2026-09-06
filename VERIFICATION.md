@@ -10354,3 +10354,71 @@ target's reach for the same reason, however simple the guard reads.
 It also sharpens the earlier probe rule. `getTrivia()` and `getResolvedName()` were both found by asking what
 a plugin receives; neither says anything about *scope*. "The SDK exposes the tree" is true of the subtree and
 false of everything above it, and the two look identical until something walks up.
+
+---
+
+## The first package that transpiles whole, and the number that would have broken it
+
+`CallWithDeprecatedIniOptionRule` emits, and with it `phpstan/phpstan-deprecation-rules` reads **2 of 2**:
+the first package in the corpus that needs no PHPStan at all. The rule was picked by the criterion the three
+reverts before it produced — a whole readable body, every step already answerable, and no guard that needs to
+look outward from the node.
+
+### The version comparison, which this document had already warned about
+
+The rule compares the analysed PHP version against a table of thresholds. Both engines have a version id and
+they are not the same number:
+
+| | 8.3.0 | encoding |
+|:--|--:|:--|
+| Mago's `PHPVersion::$id` | 525056 | `(major << 16) \| (minor << 8) \| patch` |
+| PHPStan's `PhpVersion` | 80300 | `major * 10000 + minor * 100 + patch` |
+
+A port reading mago's `id` raw finds **every** threshold in the table larger than it, and reports every
+deprecated option on every project. `Runtime\Versions` builds PHPStan's encoding from `major()`, `minor()`
+and `patch()` instead, so the mapping is exact rather than arithmetic a reader has to check.
+
+This is the case an earlier entry here predicted from `fromParts()` without a rule to test it on. It held.
+
+**And it is measured in both directions.** On one file with real PHPStan and the emitted plugin: at PHP 8.3
+both report three findings, same lines and same messages; at PHP 8.4 both report four, the fourth being
+`session.sid_length` whose threshold is 80400. Only the analysed version moves between the two runs. A port
+comparing raw ids would have reported four at both, and one that never read the version would have reported
+three at both — the pair separates all three behaviours.
+
+The example pair cannot carry that control, and says so in its own docblock: every threshold in the table is
+at or below the PHP this suite runs, so no option in it can be silent for being too new. The version axis is
+measured here instead of pretended to in a fixture.
+
+### Three folds behind it, and one defect in the fourth
+
+- **A `try` that binds through its catch.** `try { $f = <lookup>; } catch (NotFound) { return []; }` becomes
+  the binding plus a null guard. The catch is *not* dropped — the plugin's equivalent lookup returns null
+  where PHPStan throws, and dropping it would widen the rule onto every name the codebase does not know.
+- **`$this->reflectionProvider->getFunction()` answers as the name.** The service has no injectable
+  equivalent, but the only thing the rules reading it use is `->getName()`, and `Support::functionName()`
+  already existed with a docblock naming that exact call. Two other rules moved past it as a side effect.
+- **A constant map is carried onto the plugin.** `array_key_exists()` and the value read are the original's,
+  so a threshold table stays the rule's data instead of becoming this transpiler's.
+
+The fourth thing was a defect. Carrying a constant was gated on the plugin having *configuration*, and this
+rule has none — so it emitted a plugin naming `self::DEPRECATED_OPTIONS` without declaring it. Valid PHP that
+loads and fatals on the first file it matches. **Found by looking for the declaration rather than by the
+emission failing**, which is the only way to find it: every check this repository runs was green.
+
+The repair had to stay under `Emitter`'s complexity limit rather than open a new baseline entry, which two
+ternaries rewritten as string accumulation paid for — same output, verified by emit-all.
+
+### Verification
+
+Emit-all across all three targets, on the committed tree against the previous one: **one** new file and no
+other emitted byte. php 163 to 164 over the walked corpus, analyzer 34 and linter 25 unchanged. That corpus
+now includes `phpstan/phpstan-deprecation-rules`, which an earlier run of this instrument had omitted — the
+counts here are not comparable with the ones in the entries above, and the configuration is the reason.
+
+The census moves three ways and all three are the change: the package to 2 of 2, this rule to EMIT, and
+`ArrayFilterStrictRule` and `StrictFunctionCallsRule` past `getFunction()` onto their next obstacle.
+
+Suite 311 of 311, PHPStan 0, pint clean. The fires gate ran last, on this tree: 694 of 694, real `mago`
+against real PHPStan over the example pair — so the rule is measured to run, and the four options its bad
+file names are agreed on line and message by both engines.
