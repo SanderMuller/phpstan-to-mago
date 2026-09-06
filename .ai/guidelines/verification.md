@@ -268,6 +268,33 @@ artefacts you happen to have is a fact about your position, not about the questi
 this repository was a `git clone` away, and "no route found is not the same as no route" was written here one
 commit before someone took the route.
 
+## A guideline can have a scope boundary nobody drew
+
+Every rule in this file was written for a measurement or an artefact. Several are enforced: a snapshot test
+compares emitted bytes, the census alarm compares a generated file, the fires gate runs a plugin. None of
+them runs over the prose that quotes those artefacts outward — a README, an upstream issue draft, a section
+of the verification log.
+
+The boundary showed itself in one line. The census header ends with *"Where a count decides work, read the
+rules it is made of."* That rule is enforced on the census, by test. An unfiled issue draft then claimed two
+rules were *blocked* on a capability; the census recorded both refusing earlier for unrelated reasons; and
+nothing caught it, because nothing runs over a draft. **The guideline held for the artefact and not for the
+writing about the artefact, and the boundary fell exactly where the claim leaves the repository.**
+
+The error record has the same shape. Generated output in this repository has been wrong close to never —
+snapshots, census lines, emitted plugins. The documents *about* it have been wrong repeatedly, and so has
+every cross-session message, none of which any test touches. **The failure rate tracks whether a thing is
+executed, not whether it was written carefully.**
+
+Two things follow:
+
+- **A claim leaving the repository deserves the check the artefact gets.** Before a number goes into a
+  README, an issue, or a message to someone else, re-derive it from the file that produces it — the same
+  command the test would run. A count that decides someone else's work is the case, not the exception.
+- **Ask which of the rules you rely on are enforced.** The ones that are will hold without you. The ones that
+  are not are the ones you have to run yourself, and they are exactly the ones that feel safest because they
+  have never failed loudly.
+
 ## A wrong "why" is worse than none
 
 Reproduction steps, tests and the fix all get built on the stated cause. When you have not traced it, say
