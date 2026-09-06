@@ -9972,3 +9972,95 @@ supply one by definition, since a rule that reached it would already be broken.
 `grep -n 'return "support::' src/Translator.php`, seven hits, each read for a target guard in the twelve
 lines above it. The emission is from a two-guard fixture written for the purpose, transpiled at each target.
 Emit-all across all three targets is byte-identical before and after both fixes.
+
+---
+
+## A day spent ranking, and the ranking was the artefact
+
+Four findings from one session that ended with a clean tree on purpose. Together they say the same thing from
+four sides: **the instrument that says which rule is closest to emitting does not say that**.
+
+### The census `needs:` count is not a proxy for what a rule costs
+
+`tests/Fixtures/expected/census.md` lists, per refused rule, the constructs it would need. Counting those and
+sorting gives an apparently free ranking — 26 rules with exactly one recorded need, 12 with two — and the
+natural reading is that a one-need rule is one capability from emitting.
+
+It is not. **Ten of ten rules read this session had a true bill larger than the recorded one**, and usually
+several times larger:
+
+| rule | recorded needs | what the source actually needs |
+|:--|--:|:--|
+| `TaggedIteratorOverRepeatedServiceCallRule` | 1 | a closure detector, `isFirstClassCallable()`, a static finder that walks, per-statement reporting |
+| `ClassAttributeRequiresPhpVersionRule` | 1 | the whole body delegates to a helper that builds findings |
+| `IllegalConstructorStaticCallRule` | 1 | `getTraitAliases`, a nested non-guard `if`, `array_map`/`in_array` over parent class names, `resolveName` |
+| `FileNameMatchesExtensionRule` | 2 | a `NodeFinder` with a closure writing a captured variable by reference |
+| `AssertSameWithCountRule` | 3 | `TrinaryLogic` algebra in a helper (`->or()`, `->negate()`), `ObjectType` construction |
+| `NoInstanceOfStaticReflectionRule` | 2 | a static type analyser, `ConstantStringType` construction, two hook kinds |
+
+The cause is structural rather than a bug: the needs pass steps over a refusal to keep looking, and every
+construct *inside* what it stepped over is never recorded. So the recorded set is a subset of the real one,
+and the size of the gap varies with how early the first refusal sits. A rule that refuses on its first line
+records one need and may want twenty.
+
+**A subset with a variable-size gap cannot order anything.** The count is safe to read as "at least this
+many" and unsafe to read as "fewer than that rule".
+
+### Which also means a first-refusal line can name a symptom
+
+The same stepping-over inverts causes. `DisallowedLooseComparisonRule` refuses on
+`message expression outside the vocabulary: Expr_Ternary` — a message shape, which reads as a small
+vocabulary gap. Resolving the ternary's *condition* before refusing says something else:
+
+    $includeOperandTypesInErrorMessage is wired to the container parameter %featureToggles.bleedingEdge%,
+    which the package's own neon does not declare
+
+Measured, by a throwaway edit that resolves the condition and then refuses as before, run on the one rule and
+reverted. The ternary was never the wall: the branch cannot be taken either way, because the value that
+picks it is not carryable. Supporting ternary messages would have moved the rule zero.
+
+So a first-refusal line answers "what stopped it here", never "what would let it through".
+
+### The `BinaryOp` fold: built, measured at zero, reverted
+
+Built to completion, because reading could not settle it. A `HOOKS` row for the abstract
+`PhpParser\Node\Expr\BinaryOp` — the same multi-kind shape `Expr` and `CallLike` already take, and needing no
+`HOOK_KINDS` entry because Mago has exactly one `Binary` kind for every operator — plus `is_loose_equal` and
+`is_loose_not_equal` node predicates over the existing `Operators::binaryOperatorIs()`, which turn
+php-parser's class-per-operator into Mago's operator-child test.
+
+It works: the rule advanced two refusals, from `no hook mapping for node type PhpParser\Node\Expr\BinaryOp`
+to the parameter above. Emit-all across all three targets was **byte-identical** to the baseline and the
+counts did not move — 158 php, 34 analyzer, 25 linter, before and after, the only difference being the
+`--out` path `mago.toml.snippet` embeds. That configuration is the six rule packages installed with a `src`
+directory (`symplify/phpstan-rules`, `hihaho/phpstan-rules`, `tomasvotruba/type-coverage`,
+`tomasvotruba/cognitive-complexity`, `phpstan/phpstan-strict-rules`, `phpstan/phpstan-phpunit`) plus
+`tests/Fixtures/Rules`, which is a smaller corpus than the census's own — `phpstan/phpstan-doctrine` is not
+installed here, so its rules are in neither count.
+
+Reverted, and the reason is not the zero. Over that same corpus, `grep 'return BinaryOp::class'` returns
+**exactly one** rule — fourteen other files name `BinaryOp` in a body, none hooks on it — and that rule is
+blocked correct-forever on a parameter no member of this capability set can supply. A capability whose only consumer cannot complete is unexercised vocabulary, which is what the
+withdrawn arithmetic port was reverted for: a table that describes what the tool *could* do stops describing
+what it does.
+
+### And the arithmetic family stays withdrawn, on the reason that survives
+
+`#2311` — mago recording a compound assignment's coerced right operand — is fixed in 1.47.6, which is
+installed, so the first of the two withdrawal reasons is stale. It does not reopen the family.
+
+Two things stop it. The real-code measurement stands, with its scope stated: across Shopware's 9199 files and
+hihaho's 2926 the division rule made **zero agreements and four findings PHPStan declines** — and because
+that run predates the fix, it covered the plain divisions mago could then read, not the compound half. Fixing
+the compound half adds cases to a rule whose readable half already agreed with PHPStan nowhere.
+
+And the census puts the family nowhere near emitting regardless. Each of the six refuses first on
+`a chain of 1 elseif and an else`, with four more recorded needs behind it — and by the finding above, at
+least four.
+
+### What the four have in common
+
+Every one is the same error caught at a different distance: a cheap reading substituted for a measurement.
+The needs count for a bill, the first refusal for a cause, a plausible unlock for a measured one, a stale
+reason for a live one. Three were caught by running something — a stub, a probe, an emit-all diff. The fourth
+was caught by reading a date.
