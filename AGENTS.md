@@ -441,9 +441,8 @@ citation before repeating it, especially one that arrives already looking specif
 
 **And say what you re-derived it from**, because the same exchange produced the sharper version of this: two
 citations of the same file at the same release, both correct, contradicting each other. `phpstan.phar`'s copy
-of a file holds each fluent chain on one line where the repository's spreads it over several — whatever build
-step does that was not traced — so `ExistingClassInClassExtendsRule.php` is 150 lines in git and 87 in the
-phar. The `class.notFound` site is git `:65` and phar `:56` — and phar `:65`
+of a file holds each fluent chain on one line where the repository's spreads it over several, so
+`ExistingClassInClassExtendsRule.php` is 150 lines in git and 87 in the phar. The `class.notFound` site is git `:65` and phar `:56` — and phar `:65`
 holds a *different* identifier, so checking the phar returns a confident, self-consistent answer that makes
 the git citation look wrong. **Re-derivation surfaced the discrepancy and could not resolve it**, because both
 derivations were sound. Only naming the artefact does: "src/Rules/..." meant the repository on one side and
@@ -464,6 +463,17 @@ Two things catch it:
 
 Mark a superseded claim where it stands rather than editing it away. The marker carries the reason the phrase
 did not hold, which a clean edit deletes along with the error.
+
+**A control that shares a confound is not a control.** The follow-up to the artefact split above wanted a file
+the *downgrade* step could not have touched, so that a reprint in it would belong to the compactor. The file
+offered was picked for carrying no PHP 8 syntax to lower — a reasonable proxy, and wrong: it had a promoted
+constructor parameter, and the built artefact showed it lowered. The proxy was "nothing to change" when the
+property needed was "not processed at all" — two different things, and only the second excludes the step.
+**Choose a control by the mechanism you are excluding, not by a property that usually accompanies it**, and
+read the exclusion off the step's own configuration rather than off the file's contents. The replacement
+control, a file outside the step's configured paths, was better and still not clean: a configuration lists
+scope, not traversal, and nothing in it rules out another stage reaching the same file. Configured scope is
+evidence about intent; only tracing the run is evidence about what happened.
 
 ## A wrong "why" is worse than none
 

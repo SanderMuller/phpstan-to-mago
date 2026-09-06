@@ -8905,8 +8905,8 @@ where it is built at `FunctionDefinitionCheck.php:126` with a plain `->build()`.
 
 The line numbers above are the phar's. The peer session's were the repository's, and an earlier version of
 this entry recorded theirs as wrong. They are not. **The phar's copy holds each fluent chain on one line
-where the repository's spreads it over several** — what step of the build does that is not traced here — so
-the same file is 150 lines in one and 87 in the other, and everything after the first chain shifts up.
+where the repository's spreads it over several** — see below for how far the cause is traced — so the same
+file is 150 lines in one and 87 in the other, and everything after the first chain shifts up.
 
     artefact      file length   the class.notFound site            what sits at :65
     git 2.2.13    150 lines     :65 identifier, :66 nonIgnorable   ->identifier('class.notFound')
@@ -8937,6 +8937,80 @@ number indexes — "src/Rules/..." meant the repository on one side and the phar
 are spelled the same.
 
 For an issue, quote the git line. That is the file a maintainer opens.
+
+#### How far the reprint is traced
+
+Two build configurations were read at the `2.2.13` tag rather than assumed, both fetched with
+`gh api "repos/phpstan/phpstan-src/contents/<path>?ref=2.2.13" --jq .content | tr -d '\n' | base64 -d`:
+
+`build/downgrade.php` — **`vendor` is not among the paths**:
+
+    return [
+        'composerJson' => __DIR__ . '/../composer.json',
+        'paths' => [
+            __DIR__ . '/../build/PHPStan',
+            __DIR__ . '/../src',
+            __DIR__ . '/../tests/PHPStan',
+            __DIR__ . '/../tests/e2e',
+        ],
+        'excludePaths' => [ 'tests/*/data/*', ... ],
+    ];
+
+`compiler/build/box.json` — one compactor:
+
+    "compactors": [
+      "KevinGH\\Box\\Compactor\\PhpScoper"
+    ],
+    "directories": ["conf", "src", "resources", "stubs"],
+    "php-scoper": "compiler/build/scoper.inc.php"
+
+That suggests a bundled *vendor* file as the row separating them, and one is available at the same version on
+both sides — the phar's `vendor/composer/installed.php` reports `phpstan/phpdoc-parser 2.3.5`, which is what this
+repository installs. `src/Ast/Node.php` from that package, 22 lines here and 18 in the phar:
+
+    <?php declare(strict_types = 1);      ->   <?php
+                                               (blank)
+                                               declare (strict_types=1);
+    tabs                                  ->   four spaces
+    blank lines between members           ->   removed
+
+**A reprint reaches bundled vendor code, and which stage applies it is not traced here.** The measured part
+is the reprint itself: same package, same version, different formatting in the shipped artefact.
+
+Everything past that is inference, and it is labelled rather than asserted. `vendor` not appearing in
+`downgrade.php`'s `paths` is not proof the downgrade never reached this file. `build/PHPStan` holds one entry,
+`Build`, at that tag (`gh api "repos/phpstan/phpstan-src/contents/build/PHPStan?ref=2.2.13" --jq '.[].name'`),
+but the compiler's `PrepareCommand.php:199-202` walks `$vendorDir . '/phpstan/phpdoc-parser/src'` in a
+`$finder->files()` loop for its turbo-stub pass — a read there, not a rewrite, but the full build order was
+not enumerated.
+
+Nor does the row say which stage joins the fluent chains. phpdoc-parser 2.3.5 holds no multi-line fluent
+chain to test a stage on by itself: searched by scanning every `.php` under `vendor/phpstan/phpdoc-parser/src`
+for a line whose first non-space characters are `->`, which returned nothing.
+
+What would settle it is instrumenting the build, which is more than this question is worth here. **The finding
+that needed a cause was the citation split, and that one is fully measured**: git `:65` and phar `:56` both
+read, the reprint confirmed on a same-version file, and the practical rule — name the artefact a line number
+indexes — standing whatever produces the difference.
+
+A peer session offered `src/TrinaryLogic.php` for this, on the grounds that it carries no 8.x syntax for the
+downgrade to lower. It carries one, at git `:59` against phar `:54`:
+
+    git    private function __construct(private int $value)
+           {
+           }
+
+    phar   private function __construct(int $value)
+           {
+               $this->value = $value;
+           }
+
+which is the promotion lowered. The 323-to-265-line shrink with all 73 comment lines intact
+reproduces exactly — `count(file($path))` on each copy, and a comment count of lines whose first non-space
+characters are `*`, `/*` or `//` — so the comment-stripping explanation is out — but the downgrade demonstrably processed
+that file, so it cannot separate the two transforms. Nor, on the same reasoning, is any file under
+`src` likely to — `downgrade.php` lists `src` and `box.json` lists `src` — though that is configured scope
+rather than traced traversal, and this entry does not claim more.
 
 **The unit is the individual error construction.** Not the identifier — 27 of the 28 sites are ignorable. Not
 the position either, and that fails on its own terms rather than by argument: `ExistingClassInInstanceOfRule.php:69`
