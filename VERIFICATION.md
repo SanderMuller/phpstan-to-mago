@@ -10224,3 +10224,69 @@ The fires gate ran last, on this tree: 690 of 690, real `mago` against real PHPS
 Its good file carries the two `isDynamicArg()` shapes — a variable argument and `$subject::class`, whose
 class is an expression rather than a written name — so the branch whose binding this change drops is
 measured on both engines rather than argued from the emitted text.
+
+---
+
+## Two walls in a row, and the second one emitted
+
+No rule was added this round. The output is the measurement, and it says something about where the corpus
+now is rather than about the two rules that were tried.
+
+### Nine rules are walled by a value that does not exist, and none of them declares a default
+
+The largest remaining first-refusal cluster after the arithmetic family is a constructor parameter the
+package's own neon wires nowhere. Nine rules refuse there, and the obvious repair is to carry the parameter's
+declared default instead — PHP uses it, so the plugin would too.
+
+Derived rather than assumed: of the nine, **none** declares a default on any constructor parameter. Every one
+takes between one and four, all of them required. So the repair serves zero of the rules that motivated it.
+
+    ForbiddenFuncCallRule 0/3   NoUnsafeRequestDataRule 0/3    PositionalFlagArgumentMethodCallRule 0/1
+    ForbiddenNewArgumentRule 0/1  NoUnsafeRequestFacadeRule 0/3  PositionalFlagArgumentStaticCallRule 0/2
+    UnvalidatedFormRequestFieldRule 0/4  NoUnsafeRequestHelperRule 0/3  VariablePropertyFetchRule 0/2
+
+`NoTestMocksRule` is the one rule with a defaulted parameter, and it is not in that cluster — it refuses
+earlier, on `new ObjectType(...)`.
+
+### So the second attempt was that rule, and the chain closed onto a silent plugin
+
+Four folds, each small and each apparently sound: carry `new ObjectType(<name>)` as the name it was given,
+read `->getClassName()` straight back out of it, read `instanceof ObjectType` on one as "there is a name",
+and answer `isInstanceOf($runtimeName)` through `Support::classDescendsFrom()`, whose runtime signature
+already takes a plain string for the parent. With a scratch route from an unwired-but-defaulted parameter
+into the configured machinery, the rule **emitted**.
+
+What it emitted does not work:
+
+    foreach (Support::constantStringsOf(Support::expressionType($context, $arg_value)) as $constant_string_type) {
+    }
+
+    return;
+    if (!($constant_string_type !== null)) {
+
+The rule writes `foreach (...) { return new ObjectType($c->getValue()); }` — "the first one, then stop". The
+`New_` was consumed as a descriptor, which left the loop body empty and the loop's exit as an unconditional
+`return`. Every guard after it, and the report, are dead code. The plugin parses, loads, runs, and is
+**silent on every file**.
+
+**This is the failure the "refuse rather than approximate" invariant exists for, reached by relaxing a
+refusal.** Nothing downstream would have caught it: it is valid PHP, it declares its targets, its helpers all
+exist, and a fires gate comparing it against PHPStan would record agreement on every file where PHPStan also
+says nothing — which, for a rule about mocking, is almost all of them.
+
+Reverted whole. The four folds are not merely worth zero; the first of them is unsafe in the position the
+rule uses it, and keeping it against a fixture written to suit would have hidden that.
+
+### What the two rounds together say
+
+The `BinaryOp` fold above was reverted because its only consumer could never complete. This one is the other
+shape: the consumer *can* complete, the chain does close, and the thing that comes out is wrong. Both were
+settled by running rather than reading, and in both the reading looked fine — the `New_` fold in particular
+is correct everywhere except inside a loop whose body is nothing but the return, which is the one place this
+rule uses it.
+
+**A refusal that has stood for a while is evidence about the shapes behind it**, and the two capabilities
+tried here were each blocked by something the refusal did not name. Where the next rule comes from is
+therefore not the census's shortest entry; it is a rule whose whole body can be read and whose every step is
+already in the vocabulary — which is what both rules that emitted today had in common, and what neither of
+these did.
