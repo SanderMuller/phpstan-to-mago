@@ -431,6 +431,14 @@ This is not the "wrong why" rule below. That one is about asserting a cause you 
 may be honestly labelled as untraced two paragraphs earlier and the sentence still overreaches — by
 generalising a measured range, or by asserting a consequence the setup makes unreachable.
 
+A relative of it is worth naming separately, because the clause test below does **not** catch it:
+**attributing a row to whoever said the sentence rather than to whoever ran the command.** In the same
+exchange, a measurement made in this repository was written up as the peer session's, and a mechanism the peer
+sent with file-and-line citations turned out to name lines that were something else in the installed build.
+Every clause had a row under it; the row just belonged to someone else, or to another version of the file.
+A document with a misattributed row reads exactly as well-sourced as one without. The check is to re-derive a
+citation before repeating it, especially one that arrives already looking specific.
+
 Two things catch it:
 
 - **A second reader who does not know what the sentence is meant to say.** The runtime-fatal claim was caught

@@ -8879,16 +8879,43 @@ The same file with `ignoreErrors: [{identifier: class.notFound}]` added:
     }
 
 The `@param` row is gone; the `extends` row is not, and PHPStan says why in `general_errors`. So
-`ignorable: false` is not decoration — it resists identifier-based suppression. **What is measured is that
-these two occurrences differ**, not that source position is the mechanism: nothing here reads PHPStan's
-implementation, and the difference could belong to the rule that raises each one rather than to where the
-class name sits.
+`ignorable: false` is not decoration — it resists identifier-based suppression.
+
+#### The mechanism, read rather than inferred
+
+An earlier version of this entry stopped at "these two occurrences differ", because naming a cause needed
+PHPStan's implementation and nobody had read it. It is readable: the installed 2.2.13 ships its source inside
+the phar, at `phar://vendor/phpstan/phpstan/phpstan.phar/src`. Every `class.notFound` construction site in it,
+counted mechanically:
+
+    'class.notFound' construction sites   28
+    of which call ->nonIgnorable()         1
+        Rules/Classes/ExistingClassInClassExtendsRule.php:56
+
+That one line is the `extends` row above:
+
+    RuleErrorBuilder::message(sprintf('%s extends unknown class %s.', ...))
+        ->identifier('class.notFound')->nonIgnorable();
+
+The `@param` row comes from `Rules/Functions/ExistingClassesInTypehintsRule.php:34`, which hands the
+`Parameter $%s of function %s() has invalid type %s.` template to `FunctionDefinitionCheck::checkFunction()`,
+where it is built at `FunctionDefinitionCheck.php:126` with a plain `->build()`.
+
+**The unit is the individual error construction.** Not the identifier — 27 of the 28 sites are ignorable. Not
+the position either, and that fails on its own terms rather than by argument: `ExistingClassInInstanceOfRule.php:69`
+raises `class.notFound` about a class name in a class-name position and is ignorable. Position only correlates
+because different positions are checked by different code. It is finer than "per rule", too:
+`FunctionDefinitionCheck.php` calls `nonIgnorable()` eight times and none of them is one of its five
+`class.notFound` sites.
 
 **Both sentences this paragraph has carried were a cell stated as a property**, and the correction written
 here was the second of them. "`class.notFound` is ignorable" was measured on the `@param` occurrence and is
 true only there. The peer session's "non-ignorable" reached this file attached to a `@param` subject, where
 the run above shows it does not hold; they later reported having measured it on an `extends` subject, which
-matches the `extends` row above — that run is theirs and is not reproduced here. Neither sentence was a fact
+matches the `extends` row above — that run is theirs and is not reproduced here. They also sent the mechanism
+with file and line; the mechanism is right and the line numbers are not this build's. Their
+`ExistingClassInClassExtendsRule.php:65-66` is `class.extendsInterface` in the shipped 2.2.13, and the
+`FunctionDefinitionCheck` sites they named are at other lines. The citations above were re-derived here. Neither sentence was a fact
 about `class.notFound`, and the pair of rows above is what shows why.
 
 Subject B, in full, is the guard reproducer — its single row is the last one above:
