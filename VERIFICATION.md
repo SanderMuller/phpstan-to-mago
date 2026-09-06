@@ -9474,3 +9474,45 @@ inside a loop does not cost what PHPStan's in-process comparison costs.
 LifecycleContext` from its class line. The three comparison rows are a node hook on `NodeKind::FunctionCall`
 requiring `ArgumentTypes`, calling `$context->types` on the argument types of three probe calls. The
 grep that missed it is quoted from this session's own transcript.
+
+### Mago does apply an inline `@var`, and not where the rule stands
+
+A peer session traced `NoJustPropertyAssignRule`'s remaining wall and reported that no var-tag reader is
+needed: mago applies an inline `/** @var Foo $x */` to the assignment itself
+(`crates/analyzer/src/expression/assignment/mod.rs:662` calling `get_type_from_var_docblock`), so the rule's
+question becomes the assignment target's type against the assigned expression's type — and `equals()` is on
+the comparator this repository just started using. They marked it a source trace, unprobed.
+
+Probed. **The first half is right and the second half does not hold at the rule's hook position.**
+
+One file, one tagged assignment and one untagged, `Holder::$pet` declared `Animal` and the tag saying `Dog`:
+
+    read at the variable's USE          probeTagged($tagged)     Dog
+                                        probeUntagged($untagged) Animal
+
+So the tag is applied, exactly as traced, and the two rows differ by the tag alone.
+
+    read at the ASSIGNMENT statement    $tagged = $h->pet;    target NULL, value Animal
+                                        $untagged = $h->pet;  target NULL, value Animal
+
+**The assignment target has no type.** `FileAnalysis` keys expression types by span, and the span of a
+variable's defining occurrence has no entry — both rows come back `NULL` and are indistinguishable there.
+`NoJustPropertyAssignRule` hooks `Stmt\Expression`, so that is exactly where it stands.
+
+#### What that means for the rule
+
+The exemption is still not reachable. Comparing the target's type to the value's type is the right question
+and the answer is unavailable at the node the rule fires on; the tagged type appears only at a later *use*,
+which is a different node and would move the finding's line.
+
+This is the `PHPVersion::$id` shape again, and it is worth naming as such: **the value exists, is correct, and
+is not at the position the rule occupies.** A trace establishes that a capability is present. Only a probe at
+the rule's own node establishes that the rule can reach it.
+
+#### Verification
+
+One subject, two assignments differing only in the tag, on mago 1.47.6. Read twice: a hook on
+`NodeKind::FunctionCall` over the arguments of two probe calls, and a hook on `NodeKind::ExpressionStatement`
+over `nthExpression` of the assignment's two sides. `FileAnalysis.php:96-142` is where the span keying is
+read. The `assignment/mod.rs` and `docblock.rs` line numbers are the peer session's and are not reproduced
+here — what is reproduced is the behaviour they predict.
