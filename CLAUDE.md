@@ -487,7 +487,18 @@ mentioning* the constant, inside a different table, so every figure described on
 on another. Nothing downstream can tell those apart: the numbers were internally consistent, mechanically
 derived, reproducible by re-running the script, and agreed with a second source. **An instrument pointed at
 the wrong object produces all the same signals as one pointed at the right object**, so the assertion has to
-happen at the point of location, not in the results.
+happen at the point of location, not in the results. Two are worth carrying: match an *anchored declaration*
+rather than any mention of the name, and assert the block you sliced does not contain the start of the next
+one. The first catches a locator landing on a comment and truncating; the second catches a closing delimiter
+belonging to something later, which inflates instead — same class, opposite direction, both silent.
+
+Two companions, from the same audit. **Read the file you are appending to.** A later section of this
+repository's own log was drafted saying a question was open that an earlier section had already measured and
+closed; nothing in the tooling compares a new entry against the document it joins, and a weaker newer claim
+sitting below a stronger older one is how a record loses what it knew. And **a limit found by exhausting the
+artefacts you happen to have is a fact about your position, not about the question.** The registry that could not be checked from
+this repository was a `git clone` away, and "no route found is not the same as no route" was written here one
+commit before someone took the route.
 
 ## A wrong "why" is worse than none
 

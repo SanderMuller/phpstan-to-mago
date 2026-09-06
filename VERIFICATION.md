@@ -9132,10 +9132,80 @@ The check that would have caught it is one line: after locating a structure by n
 found is that structure. `s.index('HOOK_KINDS')` finding a comment and `s.index('HOOK_KINDS')` finding the
 constant are indistinguishable to everything downstream.
 
-The underlying question stands and is unanswered. `phpOnly` asserts something about Mago's analyzer registry.
-Two things are measured about reaching it from here: `find vendor -name '*.rs'` returns nothing, and the
-binary's own surface offers `mago extension list` / `validate`, which cover *configured external extensions*
-rather than the bundled analyzer's hook registry. Neither rules out some other local route — a probe against
-the binary, or metadata not looked for — so the position is that no route has been found, not that none
-exists. Sizing the question needs the audit run again against the right constant, and answering it needs a
-route to the registry.
+#### The audit, rerun
+
+A peer session cloned Mago at `1.47.6` and ran both halves, with a standing note to rerun rather than quote.
+Rerun here, and **the interpretation is not repeated: an entry above already covers this ground with better
+evidence** — it names the invented trait spellings, records `NullSafeMethodCallHook` and `ProgramHook` as
+traits that exist and are flagged PHP-only anyway, and refutes "one Rust hook registers one kind" for
+`ExpressionHook` specifically, using a shipped snapshot. Read that entry, not this one, for what the rows
+mean. What follows is arithmetic against the table as it stands today.
+
+Registry, at `1.47.6` — the eight `.rs` files under `crates/analyzer/src/plugin/hook/` fetched with
+`gh api "repos/carthage-software/mago/contents/crates/analyzer/src/plugin/hook/<f>.rs?ref=1.47.6" --jq
+.content | tr -d '\n' | base64 -d`, then `grep -oE 'pub trait [A-Za-z]+' | sort -u`. **13**, cross-checked
+against thirteen `register_*_hook` methods in `registry.rs`, and reproducing the peer's list exactly:
+
+    ClassDeclarationHook  EnumDeclarationHook  ExpressionHook  FunctionCallHook
+    FunctionDeclarationHook  InterfaceDeclarationHook  IssueFilterHook  MethodCallHook
+    NullSafeMethodCallHook  ProgramHook  StatementHook  StaticMethodCallHook  TraitDeclarationHook
+
+`Vocabulary::HOOKS`, parsed under the assertions below:
+
+    rows with a trait                              50
+    of which phpOnly                               34
+      naming a trait in that list                  23   ExpressionHook 14, StatementHook 6,
+                                                        ClassDeclarationHook 1, NullSafeMethodCallHook 1,
+                                                        ProgramHook 1
+      naming a trait not in it                     11   ArrayHook, AttributeHook, AttributeListHook,
+                                                        BinaryHook, ClassLikeMemberHook, ClosureHook,
+                                                        ForeachHook, MethodPartialApplicationHook,
+                                                        PropertyAccessHook, StaticMethodPartialApplicationHook,
+                                                        StaticPropertyAccessHook
+
+**The 23 agree exactly across two sessions and two instruments.** The totals do not. The peer reported 47, 31
+and 8 — their figures, not rerun here — and the gap is three rows in each. The three their absent-trait list
+omits are `ArrayHook`, `AttributeListHook` and `BinaryHook`, whose rows (`Array_`, `AttributeGroup`, `Concat`)
+are the three in this table written across several lines rather than one. That is a correspondence, not a
+diagnosis: their extractor has not been seen here, and why it missed them is theirs to say.
+
+The earlier entry lists eight of these names rather than eleven, and the same three are the difference. A
+chronological explanation was drafted here and was wrong — `git log -S` dates all three rows to 18 and 20 and
+29 August against that entry's `2445865` on 2 September, so every one of them existed when it was written.
+Why it lists eight is not traced.
+
+One of the eleven is worth separating. `ModuleEmitter::module()` throws `no registration for ...` on ten of
+them, so `phpOnly` keeps rows that could not be emitted off a target that could not take them.
+`ClassLikeMemberHook` is not one: `ModuleEmitter.php:38` maps it to `register_class_like_member_hook`, which
+the 1.47.6 registry does not declare — so that row would emit Rust naming a registration that does not exist,
+and `phpOnly` is the only thing preventing it.
+
+This is a name-set intersection. Whether a named trait is the right registration for its node shape is not
+shown by a name matching a name, and nothing here is changed on the strength of it.
+
+#### The assertions, now in the instrument
+
+The rerun carries the two the peer proposed, and both are load-bearing rather than decorative:
+
+    m = re.search(r'^\s*public const array HOOKS = \[$', src, re.M)
+    assert m                                              # an anchored declaration, not a mention
+    block = src[m.end():src.index('\n    ];', m.end())]
+    assert block.count('public const array') == 0         # did not swallow a later constant
+
+The first is the one that catches the withdrawn run: `s.index('HOOK_KINDS')` landing on a comment fails an
+anchored declaration match. The second catches the mirror image, where the closing delimiter found belongs to
+something after the table — the same class of error producing a superset rather than a truncation, and failing
+silently in the opposite direction.
+
+#### The boundary was accurate for this position and not for the question
+
+"No route found is not the same as no route" was the right thing to write, and the route existed:
+`git clone --depth 1 --branch 1.47.6 https://github.com/carthage-software/mago`, then
+`crates/analyzer/src/plugin/`. What had been searched was the installed source and one CLI subcommand, which
+is what "no route found" meant and all it meant. **A limit found by exhausting the artefacts you happen to
+have is a fact about your position**, and the artefact that answered this one was a `git clone` away.
+
+#### What still stands
+
+Acting on `HOOKS` moves emitted bytes on two targets, and the earlier entry is the one that has done the work
+to justify such a change. This one contributes counts to it.
