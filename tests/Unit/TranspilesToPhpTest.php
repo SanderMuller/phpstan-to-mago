@@ -105,6 +105,10 @@ final class TranspilesToPhpTest extends TestCase
         // byte-identical to the inline spelling's — the cast and the binding both have nothing to do at
         // runtime, and an emission that differed would mean one of them had been given work.
         yield 'a name compared through a bound local' => ['BoundNameComparisonRule'];
+        // A class reflection reached through PHPStan's native-reflection hatch. Snapshotted because what the
+        // hop emits is nothing: `declarationKindIs` is what the same question asks without it, so an emission
+        // carrying any trace of the hop would mean it had been given work it does not have.
+        yield 'a class reflection through the native hatch' => ['NativeReflectionHopRule'];
         yield 'a report code carrying a classification' => ['ClassifiedCodeRule'];
         yield 'a loop inside an inlined predicate helper' => ['AnyConstantHelperRule'];
         yield 'a reflection question answered by the codebase' => ['AsksTheCodebaseRule'];

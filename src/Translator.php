@@ -11687,6 +11687,41 @@ final readonly class Translator
      *
      * @return Descriptor
      */
+    /**
+     * `->getNativeReflection()` on a class reflection, which is the identity for what a rule asks through it.
+     *
+     * PHPStan's hatch to the native `ReflectionClass`. For the questions the corpus asks past that hop —
+     * `isInterface()`, `isAnonymous()`, `getName()` — the two objects answer the same thing, so the
+     * descriptor passes through unchanged and the hop emits nothing.
+     *
+     * It removes no refusal, it moves one: a question the native object answers and the reflection does not
+     * still refuses, one call later and under its own name, which is where a reader can act on it.
+     * `RequireParentConstructCallRule` refused on the hop and now refuses 25 lines further in.
+     *
+     * @return Descriptor|null
+     */
+    private function nativeReflectionHop(Expr $expr, int $line): ?array
+    {
+        if (! $expr instanceof MethodCall
+            || $this->memberName($expr->name, $expr->getStartLine()) !== 'getNativeReflection'
+            || $expr->getArgs() !== []
+        ) {
+            return null;
+        }
+
+        $inner = $this->resolve($expr->var, $line);
+
+        return $inner['kind'] === 'class-reflection' ? $inner : null;
+    }
+
+    /**
+     * The descriptor for a PHP expression: how to say it in the target, and what kind of thing it is.
+     *
+     * `rust` and `php` are the same expression rendered for each target. A descriptor with no `php` key
+     * has no navigation recipe yet, and {@see operand} refuses rather than guessing.
+     *
+     * @return Descriptor
+     */
     private function resolveDescriptor(Expr $expr, int $line): array
     {
         if ($expr instanceof Variable && is_string($expr->name)) {
@@ -11768,6 +11803,11 @@ final readonly class Translator
             && in_array($expr->var->name, ['scope', 'node'], true)
         ) {
             return ['rust' => 'context', 'kind' => 'class-reflection'];
+        }
+
+        $native = $this->nativeReflectionHop($expr, $line);
+        if ($native !== null) {
+            return $native;
         }
 
         // $node->get(SomeCollector::class)

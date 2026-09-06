@@ -559,9 +559,9 @@ REFUSE  OverwriteVariablesWithForeachRule
         guard body is neither `return []` nor `continue`, but Stmt_Foreach
         needs: guard body is neither `return []` nor `continue`, but Stmt_Foreach
 REFUSE  RequireParentConstructCallRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
+        function call outside the vocabulary property_exists()
         needs: function call outside the vocabulary property_exists()
+        needs: statement outside the vocabulary: Stmt_While
 REFUSE  StrictFunctionCallsRule
         assignment value outside the vocabulary: access path outside the vocabulary: $this->reflectionProvider->getFunction()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->reflectionProvider->getFunction()
