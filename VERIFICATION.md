@@ -10290,3 +10290,67 @@ tried here were each blocked by something the refusal did not name. Where the ne
 therefore not the census's shortest entry; it is a rule whose whole body can be read and whose every step is
 already in the vocabulary — which is what both rules that emitted today had in common, and what neither of
 these did.
+
+---
+
+## A node hook cannot look outward, measured
+
+`ClosureUsesThisRule` reached an emission that ran, and one of its four cells was wrong. Tracking that down
+produced a fact about the SDK that no earlier probe had asked for, and it is the reason the rule is reverted
+rather than shipped.
+
+### The rule, and why it looked like the right one to pick
+
+Fifty-two lines, whole body readable, and the two steps that looked like soundness questions were both
+already answered somewhere in this repository:
+
+- `! $varType instanceof ThisType` — `$self = $this` and `$other = new Holder()` both render as `Holder`, so
+  reading `(string) $type` cannot separate them. Mago marks it on the atomic, and the marker survives both the
+  assignment *and* the capture: probed on a `use` clause holding each, `isThis=true, static=true` against
+  `isThis=false, static=false`.
+- `$scope->isInClosureBind()` — traced in the installed `phpstan.phar` rather than named from the method.
+  `src/Analyser/ExprHandler/StaticCallHandler.php` enters that scope for a static call whose declaring class
+  is `Closure` and whose lowercased name is `bind`. So `->bindTo()` is a method call and does **not** set it,
+  which is narrower than the name suggests and would have been got wrong by reasoning from the name.
+
+Everything else was navigation: the `use` clause is a `ClosureUseClause` holding one
+`ClosureUseClauseVariable` per capture, and the capture node is what carries the type.
+
+### Two defects the running caught, and neither was visible in the emitted text
+
+**A runtime fatal.** `new Part($node, $text)` — the constructor takes four arguments in a different order.
+The emitted plugin was well-formed PHP and every static check passed; mago rejected the worker on the first
+file.
+
+**An empty name in the message.** `$closureUse->var->name` resolved through the generic `expr->name` reading,
+which is php-parser's `ConstFetch->name` — so the finding read *"assigned to variable $"*. Correct where that
+reading was written, wrong here, and only visible in the text of a real finding.
+
+### And then the cell that could not be fixed
+
+With both repaired the port agreed with PHPStan on three of four shapes and reported a fourth PHPStan is
+silent on: the closure inside `Closure::bind(...)`. Ground truth taken from real PHPStan with the one rule
+registered, not assumed.
+
+`isInClosureBind()` needs to know what encloses the closure. Instrumented, `SourceFile::getAncestors()`
+returns **empty** inside a node hook. `getNodes()` returns 60 nodes for that file and every one of them is
+inside a targeted closure — four `Closure`, four `ClosureUseClause`, eight `DirectVariable` and so on, with
+no `StaticMethodCall`, no `Method`, no `Class`.
+
+**So `TargetSubtree` is exactly what it says: a node hook receives its targets' subtrees and nothing else.**
+No ancestors, no siblings, no enclosing call, and no requirement in `FileAnalysisRequirement` supplies them —
+`ExpressionTypes` is for after-file hooks, and the other four are types and text. The question is not hard to
+answer, it is unanswerable from where the plugin stands.
+
+That is a guard that *exits*, so dropping it makes the port report where the rule is silent. Reverted.
+
+### What this measurement is worth beyond one rule
+
+It is the first time this repository has asked what a node hook can see *outward*, and the answer bounds a
+whole class of rules rather than this one. Any rule whose guard is about context — what call encloses this
+expression, what statement precedes it, whether this node is an argument of something — is outside the PHP
+target's reach for the same reason, however simple the guard reads.
+
+It also sharpens the earlier probe rule. `getTrivia()` and `getResolvedName()` were both found by asking what
+a plugin receives; neither says anything about *scope*. "The SDK exposes the tree" is true of the subtree and
+false of everything above it, and the two look identical until something walks up.
