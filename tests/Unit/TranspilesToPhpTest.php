@@ -82,6 +82,11 @@ final class TranspilesToPhpTest extends TestCase
         // rule file's own `use` map, and getting that wrong emits a comparison against a name no class has —
         // a plugin that loads, runs and matches nothing.
         yield 'a rule constant written as a ::class fetch' => ['ClassConstantIsAStringRule'];
+        // A guard whose body throws. `throw` is an expression in PHP 8, so php-parser wraps it in a
+        // `Stmt_Expression` and the refusal named the wrapper. Snapshotted for what is *absent*: the guard
+        // takes the same exit `return []` does, and then the impossible-condition drop removes it, so the
+        // emitted plugin carries no trace of an assertion the dispatch already guarantees.
+        yield 'a guard whose body throws' => ['ThrowingAssertionGuardRule'];
         yield 'a report code carrying a classification' => ['ClassifiedCodeRule'];
         yield 'a loop inside an inlined predicate helper' => ['AnyConstantHelperRule'];
         yield 'a reflection question answered by the codebase' => ['AsksTheCodebaseRule'];

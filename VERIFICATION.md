@@ -9253,16 +9253,21 @@ Five rows in `Vocabulary::HOOKS` name one of those two traits **and carry no `ph
 #### It is reached, and it is committed
 
 Not hypothetical, and the size of it was measured rather than projected. `bin/phpstan-to-mago
---target=analyzer --out=DIR` over the seven corpus packages plus `tests/Fixtures/Rules` emits **32** files.
-Four of them carry `impl ClassLikeMemberHook for ...`, and `generated/mod.rs` carries four matching
+--target=analyzer --out=DIR` over the seven corpus packages plus `tests/Fixtures/Rules` emits **33** files.
+Five of them carry `impl ClassLikeMemberHook for ...`, and `generated/mod.rs` carries five matching
 `registry.register_class_like_member_hook(...)` lines:
 
     AnyConstantHelperRule.rs   NoMockObjectAndRealObjectPropertyRule.rs
     PropertyNameRule.rs        TestCaseOnlyRule.rs
+    ThrowingAssertionGuardRule.rs
 
-Flagging the five rows `phpOnly` in a scratch copy and re-emitting gives **28** — exactly those four gone,
-by name, `diff` of the two file listings. An earlier draft of this paragraph said eight, from
-`grep -rhoE 'impl ...Hook for'` counting the four rule files *and* the four lines in `mod.rs`.
+Flagging the five rows `phpOnly` in a scratch copy and re-emitting removed exactly the affected files, by
+name, `diff` of the two file listings. Two figures here have already gone stale once each and both are
+recorded rather than quietly corrected: an earlier draft said *eight* files, from `grep -rhoE 'impl
+...Hook for'` counting rule files *and* `mod.rs` lines; and the count was **32 files, four affected** until a
+fixture added for an unrelated fold — `ThrowingAssertionGuardRule`, a `ClassMethod` rule, so
+`ClassLikeMemberHook` — made it 33 and five. The second is this file's own *"a claim can be damaged by an
+edit that was not about it"*, caught by re-deriving the figure when the emit counts moved.
 
 A fifth rule carries it and is not in either count. `tests/Fixtures/expected-rust/UppercaseConstantRule.rs:13`
 is `impl ClassLikeMemberHook for UppercaseConstantRule {` — a **reviewed snapshot** — while the batch run
@@ -9311,15 +9316,15 @@ no path for loading such a plugin from outside its own tree* is an **inference**
 `1.47.6`, not from a survey of Mago's loading surfaces. Whether anyone has compiled this output into a fork —
 the target's documented purpose — is not something any of this measures.
 
-What it does cost is the meaning of the analyzer figures. "32 analyzer files emitted" counts four that name a
+What it does cost is the meaning of the analyzer figures. "33 analyzer files emitted" counts five that name a
 trait a fork would have to write before the file compiled — which is a different claim from the one the number
 looks like it is making, and the same shape as `PhpBackend::checked()`: a file appeared, and what was counted
 was that it appeared.
 
 #### Not fixed here
 
-The fix is presumably `phpOnly` on those rows, which removes four files from the analyzer emit — measured, in
-a scratch copy restored afterwards — and changes a committed snapshot. That is a deliberate reduction in what a target claims to cover, and it is the
+The fix is presumably `phpOnly` on those rows, which removes every affected file from the analyzer emit —
+five as this is written, measured in a scratch copy restored afterwards — and changes a committed snapshot. That is a deliberate reduction in what a target claims to cover, and it is the
 user's call rather than a correction to make on the way past. **Recorded, not acted on.**
 
 The peer declined to assert reachability without running it, which was right, and running it is what turned a

@@ -45,6 +45,7 @@ use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\UnaryMinus;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -3477,35 +3478,60 @@ final readonly class Translator
             return;
         }
 
-        // `return []` leaves the whole rule; `continue` only ends this iteration. Which one it
-        // is comes from the guard's own body, not from whether we happen to be in a loop.
+        $this->translateGuard($stmt->cond, $this->guardExit($stmt, $only));
+
+    }
+
+    /**
+     * Which exit a guard takes, from what its body does.
+     *
+     * `return []` leaves the whole rule; `continue` only ends this iteration. Which one it is comes from the
+     * guard's own body, not from whether we happen to be in a loop.
+     */
+    private function guardExit(If_ $stmt, Stmt $only): string
+    {
         if ($this->isReturnEmptyArray($stmt->stmts)) {
-            $exit = $this->context->backend->bail();
-        } elseif (($this->context->isCollector || $this->context->inErrorHelper) && $this->isReturnNull($stmt->stmts)) {
-            // `return null` in an inlined helper means "no value", not "stop the rule" — but only when the
-            // enclosing loop belongs to the caller. Then it is the current item's answer and the iteration
-            // ends; the rule's own check on the produced value follows, so both agree on what null means. A
-            // loop the helper opened itself is the other case, and leaving it has to leave the helper.
-            $exit = $this->context->loopDepth > 0 && $this->context->loopDepth === $this->context->helperLoopFloor
+            return $this->context->backend->bail();
+        }
+
+        // `return null` in an inlined helper means "no value", not "stop the rule" — but only when the
+        // enclosing loop belongs to the caller. Then it is the current item's answer and the iteration ends;
+        // the rule's own check on the produced value follows, so both agree on what null means. A loop the
+        // helper opened itself is the other case, and leaving it has to leave the helper.
+        if (($this->context->isCollector || $this->context->inErrorHelper) && $this->isReturnNull($stmt->stmts)) {
+            return $this->context->loopDepth > 0 && $this->context->loopDepth === $this->context->helperLoopFloor
                 ? 'continue;'
                 : $this->context->backend->bail();
-        } elseif ($only instanceof Continue_ && ! $only->num instanceof Expr) {
+        }
+
+        // `if (! $scope->isInClass()) { throw new ShouldNotHappenException(); }` — an assertion the dispatch
+        // already guarantees, not a decision the rule makes. `throw` is an expression in PHP 8, so php-parser
+        // wraps it in a `Stmt_Expression` and the old refusal named that wrapper rather than the throw.
+        //
+        // It takes the exit `return []` takes. On every input where the assertion holds — all of them, or the
+        // author would not have written it as one — the two engines agree; where it does not hold PHPStan
+        // raises and the plugin declines, which is the under-reporting direction this repository takes when
+        // one must be chosen. `Transpiler::throwsOnly()` already reads a throw-only guard the same way when
+        // it walks a constructor.
+        if ($only instanceof Expression && $only->expr instanceof Throw_) {
+            return $this->context->backend->bail();
+        }
+
+        if ($only instanceof Continue_ && ! $only->num instanceof Expr) {
             if (! $this->context->inLoop) {
                 throw new Refusal('continue outside a loop', $stmt->getStartLine());
             }
 
-            $exit = 'continue;';
-        } else {
-            // Says what the body *is*. "neither X nor Y" told a reader only what it is not, and the shape that
-            // reaches here is usually a helper returning a value rather than a rule declining — a difference
-            // the old message left them to find by opening the file.
-            throw new Refusal(
-                'guard body is neither `return []` nor `continue`, but ' . $this->describe($only),
-                $stmt->getStartLine(),
-            );
+            return 'continue;';
         }
 
-        $this->translateGuard($stmt->cond, $exit);
+        // Says what the body *is*. "neither X nor Y" told a reader only what it is not, and the shape that
+        // reaches here is usually a helper returning a value rather than a rule declining — a difference the
+        // old message left them to find by opening the file.
+        throw new Refusal(
+            'guard body is neither `return []` nor `continue`, but ' . $this->describe($only),
+            $stmt->getStartLine(),
+        );
     }
 
     /**
