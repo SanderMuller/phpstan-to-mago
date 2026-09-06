@@ -146,7 +146,6 @@ EMIT    ForeachCeptionRule
 REFUSE  FormTypeClassNameRule
         assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
-        needs: trinary tail on an unsupported query ->isSuperTypeOf()
 REFUSE  NewOverSettersRule
         no aggregate mapped for the collector NewWithFollowingSettersCollector
         needs: no aggregate mapped for the collector NewWithFollowingSettersCollector
@@ -574,7 +573,6 @@ REFUSE  StrictFunctionCallsRule
         needs: null comparison against Expr_Variable, which resolved to a hook-node
         needs: function call outside the vocabulary array_key_exists()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
-        needs: trinary tail on an unsupported query ->isSuperTypeOf()
 REFUSE  UselessCastRule
         no hook mapping for node type PhpParser\Node\Expr\Cast
         needs: no node predicate for instanceof PhpParser\Node\Expr\Cast\Void_ on a hook-node

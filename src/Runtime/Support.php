@@ -1119,6 +1119,11 @@ final class Support
     }
 
     /** Whether every part of a type is a boolean, which is `Type::isBoolean()->yes()`. {@see Types::typeIsBoolean} */
+    public static function typeIsSuperTypeOf(NodeAnalysisContext $context, ?Type $container, ?Type $input): bool
+    {
+        return Types::typeIsSuperTypeOf($context, $container, $input);
+    }
+
     public static function typeIsObject(?Type $type): bool
     {
         return Types::typeIsObject($type);

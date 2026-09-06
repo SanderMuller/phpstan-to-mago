@@ -97,6 +97,10 @@ final class TranspilesToPhpTest extends TestCase
         // it lands on: `nthExpression(nthExpression($node, 0), 1)` is the assignment's *right* side reached
         // through the statement, and index 0 there would type the target instead.
         yield 'a whole-type object test' => ['ObjectTypedAssignRule'];
+        // `isSuperTypeOf`, which the SDK spells `isContainedBy` with the arguments the other way round.
+        // Snapshotted for the argument order: container first in the rule, input first in the SDK, and the
+        // two `nthExpression` chains are the assignment's target and its value in that order.
+        yield 'a supertype comparison between two types' => ['SuperTypeGuardRule'];
         yield 'a report code carrying a classification' => ['ClassifiedCodeRule'];
         yield 'a loop inside an inlined predicate helper' => ['AnyConstantHelperRule'];
         yield 'a reflection question answered by the codebase' => ['AsksTheCodebaseRule'];

@@ -9419,3 +9419,58 @@ One subject, three variables, one node hook on `NodeKind::FunctionCall` requirin
 `ExpressionTypes`, dumping `get_object_vars($type->flags)` for each argument; mago 1.47.6. The SDK lines are
 read from `vendor/carthage-software/mago/composer/src/Sdk`. The analyzer and protocol lines in the peer's
 chain are theirs and are not reproduced here — the SDK end is, and it is the end this conclusion rests on.
+
+### `isSuperTypeOf` was never an SDK gap, and this session said it was
+
+Twice in one session this repository recorded a capability as missing from the SDK on the strength of a grep,
+and twice a peer session's chain-trace found it. The second is the one that changed a decision.
+
+**What was claimed here.** That the SDK has no type-comparison API, therefore
+`MatchingTypeInSwitchCaseConditionRule` and `AssertSameWithCountRule` were blocked upstream rather than by the
+transpiler. That claim was put to the user inside the question that chose what to build next.
+
+**What is there.** `Sdk/Analyzer/TypeComparator.php`, `@api`, with `equals()`, `isContainedBy()`,
+`canBeIdentical()` and `compareMultiple()`. `isContainedBy($input, $container)` is `isSuperTypeOf` with the
+arguments the other way round. It is reachable from a node hook because `NodeAnalysisContext extends
+LifecycleContext`, which declares `public readonly TypeComparator $types`.
+
+Probed rather than read, from inside a node hook on mago 1.47.6:
+
+    isContainedBy(int, int|string)        true
+    isContainedBy(int|string, int)        false
+    isContainedBy(TcProbe\Plain, object)  true
+
+#### Why the grep missed it
+
+The search was `grep -iE 'super|subtype|accept|compat|contains|assignable|comparable'` over
+`Sdk/Analyzer/*.php`. The method is `isContainedBy` — **`Contained`, not `contains`** — and the class is
+`TypeComparator`, which the pattern `comparable` does not match either. Two near-misses on one line, and the
+file was never opened.
+
+That is the same shape as the definedness search recorded above, and as the peer session's own
+`NodeAnalysisContext` miss: **a grep for the name a concept has in the other system is a search for a shape,
+and its failure is evidence about the shape rather than about the capability.** Three instances in one
+investigation, across two sessions, and none of them was caught by re-running the search more carefully — two
+were caught by tracing the value, and one by a class declaration that happened to be on screen.
+
+#### What it changed
+
+The capability is now translated: `$container->isSuperTypeOf($input)->yes()` becomes
+`Support::typeIsSuperTypeOf()`, over `$context->types->isContainedBy()`. **Only the `yes` tail.** The SDK
+answers a bool where PHPStan answers a trinary, so `! isContainedBy()` is *maybe or no*, and reading it as
+`no` would claim a proof the comparator never gave; the other tails refuse.
+
+**No corpus rule emits from it.** All four rules that name it refuse earlier on something else, so not even a
+refusal moved — two `needs:` lines disappeared from the census and nothing else. The reason to have built it
+anyway is that it was recorded as impossible, and it is not.
+
+One operational note from the peer session, not measured here: each comparison is an RPC to the host,
+memoised per distinct pair, and the SDK caps a run at `MAXIMUM_COMPARISONS = 65_536`. A rule asking this
+inside a loop does not cost what PHPStan's in-process comparison costs.
+
+#### Verification
+
+`TypeComparator.php` and `LifecycleContext.php:29` read from the installed SDK; `NodeAnalysisContext extends
+LifecycleContext` from its class line. The three comparison rows are a node hook on `NodeKind::FunctionCall`
+requiring `ArgumentTypes`, calling `$context->types` on the argument types of three probe calls. The
+grep that missed it is quoted from this session's own transcript.

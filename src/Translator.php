@@ -9038,6 +9038,10 @@ final readonly class Translator
             );
         }
 
+        if ($name === 'isSuperTypeOf' && count($args) === 1) {
+            return $this->superTypeQuery($inner, $args[0]->value, $tail, $line);
+        }
+
         if ($name === 'isInstanceOf' && count($args) === 1) {
             $literal = $this->classLiteral($args[0]->value, $line);
 
@@ -9059,6 +9063,44 @@ final readonly class Translator
         }
 
         throw new Refusal("trinary tail on an unsupported query ->{$name}()", $line);
+    }
+
+    /**
+     * A question asked of an inferred type, with the thing asked about as a descriptor.
+     *
+     * @param Descriptor $about the name the question names
+     */
+    /**
+     * `$container->isSuperTypeOf($input)->yes()`, between two types the rule did not construct.
+     *
+     * The SDK spells it `TypeComparator::isContainedBy($input, $container)` — the same question with the
+     * arguments the other way round — reachable as `$context->types` because `NodeAnalysisContext extends
+     * LifecycleContext`. The constructed-`ObjectType` spelling is handled above and falls through to here
+     * when either side is an inferred type instead.
+     *
+     * `yes` only. The SDK answers a bool where PHPStan answers a trinary, so `! isContainedBy()` is *maybe or
+     * no*, and reading it as `no` would claim a proof the comparator never gave.
+     */
+    private function superTypeQuery(MethodCall $inner, Expr $argument, string $tail, int $line): string
+    {
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a supertype test, which only the PHP target carries', $line);
+        }
+
+        if ($tail !== 'yes') {
+            throw new Refusal("->isSuperTypeOf()->{$tail}(), which the SDK's boolean answer cannot prove", $line);
+        }
+
+        $container = $this->resolve($inner->var, $line);
+        $this->requireType($container, $line);
+        $input = $this->resolve($argument, $line);
+        $this->requireType($input, $line);
+
+        return $this->context->backend->call('type_is_super_type_of', [
+            '$context',
+            $this->operand($container),
+            $this->operand($input),
+        ]);
     }
 
     /**

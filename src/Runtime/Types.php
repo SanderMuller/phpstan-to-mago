@@ -321,6 +321,32 @@ final class Types
         return true;
     }
 
+    /**
+     * `$container->isSuperTypeOf($input)->yes()`, which the SDK spells the other way round.
+     *
+     * `TypeComparator::isContainedBy($input, $container)` is the same question with the arguments flipped, and
+     * it is reachable from a node hook because `NodeAnalysisContext extends LifecycleContext`, which declares
+     * `public readonly TypeComparator $types`. Probed rather than read: `int` inside `int|string` is true,
+     * `int|string` inside `int` is false, and `Plain` inside `object` is true.
+     *
+     * **Only the `yes` half is expressible.** PHPStan's `isSuperTypeOf()` is a trinary and this is a bool, so
+     * `->no()` is not the negation of it — `!isContainedBy()` is *maybe or no*, and answering `no` with it
+     * would claim a proof the comparator never gave. The translator refuses the other tails rather than
+     * approximating them.
+     *
+     * Each call is an RPC to the host, memoised per distinct pair, and the SDK caps a run at
+     * `MAXIMUM_COMPARISONS = 65_536`. A rule asking this inside a loop does not cost what PHPStan's in-process
+     * comparison costs, which is worth knowing before one is written.
+     */
+    public static function typeIsSuperTypeOf(NodeAnalysisContext $context, ?Type $container, ?Type $input): bool
+    {
+        if (! $container instanceof Type || ! $input instanceof Type) {
+            return false;
+        }
+
+        return $context->types->isContainedBy($input, $container);
+    }
+
     public static function typeIsBoolean(?Type $type): bool
     {
         if (! $type instanceof Type || $type->atomicTypes === []) {
