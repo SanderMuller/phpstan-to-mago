@@ -9333,3 +9333,38 @@ row-level observation into a committed-snapshot one.
 `bin/phpstan-to-mago --target=analyzer --out=DIR <seven packages> tests/Fixtures/Rules` before and after
 flagging the rows in a copy of `src/Vocabulary.php` restored from `/tmp` afterwards, compared by `diff` of the
 two `generated/*.rs` listings (32 against 28); and the snapshot by `grep` over `tests/Fixtures/expected-rust`.
+
+### A prediction recorded before the movement it predicts
+
+Four of the corpus sweep's only-port findings will close on a future dependency bump, for a reason that has
+nothing to do with this tool. Written down **now**, while the cause is known and the effect has not happened,
+because a sweep cannot tell an improving tool from an improving corpus once the number has moved.
+
+    corpus-sweep.md   port  Helper/QuestionHelper.php:272  302  350  385
+
+All four are the `callable(string):string[]` annotation in `symfony/console`, which binds the `[]` to the
+callable rather than to the return type. A peer session raised it upstream and it is **merged**:
+`symfony/symfony#65860`, into `7.4` at `cbf9781f6425a7f6ec36b09bdee1dd9d2c7a5c5a`, 2026-09-06 07:53Z. The
+merged form is not the parentheses that were proposed — the maintainer wrote `callable(string):array<string>`,
+removing the trailing `[]` so nothing is left for a parser to bind.
+
+Verified here rather than taken: the PR is merged into `7.4` at that sha, `contents/...QuestionHelper.php`
+at `ref=7.4` reads `@param callable(string):array<string>` at line 238, and this repository's pin —
+`symfony/console v8.1.6` — still reads `@param callable(string):string[]` at line 259. So all four findings
+still reproduce today, and will keep reproducing until the merge reaches `8.x`, a console release carries it,
+and this repository bumps.
+
+**When that happens the only-port trend reads 21 → 17, and none of it is this tool.** The trend already
+recorded here is 448 → 25 → 23 → 21, and every step of it has been read as the port improving. This step will
+not be, and the sweep has no way to say so — the divergence simply stops being printed.
+
+This is the only case in the corpus where the cause is known before the effect, which is what makes recording
+it worth a section. Corpus drift and tool change are indistinguishable in an aggregate; a prediction written
+in advance is the one instrument that separates them, and it works exactly once per known cause.
+
+#### Verification
+
+`gh api repos/symfony/symfony/pulls/65860` for the merge state and sha; `contents/...?ref=7.4` for the merged
+annotation; `vendor/symfony/console/Helper/QuestionHelper.php:259` and `installed.json` for the pin; the four
+line numbers from `tests/Fixtures/expected/corpus-sweep.md`. The upstream discussion and the maintainer's own
+independent confirmation of the precedence claim are the peer session's, reported and not reproduced here.
