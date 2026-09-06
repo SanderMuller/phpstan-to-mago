@@ -302,7 +302,7 @@ final readonly class Emitter
         }
 
         $this->context->reportSpan = 'node.span()';
-        $body = $this->renderAll() . ($this->context->reportedInline ? '' : $this->reportStatement());
+        $body = $this->renderAll() . ($this->context->owesATrailingReport() ? $this->reportStatement() : '');
         foreach (self::LINT_BLOCKED as $helper => $reason) {
             if (str_contains($body, "support::{$helper}(")) {
                 throw new Refusal("needs {$reason} (support::{$helper})");
@@ -589,20 +589,20 @@ PHP;
         // member's line silently got the class's span instead, through a path that looked right. Refused rather
         // than substituted, for the same reason the comment above gives: PHP leaves the loop variable set, so the
         // wrong answer would look plausible.
-        if ($this->context->anchorNeedsLoop && ! $this->context->reportedInline) {
+        if ($this->context->anchorNeedsLoop && $this->context->owesATrailingReport()) {
             throw new Refusal(
                 'a report anchored on a loop item but emitted after the loop, where the item is no longer bound',
             );
         }
 
-        $trailingReport = $this->context->reportedInline ? '' : strtr(<<<'REPORT'
+        $trailingReport = $this->context->owesATrailingReport() ? strtr(<<<'REPORT'
         $context->report(
             Level::Error,
             {CODE},
             Issue::new(Support::viaTraitUsers($context, $node, {MESSAGE}), {ANCHOR}, 'here'),
         );
 
-REPORT, ['{ANCHOR}' => $this->context->anchor ?? $this->defaultAnchor()]);
+REPORT, ['{ANCHOR}' => $this->context->anchor ?? $this->defaultAnchor()]) : '';
         $message = $isFormatted ? $reported : $this->context->backend->bytes(substr($reported, 1, -1));
         // A rule that classifies what it found reports under a code decided at analysis time, so the code is
         // an expression there; quoting it would report under the source text of the interpolation.
@@ -791,7 +791,7 @@ PHP;
 
         $report = $this->context->isCollector ? '' : null;
         $this->context->reportSpan = 'node.span()';
-        $report ??= $this->context->reportedInline
+        $report ??= ! $this->context->owesATrailingReport()
             ? ''
             : ($each === null
                 ? $this->reportStatement()

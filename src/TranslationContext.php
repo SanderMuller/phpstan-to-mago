@@ -455,6 +455,23 @@ final class TranslationContext
     /** Set once a report has been emitted inside the body; suppresses the trailing one. */
     public bool $reportedInline = false;
 
+    /**
+     * Whether the rule's body *ends* in a report, having already reported somewhere inside it.
+     *
+     * `$reportedInline` says a report was emitted where it was found, and the emitter reads it as "there is
+     * nothing left to say at the end". Those are the same thing only while the rule has one report. A rule
+     * that reports early for one case and falls through to a trailing report for another has both, and
+     * reading the first as the second dropped the trailing one — emitting a plugin silent on the case the
+     * rule mostly exists for.
+     */
+    public bool $tailReportPending = false;
+
+    /** Whether the emitter still owes the rule its trailing report. {@see $tailReportPending} */
+    public function owesATrailingReport(): bool
+    {
+        return ! $this->reportedInline || $this->tailReportPending;
+    }
+
     /** Current emission indentation, which a loop body increases. */
     public int $indent = 8;
 

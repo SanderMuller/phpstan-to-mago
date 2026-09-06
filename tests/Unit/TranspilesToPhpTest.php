@@ -105,6 +105,10 @@ final class TranspilesToPhpTest extends TestCase
         // byte-identical to the inline spelling's — the cast and the binding both have nothing to do at
         // runtime, and an emission that differed would mean one of them had been given work.
         yield 'a name compared through a bound local' => ['BoundNameComparisonRule'];
+        // A rule that reports early for one case and at the end for another. Snapshotted for the *second*
+        // report: the emitter read one flag as "nothing left to say at the end", which is true only while a
+        // rule has one report, and no corpus rule wrote this shape until now.
+        yield 'an early report and a trailing one' => ['EarlyThenTailReportRule'];
         // The attribute walk written with the answer inverted. Snapshotted for the ternary around the folded
         // condition: the fold hands back one question and the caller wraps it in the literal the guard
         // returned, so a fold that assumed `true` would emit this rule reporting where it stays silent.

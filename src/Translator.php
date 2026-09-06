@@ -18,10 +18,12 @@ use PhpParser\Node\Expr\BinaryOp\BooleanAnd;
 use PhpParser\Node\Expr\BinaryOp\BooleanOr;
 use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\BinaryOp\Concat;
+use PhpParser\Node\Expr\BinaryOp\Equal;
 use PhpParser\Node\Expr\BinaryOp\Greater;
 use PhpParser\Node\Expr\BinaryOp\GreaterOrEqual;
 use PhpParser\Node\Expr\BinaryOp\Identical;
 use PhpParser\Node\Expr\BinaryOp\Minus;
+use PhpParser\Node\Expr\BinaryOp\NotEqual;
 use PhpParser\Node\Expr\BinaryOp\NotIdentical;
 use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\BinaryOp\Smaller;
@@ -31,6 +33,7 @@ use PhpParser\Node\Expr\Cast\Bool_;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\Empty_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\Isset_;
@@ -2527,6 +2530,83 @@ final readonly class Translator
         return $guards === [] ? null : $guards;
     }
 
+    /**
+     * `if (COND) { $x = <expr>; return <a boolean expression>; }` as one guard.
+     *
+     * Two things separate this from the single-statement guard above, and a rule narrowing a php-parser node
+     * writes both together. The binding is there for PHPStan's own narrowing — `$classConstFetch =
+     * $firstArg->value;` after `$firstArg->value instanceof ClassConstFetch` — so it names a value already in
+     * scope and contributes nothing to emit; it is bound and dropped, scoped to this guard the way
+     * {@see nestedGuards()} scopes its own. And the answer is computed rather than a literal, which the
+     * guard list already carries: its second element is rendered into the `then` of a conditional, so any
+     * expression fits there.
+     *
+     * The answer has to be a *boolean* one, which is what the literal requirement was standing in for.
+     * `translateCondition()` will render whatever it is handed, so the shape is checked here instead: only
+     * expressions PHP guarantees are boolean are taken, and anything else falls through to the refusal that
+     * names the body.
+     *
+     * @return array{string, string}|null
+     */
+    private function boundGuard(If_ $statement): ?array
+    {
+        if ($statement->elseifs !== [] || $statement->else instanceof Else_ || count($statement->stmts) < 2) {
+            return null;
+        }
+
+        $body = $statement->stmts;
+        $last = array_pop($body);
+        if (! $last instanceof Return_ || ! $last->expr instanceof Expr || ! $this->isBooleanByConstruction($last->expr)) {
+            return null;
+        }
+
+        foreach ($body as $leading) {
+            if (! $leading instanceof Expression || ! $leading->expr instanceof Assign) {
+                return null;
+            }
+        }
+
+        $saved = [$this->context->locals, $this->context->literals, $this->context->caches];
+
+        try {
+            foreach ($body as $leading) {
+                /** @var Expression $leading */
+                /** @var Assign $assignment */
+                $assignment = $leading->expr;
+                $this->bindLocal($assignment, $leading->getStartLine());
+            }
+
+            return [$this->translateCondition($statement->cond), $this->translateCondition($last->expr)];
+        } finally {
+            [$this->context->locals, $this->context->literals, $this->context->caches] = $saved;
+        }
+    }
+
+    /**
+     * Whether PHP guarantees an expression evaluates to a boolean, from its shape alone.
+     *
+     * Not "whether it reads as a condition" — a property fetch does, and its value is whatever it holds.
+     * These are the operators whose result type is `bool` however their operands are typed, which is what
+     * lets a guard's answer be rendered into a conditional beside `true` and `false`.
+     */
+    private function isBooleanByConstruction(Expr $expr): bool
+    {
+        return $expr instanceof Instanceof_
+            || $expr instanceof BooleanNot
+            || $expr instanceof Isset_
+            || $expr instanceof Empty_
+            || $expr instanceof BooleanAnd
+            || $expr instanceof BooleanOr
+            || $expr instanceof Identical
+            || $expr instanceof NotIdentical
+            || $expr instanceof Equal
+            || $expr instanceof NotEqual
+            || $expr instanceof Greater
+            || $expr instanceof GreaterOrEqual
+            || $expr instanceof Smaller
+            || $expr instanceof SmallerOrEqual;
+    }
+
     /** The accepted helper shapes, as one Rust expression. */
     private function translateMethodAsPredicate(ClassMethod $method, int $line): string
     {
@@ -2638,6 +2718,17 @@ final readonly class Translator
                 ];
 
                 continue;
+            }
+
+            // The same guard written with the narrowing re-binding php-parser rules put in front of the
+            // answer. {@see boundGuard()} says why the binding is not a statement worth keeping.
+            if ($statement instanceof If_) {
+                $bound = $this->boundGuard($statement);
+                if ($bound !== null) {
+                    $guards[] = $bound;
+
+                    continue;
+                }
             }
 
             if ($statement instanceof Return_ && $statement->expr instanceof Expr) {
@@ -3402,6 +3493,129 @@ final readonly class Translator
     }
 
     /**
+     * `return [<the errors>];` — the report it stands for, wherever the builder was written.
+     *
+     * Two spellings, and one question about each. The builder is either in the return or in a temporary a
+     * line above it, which changes nothing. Where the report goes does change: inside a loop or a
+     * conditional report the finding is emitted here, because a trailing report would run after the loop and
+     * fire whichever way its guards went; outside one the emitter writes it at the end, and this only has to
+     * say so.
+     *
+     * @return bool whether the return was fully accounted for, so the caller emits nothing more for it
+     */
+    private function takesTheReturnedErrors(Return_ $stmt): bool
+    {
+        if (! $stmt->expr instanceof Array_) {
+            return false;
+        }
+
+        // The temporary spelling. The message was taken at the assignment, so there is nothing to take here.
+        if (count($stmt->expr->items) === 1
+            && ($sole = $stmt->expr->items[0]) !== null
+            && $sole->value instanceof Variable
+            && $this->context->pendingReport !== null
+            && $sole->value->name === $this->context->pendingReport
+        ) {
+            $this->markTheTrailingReport();
+            $this->context->pendingReport = null;
+
+            return true;
+        }
+
+        foreach ($stmt->expr->items as $item) {
+            if ($item === null || ! $this->isRuleErrorBuilder($item->value)) {
+                continue;
+            }
+
+            $this->takeMessage($item->value);
+            if (! $this->context->inLoop && ! $this->context->inConditionalReport) {
+                $this->markTheTrailingReport();
+
+                continue;
+            }
+
+            $this->context->lines[] = $this->reportNode();
+            $this->context->lines[] = new Stm('bail', [], $this->context->indent);
+            $this->context->reportedInline = true;
+            // The message is now accounted for, so the *next* branch may take another one. Without this a
+            // rule with two branches that each report their own thing refused on "a second identifier before
+            // the first was reported" — which was false: the first had been reported, two lines up.
+            $this->context->reportTaken = true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Record that the emitter still owes the rule a trailing report.
+     *
+     * Only from the rule's own body. A branch check and an inlined helper each report inside their own
+     * method and the rule around them may end `return [];` — `NoDynamicNameRule` does, and marking its
+     * branches' builders as the tail gave the plugin an unconditional report on every expression it saw.
+     * Measured: without the test its emission gains one, which is how the condition was found.
+     */
+    private function markTheTrailingReport(): void
+    {
+        if ($this->atTheRulesOwnTail()) {
+            $this->context->tailReportPending = true;
+        }
+    }
+
+    /**
+     * Whether translation is in the rule's own body rather than inside something it extracted.
+     *
+     * A branch check and an inlined helper both report from their own method, and the rule around them is
+     * free to end `return [];`. So a builder taken in one of those says nothing about whether the emitter
+     * still owes a trailing report — only one taken out here does.
+     */
+    private function atTheRulesOwnTail(): bool
+    {
+        return ! $this->context->checkMode && $this->context->inlineDepth === 0;
+    }
+
+    /**
+     * `if (COND) { $e = <a built error>; return [$e]; }` written as the one-statement guard it is.
+     *
+     * The temporary is the rule author's line-length break, not a step: it is assigned once, returned once,
+     * and read nowhere else. Every reading below already handles `if (COND) { return [<a built error>]; }`,
+     * so this normalises to that shape rather than teaching each of them a second one — which is also why it
+     * runs before the branch and helper readings rather than beside them.
+     *
+     * Anything else is handed back untouched. The name has to match, the array has to hold exactly the one
+     * item, and the assigned value has to be a built error: a temporary the body uses for something else is
+     * a step, and dropping it would emit a rule that skipped work.
+     */
+    private function withoutTheReportTemporary(If_ $stmt): If_
+    {
+        if ($stmt->elseifs !== [] || $stmt->else instanceof Else_ || count($stmt->stmts) !== 2) {
+            return $stmt;
+        }
+
+        [$first, $second] = $stmt->stmts;
+        if (! $first instanceof Expression || ! $first->expr instanceof Assign
+            || ! $first->expr->var instanceof Variable || ! is_string($first->expr->var->name)
+            || ! $this->returnedRuleError($first->expr->expr) instanceof Expr
+        ) {
+            return $stmt;
+        }
+
+        if (! $second instanceof Return_ || ! $second->expr instanceof Array_ || count($second->expr->items) !== 1) {
+            return $stmt;
+        }
+
+        $item = $second->expr->items[0];
+        if ($item === null || $item->value instanceof Variable === false
+            || $item->value->name !== $first->expr->var->name
+        ) {
+            return $stmt;
+        }
+
+        $returned = new Return_(new Array_([new ArrayItem($first->expr->expr)]), $second->getAttributes());
+
+        return new If_($stmt->cond, ['stmts' => [$returned]], $stmt->getAttributes());
+    }
+
+    /**
      * Whether this `if` fills a cache declared above it, recording what the cache stands for.
      *
      * `if (! array_key_exists($k, $cache)) { $cache[$k] = <expr>; }`, and the `try`/`catch` variant where the
@@ -3481,6 +3695,8 @@ final readonly class Translator
      */
     private function translateIf(If_ $stmt): void
     {
+        $stmt = $this->withoutTheReportTemporary($stmt);
+
         // `if (! array_key_exists($k, $cache)) { $cache[$k] = <expr>; }` — filling a cache declared above.
         // Nothing is emitted; the expression is resolved here, in the scope it was written in, and every later
         // read of `$cache[$k]` resolves to it.
@@ -6128,25 +6344,8 @@ final readonly class Translator
                 return;
             }
 
-            if ($stmt->expr instanceof Array_) {
-                foreach ($stmt->expr->items as $item) {
-                    if ($item !== null && $this->isRuleErrorBuilder($item->value)) {
-                        $this->takeMessage($item->value);
-                        if ($this->context->inLoop || $this->context->inConditionalReport) {
-                            // Reporting from inside the loop and returning: emit it here, because
-                            // the trailing report would run after the loop has finished.
-                            $this->context->lines[] = $this->reportNode();
-                            $this->context->lines[] = new Stm('bail', [], $this->context->indent);
-                            $this->context->reportedInline = true;
-                            // And the message is now accounted for, so the *next* branch may take another one.
-                            // Without this a rule with two branches that each report their own thing refused
-                            // on "a second identifier before the first was reported" — which was false: the
-                            // first had been reported, two lines up. The `$errors[] =` arm beside this one
-                            // already said so; this arm did not.
-                            $this->context->reportTaken = true;
-                        }
-                    }
-                }
+            if ($this->takesTheReturnedErrors($stmt)) {
+                return;
             }
 
             // `return $this->decide(..);` — the rule hands its whole decision to a helper that returns the
@@ -6249,7 +6448,20 @@ final readonly class Translator
                 // finding or keeps going.
                 if ($this->context->inLoop && $stmt->expr->var instanceof Variable && is_string($stmt->expr->var->name)) {
                     $this->context->pendingReport = $stmt->expr->var->name;
+
+                    return;
                 }
+
+                // Outside a loop the trailing report *is* where this belongs, and the emitter writes it from
+                // the message just taken. Saying so matters only once something has already reported inline:
+                // {@see TranslationContext::owesATrailingReport()}.
+                //
+                // Only in the rule's own body. A branch check and an inlined helper each report inside their
+                // own method and the rule around them may end `return [];` — `NoDynamicNameRule` does, and
+                // marking its branches' builders as the tail gave the plugin an unconditional report on every
+                // expression it saw. Measured: without this test its emission gains one, which is how the
+                // condition was found rather than argued.
+                $this->markTheTrailingReport();
 
                 return;
             }

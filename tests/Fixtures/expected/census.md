@@ -106,7 +106,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 60 of 89 portable rules the package registers emit, 1 covered by the engine, 28 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 61 of 89 portable rules the package registers emit, 1 covered by the engine, 27 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -178,7 +178,6 @@ REFUSE  NoDuplicateArgAutowireByTypeRule
         needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->classConstructorTypesResolver->resolveClassConstructorNamesToTypes()
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
         needs: assignment value outside the vocabulary: no PHP navigation for node.class (kind expr) on a MethodCall node
-        needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return
 REFUSE  NoDuplicateArgsAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: $this->classConstructorTypesResolver->resolveClassConstructorNamesToTypes()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->classConstructorTypesResolver->resolveClassConstructorNamesToTypes()
@@ -195,10 +194,7 @@ REFUSE  NoGetRepositoryOnServiceRepositoryEntityRule
         needs: access path outside the vocabulary: $this->repositoryClassResolver->resolveFromEntityClass()
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Strings::after()
         needs: $errorMessage is not a message built in this rule
-REFUSE  NoGetRepositoryOutsideServiceRule
-        statement in isDynamicArg() outside the vocabulary: an if whose body is 2 statements ending in Stmt_Return, which is a decision tree rather than a guard that exits
-        needs: statement in isDynamicArg() outside the vocabulary: an if whose body is 2 statements ending in Stmt_Return, which is a decision tree rather than a guard that exits
-        needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return
+EMIT    NoGetRepositoryOutsideServiceRule
 EMIT    NoGlobalConstRule
 REFUSE  NoInstanceOfStaticReflectionRule
         no node predicate for instanceof PhpParser\Node\Expr\Instanceof_ on a hook-node

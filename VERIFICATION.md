@@ -10142,3 +10142,85 @@ and linter 25 unchanged, with only the `--out` path in `mago.toml.snippet` diffe
 is php 158 to 159. Suite 307 of 307, PHPStan 0, pint clean; the two complexity baselines moved with the new
 branches and no new entry appeared. The fires gate ran last, on this tree: 686 of 686, which is real `mago`
 against real PHPStan over the example pair above — so the rule is measured to *run*, not only to emit.
+
+---
+
+## A rule two capabilities away, and a defect underneath the second one
+
+`NoGetRepositoryOutsideServiceRule` emits — symplify 61 of 89. It is the second rule in a
+row whose census entry was its whole bill, which is worth saying next to the ranking finding above: the
+recorded needs are a *lower* bound, not a wrong one, and a rule that refuses late records most of what it
+wants. Both of these refused late.
+
+### The two capabilities
+
+**A guard in an inlined helper may bind before it answers.** `isDynamicArg()` writes
+
+    if ($firstArg->value instanceof ClassConstFetch) {
+        $classConstFetch = $firstArg->value;
+        return ! $classConstFetch->class instanceof Name;
+    }
+
+and the binding is there for PHPStan's own narrowing rather than for the reader: it names a value already in
+scope. So it is bound, used, and dropped, scoped to the guard. The other half is the answer — computed, not
+a literal — and the guard list was already carrying rendered expressions in that position, so nothing had to
+change to hold it. What did have to change is the check: the old refusal demanded a boolean *literal*, which
+was standing in for "a boolean". The replacement asks the question directly, from the expression's shape.
+
+**An early report written with a temporary is normalised.** `$e = RuleErrorBuilder::…; return [$e];` inside a
+guard is the one-statement form every reading below already handles, so it is rewritten to that rather than
+each of them learning a second spelling. Narrow on purpose: the name has to match, the array has to hold the
+one item, and the value has to be a built error — a temporary the body uses for anything else is a step, and
+dropping it would emit a rule that skipped work.
+
+### And then the defect, which was already there
+
+With both built the rule emitted, and the emitted plugin was **missing its trailing report**. The rule reports
+early for a call outside any class, and reports again at the end for a call inside one that is not a
+repository — which is the case it mostly exists for. The plugin had the first and not the second.
+
+The cause is one flag doing two jobs. `reportedInline` records that a report was written where it was found,
+and the emitter reads it as *there is nothing left to say at the end*. Those coincide exactly while a rule has
+one report. A rule with an early one and a trailing one has both, and the emitter believed the first.
+
+**Present at HEAD, and nothing to do with the new capabilities.** Measured by writing the shape as a fixture
+and transpiling it with the working tree stashed: one report before, one report after, on code that asks for
+two. No rule in the corpus writes it, which is why the snapshots, the census and the fires gate were all
+silent — the fourth defect of this family found by supplying input the corpus cannot.
+
+The fix gives the emitter a second question to ask: whether the rule's own body *ends* in a report. Two
+spellings reach it, the builder in the return and the builder in a temporary above it, and both now say so.
+
+### The fix's first version was wrong, and the diff said so
+
+Marking the tail wherever a builder was taken outside a loop gave `NoDynamicNameRule` an **unconditional
+report on every expression it saw**. That rule ends `return [];` and wraps two branch checks that each report
+inside their own extracted method, so its builders are not its tail. `EveryExpressionRule` gained the same.
+
+Neither was caught by reading — the change looked local and correct. The emit-all diff named both, which is
+the whole reason the byte-for-byte comparison is the pass condition rather than the test suite. The condition
+that fixes it is one line, and it is a condition about *where* translation is, not about what it found.
+
+### Verification
+
+Emit-all across all three targets, on the committed tree against the last pushed one: **two** new files and
+no other emitted byte moved. php 160 to 162 — one of those is `NoGetRepositoryOutsideServiceRule` and the
+other is the `EarlyThenTailReportRule` fixture, and the rule alone was measured at 161 with the fixture
+absent. Analyzer 34 and linter 25 *emitting* are unchanged; each refuses one more, which is the fixture being
+counted. Only the `--out` path in `mago.toml.snippet` differs.
+
+The counts in this paragraph were re-derived from a run on the committed tree rather than carried from the
+previous entry's "+1 each". They are not the same numbers: the fixture emits on the php target too, so the
+file count moves by two where the corpus moves by one, and a sentence saying "159 to 160" would have been
+right about neither. The census moves three ways and all three are the change: symplify 60 to 61
+emitting and 28 to 27 refusing, this rule from REFUSE to EMIT, and `AlreadyRegisteredAutodiscoveryServiceRule`
+losing one recorded need, because the two-statement early report now translates for it too.
+
+Suite 311 of 311, PHPStan 0, pint clean. `translateStatement` falls from 76 to 63 with the extraction, which
+is the first of these entries to move down. The fix is mutation-checked against
+`EarlyThenTailReportRule`: with the second question removed the fixture emits one report, with it two.
+
+The fires gate ran last, on this tree: 690 of 690, real `mago` against real PHPStan over the example pair.
+Its good file carries the two `isDynamicArg()` shapes — a variable argument and `$subject::class`, whose
+class is an expression rather than a written name — so the branch whose binding this change drops is
+measured on both engines rather than argued from the emitted text.
