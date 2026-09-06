@@ -9495,9 +9495,30 @@ So the tag is applied, exactly as traced, and the two rows differ by the tag alo
     read at the ASSIGNMENT statement    $tagged = $h->pet;    target NULL, value Animal
                                         $untagged = $h->pet;  target NULL, value Animal
 
-**The assignment target has no type.** `FileAnalysis` keys expression types by span, and the span of a
-variable's defining occurrence has no entry — both rows come back `NULL` and are indistinguishable there.
-`NoJustPropertyAssignRule` hooks `Stmt\Expression`, so that is exactly where it stands.
+**The assignment target has no type**, and neither does the assignment carry the override:
+
+    read at the ASSIGNMENT statement    assignment span   target   value
+      $tagged = $h->pet;                Animal            NULL     Animal
+      $untagged = $h->pet;              Animal            NULL     Animal
+      $this->pet = $pet;                Animal            Animal   Animal
+
+`NoJustPropertyAssignRule` hooks `Stmt\Expression`, so that is exactly where it stands. The tagged row's
+assignment span says `Animal` while the variable itself says `Dog` two lines later — the override is nowhere
+on this node.
+
+The property row is the control: `$this->pet` is a real expression with a span of its own, so its target
+*does* type. A local variable's defining occurrence is the thing that does not.
+
+#### Why it is missing, which the source says and the probe cannot
+
+The peer session then traced it, and the citations verify at `1.47.6`. `analyze_assignment_to_variable`
+(`assignment/mod.rs:500-724`) computes the docblock type at `:662`, binds it at `:674`, and puts it in
+`block_context.locals` at `:721`. The span-keyed write is in a *different* function —
+`analyze_assignment` (`:98-314`) — which records `source_type` at `:309`. Different functions, and the rows
+above show what that costs: the span gets the right-hand side's type and the override goes to `locals`.
+
+So it is not a quirk of span keying. **The value went to a store the protocol does not carry**, which is a
+different fact and a more useful one: it says asking for it is coherent rather than merely desirable.
 
 #### What that means for the rule
 
