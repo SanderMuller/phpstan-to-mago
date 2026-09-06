@@ -8398,3 +8398,67 @@ repeatedly.
 
 The sweep and coverage figures are recomputed by parsing the committed records, not by reading them.
 `git log -S'reproduce within'` dates the clause's addition and removal to the two commits named.
+
+## The hooks spaze needs were never the blocker
+
+`spaze/phpstan-disallowed-calls` is installed here but sits outside the census's seven packages, and the
+census header explained its `0 of 38` emit run by naming a missing hook family: its rules register
+`Stmt\Echo_`, `Stmt\Break_`, `Stmt\Goto_` and the like, and none of those kinds was mapped in
+`Vocabulary::HOOK_KINDS`. Sixteen of the 38 refuse on exactly that, counted from an emit run rather than
+from the header's own figure. That reading of the *cause* was then measured, and it is wrong.
+
+#### What was built
+
+Twelve rows, each the same shape as the `For_` row already there — a `StatementHook`/`ExpressionHook` trait,
+`after_statement`/`after_expression`, and the mago kind, all of which the SDK's `NodeKind` enum already
+declares:
+
+| php-parser node | mago kind | php-parser node | mago kind |
+|:--|:--|:--|:--|
+| `Stmt\Echo_` | `Echo` | `Stmt\Unset_` | `Unset` |
+| `Stmt\Break_` | `Break` | `Expr\Eval_` | `EvalConstruct` |
+| `Stmt\Continue_` | `Continue` | `Expr\Isset_` | `IssetConstruct` |
+| `Stmt\Declare_` | `Declare` | `Expr\Print_` | `PrintConstruct` |
+| `Stmt\Global_` | `Global` | `Expr\Match_` | `Match` |
+| `Stmt\Goto_` | `Goto` | | |
+| `Stmt\Return_` | `Return` | | |
+
+#### What it moved
+
+Nothing.
+
+- **spaze: 0 of 38 before, 0 of 38 after.** Sixteen rules refused on `no hook mapping for node type ...`
+  before; four do after — `ExitDieCalls`, `FunctionFirstClassCallables`, `ElseControlStructure` and
+  `RequireIncludeControlStructure`, whose kinds these rows do not cover. The twelve that moved now refuse on
+  `could not find the reported message` instead. The hook was the first obstacle and never the operative one.
+- **The seven census packages plus `tests/Fixtures/Rules`: byte-for-byte identical.** Emit-all over those
+  eight paths and spaze, across all three targets — 151 php, 32 analyzer, 23 linter, spaze contributing none
+  of them — diffed to zero against the baseline, apart from the `--out` path the `mago.toml.snippet` embeds.
+
+The rows were reverted. What is committed is the corrected header and this record.
+
+#### Why the second refusal is terminal, not the next step
+
+`BreakControlStructure::processNode()` is one line: it hands the node to an injected
+`DisallowedKeywordRuleErrors::get()`, which builds the message and filters on `$this->disallowedKeywords` —
+a constructor parameter the package's own neon wires nowhere, because it is consumer configuration. So the
+message cannot be found *and* the list it gates on has no value to carry. Unconfigured, `get()` loops over an
+empty list and returns `[]`, so the rule is silent — and that is what makes both ways past the refusal wrong.
+Step over the filter, as the pass does with any statement it cannot translate, and the plugin reports every
+`break` in the file. Carry the filter as an empty list and it reports nothing on any file. Neither is the
+rule. The refusal is correct here.
+
+#### The instrument that said otherwise
+
+`--survey` reports these rules as `EMIT`, because it assumes a hook and translates the body under that
+assumption. It says 14 of 38; the emit run says 0. The header already carried *"read an emit figure before
+sizing a package from a survey one"* and still sized the blocker from the survey's first line rather than
+from what a real run reports after the hook exists. Naming the first obstacle is not naming the cause —
+the same shape as the cross-class-resolution probe the guidelines record, which was also necessary, also
+built, and also changed the count by zero.
+
+#### Verification
+
+`bin/phpstan-to-mago --out=DIR vendor/spaze/phpstan-disallowed-calls/src` before and after, read in full
+rather than by its total. Emit-all over the seven packages plus `tests/Fixtures/Rules` plus spaze, three
+targets, `diff -r` against a baseline built from `HEAD`'s `src/Vocabulary.php`.

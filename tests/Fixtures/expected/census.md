@@ -8,10 +8,20 @@ checkout has: `--status` counts 209 portable rules here against this file's 190.
 arrived for other reasons. `spaze/phpstan-disallowed-calls` is a dev dependency this project runs
 on *itself*, through the neons `phpstan.neon.dist` includes; `composer/pcre` ships two rules and
 is here only because `composer/xdebug-handler` requires it. Neither adds a rule this target can
-carry: an emit run is 0 of 38 and 0 of 2. A *survey* says 15 of 38, and the gap is the survey
-assuming a hook exists where none is mapped — 17 of spaze's rules hook `Stmt\Echo_`,
-`Stmt\Break_`, `Stmt\Goto_` and the like. Read an emit figure before sizing a package from a
-survey one; this header said 15 for a day.
+carry: an emit run is 0 of 38 and 0 of 2. A *survey* says 14 of 38, and this header used to name
+the missing hooks as the gap — spaze's rules hook `Stmt\Echo_`, `Stmt\Break_`, `Stmt\Goto_`
+and the like, 16 of the 38 refuse on exactly that, and none of those kinds was mapped. Mapping
+them was then measured:
+twelve rows added to `HOOK_KINDS` for `Echo`, `Break`, `Continue`, `Declare`, `Global`, `Goto`,
+`Return`, `Unset`, `Match`, `EvalConstruct`, `IssetConstruct` and `PrintConstruct` moved the emit
+run by zero, and moved no byte of the seven packages either. Behind the hook every one of the twelve
+refuses `could not find the reported message`: the message is built by an injected
+`DisallowedKeywordRuleErrors`, and the keyword list it filters on is consumer configuration the
+package wires nowhere. Unconfigured the rule is silent, so both ways past that refusal are wrong:
+step over the filter and the plugin reports every `break`, carry it as an empty list and it
+reports nothing at all.
+The hook was the first obstacle and never the operative one. Read an emit figure before sizing a
+package from a survey one; this header said 15 for a day, and named the wrong blocker for longer.
 
 A diff here is upstream drift — a rule added, removed, or rewritten into a shape the vocabulary
 does or does not cover — or a change in what a refusal says stops a rule. Both are worth reading:
