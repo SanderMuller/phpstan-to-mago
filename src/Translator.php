@@ -10035,8 +10035,12 @@ final readonly class Translator
             return $this->nameFieldEquals($left, $right, $line);
         }
 
+        // `local-name` is here for the *bound* spelling of a comparison the inline one already made:
+        // `$node->name === 'x'` translated, and `$n = (string) $node->name; $n === 'x'` refused, because a
+        // declaration's name resolves to `local-name` and only the other name kinds were listed. Two corpus
+        // rules write the second form and neither asks anything the first does not.
         $subject = $this->resolve($left, $line);
-        if (in_array($subject['kind'], ['name-selector', 'name-expr', 'extends', 'hint', 'hint-option'], true)) {
+        if (in_array($subject['kind'], ['local-name', 'name-selector', 'name-expr', 'extends', 'hint', 'hint-option'], true)) {
             return $this->nameEquals($subject, $this->stringLiteral($right, $line), $line);
         }
 

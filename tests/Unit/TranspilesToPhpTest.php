@@ -101,6 +101,10 @@ final class TranspilesToPhpTest extends TestCase
         // Snapshotted for the argument order: container first in the rule, input first in the SDK, and the
         // two `nthExpression` chains are the assignment's target and its value in that order.
         yield 'a supertype comparison between two types' => ['SuperTypeGuardRule'];
+        // A name compared against a literal through a local. Snapshotted because the emitted comparison is
+        // byte-identical to the inline spelling's — the cast and the binding both have nothing to do at
+        // runtime, and an emission that differed would mean one of them had been given work.
+        yield 'a name compared through a bound local' => ['BoundNameComparisonRule'];
         yield 'a report code carrying a classification' => ['ClassifiedCodeRule'];
         yield 'a loop inside an inlined predicate helper' => ['AnyConstantHelperRule'];
         yield 'a reflection question answered by the codebase' => ['AsksTheCodebaseRule'];

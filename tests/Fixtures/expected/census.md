@@ -239,8 +239,7 @@ REFUSE  NoReferenceRule
 EMIT    NoRepositoryCallInDataFixtureRule
 EMIT    NoRequiredOutsideClassRule
 REFUSE  NoReturnSetterMethodRule
-        comparison outside the vocabulary: Expr_Variable against Scalar_String
-        needs: comparison outside the vocabulary: Expr_Variable against Scalar_String
+        assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
 EMIT    NoRouteTrailingSlashPathRule
 EMIT    NoRoutingPrefixRule
