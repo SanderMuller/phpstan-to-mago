@@ -26,6 +26,11 @@ use PHPStan\ShouldNotHappenException;
  * point — the branch's job is to hand `translateGuard` an exit, and what happens next is not its business.
  * Both corpus instances of this shape guard on the same condition, so this is the emission they would get.
  *
+ * The name test is written `$node->name->name`, which is how the corpus spells it — `RequireParentConstructCallRule`
+ * among them. It emitted `directVariableName(declarationName(..))` until the receiver's kind was checked,
+ * passing a string where a Node is expected; the plugin parsed, so only the emitted-plugin type check caught
+ * it. Both spellings now produce the same call, which is why this snapshot did not move when it was fixed.
+ *
  * @implements Rule<ClassMethod>
  */
 final class ThrowingAssertionGuardRule implements Rule
@@ -43,7 +48,7 @@ final class ThrowingAssertionGuardRule implements Rule
             throw new ShouldNotHappenException();
         }
 
-        if ($node->name->toString() !== 'handle') {
+        if ($node->name->name !== 'handle') {
             return [];
         }
 

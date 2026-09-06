@@ -13,7 +13,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::equality()" is 59, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::equality()" is 57, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php

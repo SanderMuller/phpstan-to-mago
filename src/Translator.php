@@ -9943,14 +9943,7 @@ final readonly class Translator
         }
 
         if ($left instanceof PropertyFetch && $this->identifierName($left->name) === 'name') {
-            $subject = $this->resolve($left->var, $line);
-            $literal = $this->stringLiteral($right, $line);
-            if (Transpiler::$target === 'php') {
-                return $this->context->backend->call('direct_variable_name', ['$context', $this->operand($subject)])
-                    . ' === ' . $this->context->backend->bytes($literal);
-            }
-
-            return "support::direct_variable_name({$subject['rust']}) == Some(&b\"{$literal}\"[..])";
+            return $this->nameFieldEquals($left, $right, $line);
         }
 
         $subject = $this->resolve($left, $line);
@@ -9997,6 +9990,35 @@ final readonly class Translator
             'comparison outside the vocabulary: ' . $this->describe($left) . ' against ' . $this->describe($right),
             $line,
         );
+    }
+
+    /**
+     * `<expr>->name === '<literal>'`, which means two different things depending on the receiver.
+     *
+     * On a variable it is php-parser's `Variable::$name` and the comparison is against the variable's own
+     * name. On a receiver that already resolved to a name — `$node->name` of a method declaration is
+     * `local-name` — the second `->name` is `Identifier::$name`, the same string, so reading it is the
+     * identity and this is the name comparison.
+     *
+     * Taking the variable branch regardless emitted `directVariableName(declarationName(..))`, passing a
+     * string where a Node is expected. It parsed, so nothing before `AnalysesTheEmittedPluginsTest` caught
+     * it, and `$node->name->name` is how `RequireParentConstructCallRule` spells the test.
+     */
+    private function nameFieldEquals(PropertyFetch $left, Expr $right, int $line): string
+    {
+        $subject = $this->resolve($left->var, $line);
+        $literal = $this->stringLiteral($right, $line);
+
+        if (in_array($subject['kind'], ['local-name', 'name-selector', 'name-expr'], true)) {
+            return $this->nameEquals($subject, $literal, $line);
+        }
+
+        if (Transpiler::$target === 'php') {
+            return $this->context->backend->call('direct_variable_name', ['$context', $this->operand($subject)])
+                . ' === ' . $this->context->backend->bytes($literal);
+        }
+
+        return "support::direct_variable_name({$subject['rust']}) == Some(&b\"{$literal}\"[..])";
     }
 
     /**
