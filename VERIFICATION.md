@@ -9572,3 +9572,52 @@ One subject, two assignments differing only in the tag, on mago 1.47.6. Read twi
 over `nthExpression` of the assignment's two sides. `FileAnalysis.php:96-142` is where the span keying is
 read. The `assignment/mod.rs` and `docblock.rs` line numbers are the peer session's and are not reproduced
 here — what is reproduced is the behaviour they predict.
+
+### Stubbing every unknown access path moves the emit count by one
+
+Three folds in a row were chosen by the same reasoning — a capability that works written one way and refuses
+written another — and one of the three made a rule emit. That is a poor hit rate to keep guessing at, so the
+question was measured instead: **how much of the refusal set is vocabulary, and how much is shape?**
+
+The instrument is a one-line stub. Where `resolveDescriptor()` would refuse with `access path outside the
+vocabulary`, return a descriptor instead, behind an environment variable. Every rule blocked *only* by access
+paths then emits, and every rule with a structural blocker still refuses. Run over the seven corpus packages:
+
+    plain                   emitted 108, refused 95
+    access paths stubbed    emitted 109, refused 94
+
+**One rule.** `access path outside the vocabulary` is the largest refusal category in the census by count —
+fourteen distinct paths across the corpus — and removing all of it at once is worth a single emission.
+
+#### And that one is not a fold either
+
+`NoGetRepositoryOnServiceRepositoryEntityRule` is the rule that appears. Its single path is
+`$this->repositoryClassResolver->resolveFromEntityClass()`, and the helper behind it reads the entity's
+**source file off disk** and runs a train of three regexes over it looking for `repositoryClass="..."`. That
+is not a vocabulary entry; it is file I/O plus annotation parsing by regex.
+
+So the honest reading of the two rows is stronger than "one rule": **no rule in the corpus is blocked only by
+access paths that are cheap to add.**
+
+#### What is actually left
+
+With paths stubbed, the categories that still refuse are shapes rather than names:
+
+    6  an if/elseif/else chain                    (the withdrawn OperandsInArithmetic* family)
+    4  assignment value outside the vocabulary
+    3  statement outside the vocabulary
+    3  condition outside the vocabulary
+    2  this rule reports nothing                  (NEVER — writes a file, or feeds PHPStan back)
+    2  no node predicate for instanceof ErrorType
+    2  no mapping for ->returnType
+    2+ if statements that are not single-statement guards
+
+Adding vocabulary entries one at a time is close to worthless for the emit count. The remaining field is
+guard and statement shapes, and the census's own warning applies to the aggregate as well as to a single
+rule: *grep a capability to count what it is worth before building it.*
+
+#### Verification
+
+`bin/phpstan-to-mago --out=DIR <seven packages>` twice, once with the stub active. The stub is not committed:
+it is two lines at the refusal site and an `getenv()` guard, reverted after the run. `tests/Fixtures/Rules`
+is excluded from both runs so a fixture written for a fold cannot move the figure.
