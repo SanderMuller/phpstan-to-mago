@@ -9265,6 +9265,29 @@ two: it is committed, reviewed, and names a trait that does not exist.
 `register_analysis_hook` appears nowhere in an emit run, which matches what the baseline notes already record
 — no rule in the corpus reaches the whole-run hook. That row is unguarded but unreached.
 
+#### How much committed output is wrong: one snapshot of three
+
+The four-files figure answers "how much would change if the rows were flagged". A different question is how
+much committed output is wrong today, and a sweep of every reviewed Rust snapshot bounds it. Each `impl X for`
+checked against the traits Mago declares at `1.47.6`:
+
+    expected-rust/ForbiddenStaticConstFetchRule.rs   Provider, ExpressionHook          both exist
+    expected-rust/QuotedClassNameMessageRule.rs      Provider, ExpressionHook          both exist
+    expected-rust/UppercaseConstantRule.rs           Provider, ClassLikeMemberHook     ABSENT
+    expected-lint/*.rs                               Config, Default, LintRule         all exist
+
+`Provider` is `crates/analyzer/src/plugin/provider/mod.rs:29`; `LintRule` is
+`crates/linter/src/rule/mod.rs:65`, and `Config` is declared twice in that file behind
+`#[cfg(feature = "serde")]` and `#[cfg(not(...))]` at `:42` and `:54`, so it exists either way; `Default` is
+std's. **One snapshot of three carries the defect,
+and the other absent trait — `AnalysisHook` — reaches no snapshot at all.** Not systemic across the fixtures.
+
+#### There is no third state
+
+Whichever way the rows go, that snapshot is wrong today. Flagging them `phpOnly` fixes it by deleting the
+file; leaving them fixes nothing and keeps a reviewed fixture asserting a trait that does not exist. What
+there is not is an option where the snapshot stays as it is and is correct.
+
 #### What it costs, and what it does not
 
 Nothing here installs this. Only the `php` target is installable — that part is this repository's own
