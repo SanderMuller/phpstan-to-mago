@@ -1,13 +1,13 @@
 parameters:
 	ignoreErrors:
 		-
-			rawMessage: 'Class cognitive complexity is 2319, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 2326, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 75, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 76, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php

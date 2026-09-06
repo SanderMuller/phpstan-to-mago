@@ -7965,6 +7965,10 @@ final readonly class Translator
             return;
         }
 
+        if ($this->bindConstructedObjectType($name, $value, $line)) {
+            return;
+        }
+
         // $x = <resolvable path>  (plain alias, inheriting any refinement)
         try {
             $subject = $this->resolve($value, $line);
@@ -7973,6 +7977,34 @@ final readonly class Translator
         }
 
         $this->context->locals[$name] = $subject + ['key' => $this->exprKey($value)];
+    }
+
+    /**
+     * `$t = new ObjectType($className);` — a type the rule constructs only to compare against.
+     *
+     * {@see objectTypeName()} already reads that when it is written inline, and a rule binding it to a name
+     * first is asking the same question one step apart. The name carries what the inline form would have
+     * given and the assignment emits nothing: there is no `ObjectType` at runtime here, only the class name
+     * the comparison needs.
+     *
+     * `FormTypeClassNameRule` is the corpus rule that writes both sides to locals, and it refused on the
+     * assignment rather than on anything it asks.
+     */
+    private function bindConstructedObjectType(string $name, Expr $value, int $line): bool
+    {
+        $objectType = $this->objectTypeName($value, $line);
+        if ($objectType === null) {
+            return false;
+        }
+
+        $this->context->locals[$name] = [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'object-type',
+            'php' => $objectType,
+            'key' => $this->exprKey($value),
+        ];
+
+        return true;
     }
 
     /** `true` / `false` as a string, or null when the expression is not a boolean literal. */
@@ -9132,6 +9164,16 @@ final readonly class Translator
      */
     private function objectTypeName(Expr $expr, int $line): ?string
     {
+        // A name bound to one earlier. `FormTypeClassNameRule` writes both sides of its comparison to locals
+        // first, so without this the constructed-type reading never sees a `New_` and the rule refuses on the
+        // assignment rather than on anything it asks.
+        if ($expr instanceof Variable && is_string($expr->name)) {
+            $local = $this->context->locals[$expr->name] ?? null;
+            $carried = ($local['kind'] ?? null) === 'object-type' ? ($local['php'] ?? null) : null;
+
+            return is_string($carried) ? $carried : null;
+        }
+
         if (! $expr instanceof New_
             || ! $expr->class instanceof Name
             || $expr->class->getLast() !== 'ObjectType'

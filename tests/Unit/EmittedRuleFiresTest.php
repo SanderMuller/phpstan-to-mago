@@ -401,6 +401,15 @@ final class EmittedRuleFiresTest extends TestCase
             // reported, so both sides of the loop the fold sits in are measured against real PHPStan.
             'every name in this list arrived resolved: the codebase resolved it, and PHPStan resolves names '
             . 'before a rule sees the tree, so there is no unresolved spelling for the loop to skip',
+            // Measured rather than argued. `FormTypeClassNameRule` returns early when `namespacedName` is
+            // null, which PHPStan only does for an anonymous class; the class declaration hook does not
+            // register `NodeKind::AnonymousClass`, so the case cannot reach the plugin at all.
+            // `GoodFormNames.php` holds an anonymous class extending the form base — the one shape that
+            // would be reported if the drop were wrong — and both engines stay silent on it.
+            // {@see tests/Fixtures/examples/FormTypeClassNameRule/GoodFormNames.php}.
+            'a class-like declaration reaching this hook always has a qualified name: PHPStan leaves it null '
+            . 'only for an anonymous class, and Mago gives those their own node kind, which this hook does '
+            . 'not register',
         ];
 
         $unproven = [];

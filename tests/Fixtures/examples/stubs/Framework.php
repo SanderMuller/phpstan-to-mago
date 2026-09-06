@@ -25,6 +25,10 @@ abstract class AbstractController
     }
 }
 
+namespace Symfony\Component\Form;
+
+abstract class AbstractType {}
+
 namespace Symfony\Component\Console\Command;
 
 abstract class Command
