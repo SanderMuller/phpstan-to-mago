@@ -9431,6 +9431,25 @@ method with `variable`, `locals` or `scope` in its name — and an absence is wh
 identified as the weakest kind of evidence, having reached the opposite conclusion from the same kind of
 search. The rows above are the positive form of it.
 
+#### The three rules require it; none is blocked on it
+
+A peer session read the draft against this repository's own census and caught an overstatement in it. The
+draft said `OverwriteVariablesWithForeachRule` and `OverwriteVariablesWithForLoopInitRule` were *blocked* on
+definedness. The census says otherwise, and so does the census header, which names this exact rule as its
+example of a needs list under-reporting:
+
+    OverwriteVariablesWithForLoopInitRule   no iteration mapped for ->init
+    OverwriteVariablesWithForeachRule       guard body is neither `return []` nor `continue`, but Stmt_Foreach
+    NoJustPropertyAssignRule                no node predicate for instanceof Expr on a bytes
+
+Each refuses earlier, for an unrelated reason. Symptom B's rule is the same story measured here rather than
+read: probing past that predicate put it on `$this->phpDocResolver->resolve()`, and the tags are behind
+*that*. So the ask is a requirement three rules eventually have, not an unblock count, and the draft now
+gives the chain per rule instead of the claim.
+
+The rule that catches this is in this repository's own census header — *"Where a count decides work, read the
+rules it is made of"* — and it was not applied to the document that would carry the count outward.
+
 #### Verification
 
 One subject, three variables, one node hook on `NodeKind::FunctionCall` requiring `ArgumentTypes` and
