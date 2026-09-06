@@ -10064,3 +10064,81 @@ Every one is the same error caught at a different distance: a cheap reading subs
 The needs count for a bill, the first refusal for a cause, a plausible unlock for a measured one, a stale
 reason for a live one. Three were caught by running something — a stub, a probe, an emit-all diff. The fourth
 was caught by reading a date.
+
+---
+
+## The first rule whose recorded needs were its real bill
+
+`NoEntityOutsideEntityNamespaceRule` emits. It is the tenth rule read this session and the first whose census
+entry matched what the source actually wants — which is why it was worth building, and the ranking finding
+above is why the other nine were not.
+
+**It moves the emitted count and not the package's headline ratio**, and the two are different numbers.
+`symplify/phpstan-rules` reads `60 of 89 portable rules the package registers` before and after: this rule is
+one of the eight the package registers nowhere, so it was never in that denominator. The figure that moves is
+the number of files emitted over the walked corpus, php 158 to 159 for it alone. Quoting the ratio here would
+have been the carried-figure failure this document names elsewhere, and it was caught by diffing the census
+header across the commit rather than by remembering.
+
+### What it needed, and what the census knew
+
+Three members. The census recorded two.
+
+| member | recorded | what it is |
+|:--|:--|:--|
+| several names in one attribute walk | yes | the fold existed for one guard; the rule writes two |
+| `->getParts()` on a qualified name | yes | the segments a namespace test asks membership of |
+| `in_array()` over a computed list | **no** | the reverse of the direction already carried |
+
+The third was invisible for the reason the ranking finding gives: the needs pass stopped at `->getParts()`,
+so nothing downstream of it was recorded. A bill read off the census would have been two thirds of the work.
+
+### Each member, and the control that measures it
+
+**The walk.** `hasEntityAttribute()` writes the two-level `attrGroups` → `attrs` walk, and the transpiler
+already folds that to `Support::hasAttributeNamed()` rather than mapping the levels. It capped the inner body
+at one statement; this rule tests `Entity` and `Embeddable`, so the fold read one guard per statement and
+joins them with `||`.
+
+Measured rather than argued: reading the first guard alone **still emits**, and the emitted plugin is
+silently missing `Embeddable`. `BadEntityNamespaces.php` holds an `#[Embeddable]` class for exactly that,
+so the shape a stricter reading would drop is one the gate runs both engines over.
+
+**`getParts()`.** php-parser includes the declaration's own short name among the parts, and the port does
+too. `GoodShortNameControl.php` is the control on that single axis: a class *named* `Entity` sitting in
+`Examples\Model`, where no namespace segment matches. Both engines stay silent, so a port that dropped the
+short name would report there and nowhere else.
+
+**`in_array()` over the list.** The existing computed-list branch folds case, because metadata lowercases the
+names it holds. These segments came off the CST with the spelling their author wrote, so they compare
+exactly — a separate branch rather than a widened one, since folding case there would answer wider than the
+`true` the rule was given.
+
+### A first attempt that was wrong, and the mutation that said so
+
+The multi-guard reading first required every guard to `return true`, on the reasoning that a guard answering
+`false` inverts the question and cannot join a disjunction. That reasoning is about a fold that does not
+exist: the caller wraps the folded condition in the literal the rule's own tree returned. A single guard
+answering `false` had always emitted correctly, as `hasAttributeNamed(..) ? false : true`, and the new
+requirement refused it.
+
+Found by mutating the guard away and reading what came out, not by reading the code — the emission was
+correct, which is the opposite of what the added check predicted. `InvertedAttributeWalkRule` is that shape,
+kept as a snapshot: no corpus rule writes it, so nothing else would notice a fold that assumed `true`.
+
+A second added check went the same way. Guards that answer *differently* genuinely cannot fold — but
+removing the check that caught them changed nothing, because the inliner already refuses with
+`a foreach in an inlined helper returning both booleans`, which names the shape better. So there is no check,
+and `DisagreeingAttributeWalkRule` records which guard is the load-bearing one.
+
+**Both were defences against a failure that could not occur, and reading could not tell.** The one that
+mattered — the multi-guard reading itself — is the one whose mutation *did* change the output, and silently.
+
+### Verification
+
+Emit-all across all three targets before and after: two new files, `NoEntityOutsideEntityNamespaceRule` and
+the `InvertedAttributeWalkRule` fixture, and **no other emitted byte moved** — php 158 to 160, analyzer 34
+and linter 25 unchanged, with only the `--out` path in `mago.toml.snippet` differing. The corpus rule alone
+is php 158 to 159. Suite 307 of 307, PHPStan 0, pint clean; the two complexity baselines moved with the new
+branches and no new entry appeared. The fires gate ran last, on this tree: 686 of 686, which is real `mago`
+against real PHPStan over the example pair above — so the rule is measured to *run*, not only to emit.

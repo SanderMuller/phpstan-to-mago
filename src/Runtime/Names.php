@@ -24,6 +24,25 @@ final class Names
     private const array NAME_KINDS = [NodeKind::Identifier, NodeKind::Keyword, NodeKind::LocalIdentifier];
 
     /**
+     * The segments of a qualified name — what `Name::getParts()` hands a rule.
+     *
+     * A rule asking whether a class sits under a named namespace tests membership of these, so the class's
+     * own short name is a segment too: php-parser's `getParts()` includes it, and dropping it would make
+     * `App\Entity` and `App\Entity\Thing` answer differently for the wrong reason. An empty segment cannot
+     * occur in a resolved name and is dropped rather than compared against.
+     *
+     * @return list<string>
+     */
+    public static function nameParts(?string $name): array
+    {
+        if ($name === null) {
+            return [];
+        }
+
+        return array_values(array_filter(explode('\\', ltrim($name, '\\')), static fn (string $part): bool => $part !== ''));
+    }
+
+    /**
      * The fully-qualified name a written name means, which is what `$scope->resolveName()` answers.
      *
      * Mago resolves a written name against the file's imports and namespace and hands back the result, so an

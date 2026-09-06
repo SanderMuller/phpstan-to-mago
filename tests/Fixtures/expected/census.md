@@ -185,10 +185,7 @@ REFUSE  NoDuplicateArgsAutowireByTypeRule
         needs: NamingHelper::isNames() over a expr
 EMIT    NoDynamicNameRule
 EMIT    NoEntityMockingRule
-REFUSE  NoEntityOutsideEntityNamespaceRule  (the package registers it nowhere)
-        no mapping for ->attrGroups on a hook-node
-        needs: no iteration mapped for ->attrGroups, which resolved to a expr, in an inlined helper
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getParts()
+EMIT    NoEntityOutsideEntityNamespaceRule  (the package registers it nowhere)
 EMIT    NoFindTaggedServiceIdsCallRule
 EMIT    NoGetDoctrineInControllerRule
 EMIT    NoGetInCommandRule

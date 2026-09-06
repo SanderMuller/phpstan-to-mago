@@ -474,3 +474,7 @@ final class Entity
 {
     public function __construct(public ?string $repositoryClass = null) {}
 }
+
+/** The second attribute `NoEntityOutsideEntityNamespaceRule` accepts, which is why its walk folds to two questions. */
+#[\Attribute(\Attribute::TARGET_CLASS)]
+final class Embeddable {}

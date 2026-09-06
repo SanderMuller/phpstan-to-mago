@@ -105,6 +105,10 @@ final class TranspilesToPhpTest extends TestCase
         // byte-identical to the inline spelling's — the cast and the binding both have nothing to do at
         // runtime, and an emission that differed would mean one of them had been given work.
         yield 'a name compared through a bound local' => ['BoundNameComparisonRule'];
+        // The attribute walk written with the answer inverted. Snapshotted for the ternary around the folded
+        // condition: the fold hands back one question and the caller wraps it in the literal the guard
+        // returned, so a fold that assumed `true` would emit this rule reporting where it stays silent.
+        yield 'an attribute walk answering false on a match' => ['InvertedAttributeWalkRule'];
         // A class reflection reached through PHPStan's native-reflection hatch. Snapshotted because what the
         // hop emits is nothing: `declarationKindIs` is what the same question asks without it, so an emission
         // carrying any trace of the hop would mean it had been given work it does not have.
@@ -295,6 +299,22 @@ final class TranspilesToPhpTest extends TestCase
         $this->expectExceptionMessage('anchored on a loop item');
 
         $this->transpile(self::RULES . '/AnchorEscapesLoopRule.php');
+    }
+
+    /**
+     * Attribute-name guards that answer differently are refused, and by the guard that already existed.
+     *
+     * The walk folds several names into one question, which is right while every guard answers the same
+     * way. This rule writes `true` for one name and `false` for the other, so no single answer fits — and
+     * the inliner says so in its own terms rather than the fold adding a second check. Measured: removing
+     * the fold's multi-guard reading does not change this outcome, which is why there is no check to remove.
+     */
+    public function test_refuses_attribute_name_guards_that_answer_differently(): void
+    {
+        $this->expectException(Refusal::class);
+        $this->expectExceptionMessage('returning both booleans');
+
+        $this->transpile(self::RULES . '/DisagreeingAttributeWalkRule.php');
     }
 
     /**

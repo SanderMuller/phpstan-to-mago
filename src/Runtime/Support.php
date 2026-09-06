@@ -540,6 +540,26 @@ final class Support
         return Operators::postfixOperatorIs($context, $subject, $operator);
     }
 
+    /**
+     * Whether a computed list holds the exact string named. {@see Text::listContains}
+     *
+     * @param list<string> $values
+     */
+    public static function listContains(array $values, ?string $needle): bool
+    {
+        return Text::listContains($values, $needle);
+    }
+
+    /**
+     * The segments of a qualified name — `Name::getParts()`. {@see Names::nameParts}
+     *
+     * @return list<string>
+     */
+    public static function nameParts(?string $name): array
+    {
+        return Names::nameParts($name);
+    }
+
     /** Whether a binary expression's operator is the one written, which Mago keeps in a child node. */
     public static function binaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
     {

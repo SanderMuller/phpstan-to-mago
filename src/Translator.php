@@ -490,6 +490,28 @@ final readonly class Translator
             ]);
         }
 
+        // A list the plugin computed whose items keep the spelling they were written with — a qualified
+        // name's own segments, for one. Compared exactly, which is the difference from the metadata branch
+        // above: nothing lowercased these, so folding case would answer wider than the rule asks.
+        if ($haystack !== null && $haystack['kind'] === 'list' && ($haystack['as'] ?? '') === 'bytes') {
+            if (! $strict) {
+                throw new Refusal('in_array() without strict comparison, over a computed list', $line);
+            }
+
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('in_array() over a computed list, which only the PHP target carries', $line);
+            }
+
+            // The needle a rule writes here is a literal — `in_array('Entity', $parts, true)`. Read as one
+            // first, because `resolve()` refuses a bare string: it reads a *node* position, and a literal is
+            // not one. Anything else goes through the ordinary reading and is refused by its kind.
+            $needle = $args[0]->value instanceof String_
+                ? $this->bytesValue($args[0]->value, $line)
+                : $this->operand($this->resolveNeedleOverComputedList($args[0]->value, $line));
+
+            return $this->context->backend->call('list_contains', [$this->operand($haystack), $needle]);
+        }
+
         $options = $this->stringList($args[1]->value, $line);
         if (! $strict) {
             $this->refuseLooseUnlessItAgreesWithStrict($options, $line);
@@ -548,6 +570,53 @@ final readonly class Translator
                 : throw new Refusal("{$asked} over a method name, which only the PHP target carries", $line),
             default => throw new Refusal("{$asked} over a {$subject['kind']}", $line),
         };
+    }
+
+    /**
+     * `getParts()` on a qualified name — its segments, the short name included.
+     *
+     * What a rule asking whether a declaration sits under a named namespace tests membership of. The items
+     * keep the spelling they were written with, which is why they are `bytes` rather than the `class-name`
+     * kind metadata produces: {@see inArrayPredicate()} folds case for the latter and must not for these.
+     *
+     * @return Descriptor
+     */
+    private function qualifiedNameParts(MethodCall $expr, int $line): array
+    {
+        $base = $this->resolve($expr->var, $line);
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('getParts(), which only the PHP target carries', $line);
+        }
+
+        if (! in_array($base['kind'], ['class-name', 'resolved-name', 'bytes'], true)) {
+            throw new Refusal("getParts() on a {$base['kind']}", $line);
+        }
+
+        return [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'list',
+            'as' => 'bytes',
+            'php' => 'Support::nameParts(' . $this->operand($base) . ')',
+        ];
+    }
+
+    /**
+     * The needle of an `in_array()` over a computed list, where it is not a written literal.
+     *
+     * Split out so the kinds it accepts are stated once: a value that is already bytes, or a name the plugin
+     * resolved. Anything else is refused by name rather than rendered into a comparison whose two sides are
+     * not the same sort of thing.
+     *
+     * @return Descriptor
+     */
+    private function resolveNeedleOverComputedList(Expr $needle, int $line): array
+    {
+        $resolved = $this->resolve($needle, $line);
+        if (! in_array($resolved['kind'], ['bytes', 'class-name', 'config-bytes', 'resolved-name'], true)) {
+            throw new Refusal("in_array() of a {$resolved['kind']} over a computed list", $line);
+        }
+
+        return $resolved;
     }
 
     /**
@@ -2096,30 +2165,30 @@ final readonly class Translator
         if (! $inner instanceof Foreach_
             || ! $inner->expr instanceof PropertyFetch
             || $this->memberName($inner->expr->name, $inner->getStartLine()) !== 'attrs'
-            || count($inner->stmts) !== 1
+            || $inner->stmts === []
         ) {
             return null;
         }
 
-        $guard = $inner->stmts[0];
-        if (! $guard instanceof If_ || $guard->elseifs !== [] || $guard->else instanceof Else_) {
-            return null;
-        }
-
-        $returned = $this->soleReturn($guard->stmts);
-        if (! $returned instanceof Expr || $this->isBooleanLiteral($returned) === null) {
-            return null;
-        }
-
-        $condition = $guard->cond;
-        if (! $condition instanceof Identical) {
-            return null;
-        }
-
         $line = $statement->getStartLine();
-        $named = $this->attributeNameRead($condition->left, $inner->valueVar);
-        if ($named === null) {
-            return null;
+
+        // One guard per name the walk accepts. `NoEntityOutsideEntityNamespaceRule` writes two — `Entity` and
+        // `Embeddable` — and they are the same question asked of two names, so they join with `||` rather
+        // than needing a second shape. A body holding anything that is not one of these guards falls through
+        // to the ordinary reading, which refuses `->attrGroups` by name.
+        // Guards answering differently are not checked here, and that is measured rather than assumed:
+        // {@see tests/Fixtures/Rules/DisagreeingAttributeWalkRule.php} writes one `true` and one `false`, and
+        // the inliner refuses it either way — "a foreach in an inlined helper returning both booleans", which
+        // names the shape better than a second check here would. The polarity of an agreeing walk is carried
+        // by the caller, which wraps this condition in the literal the guards returned.
+        $names = [];
+        foreach ($inner->stmts as $guard) {
+            $named = $this->attributeNameGuard($guard, $inner->valueVar, $line);
+            if ($named === null) {
+                return null;
+            }
+
+            $names[] = $named;
         }
 
         if (Transpiler::$target !== 'php') {
@@ -2131,8 +2200,38 @@ final readonly class Translator
             throw new Refusal("an attribute-name walk over a {$subject['kind']}", $line);
         }
 
-        return 'Support::hasAttributeNamed($context, ' . $this->operand($subject) . ', '
-            . $this->bytesValue($condition->right, $line) . ')';
+        $asked = [];
+        foreach ($names as $name) {
+            $asked[] = 'Support::hasAttributeNamed($context, ' . $this->operand($subject) . ', ' . $name . ')';
+        }
+
+        return implode(' || ', $asked);
+    }
+
+    /**
+     * `if (<the loop item>->name->toString() === '<a literal>') { return <a boolean>; }`, as the name it tests.
+     *
+     * Every part is matched rather than assumed — the read, the `===`, the literal, the single-statement
+     * body — so a walk asking something *else* of an attribute falls through to the ordinary reading, which
+     * refuses `->attrGroups` by name. The boolean is not returned: the caller carries the walk's answer.
+     */
+    private function attributeNameGuard(Stmt $guard, Expr $item, int $line): ?string
+    {
+        if (! $guard instanceof If_ || $guard->elseifs !== [] || $guard->else instanceof Else_) {
+            return null;
+        }
+
+        $returned = $this->soleReturn($guard->stmts);
+        if (! $returned instanceof Expr || $this->isBooleanLiteral($returned) === null) {
+            return null;
+        }
+
+        $condition = $guard->cond;
+        if (! $condition instanceof Identical || $this->attributeNameRead($condition->left, $item) === null) {
+            return null;
+        }
+
+        return $this->bytesValue($condition->right, $line);
     }
 
     /** Whether an expression is `<the loop item>->name->toString()`, which is the attribute's resolved name. */
@@ -11244,6 +11343,10 @@ final readonly class Translator
                 'kind' => 'attr-groups',
                 'php' => 'Support::attributeGroups(' . $this->operand($base) . ')',
             ];
+        }
+
+        if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getParts') {
+            return $this->qualifiedNameParts($expr, $line);
         }
 
         // `getMethods()` on the class-like under analysis — the methods written in its body, which is what a

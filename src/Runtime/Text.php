@@ -14,6 +14,21 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 final class Text
 {
     /**
+     * Whether a list the plugin computed holds the exact string a rule names.
+     *
+     * The case-sensitive counterpart of `namesContain()`, and the difference is where the list came from.
+     * Metadata lowercases the names it holds, so a comparison against one has to fold case; a list read off
+     * the CST — a qualified name's own segments, say — keeps the spelling its author wrote, and folding case
+     * there would answer wider than the `true` the rule was given.
+     *
+     * @param list<string> $values
+     */
+    public static function listContains(array $values, ?string $needle): bool
+    {
+        return $needle !== null && in_array($needle, $values, true);
+    }
+
+    /**
      * Whether a list of names holds one, folding case.
      *
      * The list comes from metadata, which lowercases; the name comes from configuration or from the analysed
