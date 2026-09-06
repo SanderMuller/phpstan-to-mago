@@ -163,10 +163,6 @@ final class Vocabulary
         // file, which is what a rule asking a question about the file as a whole needs. PHP target only, like
         // the other kinds whose Rust trait nothing in the corpus has pinned down.
         FileNode::class => ['trait' => 'ProgramHook', 'method' => 'after_program', 'node' => 'Program', 'kind' => 'Program', 'phpOnly' => true],
-        // String concatenation. Mago has one `Binary` kind for every binary operator rather than a node class
-        // per operator, so the hook fires for arithmetic and comparison too and the operator itself is a child
-        // node — which is why `left`/`right` here are the operands *of a concatenation*, and a rule reaching
-        // them is asking about one only after the operator has been checked.
         // An array literal. A rule reaching one asks about its elements' inferred types, which a node hook can
         // request; the elements themselves are wrapped in an `ArrayElement` category node, and the type is
         // available at both that level and the `ValueArrayElement` beneath it.
@@ -235,6 +231,10 @@ final class Vocabulary
             'trait' => 'AttributeListHook', 'method' => 'after_attribute_list', 'node' => 'AttributeList',
             'kind' => 'AttributeList', 'phpOnly' => true,
         ],
+        // String concatenation. Mago has one `Binary` kind for every binary operator rather than a node class
+        // per operator, so the hook fires for arithmetic and comparison too and the operator itself is a child
+        // node — which is why `left`/`right` here are the operands *of a concatenation*, and a rule reaching
+        // them is asking about one only after the operator has been checked.
         Concat::class => [
             'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
             'gate' => "Support::binaryOperatorIs(\$context, \$node, '.')", 'phpOnly' => true,
