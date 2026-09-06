@@ -8801,12 +8801,95 @@ subject B, with only the harness's trailing `instructions` blob removed:
 The branches are on their own lines so attribution comes from the line rather than from output order.
 
 Two rows need a word. `typeCoverage.paramTypeCoverage` is this repository's own noise — `tomasvotruba/type-coverage`
-is installed here and registers itself through the extension installer, so it appears only in a run where that
-extension is registered too. And `class.notFound` is expected output for a subject whose type deliberately
-does not exist. **The peer session described that row as non-ignorable; the run here disproves it.** Adding
-`ignoreErrors: [{identifier: class.notFound}]` to the config removes that row and leaves the other seven
-untouched. That was run rather than read off the JSON above: `ignorable: false` appearing on only the
-`dumpType` rows is evidence about a flag, not about what a config can suppress.
+is installed here and registers itself through the extension installer, which is the traced source of that
+row in this run. Whether any other run produces it is not measured, so a differing row count elsewhere needs
+its own check rather than this explanation. And `class.notFound` is expected output for a subject whose type deliberately
+does not exist. Adding `ignoreErrors: [{identifier: class.notFound}]` to the config removes that row and
+leaves the other seven untouched.
+
+**Two `class.notFound` occurrences behave differently under the same `ignoreErrors` entry**, which took a
+file carrying both, run twice on this tree's PHPStan 2.2.13:
+
+```php
+<?php declare(strict_types=1);
+
+namespace Positions;
+
+final class ViaExtends extends \Totally\Gone\Base {}
+
+/** @param \Totally\Gone\Klass $x */
+function viaParam($x): void {}
+```
+
+`vendor/bin/phpstan analyse -c plain.neon --no-progress --error-format=raw`, with `plain.neon` the same
+`level: 9` plus `paths` config as above:
+
+    {
+      "tool": "phpstan",
+      "result": "failed",
+      "errors": 3,
+      "error_details": {
+        "/tmp/ps-ign/src/C.php": [
+          {
+            "line": 5,
+            "message": "Class Positions\\ViaExtends extends unknown class Totally\\Gone\\Base.",
+            "identifier": "class.notFound",
+            "ignorable": false,
+            "tip": "Learn more at https://phpstan.org/user-guide/discovering-symbols"
+          },
+          {
+            "line": 8,
+            "message": "Out of 1 possible param types, only 0 - 0.0 % actually have it. Add more param types to get over 99 %",
+            "identifier": "typeCoverage.paramTypeCoverage"
+          },
+          {
+            "line": 8,
+            "message": "Parameter $x of function Positions\\viaParam() has invalid type Totally\\Gone\\Klass.",
+            "identifier": "class.notFound"
+          }
+        ]
+      }
+    }
+
+The same file with `ignoreErrors: [{identifier: class.notFound}]` added:
+
+    {
+      "tool": "phpstan",
+      "result": "failed",
+      "errors": 3,
+      "error_details": {
+        "/tmp/ps-ign/src/C.php": [
+          {
+            "line": 5,
+            "message": "Class Positions\\ViaExtends extends unknown class Totally\\Gone\\Base.",
+            "identifier": "class.notFound",
+            "ignorable": false,
+            "tip": "Learn more at https://phpstan.org/user-guide/discovering-symbols"
+          },
+          {
+            "line": 8,
+            "message": "Out of 1 possible param types, only 0 - 0.0 % actually have it. Add more param types to get over 99 %",
+            "identifier": "typeCoverage.paramTypeCoverage"
+          }
+        ]
+      },
+      "general_errors": [
+        "Error message \"Class Positions\\ViaExtends extends unknown class Totally\\Gone\\Base.\" cannot be ignored, use excludePaths instead."
+      ]
+    }
+
+The `@param` row is gone; the `extends` row is not, and PHPStan says why in `general_errors`. So
+`ignorable: false` is not decoration — it resists identifier-based suppression. **What is measured is that
+these two occurrences differ**, not that source position is the mechanism: nothing here reads PHPStan's
+implementation, and the difference could belong to the rule that raises each one rather than to where the
+class name sits.
+
+**Both sentences this paragraph has carried were a cell stated as a property**, and the correction written
+here was the second of them. "`class.notFound` is ignorable" was measured on the `@param` occurrence and is
+true only there. The peer session's "non-ignorable" reached this file attached to a `@param` subject, where
+the run above shows it does not hold; they later reported having measured it on an `extends` subject, which
+matches the `extends` row above — that run is theirs and is not reproduced here. Neither sentence was a fact
+about `class.notFound`, and the pair of rows above is what shows why.
 
 Subject B, in full, is the guard reproducer — its single row is the last one above:
 

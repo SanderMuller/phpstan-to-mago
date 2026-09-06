@@ -176,9 +176,16 @@ Instances, each recorded in `VERIFICATION.md` under the heading named:
 - **A conclusion drawn from a runtime that never runs** — *"The fourth row"*. "Mago lets the invocation
   through, and `$i()` is a fatal at run time." The guard is `is_callable()` on a class with no `__invoke`, so
   it is false and the body is dead code. The narrowing figures behind the sentence were all correct.
+- **A cell stated as a property, from both sides at once** — *"The PHPStan half, reproduced here"*. One
+  session wrote that `class.notFound` is non-ignorable; the other measured a subject where it is ignorable and
+  corrected that. A file carrying both occurrences settles it: under one `ignoreErrors` entry, one row
+  disappears and the other does not. Two true measurements, two over-general sentences, in opposite
+  directions — and the fix was to state which occurrence each held for, not to pick a winner.
 
 In each, no instrument was wrong and no figure was carried. **The defect was in the sentence, and a sentence
-is not a thing you can run.** A control pair separates two mechanisms; a discriminating row settles which of
+is not a thing you can run.** The last one is the shape to remember, because two careful people produced it
+in the same exchange and in opposite directions: a measured cell restated without the condition that produced
+it. A control pair separates two mechanisms; a discriminating row settles which of
 two explanations holds. Neither looks at whether the sentence says more than its rows support.
 
 This is not the "wrong why" rule below. That one is about asserting a cause you never traced. Here the cause
@@ -193,7 +200,9 @@ Two things catch it:
   model behind it.
 - **Asking, per clause, which measured row licenses it.** "Resolvable or not" had a row for *resolvable* and
   none for *or not*, which is visible on inspection once the question is asked clause by clause rather than
-  claim by claim.
+  claim by claim. The `class.notFound` pair is the same test at its smallest: "non-ignorable **on this
+  occurrence**" has a row under it and "`class.notFound` is non-ignorable" does not. One prepositional phrase
+  is the whole difference, and dropping it is what made the sentence false.
 
 Mark a superseded claim where it stands rather than editing it away. The marker carries the reason the phrase
 did not hold, which a clean edit deletes along with the error.
