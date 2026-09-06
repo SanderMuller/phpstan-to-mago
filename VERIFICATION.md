@@ -9179,6 +9179,10 @@ them, so `phpOnly` keeps rows that could not be emitted off a target that could 
 `ClassLikeMemberHook` is not one: `ModuleEmitter.php:38` maps it to `register_class_like_member_hook`, which
 the 1.47.6 registry does not declare — so that row would emit Rust naming a registration that does not exist,
 and `phpOnly` is the only thing preventing it.
+**Superseded — see "The analyzer target emits two hook names Mago does not declare" below.** `phpOnly`
+prevents nothing about this trait: four *other* rows name it without the flag, and the analyzer emit writes
+four files using it, one of them a committed snapshot. The `FunctionLike` row this sentence is about is
+guarded; the trait is not.
 
 This is a name-set intersection. Whether a named trait is the right registration for its node shape is not
 shown by a name matching a name, and nothing here is changed on the strength of it.
@@ -9209,3 +9213,85 @@ have is a fact about your position**, and the artefact that answered this one wa
 
 Acting on `HOOKS` moves emitted bytes on two targets, and the earlier entry is the one that has done the work
 to justify such a change. This one contributes counts to it.
+
+### The analyzer target emits two hook names Mago does not declare
+
+A peer session, diagnosing its own extractor, noticed a second `ModuleEmitter` mapping with no counterpart in
+Mago's registry and flagged that its row carries no `phpOnly`. Checked here, and it is wider than one row and
+reaches committed output.
+
+#### Measured
+
+`ModuleEmitter::module()` knows ten trait-to-registration mappings. Two name a function `registry.rs` at
+`1.47.6` does not declare:
+
+    ClassLikeMemberHook  ->  register_class_like_member_hook   MISSING
+    AnalysisHook         ->  register_analysis_hook            MISSING
+
+The traits are absent too, and `crates/analyzer/src/plugin/hook/mod.rs` settles it by enumerating the surface
+in its own docblock: thirteen hooks, neither of these among them. Nothing under `plugin/` mentions either
+name; the only `ClassLikeMember` hits in that module are `mago_syntax::cst::ClassLikeMemberSelector`, which is
+unrelated.
+
+Five rows in `Vocabulary::HOOKS` name one of those two traits **and carry no `phpOnly`**:
+
+    CollectedDataNode    AnalysisHook
+    ClassMethod          ClassLikeMemberHook
+    InClassMethodNode    ClassLikeMemberHook
+    Property             ClassLikeMemberHook
+    ClassConst           ClassLikeMemberHook
+
+#### It is reached, and it is committed
+
+Not hypothetical, and the size of it was measured rather than projected. `bin/phpstan-to-mago
+--target=analyzer --out=DIR` over the seven corpus packages plus `tests/Fixtures/Rules` emits **32** files.
+Four of them carry `impl ClassLikeMemberHook for ...`, and `generated/mod.rs` carries four matching
+`registry.register_class_like_member_hook(...)` lines:
+
+    AnyConstantHelperRule.rs   NoMockObjectAndRealObjectPropertyRule.rs
+    PropertyNameRule.rs        TestCaseOnlyRule.rs
+
+Flagging the five rows `phpOnly` in a scratch copy and re-emitting gives **28** — exactly those four gone,
+by name, `diff` of the two file listings. An earlier draft of this paragraph said eight, from
+`grep -rhoE 'impl ...Hook for'` counting the four rule files *and* the four lines in `mod.rs`.
+
+A fifth rule carries it and is not in either count. `tests/Fixtures/expected-rust/UppercaseConstantRule.rs:13`
+is `impl ClassLikeMemberHook for UppercaseConstantRule {` — a **reviewed snapshot** — while the batch run
+above refuses that rule for an unrelated reason: `two rules would be written to UppercaseConstantRule.rs`,
+because `symplify/phpstan-rules` ships a class of the same short name. Emitted on its own it emits, with the
+trait. So the corpus figure understates the reach by one, and the snapshot is the more damning artefact of the
+two: it is committed, reviewed, and names a trait that does not exist.
+
+`register_analysis_hook` appears nowhere in an emit run, which matches what the baseline notes already record
+— no rule in the corpus reaches the whole-run hook. That row is unguarded but unreached.
+
+#### What it costs, and what it does not
+
+Nothing here installs this. Only the `php` target is installable — that part is this repository's own
+behaviour and is measured. The two Rust targets emit source for a fork to compile in, and *that stock Mago has
+no path for loading such a plugin from outside its own tree* is an **inference** from the architecture read at
+`1.47.6`, not from a survey of Mago's loading surfaces. Whether anyone has compiled this output into a fork —
+the target's documented purpose — is not something any of this measures.
+
+What it does cost is the meaning of the analyzer figures. "32 analyzer files emitted" counts four that name a
+trait a fork would have to write before the file compiled — which is a different claim from the one the number
+looks like it is making, and the same shape as `PhpBackend::checked()`: a file appeared, and what was counted
+was that it appeared.
+
+#### Not fixed here
+
+The fix is presumably `phpOnly` on those rows, which removes four files from the analyzer emit — measured, in
+a scratch copy restored afterwards — and changes a committed snapshot. That is a deliberate reduction in what a target claims to cover, and it is the
+user's call rather than a correction to make on the way past. **Recorded, not acted on.**
+
+The peer declined to assert reachability without running it, which was right, and running it is what turned a
+row-level observation into a committed-snapshot one.
+
+#### Verification
+
+`ModuleEmitter::module()`'s match arms against `fn register_*` in `crates/analyzer/src/plugin/registry.rs` at
+`1.47.6`; the trait list against `pub trait` in `plugin/hook/*.rs` and the docblock in `hook/mod.rs`; the
+`HOOKS` rows by the anchored-declaration parse recorded above; the emitted output by
+`bin/phpstan-to-mago --target=analyzer --out=DIR <seven packages> tests/Fixtures/Rules` before and after
+flagging the rows in a copy of `src/Vocabulary.php` restored from `/tmp` afterwards, compared by `diff` of the
+two `generated/*.rs` listings (32 against 28); and the snapshot by `grep` over `tests/Fixtures/expected-rust`.
