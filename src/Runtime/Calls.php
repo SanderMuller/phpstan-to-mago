@@ -376,6 +376,12 @@ final class Calls
         return $part instanceof Part && $part->kind === NodeKind::ArrayAccess;
     }
 
+    /** `$a = $b`, and every compound spelling of it — Mago gives them all one kind and puts the operator in a child. */
+    public static function isAssignment(?Part $part): bool
+    {
+        return $part instanceof Part && $part->kind === NodeKind::Assignment;
+    }
+
     /** @return list<Part> the positional arguments, in source order */
     public static function arguments(?Part $list): array
     {

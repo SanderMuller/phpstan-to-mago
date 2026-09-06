@@ -22,7 +22,7 @@ use Sandermuller\PhpstanToMago\Transpiler;
  * having no hook, which no amount of work on `$this` would have moved. That hook exists now and one of the
  * two emits, which is the ranking being wrong rather than early: the work that moved them was the hook.
  *
- * The fixture followed the vocabulary to `Stmt\Expression` when that happened.
+ * The fixture followed the vocabulary to `Stmt\Expression`, and then to `Stmt\Label` when that gained a hook too.
  */
 final class StatesWhatSurveyAssumedTest extends TestCase
 {
@@ -42,7 +42,7 @@ final class StatesWhatSurveyAssumedTest extends TestCase
     public function test_an_emit_run_refuses_on_the_missing_hook(): void
     {
         $this->expectException(Refusal::class);
-        $this->expectExceptionMessageMatches('/^no hook mapping for node type PhpParser\\\\Node\\\\Stmt\\\\Expression$/');
+        $this->expectExceptionMessageMatches('/^no hook mapping for node type PhpParser\\\\Node\\\\Stmt\\\\Label$/');
 
         (new Transpiler(self::RULE))->transpile();
     }
@@ -61,7 +61,7 @@ final class StatesWhatSurveyAssumedTest extends TestCase
 
         // The body gap first, because that is the new information, and the assumption after it, because
         // without that the reader cannot tell the gap is not the only thing in the way.
-        $this->assertStringContainsString('assuming a hook for PhpParser\Node\Stmt\Expression', $message);
+        $this->assertStringContainsString('assuming a hook for PhpParser\Node\Stmt\Label', $message);
         $this->assertStringNotContainsString('assuming a hook for', explode(', assuming', $message)[0]);
         $this->assertNotSame('', $message, 'The survey run did not refuse at all.');
     }

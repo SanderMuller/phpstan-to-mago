@@ -87,6 +87,12 @@ final class TranspilesToPhpTest extends TestCase
         // takes the same exit `return []` does, and then the impossible-condition drop removes it, so the
         // emitted plugin carries no trace of an assertion the dispatch already guarantees.
         yield 'a guard whose body throws' => ['ThrowingAssertionGuardRule'];
+        // A rule hooked on the statement wrapper rather than the expression inside it. Snapshotted because
+        // three additions meet here and the emitted navigation is where a mistake in any of them shows: the
+        // `ExpressionStatement` hook, `->expr` on the wrapper, and `instanceof Assign`. The nested
+        // `nthExpression(nthExpression(..))` is the assignment's left side reached through the statement —
+        // one level flatter and the plugin tests the assignment where it means to test its target.
+        yield 'a rule hooked on an expression statement' => ['AssignmentStatementRule'];
         yield 'a report code carrying a classification' => ['ClassifiedCodeRule'];
         yield 'a loop inside an inlined predicate helper' => ['AnyConstantHelperRule'];
         yield 'a reflection question answered by the codebase' => ['AsksTheCodebaseRule'];

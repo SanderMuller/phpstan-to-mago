@@ -216,10 +216,9 @@ REFUSE  NoIntegerRefactorReturnRule
         needs: statement outside the vocabulary: Stmt_Expression
         needs: assignment value outside the vocabulary: access path outside the vocabulary: array_diff()
 REFUSE  NoJustPropertyAssignRule
-        no hook mapping for node type PhpParser\Node\Stmt\Expression
-        needs: no node predicate for instanceof PhpParser\Node\Expr\Assign on a expr
-        needs: no PHP navigation for node.var (kind expr) on a Expression node
-        needs: assignment value outside the vocabulary: no PHP navigation for node.var (kind expr) on a Expression node
+        trinary tail on an unsupported query ->isObject()
+        needs: trinary tail on an unsupported query ->isObject()
+        needs: no node predicate for instanceof PhpParser\Node\Expr on a bytes
 EMIT    NoLeadingBackslashInNameRule
 EMIT    NoListenerWithoutContractRule
 ENGINE  NoMissingVariableDimFetchRule  (mago reports undefined-variable)

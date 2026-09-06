@@ -705,6 +705,11 @@ final class Support
         return Calls::isArrayDimFetch($part);
     }
 
+    public static function isAssignment(?Part $part): bool
+    {
+        return Calls::isAssignment($part);
+    }
+
     public static function isInt(?Part $part): bool
     {
         return $part instanceof Part && preg_match('/^-?\d+$/', $part->text) === 1;

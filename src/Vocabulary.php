@@ -47,6 +47,7 @@ use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Const_;
 use PhpParser\Node\Stmt\Do_;
 use PhpParser\Node\Stmt\ElseIf_;
+use PhpParser\Node\Stmt\Expression;
 use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Function_;
@@ -204,6 +205,12 @@ final class Vocabulary
         Do_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'DoWhile', 'phpOnly' => true],
         For_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'For', 'phpOnly' => true],
         Switch_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'Switch', 'phpOnly' => true],
+        // An expression used as a statement — `$a = $b;`, `foo();`. Mago spells it `ExpressionStatement`, and
+        // the wrapper is what a rule registered for it receives: `NoJustPropertyAssignRule` takes it to reach
+        // `->expr` and ask whether the statement is an assignment. PHP target only, like every other row on
+        // this trait — the Rust `StatementHook` exists, but which kinds `after_statement` is dispatched for
+        // there is not something this repository has read.
+        Expression::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'ExpressionStatement', 'phpOnly' => true],
         Ternary::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'Conditional', 'phpOnly' => true],
         BooleanNot::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '!')", 'phpOnly' => true],
         // The other two prefix operators a rule hooks by itself. Mago spells all of them `UnaryPrefix`, so the
@@ -295,6 +302,9 @@ final class Vocabulary
         'While' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
         'DoWhile' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
         'Switch' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        // The expression an expression-statement wraps. Same shape as the conditions above — the wrapper's
+        // only expression child — which is why it reads through the same helper rather than a new one.
+        'ExpressionStatement' => ['expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
         // `keyVar` is nullable on php-parser's `Foreach_` and the null is the whole question two rules ask, so
         // the helper answers it from mago's own kinds rather than from a position. {@see Runtime\Calls::foreachKey}.
         'Foreach' => [
@@ -371,8 +381,14 @@ final class Vocabulary
         ],
         'Assignment' => [
             // Both sides are an `Expression` child, told apart only by position.
-            'var' => ['node.lhs', 'expr', 'Support::nthExpression($context, $node, 0)'],
-            'expr' => ['node.rhs', 'expr', 'Support::nthExpression($context, $node, 1)'],
+            //
+            // `{base}` rather than `$node`, which they hard-coded until an assignment could be reached from
+            // another node. While `Assign` was only ever the hook node the two spellings agreed; once
+            // `Stmt\Expression` gained a hook, `$stmt->expr->var` navigated from the *statement* and the
+            // emitted plugin tested the assignment where it meant to test its left side. It emitted rather
+            // than refusing, which is the shape the refusal invariant exists to prevent.
+            'var' => ['node.lhs', 'expr', 'Support::nthExpression($context, {base}, 0)'],
+            'expr' => ['node.rhs', 'expr', 'Support::nthExpression($context, {base}, 1)'],
         ],
         'Class' => [
             'extends' => ['node', 'extends'],
@@ -1060,6 +1076,9 @@ final class Vocabulary
         ClassConst::class => 'is_class_constant_declaration',
         Property::class => 'is_property_declaration',
         ArrayDimFetch::class => 'is_array_dim_fetch',
+        // `$stmt->expr instanceof Assign`, which is how a rule hooked on an expression-statement asks whether
+        // the statement is an assignment. Mago gives every compound spelling the one `Assignment` kind.
+        Assign::class => 'is_assignment',
         // Both PHP-target only, and both take the context because the answer is a node kind rather than
         // anything readable from the part alone.
         Dir::class => 'is_dir_constant',
