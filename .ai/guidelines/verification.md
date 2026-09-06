@@ -200,6 +200,17 @@ Every clause had a row under it; the row just belonged to someone else, or to an
 A document with a misattributed row reads exactly as well-sourced as one without. The check is to re-derive a
 citation before repeating it, especially one that arrives already looking specific.
 
+**And say what you re-derived it from**, because the same exchange produced the sharper version of this: two
+citations of the same file at the same release, both correct, contradicting each other. `phpstan.phar`'s copy
+of a file holds each fluent chain on one line where the repository's spreads it over several — whatever build
+step does that was not traced — so `ExistingClassInClassExtendsRule.php` is 150 lines in git and 87 in the
+phar. The `class.notFound` site is git `:65` and phar `:56` — and phar `:65`
+holds a *different* identifier, so checking the phar returns a confident, self-consistent answer that makes
+the git citation look wrong. **Re-derivation surfaced the discrepancy and could not resolve it**, because both
+derivations were sound. Only naming the artefact does: "src/Rules/..." meant the repository on one side and
+the phar on the other, spelled identically. A line number is meaningless without the artefact it indexes, and
+a distributed build is a different artefact from the repository it was built from.
+
 Two things catch it:
 
 - **A second reader who does not know what the sentence is meant to say.** The runtime-fatal claim was caught

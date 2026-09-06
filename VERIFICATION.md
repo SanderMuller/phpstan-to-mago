@@ -8890,9 +8890,9 @@ counted mechanically:
 
     'class.notFound' construction sites   28
     of which call ->nonIgnorable()         1
-        Rules/Classes/ExistingClassInClassExtendsRule.php:56
+        Rules/Classes/ExistingClassInClassExtendsRule.php:56   (phar; :65-66 in the git source)
 
-That one line is the `extends` row above:
+That one site is the `extends` row above:
 
     RuleErrorBuilder::message(sprintf('%s extends unknown class %s.', ...))
         ->identifier('class.notFound')->nonIgnorable();
@@ -8900,6 +8900,43 @@ That one line is the `extends` row above:
 The `@param` row comes from `Rules/Functions/ExistingClassesInTypehintsRule.php:34`, which hands the
 `Parameter $%s of function %s() has invalid type %s.` template to `FunctionDefinitionCheck::checkFunction()`,
 where it is built at `FunctionDefinitionCheck.php:126` with a plain `->build()`.
+
+#### Two correct citations that contradict each other
+
+The line numbers above are the phar's. The peer session's were the repository's, and an earlier version of
+this entry recorded theirs as wrong. They are not. **The phar's copy holds each fluent chain on one line
+where the repository's spreads it over several** — what step of the build does that is not traced here — so
+the same file is 150 lines in one and 87 in the other, and everything after the first chain shifts up.
+
+    artefact      file length   the class.notFound site            what sits at :65
+    git 2.2.13    150 lines     :65 identifier, :66 nonIgnorable   ->identifier('class.notFound')
+    phar 2.2.13    87 lines     :56, whole chain on one line       ->identifier('class.extendsInterface')
+
+The phar side is read directly out of `phar://vendor/phpstan/phpstan/phpstan.phar/src`. The git side was
+fetched here, not taken from the peer:
+
+    gh api "repos/phpstan/phpstan-src/contents/src/Rules/Classes/ExistingClassInClassExtendsRule.php\
+        ?ref=2.2.13" --jq .content | tr -d '\n' | base64 -d
+
+    150 lines, and:
+      60  $errorBuilder = RuleErrorBuilder::message(sprintf(
+      61      '%s extends unknown class %s.',
+      ...
+      64  ))
+      65      ->identifier('class.notFound')
+      66      ->nonIgnorable();
+      82      ->identifier('class.extendsInterface')
+
+The same fetch on `FunctionDefinitionCheck.php` at that tag gives 901 lines and `class.notFound` at `:173`,
+`:260`, `:330`, `:453` and `:543` — so the peer's `:173` and `:453` are both real sites there.
+
+**The trap is that `:65` exists in both and holds a different identifier in each**, so checking the phar
+returns a confident, self-consistent answer that makes the other citation look wrong. Re-deriving is what
+surfaced the discrepancy at all; it is not what resolved it. What resolves it is naming the artefact a line
+number indexes — "src/Rules/..." meant the repository on one side and the phar on the other, and the paths
+are spelled the same.
+
+For an issue, quote the git line. That is the file a maintainer opens.
 
 **The unit is the individual error construction.** Not the identifier — 27 of the 28 sites are ignorable. Not
 the position either, and that fails on its own terms rather than by argument: `ExistingClassInInstanceOfRule.php:69`
@@ -8913,9 +8950,7 @@ here was the second of them. "`class.notFound` is ignorable" was measured on the
 true only there. The peer session's "non-ignorable" reached this file attached to a `@param` subject, where
 the run above shows it does not hold; they later reported having measured it on an `extends` subject, which
 matches the `extends` row above — that run is theirs and is not reproduced here. They also sent the mechanism
-with file and line; the mechanism is right and the line numbers are not this build's. Their
-`ExistingClassInClassExtendsRule.php:65-66` is `class.extendsInterface` in the shipped 2.2.13, and the
-`FunctionDefinitionCheck` sites they named are at other lines. The citations above were re-derived here. Neither sentence was a fact
+with file and line, and the mechanism is right. Neither sentence was a fact
 about `class.notFound`, and the pair of rows above is what shows why.
 
 Subject B, in full, is the guard reproducer — its single row is the last one above:
