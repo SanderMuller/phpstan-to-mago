@@ -9401,6 +9401,23 @@ So the flag answers *maybe*, and collapses *yes* and *no* into its negation. Wha
 `OverwriteVariablesWithForeachRule` and `OverwriteVariablesWithForLoopInitRule` ask is
 `hasVariableType($name)->yes()` — definitely defined — which is exactly the half this cannot separate.
 
+#### Why the flag is clear on an undefined variable
+
+The rows say the flag cannot separate *yes* from *no*. They do not say why, and the reason matters for what
+gets asked for. A peer session traced it, corrected its own first attempt at the field, and the citations
+verify at 1.47.6: `crates/analyzer/src/expression/variable.rs` discriminates at the read site with `locals`
+presence (`:142-143`, defined) and `variables_possibly_in_scope` membership (`:145`, possibly defined),
+and the undefined case reports `UndefinedVariable` (`:232`) and returns `Rc::new(get_mixed())` (`:234`).
+
+**A freshly constructed union carries default flags.** So `possiblyUndefined` is clear on the undefined row
+because nothing set it, not because definedness was considered and denied. The probe row and the source line
+are the same fact from two ends, and together they say the flag was never the carrier — a reader of the rows
+alone might reasonably conclude the flag is the thing to fix.
+
+`possibly_undefined_variable_ids` at `:239` is a *separate* later check, on a variable that **is** in `locals`
+and whose type already carries the flag; the `match` closes at `:237`. It was named as half of the
+discrimination in a first version of this trace and it is not.
+
 #### What that changes
 
 The upstream ask is **not** dissolved; it is narrowed, and the narrowing makes it easier to argue. The SDK
