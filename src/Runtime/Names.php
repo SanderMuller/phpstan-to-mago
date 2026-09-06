@@ -319,6 +319,30 @@ final class Names
      * What `$reflectionProvider->getFunction($name, $scope)->getName()` gives a rule: the *resolved* name, so
      * a rule comparing it against `request` sees through a namespaced call that falls back to the global one.
      */
+    /**
+     * The declared name of the function a *call* names, or null where the answer would be a guess.
+     *
+     * {@see functionName()} tries the written name and then its last segment, which is how PHP resolves an
+     * **unqualified** call: `request()` inside `namespace Acme` is `Acme\request()` and falls back to the
+     * global `request()`. PHP applies that fallback to unqualified names only, so `Other\ini_get()` is
+     * `Other\ini_get()` and nothing else — and letting it fall back would answer `ini_get` for a call PHPStan
+     * resolves to nothing, which is a finding the original does not make.
+     *
+     * A qualified name is declined rather than resolved exactly, because the written text is not the resolved
+     * one: `Other\ini_get()` inside `namespace Acme` means `Acme\Other\ini_get()`, and this is handed the
+     * text. Declining is the under-reporting direction, which is the one to take when a rule reports.
+     *
+     * A leading `\` is not qualification — `\ini_get()` is the global function, written explicitly.
+     */
+    public static function calledFunctionName(NodeAnalysisContext $context, ?string $name): ?string
+    {
+        if ($name === null) {
+            return null;
+        }
+
+        return str_contains(ltrim($name, '\\'), '\\') ? null : self::functionName($context, $name);
+    }
+
     public static function functionName(NodeAnalysisContext $context, ?string $name): ?string
     {
         if ($name === null || $name === '') {

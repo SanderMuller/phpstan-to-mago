@@ -3784,12 +3784,29 @@ final readonly class Translator
         // listed rather than inferred from the shape: any other assignment reaching here would get a null
         // guard that fires where the original continued, or never fires where the original caught — silent
         // in both directions. A rule wanting one is refused until its reading is known to answer null.
-        if (! in_array($local['kind'], self::NULL_ON_LOOKUP_FAILURE, true)) {
+        $caught = self::NULL_ON_LOOKUP_FAILURE[$local['kind']] ?? null;
+        if ($caught === null) {
             throw new Refusal(
                 "a caught binding of a {$local['kind']}, whose reading is not known to answer null where the "
                 . 'catch would have taken over',
                 $stmt->getStartLine(),
             );
+        }
+
+        // The catch has to be the one the failure raises. A rule catching something else — a `LogicException`
+        // around this lookup — still lets `FunctionNotFoundException` out, so replacing that catch with a null
+        // guard makes the plugin bail where the rule does not. Compared on the written last segment, which is
+        // how the rule spells it after importing.
+        foreach ($stmt->catches as $catch) {
+            foreach ($catch->types as $type) {
+                if (! in_array($type->getLast(), $caught, true)) {
+                    throw new Refusal(
+                        'a catch of ' . $type->getLast() . ', which is not the failure this lookup reports as '
+                        . 'null — replacing it would bail where the rule carries on',
+                        $stmt->getStartLine(),
+                    );
+                }
+            }
         }
 
         // Emitted as a guard directly rather than through a synthesised `isset()`: the value is a local the
@@ -11743,7 +11760,7 @@ final readonly class Translator
             return [
                 'rust' => self::PHP_ONLY,
                 'kind' => 'function-reflection',
-                'php' => 'Support::functionName($context, ' . $this->nameText($named, $line) . ')',
+                'php' => 'Support::calledFunctionName($context, ' . $this->nameText($named, $line) . ')',
             ];
         }
 
@@ -12966,12 +12983,15 @@ final readonly class Translator
     /**
      * Descriptor kinds whose reading answers null where PHPStan's equivalent throws.
      *
-     * What {@see bindsThroughACatch()} is allowed to rewrite a `catch` into a null guard for. One entry so
-     * far, and it earns its place by measurement rather than by looking safe: `Support::functionName()`
-     * returns null for a name the codebase does not know, which is the `FunctionNotFoundException` the rules
-     * reaching this shape catch.
+     * What {@see bindsThroughACatch()} is allowed to rewrite a `catch` into a null guard for, and which
+     * exceptions that rewrite may consume. One entry so far, and it earns its place by measurement rather
+     * than by looking safe: `Support::calledFunctionName()` returns null for a name the codebase does not
+     * know, which is the `FunctionNotFoundException` the rules reaching this shape catch. `Throwable` and
+     * `Exception` are listed because a rule catching either also catches that one.
      */
-    private const array NULL_ON_LOOKUP_FAILURE = ['function-reflection'];
+    private const array NULL_ON_LOOKUP_FAILURE = [
+        'function-reflection' => ['FunctionNotFoundException', 'Throwable', 'Exception'],
+    ];
 
     private const array PHP_ONLY_PREDICATES = [
         'is_dir_constant', 'is_literal_string', 'is_class_constant_declaration', 'is_property_declaration',

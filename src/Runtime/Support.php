@@ -560,6 +560,12 @@ final class Support
         return Names::nameParts($name);
     }
 
+    /** The declared name of the function a call names. {@see Names::calledFunctionName} */
+    public static function calledFunctionName(NodeAnalysisContext $context, ?string $name): ?string
+    {
+        return Names::calledFunctionName($context, $name);
+    }
+
     /** The analysed PHP version, in PHPStan's encoding. {@see Versions::phpstanVersionId} */
     public static function phpstanVersionId(NodeAnalysisContext $context): int
     {

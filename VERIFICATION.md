@@ -10422,3 +10422,49 @@ The census moves three ways and all three are the change: the package to 2 of 2,
 Suite 311 of 311, PHPStan 0, pint clean. The fires gate ran last, on this tree: 694 of 694, real `mago`
 against real PHPStan over the example pair — so the rule is measured to run, and the four options its bad
 file names are agreed on line and message by both engines.
+
+### The closeout review found the fold accepting more than it can carry
+
+Three things came out of reviewing the round, and the third is the one worth writing down.
+
+Two were mine, from reading my own diff. The extracted `carriedConstants()` went in between
+`emitConstructor()` and its docblock — the third time that displacement has happened in this repository, and
+invisible in a diff read hunk by hunk. And `constantMapOperand()` recorded the constant *before* its caller
+had committed to the read, while `numericOperands()` calls it speculatively inside a `catch (Refusal)`, so a
+comparison refusing on its other operand would have left a `private const` declared on the plugin with
+nothing reading it.
+
+The third was Codex's, and it is this document's own invariant pointed back at me. **`bindsThroughACatch()`
+accepted any single local assignment inside the `try` and any catch type**, then replaced the catch with a
+null guard. That rewrite is sound only where the plugin's reading answers null for exactly the failure the
+catch was there to take — a fact about the *reading*, which the shape of the `try` says nothing about. For
+any other assignment the guard is wrong in one of two silent directions: it fires where the original
+continued, because the value is legitimately null, or it never fires where the original caught.
+
+The accepted kinds are now listed rather than inferred, with one entry, because
+`Support::functionName()` answering null for an unknown name is measured and nothing else is.
+
+**The fold worked on its one consumer, and that is exactly why the over-acceptance was invisible.** Emit-all
+was byte-identical before and after the restriction — the same measurement that proves a refactor safe proves
+nothing about a rule that does not exist yet, and the corpus contains no second `try` of this shape to catch
+it. What found it was a reader who did not know which rule the fold was written for.
+
+A second round found two more of the same species, and both were right:
+
+- **The catch type was never checked.** Any catch returning `[]` was consumed, so a rule catching a
+  `LogicException` around this lookup would have had that catch replaced by a null guard while
+  `FunctionNotFoundException` still escaped in the original. The accepted exceptions are now listed per kind,
+  and a catch of anything else refuses by name.
+- **A qualified call got PHP's global fallback, which PHP does not give it.** `Support::functionName()` tries
+  the written name and then its last segment, which is right for an *unqualified* call — `request()` inside
+  `namespace Acme` really does fall back to the global one. It is wrong for `Other\ini_get()`, which PHPStan
+  resolves to nothing and the port would have answered `ini_get` for, reporting a deprecation the original
+  does not. `calledFunctionName()` declines a name carrying a separator and leaves the fallback to the case
+  that earns it. A *leading* backslash is not qualification — `\ini_get()` is the global function written
+  explicitly, and the bad example now holds one so that cell is measured: both engines report five findings
+  on that file, four without it.
+
+Three rounds, five findings, and **not one of them was reachable by any check this repository runs**. Emit-all
+stayed byte-identical through the first two and moved by one helper name in the third; the suite, the census
+and the fires gate were green throughout. Each was a rule that does not exist yet meeting a fold written for
+the rule that does.

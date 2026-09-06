@@ -21,6 +21,7 @@ function readsDeprecatedOptions(): string
     $first = ini_get('track_errors');
     ini_set('assert.active', '1');
     $later = ini_get('session.sid_length');
+    $explicit = \ini_get('mbstring.func_overload');
 
-    return $first . $later . get_cfg_var('enable_dl');
+    return $first . $later . $explicit . get_cfg_var('enable_dl');
 }
