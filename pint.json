@@ -57,7 +57,8 @@
         "tests/Fixtures/examples/DisallowedBacktickRule/Bad.php",
         "tests/Fixtures/examples/NoMissnamedDocTagRule/BadDocTags.php",
         "tests/Fixtures/examples/NoMissnamedDocTagRule/GoodDocTags.php",
-        "tests/Fixtures/examples/NoReturnSetterMethodRule/GoodPlainSetters.php"
+        "tests/Fixtures/examples/NoReturnSetterMethodRule/GoodPlainSetters.php",
+        "tests/Fixtures/examples/NoInstanceOfStaticReflectionRule/BadStaticReflection.php"
     ],
     "exclude": [
         ".cache",

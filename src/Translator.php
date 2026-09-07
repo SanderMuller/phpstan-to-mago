@@ -3060,7 +3060,7 @@ final readonly class Translator
      * true of the only entry it had and would have silently dropped the arguments of the next one.
      *
      * @param array{helper: string, kind: string, takes: string, arguments: list<int>, types?: list<int>,
-     *     flags?: list<string>, receiverType?: bool} $entry
+     *     flags?: list<string>, receiverType?: bool, expressionTypes?: bool} $entry
      * @param array<Arg> $args
      *
      * @return list<string>
@@ -3105,6 +3105,14 @@ final readonly class Translator
         // the helper reads a null receiver type and answers the same thing for every call.
         if ($entry['receiverType'] ?? false) {
             $this->context->usesReceiverType = true;
+        }
+
+        // The same thing one capability along. A ported helper that reads an inferred type asks for it inside
+        // the runtime, where no `Support::expressionType(..)` is emitted for the translator to notice, so the
+        // requirement has to be declared by the entry instead. Without it the helper reads a null type and the
+        // rule goes quiet on every subject -- the silent-plugin shape, not a wrong finding.
+        if ($entry['expressionTypes'] ?? false) {
+            $this->context->usesExpressionTypes = true;
         }
 
         // A container parameter the ported helper's answer depends on. Declared as a configured value so the
@@ -9240,6 +9248,19 @@ final readonly class Translator
                 : 'Support::constantStringOf(' . $this->operand($subject) . ') !== null';
         }
 
+        // `$type instanceof Type` narrows nothing — every type is one — so it asks only whether the resolution
+        // produced anything. `NoInstanceOfStaticReflectionRule` reads it that way: its resolver answers null
+        // for the nodes its union guard admitted and it does not read, and this guard is how the rule
+        // declines them. The two tests above narrow a *shape*; this one is the null test, which is why it
+        // renders as a comparison rather than as a question.
+        if (in_array($subject['kind'], ['type', 'type-without-null'], true) && $wanted === 'PHPStan\Type\Type') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a resolved-type null test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return $this->operand($subject) . ' !== null';
+        }
+
         // `$type instanceof ObjectType` is a *type* test, not a node test.
         if ($wanted === ObjectType::class) {
             // A null-stripped type is still a type; the kind only records that `removeNull` was applied.
@@ -13322,6 +13343,7 @@ final readonly class Translator
 
     private const array PHP_ONLY_PREDICATES = [
         'is_dir_constant', 'is_literal_string', 'is_class_constant_declaration', 'is_property_declaration',
+        'is_instanceof',
     ];
 
     /**
@@ -13333,7 +13355,7 @@ final readonly class Translator
     private const array EXITING_STATEMENTS = ['guard', 'bail', 'bind-arg', 'bind-adapter'];
 
     /** Node predicates that answer from the node's kind, and so have to look it up. */
-    private const array CONTEXT_PREDICATES = ['is_literal_string'];
+    private const array CONTEXT_PREDICATES = ['is_literal_string', 'is_instanceof'];
 
     /**
      * Descriptor kinds an `instanceof` test narrows, so later field reads navigate the tested kind.

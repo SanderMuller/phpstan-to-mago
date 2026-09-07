@@ -11078,3 +11078,111 @@ by accident. README's hihaho row and `--status` denominator re-derived from the 
 the emit column sums to 105 and the denominator to 210.
 
 Suite 1017/1017, PHPStan 0 errors, Rector and Pint clean, at the new corpus.
+
+## Mago has no `instanceof` node, and two mutually redundant guards each passed their own check
+
+`NoInstanceOfStaticReflectionRule` now emits. php 167 → 168. The build reopened machinery this session had
+deliberately reverted, and the mutation pass found a shape the mutation discipline does not catch on its own.
+
+### The revert named the condition, and this rule meets it
+
+The `BinaryOp` fold was withdrawn earlier today for a stated reason: *"a capability whose only consumer cannot
+complete is unexercised vocabulary."* `DisallowedLooseComparisonRule` was that only consumer and it is blocked
+correct-forever on a parameter.
+
+This rule is a second consumer that completes. It hooks `Expr`, not `BinaryOp`, and its heaviest dependency —
+`RectorAllowedAutoloadedTypeAnalyzer::isAllowedType` — was already ported to `Runtime\RectorAutoloadedTypes`.
+So the machinery is now exercised by a rule that reports, which is what the revert record said was missing.
+
+### The measurement that shaped it
+
+Mago files `instanceof` under `Binary`, with every other operator. `$a instanceof Foo` and `1 + 2` are the
+same node kind, separated only by the `BinaryOperator` child's text. The class side keeps the author's
+spelling, and its inner kind is the discriminator:
+
+| written | inner kind | text | resolved |
+|:--|:--|:--|:--|
+| `instanceof Foo` | `Identifier` | `Foo` | `Examples\…\Foo` |
+| `instanceof \App\Foo` | `Identifier` | `\App\Foo` | resolved |
+| `instanceof self` | `Keyword` | `self` | null |
+| `instanceof static` | `Keyword` | `static` | null |
+| `instanceof $cls` | `Variable` | `$cls` | null |
+
+Two rows would have been guessed wrong. **`self` and `static` are `Keyword`, not `Identifier`** — and
+`Keyword` is one of `Names::isName()`'s kinds, which is what makes the name branch cover them the way
+php-parser's `instanceof Name` does. And **only `self` is skipped**: the rule compares against `'self'` alone,
+so `instanceof static` resolves to a name no allowed prefix covers and *is* reported. Folding the two keywords
+together goes quiet on a case the original reports, and the gate says so.
+
+### The defect the example pair caught, which reading would not have
+
+The first run diverged twice, and both were the same species: a value that is correct and answers a different
+question than the rule asks.
+
+- **`instanceof Node` was reported and PHPStan is silent.** PHPStan runs its `NameResolver` before a rule sees
+  the tree, so `$instanceof->class->toString()` on an imported `Node` answers `PhpParser\Node`. Mago keeps the
+  written spelling and answers the resolution *separately*, through `getResolvedName()`. I read the text. `Node`
+  matches no allowed prefix and `PhpParser\Node` matches the first one, so the port reported every allowed
+  class that had been imported under a short name.
+- **`is_a($value, Foo::class)` was not reported and PHPStan reports it.** `Names::calledFunctionName()` reads a
+  *name* and answers null for a call node, so the branch was unreachable — the callee is the first `Expression`
+  child. A branch that never runs and a branch with nothing to match look identical from the outside.
+
+Both were found by running the pair against real PHPStan, and neither by reading. A probe printing what the
+resolver returned per node settled the cause in one run.
+
+### Seven mutations, and the pair that no single mutation catches
+
+| mutation | result |
+|:--|:--|
+| read the written text instead of the resolved name | good example reports `instanceof Node` |
+| drop the `self` skip | good example reports |
+| fold `static` in with `self` | bad example loses a finding |
+| point the `is_a` branch back at the call node | bad example loses a finding |
+| read `is_a`'s argument 0 instead of 1 | both examples move |
+| **drop the resolver's `instanceof` operator test** | **passes** |
+| **make `Support::isInstanceof()` always true** | **passes** |
+| both operator tests broken together | good example reports on `$left + $right` |
+
+The last three are the finding. The emitted guard asks `Support::isInstanceof()` and the resolver asks the
+same question again, so **each test alone is unnecessary and the pair is necessary.** Breaking either one
+leaves the gate green; only breaking both reports on `+`.
+
+That is a gap in the mutation discipline as this file has practised it. *Mutation-check a filter you just
+wrote* catches a filter that does nothing. It does not catch **two filters that do the same thing**, because
+each one's own check passes — the other is silently standing in for it. The docblock I wrote for the
+`arithmetic()` control claimed it proved the operator test load-bearing; the single mutation refuted that
+claim, and the row had to be re-described as controlling the pair. Redundancy is invisible to a per-fold
+mutation and needs a deliberate both-at-once row.
+
+The redundancy is kept rather than removed, and that is a choice with a reason: `subjectType()` is a public
+runtime helper and a `Binary` is every operator, so a caller that has not already narrowed would otherwise
+resolve `+` as an `instanceof` and read its right operand as a class name. The docblock now says it is
+redundant for this consumer instead of implying it is tested.
+
+### Widening a hook, and reading what it cost
+
+`HOOK_KINDS[Expr::class]` gained `Binary`. That moves the `getTargets()` line of the two other rules that emit
+on this hook — `EveryExpressionRule` and `NoDynamicNameRule` — and nothing else in their bodies. Both open
+every branch with an explicit kind test, so a `Binary` node reaches neither report; checked by reading the
+emitted guards first and then measured, because a target a guard fails to decline is a finding the original
+does not make. `NoDynamicNameRule`'s fires gate is green against real PHPStan after the widening, which is the
+half that reading cannot supply.
+
+It is also more faithful than what it replaced: PHPStan's `Expr` hook does visit binary expressions, so the
+old six-kind list was a subset of what the original sees.
+
+### Pint would have deleted the control, again
+
+`self_static_accessor` rewrites `instanceof static` to `instanceof self` — which is precisely the row that
+distinguishes the two keywords, and the rule reports one and skips the other. That is the **fourth** example
+file a formatter would have silently turned into a passing test of nothing. It joins `pint.json`'s `notPath`.
+
+### What moved
+
+php 167 → 168; analyzer 34 and linter 25 unchanged. Emit-all diff across all three targets is six files: the
+new rule, its manifest and worker entries, one `getTargets()` line in each of two existing plugins, and the
+`--out` path. Census symplify 64 → 65 emit and 24 → 23 refuse. `EveryExpressionRule`'s snapshot updated for
+the widened target list. README's row and `--status` figure re-derived and cross-checked — the emit column
+sums to 106 and the portable column to 170, plus the 40 rules of `spaze` and `composer/pcre` that make the
+`--status` denominator 210. Suite 1021/1021, PHPStan 0 errors, Rector and Pint clean.

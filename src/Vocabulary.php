@@ -19,6 +19,7 @@ use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Empty_;
 use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -657,7 +658,7 @@ final class Vocabulary
      * constructor parameters on the emitted plugin.
      *
      * @var array<string, array{helper: string, kind: string, takes: string, arguments: list<int>,
-     *      types?: list<int>, flags?: list<string>, receiverType?: bool}>
+     *      types?: list<int>, flags?: list<string>, receiverType?: bool, expressionTypes?: bool}>
      */
     public const array COLLABORATOR_CALLS = [
         // `kind: 'reports'` is the one entry that is not an answer. `AnnotationHelper::processDocComment()`
@@ -798,6 +799,20 @@ final class Vocabulary
             'kind' => 'bool',
             'takes' => 'context',
             'arguments' => [0],
+        ],
+
+        // `NoInstanceOfStaticReflectionRule::resolveExprStaticType()`, which reads a different field for each
+        // of the two kinds its union guard admits. That is the one shape
+        // `internal/handoff-multi-kind-hook-is-not-a-redesign.md` tells the inliner not to learn, so the
+        // helper is ported whole and the rule body stays a guard chain. `expressionTypes` because the
+        // helper asks for an inferred type at a position the translator never sees — it is inside the
+        // port — so the requirement cannot be registered where the read is emitted.
+        'Symplify\PHPStanRules\Rules\Rector\NoInstanceOfStaticReflectionRule::resolveExprStaticType' => [
+            'helper' => 'StaticReflectionTypes::subjectType',
+            'kind' => 'type',
+            'takes' => 'context',
+            'arguments' => [0],
+            'expressionTypes' => true,
         ],
 
         // Every rule in `phpstan-deprecation-rules` opens with this, so that deprecated code using
@@ -1029,7 +1044,14 @@ final class Vocabulary
      * @var array<class-string, list<string>>
      */
     public const array HOOK_KINDS = [
-        Expr::class => ['ClassConstantAccess', 'StaticPropertyAccess', 'MethodCall', 'StaticMethodCall', 'FunctionCall', 'PropertyAccess'],
+        // `Binary` is every operator PHPStan spells as a `BinaryOp` subclass plus `instanceof`, which has no
+        // kind of its own here — so one entry registers what php-parser splits over two dozen classes, and
+        // the rule's own `instanceof` guard declines the operators it does not read, the way every other
+        // kind in this list is already declined. Widening it moves the `getTargets()` line of the two rules
+        // that emit on this hook and nothing else: both open each branch with an explicit kind test, so a
+        // `Binary` node reaches neither report. Checked, because a target a guard fails to decline is a
+        // finding the original does not make.
+        Expr::class => ['ClassConstantAccess', 'StaticPropertyAccess', 'MethodCall', 'StaticMethodCall', 'FunctionCall', 'PropertyAccess', 'Binary'],
         // The three call kinds share their children exactly — `Expression`, `ClassLikeMemberSelector`,
         // `ArgumentList`, in that order, probed on all of them — which is why one body reads all three
         // without rebinding. A first-class callable is a *different* kind (`MethodPartialApplication`), so a
@@ -1093,6 +1115,10 @@ final class Vocabulary
         Assign::class => 'is_assignment',
         // Both PHP-target only, and both take the context because the answer is a node kind rather than
         // anything readable from the part alone.
+        // An `instanceof` test asked of a node the hook fired for. Mago files it under `Binary` with every
+        // other operator, so this is an operator comparison rather than a kind comparison — see
+        // {@see Support::isInstanceof()}.
+        Instanceof_::class => 'is_instanceof',
         Dir::class => 'is_dir_constant',
         String_::class => 'is_literal_string',
     ];

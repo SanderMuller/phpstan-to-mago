@@ -585,6 +585,19 @@ final class Support
     }
 
     /**
+     * Whether this node is an `instanceof` test — `$node instanceof PhpParser\Node\Expr\Instanceof_`.
+     *
+     * Mago has no node kind for it: an `instanceof` is a `Binary` like `+` and `.` are, and the operator child
+     * is the only thing that separates them. So the predicate a rule spells as a class test is an operator
+     * test here, the same conversion the loose-comparison predicates made. {@see StaticReflectionTypes}
+     * carries the measurement.
+     */
+    public static function isInstanceof(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Operators::binaryOperatorIs($context, $subject, 'instanceof');
+    }
+
+    /**
      * The name a node *writes* — a variable's own name, or a name or identifier's text, or null.
      *
      * The question `NamingHelper::getName()` asks. Null for anything else, which is what the rules reading it

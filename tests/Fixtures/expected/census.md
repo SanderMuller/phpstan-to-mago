@@ -106,7 +106,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 64 of 89 portable rules the package registers emit, 1 covered by the engine, 24 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 65 of 89 portable rules the package registers emit, 1 covered by the engine, 23 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -195,10 +195,7 @@ REFUSE  NoGetRepositoryOnServiceRepositoryEntityRule
         needs: $errorMessage is not a message built in this rule
 EMIT    NoGetRepositoryOutsideServiceRule
 EMIT    NoGlobalConstRule
-REFUSE  NoInstanceOfStaticReflectionRule
-        no node predicate for instanceof PhpParser\Node\Expr\Instanceof_ on a hook-node
-        needs: no node predicate for instanceof PhpParser\Node\Expr\Instanceof_ on a hook-node
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Return
+EMIT    NoInstanceOfStaticReflectionRule
 REFUSE  NoIntegerRefactorReturnRule
         no mapping for ->returnType on a maybe-method-decl
         needs: early return from a helper that is not a boolean literal
