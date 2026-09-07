@@ -566,6 +566,12 @@ final class Support
         return Names::calledFunctionName($context, $subject);
     }
 
+    /** What follows the last occurrence of a needle, or null. {@see Text::afterLast} */
+    public static function afterLast(?string $subject, string $needle): ?string
+    {
+        return Text::afterLast($subject, $needle);
+    }
+
     /** The analysed PHP version, in PHPStan's encoding. {@see Versions::phpstanVersionId} */
     public static function phpstanVersionId(NodeAnalysisContext $context): int
     {

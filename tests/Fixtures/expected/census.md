@@ -106,7 +106,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 62 of 89 portable rules the package registers emit, 1 covered by the engine, 26 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 63 of 89 portable rules the package registers emit, 1 covered by the engine, 25 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -137,9 +137,9 @@ REFUSE  ForbiddenNewArgumentRule  (the package registers it nowhere)
 REFUSE  ForbiddenNodeRule
         PhpParser\Node covers several node kinds, and this rule narrows to them with `instanceof` against a value rather than a written class name — a configured list of node classes. A plugin declares its targets statically, so there is no shape to register: the rule's target set is only known at analysis time
         needs: $forbiddenNodes is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
-        needs: access path outside the vocabulary: $this->standard->prettyPrintExpr()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->standard->prettyPrintExpr()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->standard->prettyPrint()
+        needs: access path outside the vocabulary: Expr_New
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Array
         needs: $errorMessage is not a message built in this rule
 EMIT    ForbiddenStaticClassConstFetchRule
 EMIT    ForeachCeptionRule
@@ -192,7 +192,6 @@ EMIT    NoGetInControllerRule
 REFUSE  NoGetRepositoryOnServiceRepositoryEntityRule
         access path outside the vocabulary: $this->repositoryClassResolver->resolveFromEntityClass()
         needs: access path outside the vocabulary: $this->repositoryClassResolver->resolveFromEntityClass()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Strings::after()
         needs: $errorMessage is not a message built in this rule
 EMIT    NoGetRepositoryOutsideServiceRule
 EMIT    NoGlobalConstRule
@@ -237,14 +236,7 @@ REFUSE  NoServiceAutowireDuplicateRule
         assignment value outside the vocabulary: a search filter that needs a bind-arg statement, whose position decides the answer: it would run before the guards written above it
         needs: assignment value outside the vocabulary: a search filter that needs a bind-arg statement, whose position decides the answer: it would run before the guards written above it
 EMIT    NoServiceSameNameSetClassRule
-REFUSE  NoSetClassServiceDuplicationRule
-        expected a string literal
-        needs: expected a string literal
-        needs: no argument list on a expr node
-        needs: access path outside the vocabulary: $this->standard->prettyPrintExpr()
-        needs: access path outside the vocabulary: Strings::after()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Strings::after()
-        needs: $errorMessage is not a message built in this rule
+EMIT    NoSetClassServiceDuplicationRule
 EMIT    NoStringInGetSubscribedEventsRule
 REFUSE  NoTestMocksRule  (the package registers it nowhere)
         access path outside the vocabulary: Expr_New

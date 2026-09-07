@@ -1040,6 +1040,18 @@ final readonly class Translator
     }
 
     /**
+     * Whether an expression is the written literal `-1`.
+     *
+     * Its own test rather than `intLiteral()`, which reads an `Int_` and `-1` is not one: php-parser gives a
+     * unary minus around `1`. Widening `intLiteral()` to fold negation would change what every other caller
+     * accepts, and none of them wants a negative.
+     */
+    private function isNegativeOne(Expr $expr): bool
+    {
+        return $expr instanceof UnaryMinus && $expr->expr instanceof Int_ && $expr->expr->value === 1;
+    }
+
+    /**
      * The group a `$matches[..]` read names, as the literal the emitted call passes.
      *
      * An int offset or a string name and nothing else: a computed group would mean the plugin holding a
@@ -5060,7 +5072,7 @@ final readonly class Translator
                 // Bound as a nullable string. The rule's own `=== null` guard then bails, and the value goes
                 // into the message and the report code, which is what the original does with it.
                 $local = Emitter::snake($target->name);
-                $this->context->lines[] = new Stm('declare', ['target' => $local, 'value' => $classified], $this->context->indent);
+                $this->declareLocal($local, $classified, $line);
                 $this->context->locals = $savedLocals;
                 $this->context->literals = $savedLiterals;
                 $this->context->caches = $savedCaches;
@@ -7013,6 +7025,72 @@ final readonly class Translator
         return spl_object_hash($expr);
     }
 
+    /**
+     * The given name, or the next free variant of it, so a second binding cannot shadow the first.
+     *
+     * An argument binding is named from the argument's *index*, which is a fact about the argument and not
+     * about where it was read — so a rule reading `getArgs()[0]->value` twice bound `$arg_value` twice, the
+     * second shadowing the first, and every later read of either answered the second.
+     * `NoSetClassServiceDuplicationRule` compares two such reads for inequality: the emitted plugin compared
+     * `$arg_value` with itself, which is constantly true, so the guard requiring a match never fired and the
+     * rule reported on every pair it saw.
+     *
+     * A rename rather than a refusal, and that is safe here for a reason the shape gives: the binding's name
+     * is recorded on the local's descriptor, so later reads render from the descriptor rather than from the
+     * name. The key is the binding too, so two bindings cannot share a refinement either.
+     */
+    private function unusedBindName(string $preferred): string
+    {
+        $taken = [];
+        foreach ($this->context->lines as $statement) {
+            $bind = $statement->args['bind'] ?? $statement->args['target'] ?? null;
+            if (is_string($bind)) {
+                $taken[$bind] = true;
+            }
+        }
+
+        if (! isset($taken[$preferred])) {
+            return $preferred;
+        }
+
+        $suffix = 2;
+        while (isset($taken[$preferred . $suffix])) {
+            ++$suffix;
+        }
+
+        return $preferred . $suffix;
+    }
+
+    /**
+     * Emits `$local = <value>;` and refuses a name this rule's emission already declares.
+     *
+     * A value helper inlined twice re-derives its locals from the same expression shapes, so the second
+     * declaration shadows the first and every later read answers the second value.
+     * `NoSetClassServiceDuplicationRule` calls one helper on two receivers and compares the results: the
+     * emitted plugin compared the *same* local with itself, which is constantly true, so the guard that
+     * exists to require a match never fired and the rule reported on every pair it saw.
+     *
+     * That is the failure this repository rates worst — it parses, it runs, and it is confidently wrong —
+     * and nothing downstream sees it: the census records an emission, no snapshot exists yet, and a
+     * differential only diverges on inputs nobody has written.
+     *
+     * A refusal rather than a rename, because renaming is a guess about which later read meant which value.
+     */
+    private function declareLocal(string $local, string $value, int $line): void
+    {
+        foreach ($this->context->lines as $statement) {
+            if ($statement->kind === 'declare' && ($statement->args['target'] ?? null) === $local) {
+                throw new Refusal(
+                    "a second local named \${$local}, which would shadow the first: an inlined helper called "
+                    . 'twice cannot share one name, and later reads would all answer the last value',
+                    $line,
+                );
+            }
+        }
+
+        $this->context->lines[] = new Stm('declare', ['target' => $local, 'value' => $value], $this->context->indent);
+    }
+
     private function freshName(Expr $subject, string $kind): string
     {
         // `'value'` for a computed name, which is what the `Variable` arm beside it already does for the
@@ -8299,7 +8377,7 @@ final readonly class Translator
             }
 
             $local = Emitter::snake($name);
-            $this->context->lines[] = new Stm('declare', ['target' => $local, 'value' => (string) $value->value], $this->context->indent);
+            $this->declareLocal($local, (string) $value->value, $line);
             $this->context->locals[$name] = ['rust' => '$' . $local, 'kind' => 'int', 'php' => '$' . $local];
 
             return;
@@ -8459,7 +8537,7 @@ final readonly class Translator
                 return;
             }
 
-            $bind = 'arg' . ($index === 0 ? '' : (string) $index) . '_value';
+            $bind = $this->unusedBindName('arg' . ($index === 0 ? '' : (string) $index) . '_value');
             $pad = str_repeat(' ', $this->context->indent);
             $this->context->lines[] = new Stm('bind-arg', [
                 'bind' => $bind,
@@ -8467,7 +8545,7 @@ final readonly class Translator
                 'index' => (string) $index,
                 'exit' => $this->bindingExit(),
             ], $this->context->indent);
-            $this->context->locals[$name] = ['rust' => $bind, 'kind' => $unwrapped ? 'expr' : 'arg', 'key' => 'arg' . $index];
+            $this->context->locals[$name] = ['rust' => $bind, 'kind' => $unwrapped ? 'expr' : 'arg', 'key' => $bind];
             if (Transpiler::$target === 'php') {
                 // The binding is a PHP variable, so later reads of the local render as one.
                 $this->context->locals[$name]['php'] = '$' . $bind;
@@ -8535,7 +8613,7 @@ final readonly class Translator
                 $record = [];
                 foreach ($carried as $field) {
                     $local = Emitter::snake($name . '_' . $field);
-                    $this->context->lines[] = new Stm('declare', ['target' => $local, 'value' => 'null'], $this->context->indent);
+                    $this->declareLocal($local, 'null', $line);
                     $record[$field] = ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'php' => '$' . $local, 'local' => true];
                 }
 
@@ -8632,7 +8710,7 @@ final readonly class Translator
             throw new Refusal("\${$name} is already bound to something that is not a flag", $line);
         }
 
-        $this->context->lines[] = new Stm('declare', ['target' => $rust, 'value' => $literal], $this->context->indent);
+        $this->declareLocal($rust, $literal, $line);
         $this->context->locals[$name] = ['rust' => $rust, 'kind' => 'bool'];
         if (Transpiler::$target === 'php') {
             $this->context->locals[$name]['php'] = '$' . $rust;
@@ -8678,6 +8756,17 @@ final readonly class Translator
         // is whether *this* node has an argument list at all.
         if ($subject !== null) {
             $kind = $subject['as'] ?? null;
+
+            // A plain expression the rule has already narrowed itself. `NoSetClassServiceDuplicationRule`
+            // guards `! $node->var instanceof MethodCall` and then asks that receiver for its arguments, so
+            // the `instanceof` is what makes the question well-formed — the same argument the `->value`
+            // reading on an `expr` makes about its own `instanceof String_`. The helper answers an empty
+            // list for anything that is not a call, so a rule that asked without narrowing declines rather
+            // than reporting: `count(..) !== 1` holds and the producer returns null.
+            if ($kind === null && $subject['kind'] === 'expr' && Transpiler::$target === 'php') {
+                return 'Support::argumentList($context, ' . $this->operand($subject) . ')';
+            }
+
             if ($kind === null || ! in_array($kind, self::ARGUMENT_LIST_KINDS, true)) {
                 throw new Refusal('no argument list on a ' . ($kind ?? $subject['kind']) . ' node', $line);
             }
@@ -11865,6 +11954,62 @@ final readonly class Translator
             }
         }
 
+        // `Strings::after($subject, $needle, -1)` — what follows the needle's *last* occurrence. Only that
+        // spelling: the third argument counts occurrences, and `1` would be "after the first", a different
+        // question this does not answer under the same name.
+        if ($expr instanceof StaticCall
+            && $expr->class instanceof Name
+            && $expr->class->getLast() === 'Strings'
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'after'
+            && count($expr->getArgs()) === 3
+            && $this->isNegativeOne($expr->getArgs()[2]->value)
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a last-occurrence split, which only the PHP target carries', $line);
+            }
+
+            $subject = $this->resolve($expr->getArgs()[0]->value, $line);
+            if (! in_array($subject['kind'], ['bytes', 'class-name', 'resolved-name', 'message'], true)) {
+                throw new Refusal("Strings::after() of a {$subject['kind']}", $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'bytes',
+                'php' => 'Support::afterLast(' . $this->operand($subject) . ', '
+                    . $this->bytesValue($expr->getArgs()[1]->value, $line) . ')',
+            ];
+        }
+
+        // `$this->standard->prettyPrintExpr($expr)` — php-parser's printer, asked for an expression's source.
+        // A rule reaching it is comparing two expressions as text, and Mago hands the *written* text back
+        // through the same span the node carries, so the question maps even though the printer does not.
+        //
+        // The two are not the same string in general, and the difference is stated rather than smoothed:
+        // php-parser normalises, so `set( Foo::class )` and `class(Foo::class)` print alike where their
+        // source text differs. A pair written differently but printing the same is therefore *missed*, which
+        // is the under-reporting direction; a pair written the same — the duplication these rules exist to
+        // catch — compares equal in both engines, and the text goes into the message identically.
+        if ($expr instanceof MethodCall
+            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['prettyPrintExpr', 'prettyPrint'], true)
+            && count($expr->getArgs()) === 1
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a printed expression, which only the PHP target carries', $line);
+            }
+
+            $printed = $this->resolve($expr->getArgs()[0]->value, $line);
+            if (! in_array($printed['kind'], ['expr', 'argument', 'name-expr', 'found-node'], true)) {
+                throw new Refusal("prettyPrintExpr() of a {$printed['kind']}", $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'bytes',
+                'php' => 'Support::textOf(' . $this->operand($printed) . ')',
+            ];
+        }
+
         // `$this->reflectionProvider->getFunction($node->name, $scope)` — the function a call names, as the
         // codebase knows it. The service itself has no injectable equivalent, but this one question does:
         // `Support::functionName()` was written for it and says so, resolving a namespaced call the way PHP
@@ -12805,6 +12950,14 @@ final readonly class Translator
 
         if ($expr instanceof ClassConstFetch) {
             return addcslashes($this->resolveClassConstant($expr, $line), '"\\');
+        }
+
+        // A helper's parameter that the call site bound to a literal. `isMethodName($node->name, 'class')`
+        // compares against `$name`, and the value is known here — the same table {@see rawStringLiteral()}
+        // already reads. Only that table: a variable holding anything the plugin computes is not a literal
+        // and still refuses, which is the difference between knowing a value and hoping for one.
+        if ($expr instanceof Variable && is_string($expr->name) && isset($this->context->literals[$expr->name])) {
+            return addcslashes($this->context->literals[$expr->name], '"\\');
         }
 
         throw new Refusal('expected a string literal', $line);

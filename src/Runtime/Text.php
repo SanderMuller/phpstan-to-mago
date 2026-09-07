@@ -14,6 +14,26 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 final class Text
 {
     /**
+     * What follows the last occurrence of a needle, or null when there is none — Nette's
+     * `Strings::after($subject, $needle, -1)`.
+     *
+     * Written rather than answered with {@see Names::lastNameSegment()}, which the shape invites: that one
+     * hands back the *whole* string where there is no separator and this hands back null. A rule guarding
+     * `str_contains(..)` first cannot tell the two apart, and one that does not would take the wrong branch —
+     * read out of `Strings::after()`, whose `pos()` returns null and short-circuits before the `substr`.
+     */
+    public static function afterLast(?string $subject, string $needle): ?string
+    {
+        if ($subject === null || $needle === '') {
+            return null;
+        }
+
+        $position = strrpos($subject, $needle);
+
+        return $position === false ? null : substr($subject, $position + strlen($needle));
+    }
+
+    /**
      * Whether a list the plugin computed holds the exact string a rule names.
      *
      * The case-sensitive counterpart of `namesContain()`, and the difference is where the list came from.
