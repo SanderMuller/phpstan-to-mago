@@ -13,6 +13,7 @@ use Sandermuller\PhpstanToMago\Refusal;
 use Sandermuller\PhpstanToMago\RuleOutcome;
 use Sandermuller\PhpstanToMago\StatusPage;
 use Sandermuller\PhpstanToMago\StatusReport;
+use Sandermuller\PhpstanToMago\Tests\Support\LockedCorpus;
 use Sandermuller\PhpstanToMago\Transpiler;
 use Sandermuller\PhpstanToMago\WorkerScaffold;
 
@@ -268,6 +269,16 @@ final class ReportsInstalledCoverageTest extends TestCase
      */
     public function test_a_refusal_that_ends_the_pass_is_listed_as_a_need(): void
     {
+        // The docblock above says this should fail when the terminal refusal goes missing, "not when the
+        // corpus shifts" — and without this guard it does the second: `phpstan/phpstan-phpunit` is
+        // `require-dev: ^2.0`, and the rule named below does not exist at 2.0.0, so the CI leg resolving
+        // lowest failed on a rule that was simply not written yet. The same guard the census assertion uses,
+        // for the same reason and honouring the same deliberate-drift escape.
+        $mismatch = LockedCorpus::mismatch();
+        if ($mismatch !== null) {
+            self::markTestSkipped($mismatch);
+        }
+
         $coverage = PackageCoverage::forPackage(
             'phpstan/phpstan-phpunit',
             self::ROOT . '/vendor/phpstan/phpstan-phpunit',

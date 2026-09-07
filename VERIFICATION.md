@@ -10778,3 +10778,68 @@ Narrowed to `prettyPrintExpr` on an injected printer, matching the receiver the 
 already does. Byte-neutral, and the census line now names the printer call. **The lesson is the pair**: the
 sentinel above is a hazard with no witness and this is the same shape with one, found in the same read, and
 only the census diff told them apart.
+
+---
+
+## CI had been red for twelve pushes, and every green number I reported was local
+
+The release gate found `run-tests` failing on `main`, and `gh run list --workflow run-tests.yml` shows it
+failing on **twelve consecutive pushes** — every commit of this session and several before it. The oldest
+checked fails on the same two tests with the same messages, so it is one cause throughout, not a moving
+target.
+
+**Both failures are on the `prefer-lowest` matrix leg only**, and neither is a defect in the transpiler:
+
+- `RecordsDivergencesTest` — the record names the engines it was produced against, `PHPStan 2.2.13`. At
+  lowest resolution PHPStan installs 2.2.6, so the regenerated header differs.
+- `ReportsInstalledCoverageTest::test_a_refusal_that_ends_the_pass_is_listed_as_a_need` — asserts
+  `ClassAttributeRequiresPhpVersionRule` is in `phpstan/phpstan-phpunit`, which is `^2.0`. That rule does not
+  exist at 2.0.0.
+
+**The uncomfortable part is the reporting.** "Suite 311 of 311" appears in this document and in most of this
+session's commit messages, and every instance is true and local. Nothing in this session looked at CI until
+the release gate demanded it, so a red matrix leg sat behind every one of those sentences. The figures were
+right; the impression that the tree was green was not — which is this document's own recurring failure, in my
+own words this time.
+
+### Why tightening the constraints was the wrong fix
+
+The obvious repair is to raise the floors so lowest resolves what the records name. It is wrong twice.
+
+`phpstan/phpstan` is **not a direct dependency** — it arrives through the rule packages — so pinning it would
+mean adding it to `require-dev` purely so a recorded snapshot matches. And that inverts what the leg is for:
+`prefer-lowest` exists to prove the declared floors *work*, so raising a floor to make a snapshot match turns
+the leg into a second copy of `prefer-stable`. Dropping the leg fails the same way from the other side — it
+removes the only check that the floors are real.
+
+### The repository had already chosen the right pattern
+
+`LockedCorpus::mismatch()` compares the installed rule-package versions against the ones the census records
+and returns a message; `TracksUpstreamDriftTest` skips on it, and the README documents that as deliberate —
+*"skipping when the installed corpus is not the one recorded — so an ordinary `composer update` neither fails
+nor rewrites it."* These two tests asserted where that one skips.
+
+Sharper still: the coverage test's **own docblock** says it asserts by name "because a rule legitimately
+reaching no needs at all is possible and this test should fail when the terminal refusal goes missing, **not
+when the corpus shifts**." It failed on exactly the shift its comment excludes. The comment was right and the
+code did not implement it.
+
+So both tests now take the guard. The corpus one reuses `LockedCorpus::mismatch()`. The divergence one needed
+its own, because `LockedCorpus` tracks the seven rule packages and this record pins the two *engines* — the
+same distinction one level up, honouring the same `WATCH_CORPUS_DRIFT` escape so the parity watch still
+asserts.
+
+### Mutation-checked, because a guard that cannot fire looks like a guard with nothing to catch
+
+That failure happened twice earlier today, so all four cells were run rather than reasoned about:
+
+| | corpus guard | engine guard |
+|:--|:--|:--|
+| versions match | asserts (3 assertions) | asserts (2 assertions) |
+| versions differ | skips | skips |
+| `WATCH_CORPUS_DRIFT=1` over a mismatch | — | **asserts and fails**, as the watch needs |
+
+And a third docblock displacement: the new helper went in above `render()` and took its `@param` lines with
+it, which PHPStan caught as two untyped parameters and two mixed offsets. Same shape as the two recorded
+above, same fix. Three times in one session is not carelessness about one edit — inserting a method above an
+existing one silently adopts its docblock, and nothing in the toolchain treats that as a change.

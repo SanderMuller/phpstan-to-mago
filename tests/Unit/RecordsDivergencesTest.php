@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Sandermuller\PhpstanToMago\Tests\Support\DivergenceCases;
+use Sandermuller\PhpstanToMago\Tests\Support\LockedCorpus;
 
 /**
  * What the two engines say about every recorded divergence, pinned to code this repository owns.
@@ -34,10 +35,28 @@ final class RecordsDivergencesTest extends TestCase
 
         $this->assertNotSame([], $discovered, 'No divergence cases were found, so this asserts nothing.');
 
+        // The record names the two engine versions it was produced against, and the findings below are
+        // theirs rather than this port's. `phpstan/phpstan` is not a direct dependency here — it arrives
+        // through the rule packages — so a run resolving lowest gets an older PHPStan than the record names
+        // and fails on the header. That is a different engine, not a changed answer, which is the same
+        // distinction {@see LockedCorpus::mismatch()} draws for the rule corpus and honours the same
+        // deliberate-drift escape, so that the parity watch still asserts.
+        $versions = $cases->versions();
+        $recorded = $this->recordedVersions();
+        if ($recorded !== null && $recorded !== $versions && getenv(LockedCorpus::WATCHING) === false) {
+            self::markTestSkipped(sprintf(
+                'The installed engines are not the ones the record was produced against: %s against %s. '
+                . 'These cases describe what those engines report, so a different resolution is a different '
+                . 'pair of engines rather than a regression.',
+                $versions,
+                $recorded,
+            ));
+        }
+
         $sandbox = $cases->sandbox($discovered);
         $findings = $cases->findings($discovered, $sandbox);
 
-        $record = $this->render($discovered, $findings, $cases->versions());
+        $record = $this->render($discovered, $findings, $versions);
 
         if ($record !== (string) file_get_contents(self::RECORD)) {
             file_put_contents(self::RECORD . '.actual', $record);
@@ -119,5 +138,17 @@ final class RecordsDivergencesTest extends TestCase
         }
 
         return implode("\n", $lines);
+    }
+
+    /** The engine versions the committed record names, or null when it names none. */
+    private function recordedVersions(): ?string
+    {
+        if (! is_file(self::RECORD)) {
+            return null;
+        }
+
+        $matched = preg_match('/^Recorded against: (.+)$/m', (string) file_get_contents(self::RECORD), $found);
+
+        return $matched === 1 ? trim($found[1]) : null;
     }
 }
