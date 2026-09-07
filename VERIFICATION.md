@@ -10646,3 +10646,51 @@ the unit, and a package is not. The README says that now.
 Worth noting what the near-miss was. The bullet had stood for two commits, and the next thing that would have
 touched it is a release note or an upstream issue quoting it — which is exactly the boundary this document
 records as the one where a claim leaves the repository and stops being checked at all.
+
+---
+
+## The node hook's horizon, confirmed from a second direction
+
+Two rules were checked this round and both are walled by the same thing, which is worth stating once as a
+property of the target rather than three times as a discovery about three rules.
+
+`NoGetRepositoryOnServiceRepositoryEntityRule` resolves an entity class, then reads **that class's own file**
+from disk and regex-scans it for `repositoryClass=`. `internal/probe-declaring-file-body.php` already
+measured the answer: another file's CST is reachable from an *after-analysis* hook, through
+`AfterAnalysisContext->analysis->files`, and not from a node hook — `FileAnalysis::getSourceFile()` takes no
+argument and answers about the one file the hook was given.
+
+That is the same boundary the closure-bind guard hit from the other side, where `getAncestors()` came back
+empty and `getNodes()` returned only the targeted subtrees. **A node hook sees its targets' subtrees in one
+file: nothing above them, nothing beside them, and nothing in another file.** Both measurements are in this
+document; neither was taken with the other in mind, which is why the agreement is worth recording.
+
+So the earlier sizing instrument's "access paths are worth +1 rule" was counting this rule, and it cannot
+complete on the PHP target at all. That figure should be read as +0.
+
+### What is actually left, and what it costs
+
+Every remaining refusal in the census was read this round. Four groups, and only the last is buildable:
+
+- **Walled by the hook's horizon** — anything whose guard is about context: what encloses this expression,
+  what file declares that class.
+- **Walled by a value that does not exist** — nine rules on constructor parameters the package wires
+  nowhere, none of which declares a default.
+- **Walled by design, and documented** — `findTypeToCheck` with an inline closure over PHPStan `Type`
+  objects; a collaborator that builds findings rather than answering; a collector, whose measurement the
+  emitting rules already reimplement.
+- **Buildable, and priced.** `AssertEqualsIsDiscouragedRule` is the live one. Its condition reduces cleanly:
+  `ScalarType` carries a `kind` and a `refinement`, so PHPStan's `generalize(lessSpecific)` is "drop the
+  refinement", and two mutual `isSuperTypeOf` checks over generalized scalars are "the same set of scalar
+  kinds". That is one runtime question rather than five folds — the shape `RuleLevel::passesAsBoolean`
+  already uses.
+
+  Two things are open and both are cheap to settle before writing anything. `UnionType::isConstantScalarValue()`
+  is every member being one, read from the phar; where `generalize()` lives for a union is not yet read, and
+  the reduction above depends on it. And `->fixNode($node, closure)` in the builder chain is *silently
+  skipped* by the chain walk, which is right for findings and means the port offers no autofix — a
+  divergence to state rather than discover.
+
+**The reduction is the interesting part and the reason to price it rather than start it.** Mapping the
+question needs the two engines' answers to agree for unions as well as single scalars, and that is a claim
+about PHPStan's `generalize` that no probe in this repository has made yet.
