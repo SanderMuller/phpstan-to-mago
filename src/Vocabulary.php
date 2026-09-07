@@ -801,6 +801,19 @@ final class Vocabulary
             'arguments' => [0],
         ],
 
+        // `RequireQueryBuilderOnRepositoryRule::isValidRepositoryObjectType()`, which recurses over a union
+        // and answers about the receiver's inferred type. `types` because that is what it reads.
+        // {@see Runtime\DoctrineEntities::isValidQueryBuilderReceiver()} carries the quirk it preserves:
+        // the union branch changes nothing, because a `UnionType` also satisfies the `! instanceof
+        // ObjectType` escape below it, so every union answers true either way.
+        'Symplify\PHPStanRules\Rules\Doctrine\RequireQueryBuilderOnRepositoryRule::isValidRepositoryObjectType' => [
+            'helper' => 'DoctrineEntities::isValidQueryBuilderReceiver',
+            'kind' => 'bool',
+            'takes' => 'context',
+            'arguments' => [],
+            'types' => [0],
+        ],
+
         // `RepeatedServiceAdderCallNameFinder::find()`, a static finder over one statement's call chain that
         // counts `->call(<name>, [<service reference>])` and answers the first name repeated three times.
         // Ported rather than translated for the same reason as the walk below it, plus a threshold and a

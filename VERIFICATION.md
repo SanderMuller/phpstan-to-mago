@@ -11737,3 +11737,64 @@ item and answered 9 against a census figure of 89, and the second over-matched, 
 The right instrument is the repository's own `PackageConfiguration::registeredClassNames()` restricted to the
 included set, not a second extractor built beside it. Until that exists, the distinction is stated and the
 number is not, which is what this file asks for when a term has no committed definition.
+
+## A union that is always valid, and two controls that were missing until a mutation said so
+
+`RequireQueryBuilderOnRepositoryRule` emits. php 172 → 173; symplify 68 of 89. Found by the ranking the last
+step introduced — group the refusals by first obstacle, skip the group that is the withdrawn family, and read
+the smallest rule left.
+
+### The union branch changes nothing, and reducing it would narrow the rule
+
+`isValidRepositoryObjectType()` reads as a recursive union walk followed by three `isInstanceOf()` checks. Read
+in order it is something else:
+
+```php
+if ($type instanceof UnionType) {
+    foreach ($type->getTypes() as $unionType) {
+        if ($this->isValidRepositoryObjectType($unionType)) { return true; }
+    }
+}
+if (! $type instanceof ObjectType) { return true; }   // ← a UnionType is not an ObjectType either
+```
+
+A union with a valid member returns true from the loop. A union with **no** valid member falls through — and
+satisfies the escape below, because a `UnionType` is not an `ObjectType`. **So every union answers true, and
+the union branch is dead code.** Porting it as "any member is valid" is the obvious reduction and it is
+narrower than the rule: a union of two rejected classes would report where the original is silent.
+
+What is left is exact and small: false only for a single object type that is none of `EntityRepository`,
+`DocumentRepository` or `Connection`. Everything that is not an object is valid.
+
+### Two folds had no control, and only mutating them said so
+
+The pair passed on the first run with three rows. Two of the three mutations then passed as well:
+
+| mutation | first run | after adding a row |
+|:--|:--|:--|
+| reduce the union to "any member is valid" | **fails** | fails |
+| drop the allow-list entirely | passes | **fails** |
+| drop the non-object escape | passes | **fails** |
+
+The allow-list had no row because **no fixture receiver was one of the three Doctrine classes** — Doctrine is
+not installed, so the obvious fixture cannot produce one. The gate already copies
+`tests/Fixtures/examples/stubs/*.php` into mago's source paths for exactly this, so a
+`Doctrine\ORM\EntityRepository` stub joins the two already there and the row exercises the list.
+
+The escape had no row because every receiver was an object. A `mixed` parameter supplies one: the original
+answers true for anything that is not an `ObjectType`, and dropping that escape reports on it.
+
+Three rows, three folds, and the pair only became evidence after the mutations named what it was not testing.
+That is the fourth time this session a green fires gate turned out to be measuring less than it looked, and
+the third distinct reason: not a mutation that failed to express itself, not a control that shared a confound,
+but **a fold with no row at all in a pair that passed**.
+
+### What moved
+
+php 172 → 173; analyzer 34 and linter 25 unchanged. The emit-all diff across all three targets is three
+files: the new rule, its manifest and worker entries, and the `--out` path — no existing plugin moved a byte,
+and the new stub changes no emission because stubs are gate scaffolding rather than corpus. Census symplify
+67 → 68 emit and 21 → 20 refuse. README's row and `--status` figure re-derived and cross-checked: the emit
+column sums to 111 and the portable column to 170. Suite 1041/1041, PHPStan 0 errors, Rector and Pint clean —
+and Pint's `fully_qualified_strict_types` rewrote the new example's stub reference, which the gate re-run
+confirmed left every control intact.

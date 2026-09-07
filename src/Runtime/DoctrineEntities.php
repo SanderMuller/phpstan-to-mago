@@ -6,6 +6,7 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 
 use Mago\Sdk\Analyzer\Metadata\ClassLikeMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
+use Mago\Sdk\Analyzer\Type;
 
 /**
  * `DoctrineEntityDocumentAnalyser::isEntityClass()`, ported rather than translated.
@@ -34,6 +35,17 @@ use Mago\Sdk\Analyzer\NodeAnalysisContext;
 final class DoctrineEntities
 {
     /**
+     * The receivers `RequireQueryBuilderOnRepositoryRule` treats as safe, from `DoctrineClass`.
+     *
+     * @var list<string>
+     */
+    private const array QUERY_BUILDER_RECEIVERS = [
+        'Doctrine\\ORM\\EntityRepository',
+        'Doctrine\\ODM\\MongoDB\\Repository\\DocumentRepository',
+        'Doctrine\\DBAL\\Connection',
+    ];
+
+    /**
      * The attribute names Doctrine maps an entity or a document with.
      *
      * Copied from `DoctrineEntityDocumentAnalyser::ENTITY_ATTRIBUTES`. A table of a package's own constants
@@ -47,6 +59,41 @@ final class DoctrineEntities
     ];
 
     /** Whether the codebase knows this class as a Doctrine entity or document, by attribute. */
+    /**
+     * Whether a `->createQueryBuilder()` receiver is one the rule considers safe.
+     *
+     * `RequireQueryBuilderOnRepositoryRule::isValidRepositoryObjectType()`, ported whole because it recurses
+     * over a union and the vocabulary has no statement for that.
+     *
+     * **A union is always valid, and that is the original\'s behaviour rather than a reading of it.** The
+     * helper walks a union looking for one valid member and returns true if it finds one  and when it finds
+     * none it falls through to `if (! $type instanceof ObjectType) { return true; }`, which a `UnionType` also
+     * satisfies. So the union branch changes nothing: every union answers true either way. Reducing it to
+     * any member is valid would be narrower than the rule and would report on a union of two unrelated
+     * objects, which the original lets through.
+     *
+     * What is left is exact: **false only for a single object type that is none of the three Doctrine
+     * classes.** Anything that is not an object  a scalar, an array, `mixed`  is valid, because the original
+     * asks `instanceof ObjectType` and answers true for everything else.
+     *
+     * The three names are `DoctrineClass::ENTITY_REPOSITORY`, `::DOCUMENT_REPOSITORY` and `::CONNECTION`,
+     * copied rather than restated, the same way {@see RectorAutoloadedTypes} copies its prefix pattern.
+     */
+    public static function isValidQueryBuilderReceiver(NodeAnalysisContext $context, ?Type $type): bool
+    {
+        if (! $type instanceof Type || Types::typeIsUnion($type) || ! Types::typeIsObject($type)) {
+            return true;
+        }
+
+        foreach (self::QUERY_BUILDER_RECEIVERS as $name) {
+            if (Types::typeIsInstanceOf($context, $type, $name)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static function isEntityClass(NodeAnalysisContext $context, ?string $class): bool
     {
         if ($class === null || $class === '') {

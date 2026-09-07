@@ -106,7 +106,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 67 of 89 portable rules the package registers emit, 1 covered by the engine, 21 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 68 of 89 portable rules the package registers emit, 1 covered by the engine, 20 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -276,9 +276,7 @@ EMIT    RequireAttributeNamespaceRule
 EMIT    RequireExceptionNamespaceRule
 EMIT    RequireInvokableControllerRule
 EMIT    RequireIsGrantedEnumRule
-REFUSE  RequireQueryBuilderOnRepositoryRule
-        statement in isValidRepositoryObjectType() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Foreach, which is a decision tree rather than a guard that exits
-        needs: statement in isValidRepositoryObjectType() outside the vocabulary: an if whose body is 1 statement ending in Stmt_Foreach, which is a decision tree rather than a guard that exits
+EMIT    RequireQueryBuilderOnRepositoryRule
 REFUSE  RequireRouteNameToGenerateControllerRouteRule
         assignment value outside the vocabulary: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
         needs: assignment value outside the vocabulary: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()

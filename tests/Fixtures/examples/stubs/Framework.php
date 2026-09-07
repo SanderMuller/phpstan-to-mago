@@ -478,3 +478,14 @@ final class Entity
 /** The second attribute `NoEntityOutsideEntityNamespaceRule` accepts, which is why its walk folds to two questions. */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final class Embeddable {}
+
+namespace Doctrine\ORM;
+
+/** The receiver `RequireQueryBuilderOnRepositoryRule` accepts, so its allow-list has a row that exercises it. */
+class EntityRepository
+{
+    public function createQueryBuilder(string $alias): object
+    {
+        return new \stdClass();
+    }
+}
