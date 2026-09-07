@@ -10493,3 +10493,57 @@ Five rounds, seven findings, and **not one of them was reachable by any check th
 stayed byte-identical through the first two and moved only inside this one rule after that; the suite, the
 census and the fires gate were green throughout. Every one was a rule that does not exist yet — or a file
 nobody had written — meeting a fold built for the case in front of it.
+
+---
+
+## A pattern the rule owns, and a fixer that quietly unwrote the fixture
+
+`NoMissnamedDocTagRule` emits — symplify **62 of 89**, php 164 to 165. It walks a class-like's methods,
+properties and constants and reports a different message for each, naming the tag it found.
+
+### Keeping a match rather than answering with one
+
+The boolean half of `Strings::match()` was already here, with the semantics read out of Nette rather than
+assumed. What was missing is a rule that *keeps* the result and asks a second question of it — `$matches[1]`.
+
+The binding carries the pattern and the subject instead of a value, and each read re-asks. That is the design
+decision worth recording: **there is no match array in the emitted plugin**, so no later read can depend on
+one, and any navigation of a `regex-match` other than the null test and the group read meets the ordinary "no
+mapping" refusal rather than a guess. After a round that produced seven over-acceptance findings, defaulting
+an unknown read to a refusal is worth more than a shorter emission.
+
+The restrictions are the existing half's, for reasons traced in `Strings::match()` itself: exactly two
+arguments, because `$utf8` appends the `u` modifier and `$captureOffset` changes the array's shape; and a
+literal pattern, because it is copied into the plugin verbatim. One divergence stated rather than hidden —
+Nette routes `preg_match` through a wrapper that turns a PCRE runtime error into a thrown exception, where
+`preg_match` returns false and this reads as "no match". The port is silent where the original raises.
+
+`getDocComment()` answers for a constant declaration now, and that claim is measured rather than argued: on
+one file both engines report the constant, the property and the method, on lines 8, 14 and 20.
+
+### The fixture stopped testing what it was written to test, and stayed green
+
+`pint` rewrote both example files. In the good one, `no_superfluous_phpdoc_tags` **deleted** the property's
+`@var` and the method's `@param` as redundant against their native types. Both cases stay silent under both
+engines afterwards — for the wrong reason: no docblock at all, rather than the right tag. The suite passes
+either way, because a good example is only ever asserted to produce nothing.
+
+This is the second time a formatter has done this here. The first was `array_syntax` rewriting
+`array($this, 'handle')` into `[..]` in an example pair, which is recorded above. Both files are in pint's
+`notPath` now, each with the reason in its own docblock so the next reader does not remove it.
+
+**A good example is the fixture kind with no failure mode.** A bad example that stops firing fails the gate;
+a good example that stops being the shape it was written as passes, and every tool in the chain is content.
+The formatter is only the mechanism — anything that edits a fixture for reasons of its own can do this, and
+nothing in this repository compares a fixture against what it was for.
+
+### Verification
+
+Emit-all across all three targets, against the previous tree: one new file and no other emitted byte, php
+164 to 165, analyzer 34 and linter 25 unchanged. The census moves three ways and all three are the change:
+symplify to 62 emitting and 26 refusing, this rule to EMIT, and `PhpUpgradeDowngradeRegisteredInSetRule` past
+`Strings::match()` onto its next obstacle.
+
+Suite 311 of 311, PHPStan 0, pint clean. The fires gate ran last, on this tree: 698 of 698, real `mago`
+against real PHPStan over the example pair — so the three member kinds are agreed on line and message by
+both engines rather than only in the one-file run above.
