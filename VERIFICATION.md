@@ -11543,3 +11543,60 @@ Two pieces, one of them a semantics port with no SDK support and an ordering que
 measurement against real PHPStan output. The failure mode of rushing it is the one this file is mostly about:
 a rule that emits, runs, and is confidently wrong on the codebases most likely to run it. The sizing is now
 precise enough that the next step is small and known, which is the whole point of writing it down instead.
+
+## `getPrototype()` measured: unportable in general, exact for the rule that asks
+
+Last step recorded `getPrototype()` as needing "PHPStan's resolution order measured, not assumed". Measured.
+The general answer is that it cannot be ported, and the answer *for this rule* is that it does not need to be
+— which is the "another route to the same answer" question, and it changes the blocker rather than confirming
+it. Probes kept at `internal/probe-prototype-vs-ancestors-*.php`.
+
+### The general case: mago's ancestor list cannot express the ordering
+
+A throwaway PHPStan rule printing `getPrototype()->getDeclaringClass()->getName()` beside
+`getDeclaringClass()->getName()`, over a hierarchy written for the purpose:
+
+| receiver | written | PHPStan declaring | PHPStan prototype |
+|:--|:--|:--|:--|
+| `OwnOnly` | declares it itself | `OwnOnly` | `OwnOnly` |
+| `Leaf` | `extends MiddleBase implements OtherIface`, parent implements `TopIface` | `MiddleBase` | `TopIface` |
+| `TwoIfaces` | `implements FirstIface, SecondIface` | `TwoIfaces` | **`FirstIface`** |
+| `ReversedIfaces` | `implements SecondIface, FirstIface` | `ReversedIfaces` | **`SecondIface`** |
+
+The last two are the control pair, and they settle it: **the prototype follows the written `implements`
+order.** Mago answers `getClassAncestors()` for both as the *same* sorted, lowercased list —
+`["app\firstiface","app\secondiface"]` — so no walk over it can distinguish two classes PHPStan distinguishes.
+Reading the written order instead would mean reading the ancestor's own `implements` clause, and an ancestor
+declared in another file is out of a node hook's reach, which this file already records twice.
+
+So `getPrototype()` is a correct-forever refusal for a node hook, on a measurement rather than an assumption.
+
+### The rule's use of it is not the general case
+
+`DynamicCallOnStaticMethodsRule` asks one thing of the prototype: whether its declaring class is
+`TypeInferenceTestCase` or `PHPStanTestCase`. Prototype and declaring class diverge only when an **ancestor
+interface** declares the same method — that is what the `Leaf` row shows and what the `OwnOnly` row shows the
+absence of. Both exempt names are *classes*, so the divergence cannot reach this comparison: where the
+prototype differs from the declaring class it is an interface, and an interface is never either of those two
+names.
+
+`getDeclaringMethod()` is therefore an exact substitute **here**, with the bound stated: a rule comparing a
+prototype against an *interface* name would need the ordering above and must refuse.
+
+Worth noting beside it: neither exempt class is installed in this corpus, so the exemption is dead in every
+run this repository makes. It is not dead for a consumer analysing a PHPStan extension against
+`phpstan/phpstan-src`, which is the one shape that has them — the same asymmetry as the `phpOnly` row, where
+what looks ignorable is ignorable everywhere except where it matters.
+
+### What is left, and why it stopped here
+
+One piece: the reporting branch is an assignment, a nested exiting guard and a report, and
+`isConditionalReport()` takes leading assignments but not a guard. Folding the branch into a guard chain is
+the natural translation and is valid **only while nothing follows the branch** — here nothing does. But
+`translateStatement()` receives a statement and no position, so the terminality signal has to be threaded
+through the dispatcher every rule's body flows through, and a mistake there is a rule that silently skips work
+after a branch, caught by nothing but the emit-all diff.
+
+That is the change this session stopped before, having already measured the part that could be measured. The
+remaining work is one signal through one dispatcher, and the prototype question behind it is now answered
+rather than open.
