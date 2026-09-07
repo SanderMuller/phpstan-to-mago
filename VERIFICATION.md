@@ -11407,3 +11407,88 @@ displaced docblock exactly when it carries a type, and never when it carries an 
 Fixed, and `typeIsSuperTypeOf` now states the polarity gap above, where the next port to reach for it will
 read it. Docblocks only: the emit-all diff across the php target is the `--out` path and nothing else, so no
 emitted byte moved. Suite unchanged at 1029/1029, PHPStan 0 errors, Pint clean.
+
+## The trap the repository had already probed, and the displacement I wrote up and then committed
+
+`DynamicCallOnStaticMethodsCallableRule` emits. php 170 → 171; `phpstan-strict-rules` 22 → 23 of 45. Last
+step's entry said this rule needed "five reflection questions"; four of the five were already in the runtime,
+and the sizing row was wrong in the rule's favour. Corrected below.
+
+### Recognising a chain because its parts mean nothing alone
+
+The rule calls `$this->ruleLevelHelper->findTypeToCheck($scope, <expr>, '', <criteria>)->getType()` inline.
+There is no rule-owned helper to key `COLLABORATOR_CALLS` on, and keying `RuleLevelHelper::findTypeToCheck`
+generically would serve every caller from a stand-in built for one criteria. Only **two** rules in the corpus
+call it directly — both `DynamicCallOnStaticMethods*` — and both pass the *same* closure, so the chain is
+recognised whole and the closure is validated structurally: a one-parameter closure or arrow function whose
+body is `canCallMethods()->yes() && hasMethod(..)->yes()`. Anything else refuses by name.
+
+**The criteria is deliberately not applied.** PHPStan uses it to pick which member of a union to check, and
+both callers re-test the same two questions on whatever comes back — so a member this port picks differently
+is rejected one line later by the rule itself.
+
+Anchoring the recognizer on the *resolved collaborator class* did not work and the reason is worth keeping:
+`RuleLevelHelper` ships inside `phpstan.phar`, so `collaboratorClass()` finds no source and answered null for
+the only two rules the recognizer exists to serve. It anchors on an injected collaborator property instead,
+with the criteria check as the discriminator.
+
+### `checkThisOnly` is what decides whether the pair can agree at all
+
+The fires gate runs PHPStan at **level 0**, where `checkThisOnly` defaults true and `findTypeToCheck`
+short-circuits every receiver that is not `$this` to `ErrorType`. Measured both ways on the same fixture: at
+level 9 PHPStan reports twice, at level 0 it reports nothing. So the flag joins the two the recognizer already
+carried, and `FiresGate::PARAMETERS` sets it false on both sides — the mechanism the boolean and arithmetic
+families already use, for exactly this reason.
+
+Without it the pair would have agreed on **zero**, which is the one result that proves neither side looked.
+
+### The trap this repository had already probed, and I walked into it
+
+The plugin resolved the receiver, narrowed it, found the class, confirmed the method — and reported nothing.
+The static test was reading `flags->contains(MetadataFlags::STATIC)`.
+
+`Runtime\Types` carries this, written before today:
+
+> `FunctionLikeMetadata->static`, not `flags->contains(MetadataFlags::STATIC)`. The flag exists and is
+> documented and reads false for a `public static function` — probed on this control, where the method was
+> found and the bit was not set. Reaching for the bit is the obvious move and it would have made every
+> `'Class::staticMethod'` report.
+
+I reached for the bit. The record was one file away, the comment names it as the obvious move, and the only
+thing that caught it was the fires gate saying the plugin was silent. **A probe's result protects the code it
+was written for and nothing else** — it lives in the class that needed it, and the next caller of the same SDK
+field never sees it. Both readers now cite each other.
+
+### And the sixth displaced docblock, written up one step ago and committed anyway
+
+Last step's entry ended by fixing the fifth displaced docblock and explaining the mechanism: inserting a
+method above an existing one silently adopts its docblock. This step inserted two methods above
+`inlineStaticProducer()` and took its `@return Descriptor|null`, which PHPStan reported as *two* errors — a
+missing iterable value type on the helper and a shape mismatch in its caller, the second a pure consequence of
+the first.
+
+That is the point CLAUDE.md already makes about itself: *a rule you have to remember while writing is the
+instrument that already failed*. Writing the rule down one step earlier did not stop it. What stopped it was
+PHPStan, and only because this docblock carried a **type** — the fifth one carried prose and shipped.
+
+### Four mutations, each asserted landed
+
+| mutation | result |
+|:--|:--|
+| read the `STATIC` flag bit instead of `->static` | bad example goes silent |
+| interpolate the looked-up name instead of the canonical one | message text diverges on both rows |
+| reject the validated criteria | the rule refuses instead of emitting |
+| answer the receiver's class instead of the declaring one | the inherited row names `CallableSubject` where PHPStan names `CallableBase` |
+
+The last two rows of the bad example are one fixture doing two jobs: the methods are declared `OwnStatic` and
+`InheritedStatic` and called in lower camel case, so the same file controls the canonical-name read and the
+declaring-class read, and the inherited one is the only row where receiver and declaring class differ.
+
+### What moved
+
+php 170 → 171; analyzer 34 and linter 25 unchanged. The emit-all diff across all three targets is three
+files: the new rule, its manifest and worker entries, and the `--out` path — no existing plugin moved a byte.
+Census `phpstan-strict-rules` 22 → 23 emit and 23 → 22 refuse, and the sibling `DynamicCallOnStaticMethodsRule`
+advanced from `->getType()` to its real next blocker, a three-statement `if`. README's row and `--status`
+figure re-derived and cross-checked: the emit column sums to 109 and the portable column to 170. Suite
+1033/1033, PHPStan 0 errors, Rector and Pint clean.

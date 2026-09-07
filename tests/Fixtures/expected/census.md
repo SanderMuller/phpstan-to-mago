@@ -405,7 +405,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 22 of 45 portable rules the package registers emit, 0 covered by the engine, 23 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 23 of 45 portable rules the package registers emit, 0 covered by the engine, 22 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
@@ -469,12 +469,9 @@ REFUSE  DisallowedLooseComparisonRule
         needs: message expression outside the vocabulary: Expr_Ternary
         needs: a second identifier before the first was reported
 EMIT    DisallowedShortTernaryRule
-REFUSE  DynamicCallOnStaticMethodsCallableRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
+EMIT    DynamicCallOnStaticMethodsCallableRule
 REFUSE  DynamicCallOnStaticMethodsRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
+        if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Return
         needs: if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Return
         needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getPrototype()
 EMIT    IllegalConstructorMethodCallRule

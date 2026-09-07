@@ -133,6 +133,45 @@ final class RuleLevel
     }
 
     /**
+     * The type `RuleLevelHelper::findTypeToCheck()` narrows a receiver to, or null where it answers `ErrorType`.
+     *
+     * The two `DynamicCallOnStaticMethods*` rules call `findTypeToCheck()` *directly* rather than through a
+     * helper that hardcodes its criteria, and they are the only rules in the corpus that do  the other two
+     * callers are `BooleanRuleHelper` and `OperatorRuleHelper`, both already ported above. So this is the
+     * public entry point for that shape, and {@see Translator} validates the criteria closure structurally
+     * before emitting a call to it.
+     *
+     * **The criteria closure is not applied here, and that is behaviour-preserving for these callers rather
+     * than a simplification.** PHPStan uses it to pick which member of a union to check; both callers then
+     * re-test `canCallMethods()` and `hasMethod()` on whatever came back, so a member this port picks
+     * differently is rejected one line later by the rule itself. A union receiver is where the two could
+     * still diverge, which is what the example pair carries a union row for.
+     *
+     * Null means *say nothing*, the same reading {@see passesAsBoolean()} gives `ErrorType`: the rules guard
+     * with `$type instanceof ErrorType` and return, so an unnarrowable receiver is silence, not a finding.
+     */
+    public static function narrowedReceiverType(
+        ?Type $type,
+        bool $checkNullables,
+        bool $checkUnionTypes,
+        bool $checkThisOnly,
+    ): ?Type {
+        if (! $type instanceof Type) {
+            return null;
+        }
+
+        // The same short-circuit its three siblings carry, and the same reason: `checkThisOnly` defaults
+        // *true* and turns off at level 2, so below that PHPStan silences every receiver that is not `$this`.
+        // Without it the port reports at a level where the original says nothing  and the fires gate runs at
+        // level 0, so this is the flag that decides whether the pair can agree at all.
+        if ($checkThisOnly && ! self::isThis($type)) {
+            return null;
+        }
+
+        return self::findTypeToCheck($type, $checkNullables, $checkUnionTypes);
+    }
+
+    /**
      * Whether an expression's type is a valid arithmetic operand, the way `OperatorRuleHelper` decides it.
      *
      * The sibling of {@see passesAsBoolean()}, and a shorter port than the original reads, because two of

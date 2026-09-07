@@ -1201,6 +1201,12 @@ final class Support
         return Types::typeIsSuperTypeOf($context, $container, $input);
     }
 
+    /** Whether methods can be called on every part of a type. {@see Types::typeCanCallMethods} */
+    public static function typeCanCallMethods(?Type $type): bool
+    {
+        return Types::typeCanCallMethods($type);
+    }
+
     public static function typeIsObject(?Type $type): bool
     {
         return Types::typeIsObject($type);
@@ -1614,6 +1620,18 @@ final class Support
     }
 
     /** Whether the codebase's method is public. A method that is not found is not public. */
+    /** Whether the codebase's method is static. {@see Members::reflectedMethodIsStatic} */
+    public static function reflectedMethodIsStatic(NodeAnalysisContext $context, ?string $class, ?string $method): bool
+    {
+        return Members::reflectedMethodIsStatic($context, $class, $method);
+    }
+
+    /** The canonical name the codebase declares a method under. {@see Members::reflectedMethodName} */
+    public static function reflectedMethodName(NodeAnalysisContext $context, ?string $class, ?string $method): ?string
+    {
+        return Members::reflectedMethodName($context, $class, $method);
+    }
+
     public static function reflectedMethodIsPublic(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
         return Members::reflectedMethodIsPublic($context, $class, $method);

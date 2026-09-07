@@ -3486,6 +3486,100 @@ final readonly class Translator
      *
      * @return Descriptor|null
      */
+    /**
+     * `findTypeToCheck($scope, <expr>, '', <criteria>)` as the narrowed receiver type, or null when it is not
+     * that shape.
+     *
+     * The criteria closure decides which member of a union PHPStan checks, and
+     * {@see Runtime\RuleLevel::narrowedReceiverType()} states why not applying it is behaviour-preserving for
+     * these two callers. What is *not* safe is serving a different criteria from the same stand-in, so the
+     * closure is matched structurally: a static closure or arrow function of one parameter whose body is
+     * `$t->canCallMethods()->yes() && $t->hasMethod(<name>)->yes()`. Anything else refuses, naming the
+     * criteria rather than the chain, because a criteria this does not implement is a different question.
+     *
+     * @return Descriptor|null
+     */
+    private function narrowedReceiverType(MethodCall $call, int $line): ?array
+    {
+        $args = $call->getArgs();
+
+        // Anchored on an injected collaborator rather than on the resolved class: `RuleLevelHelper` ships
+        // inside `phpstan.phar`, so {@see collaboratorClass()} finds no source for it and answered null for
+        // the only two rules this exists to serve. The criteria check below is the discriminator that matters
+        //  a `findTypeToCheck()` with four arguments and *that* closure is this question and nothing else.
+        if (count($args) !== 4 || ! $call->var instanceof PropertyFetch || ! $this->isThis($call->var->var)) {
+            return null;
+        }
+
+        if (! $this->isTheCallableCriteria($args[3]->value)) {
+            throw new Refusal(
+                'findTypeToCheck() with a criteria this port does not implement; only the '
+                . '`canCallMethods() && hasMethod()` pair the two dynamic-call rules pass is ported',
+                $line,
+            );
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a narrowed receiver type, which only the PHP target carries', $line);
+        }
+
+        $subject = $this->resolve($args[1]->value, $line);
+        $this->context->usesExpressionTypes = true;
+
+        foreach (['checkNullables', 'checkUnionTypes', 'checkThisOnly'] as $flag) {
+            $this->context->configured[$flag] = ['parameter' => $flag, 'kind' => 'config-bool', 'default' => false];
+            $this->context->usesConfiguration = true;
+        }
+
+        $this->context->runtimeHelpers['RuleLevel'] = true;
+
+        return [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'type',
+            'php' => 'RuleLevel::narrowedReceiverType(Support::expressionType($context, '
+                . $this->operand($subject) . '), $this->checkNullables, $this->checkUnionTypes, $this->checkThisOnly)',
+        ];
+    }
+
+    /** Whether a criteria argument is exactly `fn ($t) => $t->canCallMethods()->yes() && $t->hasMethod(..)->yes()`. */
+    private function isTheCallableCriteria(Expr $criteria): bool
+    {
+        $body = match (true) {
+            $criteria instanceof ArrowFunction => $criteria->expr,
+            $criteria instanceof Closure => (count($criteria->stmts) === 1 && $criteria->stmts[0] instanceof Return_)
+                ? $criteria->stmts[0]->expr
+                : null,
+            default => null,
+        };
+
+        if (! $body instanceof BooleanAnd) {
+            return false;
+        }
+
+        return $this->isTrinaryYesOf($body->left, 'canCallMethods')
+            && $this->isTrinaryYesOf($body->right, 'hasMethod');
+    }
+
+    /** Whether an operand is `<subject>-><method>(..)->yes()`. */
+    private function isTrinaryYesOf(Expr $operand, string $method): bool
+    {
+        return $operand instanceof MethodCall
+            && $operand->name instanceof Identifier
+            && $operand->name->toString() === 'yes'
+            && $operand->var instanceof MethodCall
+            && $operand->var->name instanceof Identifier
+            && $operand->var->name->toString() === $method;
+    }
+
+    /**
+     * `Helper::method(..)` in value position, inlined from the helper's own source.
+     *
+     * Null when the class is not one this package can find or the method is not on it, so the caller keeps
+     * looking — a static call is also how `TypeCombinator` and friends are spelled, and those have their own
+     * translations rather than a body to inline.
+     *
+     * @return Descriptor|null
+     */
     private function inlineStaticProducer(StaticCall $expr, int $line): ?array
     {
         $method = $this->memberName($expr->name, $expr->getStartLine());
@@ -9259,6 +9353,20 @@ final readonly class Translator
                 : 'Support::constantStringOf(' . $this->operand($subject) . ') !== null';
         }
 
+        // `$type instanceof ErrorType`  the *inverse* of the null test below, and both rules that ask it read
+        // `ErrorType` as a reason to stay silent. {@see Runtime\RuleLevel::narrowedReceiverType()} already
+        // folds `ErrorType` to null for the same reason its siblings do, so the descriptor carries no
+        // `ErrorType` to compare against and the question is whether the narrowing produced anything.
+        if (in_array($subject['kind'], ['type', 'type-without-null'], true)
+            && $wanted === 'PHPStan\Type\ErrorType'
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('an error-type test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return $this->operand($subject) . ' === null';
+        }
+
         // `$type instanceof Type` narrows nothing — every type is one — so it asks only whether the resolution
         // produced anything. `NoInstanceOfStaticReflectionRule` reads it that way: its resolver answers null
         // for the nodes its union guard admitted and it does not read, and this guard is how the rule
@@ -9697,6 +9805,7 @@ final readonly class Translator
         'isBoolean' => ['type_is_boolean', 'boolean-type'],
         'isLiteralString' => ['type_is_literal_string', 'literal-string'],
         'isObject' => ['type_is_object', 'object-type'],
+        'canCallMethods' => ['type_can_call_methods', 'method-callable-type'],
     ];
 
     private function trinaryTailPredicate(MethodCall $inner, string $tail, int $line): string
@@ -10535,12 +10644,16 @@ final readonly class Translator
         $subject = $this->resolve($expr->var, $expr->getStartLine());
         $line = $expr->getStartLine();
 
-        if ($subject['kind'] === 'method-handle' && in_array($method, ['isPublic', 'isPrivate'], true)) {
+        if ($subject['kind'] === 'method-handle' && in_array($method, ['isPublic', 'isPrivate', 'isStatic'], true)) {
             if (Transpiler::$target !== 'php') {
                 throw new Refusal("{$method}() on a method reflection, which only the PHP target carries", $line);
             }
 
-            $helper = $method === 'isPublic' ? 'reflectedMethodIsPublic' : 'reflectedMethodIsPrivate';
+            $helper = match ($method) {
+                'isPublic' => 'reflectedMethodIsPublic',
+                'isStatic' => 'reflectedMethodIsStatic',
+                default => 'reflectedMethodIsPrivate',
+            };
 
             return 'Support::' . $helper . '($context, '
                 . $this->handlePart($subject, 'classPhp', $line) . ', '
@@ -11277,6 +11390,24 @@ final readonly class Translator
             }
         }
 
+        // `$this->ruleLevelHelper->findTypeToCheck($scope, <expr>, '', <criteria>)->getType()` — the whole
+        // chain, recognised together because none of its parts means anything alone and the criteria is a
+        // *closure over PHPStan Type objects*, which this vocabulary cannot carry. Only two rules in the
+        // corpus call `findTypeToCheck()` directly, both `DynamicCallOnStaticMethods*`, and both pass the same
+        // criteria — so the closure is validated by shape and anything else refuses by name rather than
+        // being served silently by a stand-in built for a different question.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getType'
+            && $expr->getArgs() === []
+            && $expr->var instanceof MethodCall
+            && $this->memberName($expr->var->name, $expr->var->getStartLine()) === 'findTypeToCheck'
+        ) {
+            $narrowed = $this->narrowedReceiverType($expr->var, $line);
+            if ($narrowed !== null) {
+                return $narrowed;
+            }
+        }
+
         // `Helper::method(..)` where the helper's source is in the package — inlined as a producer, the same
         // way a static helper in a *condition* already is. A rule package puts small resolvers on their own
         // classes, and hand-translating each one is how a vocabulary gap becomes a per-package special case.
@@ -11674,6 +11805,24 @@ final readonly class Translator
                 ];
             }
 
+            // `$methodReflection->getName()` — the *canonical* name the codebase declares, not the name the
+            // rule looked the method up by. PHPStan reads it off the reflection, so a call written
+            // `$o->STATICMETHOD(...)` interpolates the declared spelling into the message; reusing the
+            // written name would diverge on any method not spelled as declared, and the gate compares message
+            // text. {@see Runtime\Members::reflectedMethodName()} reads `originalName` for the same reason.
+            if ($base['kind'] === 'method-handle') {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal('a reflected method name, which only the PHP target carries', $line);
+                }
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'bytes',
+                    'php' => 'Support::reflectedMethodName($context, ' . $this->handlePart($base, 'classPhp', $line)
+                        . ', ' . $this->handlePart($base, 'methodPhp', $line) . ')',
+                ];
+            }
+
             // A class this transpiler already reduced to its name answers `getName()` with itself:
             // `getDeclaringClass()->getName()` and a class a loop bound both arrive here.
             if (in_array($base['kind'], ['named-class', 'class-name'], true)) {
@@ -11756,8 +11905,21 @@ final readonly class Translator
         if ($expr instanceof MethodCall
             && $this->memberName($expr->name, $expr->getStartLine()) === 'getDisplayName'
             && $expr->args === []
-            && $this->resolve($expr->var, $line)['kind'] === 'class-reflection'
+            && in_array($this->resolve($expr->var, $line)['kind'], ['class-reflection', 'named-class'], true)
         ) {
+            // A class this transpiler already reduced to a name prints as that name. `getDeclaringClass()`
+            // answers a `named-class`, and PHPStan's `getDisplayName()` on a plain class reflection is its
+            // name too — the generic decoration it adds applies to generic types, which this port has no
+            // descriptor for and would refuse before reaching here.
+            $resolved = $this->resolve($expr->var, $line);
+            if ($resolved['kind'] === 'named-class') {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal('a class display name, which only the PHP target carries', $line);
+                }
+
+                return ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'php' => $this->operand($resolved)];
+            }
+
             if (Transpiler::$target !== 'php') {
                 throw new Refusal('a class display name, which only the PHP target carries', $line);
             }
@@ -12570,6 +12732,31 @@ final readonly class Translator
                     'php' => self::PHP_ONLY,
                     'classPhp' => $this->operand($subject),
                     'methodPhp' => $named,
+                ];
+            }
+        }
+
+        // `$type->getMethod($name, $scope)`  a handle on the method a *receiver type* resolves to, which is
+        // the shape the two `DynamicCallOnStaticMethods*` rules use. The class comes from the type's sole
+        // named object, so a union receiver answers null and the reads below answer nothing rather than
+        // picking a member: PHPStan asks the narrowed type, and the narrowing already rejected a union it
+        // could not reduce.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getMethod'
+            && count($expr->getArgs()) === 2
+        ) {
+            $subject = $this->resolve($expr->var, $line);
+            if (in_array($subject['kind'], ['type', 'type-without-null'], true)) {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal('a method handle from a receiver type, which only the PHP target carries', $line);
+                }
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'method-handle',
+                    'php' => self::PHP_ONLY,
+                    'classPhp' => 'Support::soleObjectClass(' . $this->operand($subject) . ')',
+                    'methodPhp' => $this->operand($this->methodNameArgument($expr->getArgs(), 'getMethod', $line)),
                 ];
             }
         }

@@ -281,12 +281,22 @@ final class Types
     }
 
     /**
-     * Whether every part of a type is a boolean, which is `Type::isBoolean()->yes()`.
+     * Whether methods can be called on every part of a type — PHPStan's `Type::canCallMethods()->yes()`.
      *
-     * Every atomic, not any: PHPStan answers `yes` only when the whole type is boolean, so `bool|null` is not
-     * one. A literal `true` is — its atomic is a boolean scalar carrying a refinement, and the refinement is
-     * what makes it literal rather than what makes it a different kind.
+     * Answered as "is it an object", which is what PHPStan answers `yes` for and nothing else does: a scalar,
+     * an array and `null` are all `no` there, and `mixed` is `Maybe` rather than `yes`. So the two questions
+     * coincide at the `yes()` tail, which is the only tail {@see Translator} lets through.
+     *
+     * Kept as its own name rather than aliased onto {@see typeIsObject()} because the two are not the same
+     * question and only happen to share an answer here: `canCallMethods()` is about what you may do with a
+     * type and `isObject()` about what it is. Aliasing them would hide the divergence recorded below the next
+     * time one of them moves.
      */
+    public static function typeCanCallMethods(?Type $type): bool
+    {
+        return self::typeIsObject($type);
+    }
+
     /**
      * Whether every part of a type is an object — PHPStan's `Type::isObject()->yes()`.
      *
@@ -347,6 +357,13 @@ final class Types
         return $context->types->isContainedBy($input, $container);
     }
 
+    /**
+     * Whether every part of a type is a boolean, which is `Type::isBoolean()->yes()`.
+     *
+     * Every atomic, not any: PHPStan answers `yes` only when the whole type is boolean, so `bool|null` is not
+     * one. A literal `true` is — its atomic is a boolean scalar carrying a refinement, and the refinement is
+     * what makes it literal rather than what makes it a different kind.
+     */
     public static function typeIsBoolean(?Type $type): bool
     {
         if (! $type instanceof Type || $type->atomicTypes === []) {

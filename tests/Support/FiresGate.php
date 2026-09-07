@@ -217,6 +217,10 @@ final readonly class FiresGate
         'OperandInArithmeticPreDecrementRule' => ['checkThisOnly' => false],
         'OperandInArithmeticPostIncrementRule' => ['checkThisOnly' => false],
         'OperandInArithmeticPostDecrementRule' => ['checkThisOnly' => false],
+        // And once more for the dynamic-call rule: at level 0 `checkThisOnly` short-circuits every receiver
+        // that is not `$this` to `ErrorType`, so PHPStan reports nothing on a fixture calling a static
+        // method through a parameter — measured, the same fixture reports twice at level 9.
+        'DynamicCallOnStaticMethodsCallableRule' => ['checkThisOnly' => false],
         'ClassLikeCognitiveComplexityRule' => [
             'cognitive_complexity' => ['class' => 3],
         ],
