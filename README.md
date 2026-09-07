@@ -173,7 +173,7 @@ differential caught first.
 | | wall | CPU |
 |:--|--:|--:|
 | mago, engine only | 4.00s | 3.87s |
-| mago + the 80 transpiled rules | 6.03s | 7.21s |
+| mago + the 80 transpiled rules it had then | 6.03s | 7.21s |
 | PHPStan, cold result cache | 2.74s | 8.64s |
 | PHPStan, warm result cache | 0.89s | 0.87s |
 
