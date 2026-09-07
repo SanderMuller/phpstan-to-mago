@@ -787,6 +787,19 @@ final class Vocabulary
             'arguments' => [0],
         ],
 
+        // `NoReturnSetterMethodRule::hasReturnReturnFunctionLike()`, which runs a php-parser `NodeTraverser`
+        // over the method it was handed. A traverser and a visitor are four statements that mean nothing
+        // apart — `new NodeTraverser()` has no answer in it — so the *question* maps rather than the walk,
+        // the same way the attribute finder does above. {@see Runtime\Returns} carries the two halves and the
+        // three CST shapes that were measured before either was written; two of the three do not translate
+        // the way mago's kind names read.
+        'Symplify\PHPStanRules\Rules\NoReturnSetterMethodRule::hasReturnReturnFunctionLike' => [
+            'helper' => 'Returns::hasReturnValueOrYield',
+            'kind' => 'bool',
+            'takes' => 'context',
+            'arguments' => [0],
+        ],
+
         // Every rule in `phpstan-deprecation-rules` opens with this, so that deprecated code using
         // deprecated things does not warn. The helper is a loop over injected `DeprecatedScopeResolver`s and
         // the package ships exactly one, which asks whether the enclosing class, trait or function carries a

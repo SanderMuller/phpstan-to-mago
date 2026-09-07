@@ -1234,7 +1234,10 @@ final readonly class Translator
         // `$node->attrGroups` — the attributes on the method this hook fired for. php-parser nests them one
         // level deeper, groups each holding attributes, and metadata carries them flattened. Exact for the
         // question `NoReturnSetterMethodRule` asks, because a declaration has an empty group list exactly when
-        // it has no attributes.
+        // it has no attributes — measured rather than assumed, since the two sides read different sources: the
+        // rule reads the syntax tree and this reads metadata, which mago is known to leave thin for a class
+        // whose parent it cannot resolve. `GoodAttributedSetters.php` carries that row beside a resolvable
+        // one, because an under-reading here lets the guard through and reports where the rule skips.
         //
         // Method only, though the same field exists on a class-like: `NoEntityOutsideEntityNamespaceRule` is
         // the class-like case and this does not carry it, because it walks *both* levels to reach each
@@ -10106,6 +10109,25 @@ final readonly class Translator
                 throw new Refusal("{$method}() outside a declaration hook", $expr->getStartLine());
             }
 
+            // The same five, asked of the *enclosing* class from a hook that fired on something inside it.
+            // `classFrom: 'metadata'` is true of every member hook as well as of the declaration hooks, so
+            // without this the answers below compared the *member's* kind against `Class` — false for every
+            // method ever written, which is a guard that never passes rather than a wrong finding. That is
+            // the shape this repository has already shipped once: `NativeReflectionHopRule`'s plugin asks
+            // `isInterface()` from a `Method` hook and has been silent since it was first emitted.
+            //
+            // `isAbstract` keeps its own branch above because it reads a metadata flag rather than a kind.
+            if (! in_array($this->context->nodeKind, self::CLASS_LIKE_HOOK_KINDS, true)) {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal("an enclosing class's kind, which only the PHP target carries", $expr->getStartLine());
+                }
+
+                $this->context->usesMetadata = true;
+                $asked = $method === 'isAnonymous' ? 'AnonymousClass' : substr($method, 2);
+
+                return 'Support::enclosingClassKindIs($context, $node, ' . $this->context->backend->bytes($asked) . ')';
+            }
+
             $this->context->usesMetadata = true;
 
             return match ($method) {
@@ -10247,6 +10269,16 @@ final readonly class Translator
         }
 
         if ($expr->var instanceof Variable && $expr->var->name === 'this' && $this->context->currentClass instanceof ClassLike) {
+            // The rule's own helper, unless the vocabulary has ported it. The value path already asks the
+            // table before inlining and says why; a helper reached as a *condition* arrived here instead, and
+            // this shortcut answered first. `hasReturnReturnFunctionLike()` is the case: it runs a php-parser
+            // traverser, so inlining it refuses on `new NodeTraverser()` — inside the body the port exists to
+            // replace. Asking here as well makes one order hold for both paths.
+            $ported = $this->resolveCollaboratorCall($expr, $expr->getStartLine());
+            if ($ported !== null) {
+                return $this->operand($ported);
+            }
+
             return $this->inlineOwnHelper($method, $args, $expr->getStartLine());
         }
 

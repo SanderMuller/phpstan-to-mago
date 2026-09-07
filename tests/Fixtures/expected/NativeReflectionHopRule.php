@@ -49,7 +49,7 @@ final class NativeReflectionHopRule implements Plugin, NodeAnalysisHook
         $node = $context->node;
 
         // guard dropped: this hook fires only on a class-like or one of its members, so the scope it carries is always in a class
-        if (!(Support::declarationKindIs($context, $node, 'Interface'))) {
+        if (!(Support::enclosingClassKindIs($context, $node, 'Interface'))) {
             return;
         }
 

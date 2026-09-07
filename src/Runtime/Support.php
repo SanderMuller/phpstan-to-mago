@@ -1959,6 +1959,18 @@ final class Support
     }
 
     /**
+     * Whether the class-like around this node is of one kind — `getClassReflection()->isClass()` and friends.
+     *
+     * {@see declarationKindIs()} is the question about the node a hook was handed. The two coincide only for
+     * a class-like declaration hook; {@see Declares::enclosingClassKindIs()} says what asking the wrong one
+     * from a member hook costs.
+     */
+    public static function enclosingClassKindIs(NodeAnalysisContext $context, Part|Node|null $node, string $kind): bool
+    {
+        return Declares::enclosingClassKindIs($context, $node, $kind);
+    }
+
+    /**
      * The classes the enclosing declaration extends, nearest first, as written.
      *
      * `ClassLikeMetadata->parentClasses` rather than `Codebase::getClassAncestors()`: that one folds in

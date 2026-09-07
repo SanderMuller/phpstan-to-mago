@@ -10843,3 +10843,178 @@ And a third docblock displacement: the new helper went in above `render()` and t
 it, which PHPStan caught as two untyped parameters and two mixed offsets. Same shape as the two recorded
 above, same fix. Three times in one session is not carelessness about one edit — inserting a method above an
 existing one silently adopts its docblock, and nothing in the toolchain treats that as a change.
+
+## A rule that emitted a plugin which could never report, and the guard it shares with one already shipped
+
+`NoReturnSetterMethodRule` now emits. Getting there took one capability and one defect, and the defect was
+already in the tree — the interesting half is that nothing in the toolchain had noticed.
+
+### The capability: a traverser is a question, not four statements
+
+The rule's `hasReturnReturnFunctionLike()` builds a php-parser `NodeTraverser`, adds a visitor, traverses,
+and reads a flag off the visitor. The census recorded one need, `Expr_New` at line 82 — `new
+HasScopedReturnNodeVisitor()`. That is the first of four statements none of which means anything alone, so
+the port maps the *question* through `COLLABORATOR_CALLS`, the way `AttributeFinder::hasAttribute()` and
+`FunctionLikeCognitiveComplexityRule::resolveFunctionName()` already are. `Runtime\Returns` holds the two
+halves.
+
+They disagree about closures **on purpose**, and both halves are ported as written. The return search stops
+at `Closure` and at nothing else, so a `return` inside an arrow function or a nested named function still
+counts; the yield search is php-parser's `NodeFinder`, which recurses into everything. Reading that as an
+oversight and unifying them would have been the plausible repair.
+
+`internal/probe-scoped-return-and-yield.php` measured three CST shapes before either walk was written, and
+**two of the three do not translate the way mago's kind names read**:
+
+| written | mago | php-parser's `Yield_` / visitor |
+|:--|:--|:--|
+| `yield $v` | `Yield` → `YieldValue` | matches |
+| `yield $k => $v` | `Yield` → `YieldPair` | matches |
+| `yield from $xs` | `Yield` → `YieldFrom` | **does not match** — separate class |
+| `return;` | `Return`, no `Expression` child | does not count |
+| `return 1;` | `Return` with an `Expression` child | counts |
+| `fn () => 1` | `ArrowFunction` with a bare `Expression` | no `Return` to find |
+
+`Yield` is a wrapper, so matching it fires on `yield from` where the original is silent. The probe carries
+`fromYield()` beside `valueYield()` because that is the row that separates them, and the example pair carries
+`setDelegating()` for the same reason.
+
+### The defect: an enclosing-class guard asked of the wrong node
+
+With the traverser mapped, `--survey` said EMIT. The plugin was silent.
+
+The rule guards on `$scope->getClassReflection()->isClass()` — a question about the class-like *around* the
+method. The translator answered it with `Support::declarationKindIs($context, $node, 'Class')`, which tests
+the node the hook was handed. On a `Method` hook that comparison is false for every method ever written, so
+the guard never passed. A probe printing each guard's value settled it in one run:
+
+```
+name='setNoAttribute' attrs=[] isClass=false pattern=true returns=true
+```
+
+Every other guard was right. `isClass` was the one that could not be true.
+
+**The gate for it was in the wrong place.** `HOOKS` marks `ClassMethod` with `classFrom: 'metadata'`, which
+the translator read as "this is a declaration hook, the node is the declaration". It is true of the class-like
+hooks and of every *member* hook as well. Only `isAbstract` had noticed — it already routed to
+`enclosingClassIsAbstract()` — and the other five did not.
+
+So `Declares::enclosingClassKindIs()` answers the enclosing question by the same walk
+`enclosingClassName()` uses, and the four kind predicates route to it whenever the hook is not a class-like
+one. Measured across all five class-likes, one file, one run:
+
+| method declared in | `Class` | `Interface` | `Enum` | `AnonymousClass` |
+|:--|:--|:--|:--|:--|
+| a class | true | false | false | false |
+| an interface | false | **true** | false | false |
+| an enum | false | false | **true** | false |
+| an anonymous class | true | false | false | **true** |
+| a trait | see below | | | |
+
+### It was already shipped, in a fixture rule, silent since it was first emitted
+
+`NativeReflectionHopRule` is this repository's own fixture for the native-reflection hatch. It registers
+`ClassMethod` and guards on `isInterface()`, so its emitted plugin asked whether a `Method` node was an
+`Interface` and returned on every call. It has a reviewed snapshot, and the snapshot recorded the silent
+guard.
+
+Nothing catches this. The plugin parses, loads, calls only helpers that exist, and runs — the four things a
+count is worth stating alongside. It has no example pair, so the fires gate never looked at it; and the
+snapshot compares the port against itself. **A guard that cannot pass is indistinguishable from a guard with
+nothing to catch**, which is the same failure recorded twice earlier in this file, this time surviving a
+release rather than a session.
+
+The emit-all diff is what named it: one line in a file this change was not about.
+
+### The trait row, measured rather than reasoned about
+
+A trait method answered all four kinds false, so the port was silent on every trait-declared setter. Whether
+that diverges was a question for PHPStan, not for reading: PHPStan analyses a trait member once per *using*
+class and hands `getClassReflection()` that class. With a using class added, PHPStan reported and the port did
+not — a real divergence, and one the example pair caught only because the trait had a user. Without one
+**both engines report nothing and the row passes whether the port looked or not.**
+
+`enclosingClassKindIs()` now asks the trait's users, which is the same answer `enclosingClassIs()` already
+gives for the same reason and with the same bound: exact for a trait used by one class, under-reporting for
+one used by several. The satisfying users are deliberately *not* recorded — `satisfyingUsers()` feeds
+`viaTraitUsers()`, which appends them to the message, and PHPStan's message here names no user. Recording
+them would have turned an agreeing finding into a differing string.
+
+### Seven mutations, each killed, two in opposite directions
+
+A passing gate over examples this session wrote is the weakest evidence available, so every fold was broken
+on purpose and the file restored from a copy:
+
+| mutation | result |
+|:--|:--|
+| drop the `Closure` stop | good example reports at line 41 |
+| count a valueless `return` | good example reports |
+| match the `Yield` wrapper instead of its two leaves | good example reports on `yield from` |
+| disable the enclosing-kind routing | **bad example reports nothing** — "the plugin ran and found nothing" |
+| drop the trait-users branch | trait row goes silent, PHPStan still reports |
+| fold a trait to "is a class" | enum-only trait row reports where PHPStan does not |
+| make `attributeNames()` always answer `[]` | both attributed rows report where PHPStan skips |
+
+The trait mutations are the control pair: one row varies the axis, the other must not move. And the gate
+is not agreement on zero — PHPStan reports at `BadReturningSetters.php:21` and `:29` and mago matches both.
+
+**The last row was missing until it was looked for.** The rule's *first* guard is `$node->attrGroups !== []`,
+and no file in the pair carried an attribute — so deleting that guard entirely would have passed every
+check above. The gap was noticed mid-task, then displaced by the silent-plugin finding and never returned to;
+an outside reader asked which row licensed it, which is the countermeasure this file already records and the
+one that cannot be replaced by a more careful self-review.
+
+Measuring it also settled a claim the vocabulary had been carrying unbacked. The `->attrGroups` mapping's
+comment says a declaration has an empty group list exactly when it has no attributes, but the port answers
+from *metadata* — `enclosingClassName()` then `getMethod()` — while the rule reads the syntax tree, and this
+file elsewhere records that mago skips the bodies of classes whose parent it cannot resolve. If `getMethod()`
+answered null there, the guard would let through a method that carries an attribute and the port would report
+where PHPStan skips: a **false positive**, in the rule shipped here, in the direction this repository designs
+against. One file, two rows, one axis varied:
+
+| method with `#[Entity]`, returning a value | port | PHPStan |
+|:--|:--|:--|
+| in a class with a resolvable hierarchy | silent | silent |
+| in a class extending an unresolvable parent | silent | silent |
+
+So the claim holds, and it now has a row under it rather than a sentence. `GoodAttributedSetters.php` carries
+both rows, and the comment can cite them.
+
+### Pint deleted the control row, for the third time in this repository
+
+`no_useless_return` removed the `return;` from `setBare()`, which is the only row that kills the
+valueless-return mutation. The suite stayed green and the docblock above it still described a row that was no
+longer there. `GoodPlainSetters.php` is now in `pint.json`'s `notPath`, and the mutation was re-run after
+restoring it to confirm the control still bites. Two example files were lost the same way earlier; that makes
+three, all silent.
+
+### What did not move
+
+php emits 166 → 167, analyzer 34 and linter 25 unchanged. The new branch refuses for both Rust targets, as
+the sibling `isAbstract` branch beside it already did; what the unchanged counts measure is that no rule
+which emitted on a Rust target reaches it, not that the refusal is the only thing holding them level. The
+emit-all diff across all three
+targets is five files: the new rule, its manifest and worker entries, the one `NativeReflectionHopRule` line,
+and the `--out` path the snippet embeds. Suite 1017/1017, PHPStan 0 errors, Rector clean, Pint clean. Census
+symplify 63 → 64 emit and 25 → 24 refuse; README's table row and `--status` figure re-derived from the census
+and from a fresh `--status` run rather than edited to match.
+
+### The two candidates I rejected first, and why the census could not tell me
+
+Both had exactly one recorded need and both were traps, in the same direction the census header warns about.
+
+`OverwriteVariablesWithForLoopInitRule` needs `->init` iteration. One expression deeper it calls
+`$scope->hasVariableType($expr->name)->yes()` — the **definedness test** this file already records as
+unanswerable for the PHP target, and the one its `Foreach_` sibling refuses on by name. The For/Foreach pair
+is the evidence: the same blocker, recorded for one and hidden behind an iteration obstacle for the other.
+Building the iteration would have bought nothing.
+
+`MatchingTypeInSwitchCaseConditionRule` needs `->cases` iteration, and behind it a supertype comparison, two
+`describe()` renderings, a per-case report line and accumulation. `IllegalConstructorStaticCallRule` needs
+`getTraitAliases()`, which mago has no equivalent for — `getTraitNames()` is the closest and answers a
+different question — and the branch it guards cannot be stepped over without reporting a trait-aliased
+constructor the rule exempts.
+
+**A single-need row is a claim about where the pass stopped, not about how much work is left.** It said one
+thing for the rule that shipped today too: the traverser was the recorded need, and the guard that would have
+made the plugin silent was not in the list at all.

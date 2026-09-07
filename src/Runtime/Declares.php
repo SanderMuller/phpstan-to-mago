@@ -10,6 +10,7 @@ use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
 use Mago\Sdk\Syntax\ResolvedName;
+use Mago\Sdk\Syntax\SourceFile;
 
 /**
  * What a class-like, a method, a property or a constant *declares* about itself.
@@ -229,6 +230,108 @@ final class Declares
     public static function isInClass(NodeAnalysisContext $context, Part|Node|null $node): bool
     {
         return self::enclosingClassName($context, $node) !== null;
+    }
+
+    /**
+     * Whether the class-like *around* this node is of one kind — `$scope->getClassReflection()->isClass()`.
+     *
+     * {@see declarationKindIs()} is the other question and answers about the node a hook was handed. The two
+     * coincide for a class-like declaration hook and not for any other, which is where this is needed: a rule
+     * registered for `ClassMethod` asks `isClass()` of the class the method sits in, and comparing the
+     * *method's* kind against `Class` is false for every method ever written. That is not a wrong answer a
+     * reader would notice — it is a guard that never passes, so the plugin loads, runs and reports nothing.
+     * `NativeReflectionHopRule`'s emitted plugin was silent that way, and `NoReturnSetterMethodRule` would
+     * have shipped the same.
+     *
+     * Read from the tree by the same walk as {@see enclosingClassName()}, and for the same two reasons: the
+     * node itself counts, because a rule may ask this from a declaration hook as well, and a node hook's
+     * `getAncestors()` is empty until {@see Tree::locate()} relocates the node into the whole file.
+     *
+     * `AnonymousClass` is a class, the equivalence {@see declarationKindIs()} carries and for the same
+     * reason — PHPStan's `isClass()` is true inside `new class { .. }`. It is in the walk rather than only in
+     * the comparison, so a method of an anonymous class declared inside a class is attributed to the
+     * anonymous one instead of falling through to the class around it.
+     */
+    public static function enclosingClassKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool
+    {
+        $node = Tree::node($subject);
+        if (! $node instanceof Node) {
+            return false;
+        }
+
+        [$file, $located] = Tree::locate($context, $node);
+
+        foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
+            if (! in_array($ancestor->kind->value, Tree::CLASS_LIKE_KINDS, true)
+                && $ancestor->kind !== NodeKind::AnonymousClass
+            ) {
+                continue;
+            }
+
+            // A member declared in a trait, which is the same gap {@see enclosingClassIs()} documents and
+            // answers the same way. PHPStan analyses such a member once per *using* class and hands
+            // `getClassReflection()` that class, so `isClass()` there is a question about the users; mago
+            // fires once at the declaration, where the enclosing class-like is the trait itself. Measured:
+            // PHPStan reports a trait-declared setter once the trait is used and the port was silent.
+            //
+            // Answered as "any using class is of this kind", which is exact for a trait used by one class and
+            // under-reports for one used by several — the safe direction, and the same bound the sibling
+            // carries. The satisfying users are deliberately *not* recorded: {@see satisfyingUsers()} feeds
+            // `viaTraitUsers()`, which appends them to the message, and PHPStan's message for this question
+            // names no user. Recording them here would turn an agreeing finding into a differing string.
+            if ($ancestor->kind === NodeKind::Trait) {
+                return self::anyTraitUserKindIs($context, $file, $ancestor, $kind);
+            }
+
+            return $ancestor->kind->value === $kind
+                || ($kind === 'Class' && $ancestor->kind === NodeKind::AnonymousClass);
+        }
+
+        return false;
+    }
+
+    /** Whether any class using this trait is of the given kind, which is what PHPStan asks in its place. */
+    private static function anyTraitUserKindIs(
+        NodeAnalysisContext $context,
+        SourceFile $file,
+        Node $trait,
+        string $kind,
+    ): bool {
+        $name = Declarations::classLikeName($file, $trait);
+        if ($name === null) {
+            return false;
+        }
+
+        foreach (self::traitUsers($context, $name) as $user) {
+            $metadata = $context->codebase->getClassLike($user);
+            if (! $metadata instanceof ClassLikeMetadata) {
+                continue;
+            }
+
+            if (self::metadataKindName($metadata->kind) === $kind) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * What a `ClassLikeKind` case is called in the node-kind vocabulary the rest of this asks in.
+     *
+     * `ClassLikeKind` is a pure enum, so there is no backed value to read, and `Class_` is the case name PHP
+     * needs because `class` is reserved — every kind comparison here is spelled `Class`. A `match` rather
+     * than a lookup table so the mapping is exhaustive at analysis time: a case added upstream is an error
+     * here rather than an undefined key at run time, or a `?? null` the analyser proves dead.
+     */
+    private static function metadataKindName(ClassLikeKind $kind): string
+    {
+        return match ($kind) {
+            ClassLikeKind::Class_ => 'Class',
+            ClassLikeKind::Interface => 'Interface',
+            ClassLikeKind::Trait => 'Trait',
+            ClassLikeKind::Enum => 'Enum',
+        };
     }
 
     /**
