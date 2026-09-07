@@ -11798,3 +11798,30 @@ and the new stub changes no emission because stubs are gate scaffolding rather t
 column sums to 111 and the portable column to 170. Suite 1041/1041, PHPStan 0 errors, Rector and Pint clean —
 and Pint's `fully_qualified_strict_types` rewrote the new example's stub reference, which the gate re-run
 confirmed left every control intact.
+
+## A second attempt the same step, reverted for the reason the table already gives
+
+`RequireQueryBuilderOnRepositoryRule` shipped above. `WrongCaseOfInheritedMethodRule` was attempted straight
+after and **the work was reverted**, which is worth recording because three of its four pieces were built and
+correct.
+
+Its first blocker, `$node->getMethodReflection()`, is close to identity on a method-declaration hook: the node
+*is* the declaration, so the handle is its enclosing class and its own name. Mapped. Behind it, `findMethod()`
+builds its own finding, which the `kind: 'reports'` shape already covers — `Members::reportInheritedCaseMismatch()`
+was written for it, reading the native declaration rather than {@see Mixins::declaringMethod()} because the
+original asks `hasNativeMethod()` and a mixin-supplied method has no written name to disagree in case with.
+And `isReportedErrorBookkeeping()` was widened from `instanceof RuleError` to accept `!== null`, since a
+helper returning `?IdentifierRuleError` invites the comparison and both are the same bookkeeping.
+
+Then the fourth piece: the branch is `if (parent !== null) { $m = findMethod(..); if ($m !== null) { $errors[] = $m; } }`
+— two statements whose *last* is the bookkeeping `if`, and `isConditionalReport()` wants the last statement to
+be the report. It is not the rule's final branch either, so the fold built last step does not apply. That is a
+fourth recognizer variant on the statement path every rule flows through.
+
+**Emit-all across the corpus with all three pieces in place moved no byte.** So they were unexercised
+vocabulary — the exact thing the `BinaryOp` fold and the arithmetic port were reverted for, and the argument
+does not weaken because the pieces are individually correct. Reverted rather than left in the tree, and
+recorded here so the next attempt starts with three of four already sized rather than rediscovering them.
+
+What the rule needs, in one line: a branch whose body is a reporter call followed by bookkeeping that
+translates to nothing.
