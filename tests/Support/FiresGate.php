@@ -221,6 +221,8 @@ final readonly class FiresGate
         // that is not `$this` to `ErrorType`, so PHPStan reports nothing on a fixture calling a static
         // method through a parameter — measured, the same fixture reports twice at level 9.
         'DynamicCallOnStaticMethodsCallableRule' => ['checkThisOnly' => false],
+        // The same flag, for the same reason, for the plain-call sibling.
+        'DynamicCallOnStaticMethodsRule' => ['checkThisOnly' => false],
         'ClassLikeCognitiveComplexityRule' => [
             'cognitive_complexity' => ['class' => 3],
         ],

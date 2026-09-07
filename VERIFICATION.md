@@ -11600,3 +11600,65 @@ after a branch, caught by nothing but the emit-all diff.
 That is the change this session stopped before, having already measured the part that could be measured. The
 remaining work is one signal through one dispatcher, and the prototype question behind it is now answered
 rather than open.
+
+## The branch folded, the guard inverted, and a precondition that protected nothing until it had a fixture
+
+`DynamicCallOnStaticMethodsRule` emits. php 171 → 172; `phpstan-strict-rules` 23 → 24 of 45. Two steps ago
+this rule was sized at two pieces and stopped before; the measurement in between made one of them portable and
+this step built both.
+
+### Folding a branch into the chain around it, and the inversion that came free with it
+
+The reporting branch is an assignment, an exiting guard and a report. It folds into the surrounding guard
+chain because a plugin has one exit and `return []` means the same inside the branch as outside it — but the
+condition has to be **negated**, and `translateGuard()` is same-polarity. It exists for
+`if (COND) { return []; }`, where the condition already names the exit.
+
+Passing this one through unnegated emitted a plugin that returned on every static method and reported on the
+instance ones — the rule inside out, in a file that reads exactly like a guard chain. Caught by reading the
+emitted plugin, and the mutation that restores the bug reports `PlainSubject::plain()` where PHPStan reports
+`PlainSubject::OwnStatic()` and `PlainBase::InheritedStatic()`.
+
+### The precondition, and what it protected before it had a fixture
+
+Folding is sound only while **nothing follows the branch**: hoisting an exit out of a branch with statements
+after it makes the plugin skip them, and the emitted file still looks like a rule. `isTheRulesLastBranch()`
+checks it against the rule method's own statement list, by identity.
+
+Disabling that check changed **no emitted byte across the whole corpus** — no installed rule has the shape it
+guards against. So it was a precondition protecting nothing measurable, which is the shape this file records
+as indistinguishable from one with nothing to catch. `NonTerminalReportBranchRule` is now a fixture with
+exactly that shape: with the gate it refuses on the branch, without it the refusal moves to a later message,
+and the census records which. The guard is exercised by the difference rather than asserted.
+
+### `getPrototype()`, from the measurement one step earlier
+
+Mapped to the declaring method, which the previous step measured as an exact substitute *here* and unportable
+in general: the prototype follows written `implements` order and mago's ancestor list is sorted, so the two
+`TwoIfaces`/`ReversedIfaces` classes PHPStan distinguishes are indistinguishable to any walk over it. The
+substitution holds because prototype and declaring class diverge only through an ancestor **interface**, and
+both names this rule compares against are classes. The mapping says so where the next reader will be.
+
+`in_array()` over class names then needed one more shape: the subject here is a class name this port already
+computed rather than a node to resolve, so it compares through `namesContain()` — folding case, because
+metadata hands class names back lowercased.
+
+### The extraction, made necessary by the complexity limit
+
+`translateIf()` crossed 20 when the reading joined it, and a **new** baseline entry is the thing this
+repository watches for. Three sequential readings moved to `takenByALaterBranchReading()`, which brought
+`translateIf` back under the limit and let its baseline entry be **deleted** rather than raised. The
+emit-all diff across all three targets before and after the extraction is the `--out` path and nothing else,
+which is what says a refactor of the shared statement path changed no behaviour.
+
+One thing to note against myself: the first attempt to delete that baseline entry rewrote the whole file by
+splitting and rejoining it, and unbaselined everything — PHPStan went from 1 error to 13. Restored from git
+and removed surgically. A generated file is not a text stream to reflow.
+
+### What moved
+
+php 171 → 172; analyzer 34 and linter 25 unchanged. The emit-all diff is three files: the new rule, its
+manifest and worker entries, and the `--out` path — plus one new *refusing* fixture rule, which adds a census
+line and no emission. Census `phpstan-strict-rules` 23 → 24 emit and 22 → 21 refuse. README's row and
+`--status` figure re-derived and cross-checked: the emit column sums to 110 and the portable column to 170.
+Suite 1037/1037, PHPStan 0 errors with one baseline entry fewer, Rector and Pint clean.

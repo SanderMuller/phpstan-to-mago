@@ -550,6 +550,15 @@ final readonly class Translator
                 throw new Refusal("{$asked} over class names, which only the PHP target resolves", $line);
             }
 
+            // A class name this port already computed, rather than a node to resolve. `getPrototype()` and
+            // `getDeclaringClass()->getName()` both answer one, and there is nothing left to resolve  so the
+            // comparison is membership, folding case and a leading separator the way `namesContain()` does.
+            // Metadata hands class names back lowercased, which this file records elsewhere as fine for
+            // looking a class up again and wrong for printing, and is exactly why the fold is not optional.
+            if (in_array($subject['kind'], ['class-name', 'bytes'], true)) {
+                return $this->context->backend->call('names_contain', [$list, $this->operand($subject)]);
+            }
+
             if ($subject['kind'] !== 'name-expr') {
                 throw new Refusal("{$asked} over class names against a {$subject['kind']}", $line);
             }
@@ -4129,16 +4138,7 @@ final readonly class Translator
             return;
         }
 
-        // A block every path of which ends the iteration, which is `if (COND) { continue; }` however many
-        // statements it holds.
-        if ($this->alwaysEndsTheIteration($stmt)) {
-            return;
-        }
-
-        // `if (COND) { $flag = true; continue; }` — a flag the loop carries, set and then done with this
-        // item. `NoServiceAutowireDuplicateRule` opens its loop with one: the statement that turns autowiring
-        // on is not itself a finding, and every statement after it is judged differently.
-        if ($this->setsAFlagAndEndsTheIteration($stmt)) {
+        if ($this->takenByALaterBranchReading($stmt)) {
             return;
         }
 
@@ -4181,6 +4181,119 @@ final readonly class Translator
 
         $this->translateGuard($stmt->cond, $this->guardExit($stmt, $only));
 
+    }
+
+    /**
+     * The branch readings that come after the block shapes, tried in order.
+     *
+     * Extracted only to keep {@see translateIf()} under the complexity limit when the last-branch reading
+     * joined it  a new entry in the baseline is the thing this repository watches for, and a list of
+     * `if (..) return;` readings is exactly what splits without changing what any of them does.
+     */
+    private function takenByALaterBranchReading(If_ $stmt): bool
+    {
+        // A block every path of which ends the iteration, which is `if (COND) { continue; }` however many
+        // statements it holds.
+        if ($this->alwaysEndsTheIteration($stmt)) {
+            return true;
+        }
+
+        // `if (COND) { $flag = true; continue; }` — a flag the loop carries, set and then done with this
+        // item. `NoServiceAutowireDuplicateRule` opens its loop with one: the statement that turns autowiring
+        // on is not itself a finding, and every statement after it is judged differently.
+        if ($this->setsAFlagAndEndsTheIteration($stmt)) {
+            return true;
+        }
+
+        // if (COND) { $x = ..; if (OTHER) { return []; } return [<error>]; } — the rule's *last* branch,
+        // holding a guard chain of its own. `DynamicCallOnStaticMethodsRule` writes one: the static test opens
+        // it, a prototype exemption exits from inside it, and the report is its tail.
+        //
+        // Folded into the surrounding guard chain rather than translated as a block, because a plugin has one
+        // exit and `return []` inside the branch means the same thing there as outside it. That is only true
+        // while **nothing follows the branch**, which is what {@see isTheRulesLastBranch()} checks: hoist an
+        // exit out of a branch with statements after it and the plugin skips them, which no snapshot would
+        // show because the emitted file would still look like a rule.
+        return $this->takesTheLastBranchAsAGuardChain($stmt);
+    }
+
+    /**
+     * `if (COND) { <assignments and guards> return [<error>]; }` as the tail of a guard chain.
+     *
+     * Every statement before the report has to be one the surrounding chain can already take: an assignment,
+     * or a guard whose body is `return []`. Anything else  a loop, a nested branch that does not exit, a
+     * second report  is a shape this does not implement, and it refuses under the message below rather than
+     * being flattened into something that reads like the rule and is not.
+     */
+    private function takesTheLastBranchAsAGuardChain(If_ $stmt): bool
+    {
+        if ($stmt->elseifs !== [] || $stmt->else instanceof Else_ || count($stmt->stmts) < 2) {
+            return false;
+        }
+
+        if (! $this->isTheRulesLastBranch($stmt)) {
+            return false;
+        }
+
+        $body = $stmt->stmts;
+        $last = $body[count($body) - 1];
+        if (! $this->isSingleErrorReturn($last)) {
+            return false;
+        }
+
+        foreach (array_slice($body, 0, -1) as $leading) {
+            $isAssignment = $leading instanceof Expression && $leading->expr instanceof Assign;
+            $isExitingGuard = $leading instanceof If_
+                && $leading->elseifs === []
+                && ! $leading->else instanceof Else_
+                && $this->isReturnEmptyArray($leading->stmts);
+
+            if (! $isAssignment && ! $isExitingGuard) {
+                return false;
+            }
+        }
+
+        // Negated: the branch is entered *when* the condition holds, so the guard in front of the flattened
+        // body has to exit when it does not. `translateGuard()` is same-polarity  — it exists for
+        // `if (COND) { return []; }`, where the condition already names the exit  — and passing this one
+        // through unnegated emitted a plugin that returned on every static method and reported on the
+        // instance ones. It read as a guard and was the rule inside out.
+        $this->translateGuard(new BooleanNot($stmt->cond), $this->context->backend->bail());
+
+        foreach ($body as $inner) {
+            $this->translateStatement($inner);
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether this `if` is the last thing the rule's own body does.
+     *
+     * The precondition for folding a branch into the guard chain around it. `return []` after the branch is
+     * the rule saying it found nothing, which is what the plugin does by falling off the end  so a trailing
+     * one is allowed and anything else is not.
+     *
+     * Compared by identity against the method's own statement list, so a branch of the same shape written
+     * anywhere else answers no. {@see atTheRulesOwnTail()} is the other half: inside an inlined helper or a
+     * check method the surrounding chain is not the rule's, and hoisting an exit out of one has a position
+     * `refuseAHoistedExit()` already refuses.
+     */
+    private function isTheRulesLastBranch(If_ $stmt): bool
+    {
+        if (! $this->atTheRulesOwnTail() || ! $this->context->currentMethod instanceof ClassMethod) {
+            return false;
+        }
+
+        $statements = array_values($this->context->currentMethod->stmts ?? []);
+        $position = array_search($stmt, $statements, true);
+        if (! is_int($position)) {
+            return false;
+        }
+
+        $after = array_slice($statements, $position + 1);
+
+        return $after === [] || (count($after) === 1 && $this->isReturnEmptyArray($after));
     }
 
     /**
@@ -11725,6 +11838,43 @@ final readonly class Translator
                 . 'of its checks gives up the per-node dispatch its other checks need',
                 $line,
             );
+        }
+
+        // `$methodReflection->getPrototype()`  answered as the *declaring* method, which is not the same
+        // question and is the same answer wherever the result is compared against a class name.
+        //
+        // Measured, in `internal/probe-prototype-vs-ancestors-*.php`. PHPStan's prototype follows the written
+        // `implements` order: `implements FirstIface, SecondIface` answers `FirstIface` and the reverse
+        // spelling answers `SecondIface`. Mago answers `getClassAncestors()` for both as the same sorted,
+        // lowercased list, so no walk over it can tell the two apart  the general question is unportable to a
+        // node hook, and reading the written order would mean reading an ancestor's own `implements` clause in
+        // another file.
+        //
+        // What makes the substitution exact here is what the divergence needs: prototype and declaring class
+        // differ **only** when an ancestor *interface* declares the method. `DynamicCallOnStaticMethodsRule`
+        // compares the result against `TypeInferenceTestCase` and `PHPStanTestCase`, both classes, so the
+        // divergence cannot reach the comparison. A rule comparing a prototype against an *interface* name
+        // needs the ordering above and has to refuse instead.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getPrototype'
+            && $expr->args === []
+        ) {
+            $subject = $this->resolve($expr->var, $line);
+            if ($subject['kind'] === 'method-handle') {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal('a method prototype, which only the PHP target carries', $line);
+                }
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'method-handle',
+                    'php' => self::PHP_ONLY,
+                    'classPhp' => 'Support::declaringClassOfMethod($context, '
+                        . $this->handlePart($subject, 'classPhp', $line) . ', '
+                        . $this->handlePart($subject, 'methodPhp', $line) . ')',
+                    'methodPhp' => $this->handlePart($subject, 'methodPhp', $line),
+                ];
+            }
         }
 
         // `getDeclaringClass()` on a method handle — the class a method *comes from*, not the receiver. A rule
