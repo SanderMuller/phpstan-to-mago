@@ -106,7 +106,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 65 of 89 portable rules the package registers emit, 1 covered by the engine, 23 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 66 of 89 portable rules the package registers emit, 1 covered by the engine, 22 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -120,10 +120,7 @@ REFUSE  ClassNameRespectsParentSuffixRule
         needs: the rule returns whatever processClassNameAndShort() decides, and that helper builds the findings rather than answering a question — so there is nothing here to translate into guards
 EMIT    ExplicitClassPrefixSuffixRule
 EMIT    ExplicitExpectsMockMethodRule
-REFUSE  FileNameMatchesExtensionRule
-        statement outside the vocabulary: Stmt_Expression
-        needs: statement outside the vocabulary: Stmt_Expression
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: basename()
+EMIT    FileNameMatchesExtensionRule
 EMIT    ForbiddenArrayMethodCallRule
 EMIT    ForbiddenExtendOfNonAbstractClassRule
 REFUSE  ForbiddenFuncCallRule

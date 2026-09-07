@@ -11186,3 +11186,68 @@ new rule, its manifest and worker entries, one `getTargets()` line in each of tw
 the widened target list. README's row and `--status` figure re-derived and cross-checked — the emit column
 sums to 106 and the portable column to 170, plus the 40 rules of `spaze` and `composer/pcre` that make the
 `--status` denominator 210. Suite 1021/1021, PHPStan 0 errors, Rector and Pint clean.
+
+## A `STOP_TRAVERSAL` that does nothing, and two mutations that measured nothing
+
+`FileNameMatchesExtensionRule` emits. php 168 → 169. The rule was the easy part; the instrument was not.
+
+### The rule reads a walk whose stop is dead code
+
+`findExtensionName()` runs `NodeFinder::find($node, function (Node $node) { … return
+NodeVisitor::STOP_TRAVERSAL; })`. That reads as "stop at the first `extension()` call", and the first port was
+written to match it.
+
+**It does not stop.** `NodeFinder::find()` takes a *predicate*, not a visitor callback:
+`FindingVisitor::enterNode()` calls the filter, uses the result only for its truthiness, and returns `null`
+itself. The traversal runs to the end. So the answer is the last string argument of the **last** `extension()`
+call anywhere below the closure, and the rule's own author appears to have believed otherwise.
+
+The gate caught it, not reading. A fixture written to pin the stop — a bare `extension()` followed by
+`extension('mismatch')` — reported under PHPStan and stayed silent under the port. Reading
+`NodeFinder::find()` afterwards explained why. The port matches the behaviour, not the intent.
+
+Two smaller shapes, both ported as written: within one call the last string argument wins (the `foreach`
+assigns without breaking), and the walk descends into nested closures.
+
+### Two mutations passed while measuring nothing, for two different reasons
+
+Both were expected to fail. Both passed. Neither was a missing control:
+
+**A `return;` in a void recursion is not a stop.** The mutation meant to restore the first port's behaviour
+inserted an early `return;` into a `void` helper. That exits one invocation, so the parent's `foreach`
+continues to the next child — it skips a *subtree*, not the walk. Re-expressed as a bool the recursion
+propagates, the same mutation fails immediately. **A mutation that does not express the change it names is a
+false pass**, and it looks exactly like a fold with nothing to catch. This is the "guard that cannot fire"
+rule turned on the instrument rather than on the code.
+
+**A control that varies two axes controls neither.** The nullsafe row was written
+`static function (?ContainerConfigurator $c): void { $c?->extension('mismatch'); }` — nullable hint *and*
+nullsafe call. The detector rejects a nullable hint before the walk ever runs, so the row never reached the
+code it was written to control, and the mutation that matches `NullSafeMethodCall` passed. Dropping the `?`
+from the parameter isolates the axis and that mutation then fails. `ConfigClosureRule`'s own fixture had
+already recorded that the nullable hint is rejected; the row was written without reading it.
+
+Both are the same lesson from opposite ends: **a green mutation check is evidence only once you have shown the
+mutation reached the fixture and the fixture reached the fold.** Four mutations now kill this rule — the
+whole-walk stop, first-string-wins, matching nullsafe calls, and dropping `basename()`'s suffix.
+
+Mago's kind name was verified separately rather than assumed: `$c?->extension('a')` is `NullSafeMethodCall`
+and `$c->extension('b')` is `MethodCall`, one file, both rows.
+
+### A `Good*` file cannot hold a reported row
+
+The stop control first went into the good example, where it belongs semantically — it is a case the rule
+leaves alone if you believe the stop. Once the stop turned out to be dead, PHPStan reported it, and the gate's
+`test_the_emitted_plugin_stays_silent_on_the_good_example` is a stricter assertion than agreement: a `Good*`
+file must be silent in **both** engines, not merely agreed upon. The row moved to the bad example, where both
+engines report it and it still pins the walk.
+
+### What moved
+
+php 168 → 169; analyzer 34 and linter 25 unchanged, since both new capabilities refuse for the Rust targets.
+The emit-all diff across all three targets is three files: the new rule, its manifest and worker entries, and
+the `--out` path — no existing plugin moved a byte. Census symplify 65 → 66 emit and 23 → 22 refuse. README's
+row and `--status` figure re-derived and cross-checked: the emit column sums to 107 and the portable column to
+170, plus the 40 of `spaze` and `composer/pcre` that make the denominator 210. Suite 1025/1025, PHPStan 0
+errors, Rector and Pint clean — and Pint left the new fixtures alone, which is worth stating given four
+example files have been silently rewritten by formatters here.

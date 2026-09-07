@@ -1863,6 +1863,21 @@ final class Support
     }
 
     /**
+     * The analysed file's name without a suffix — `basename($scope->getFile(), $suffix)`.
+     *
+     * Unaffected by the divergence {@see fileDirectory()} records: mago's `source->path` is workspace-relative
+     * where PHPStan's `getFile()` is absolute, and a basename is the same either way. Checked rather than
+     * assumed, because that docblock's neighbour needed a `realpath()` for exactly this reason and this one
+     * does not.
+     *
+     * The suffix is stripped only when the name ends with it, which is what `basename()` itself does.
+     */
+    public static function fileBaseName(NodeAnalysisContext $context, string $suffix = ''): string
+    {
+        return basename($context->source->path, $suffix);
+    }
+
+    /**
      * Whether a path a rule built exists on disk.
      *
      * A plugin is PHP, so it can ask the filesystem the same question the rule asks. Null-tolerant because the

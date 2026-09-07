@@ -801,6 +801,18 @@ final class Vocabulary
             'arguments' => [0],
         ],
 
+        // `FileNameMatchesExtensionRule::findExtensionName()`, a `NodeFinder` walk whose answer is a captured
+        // variable the callback mutates before returning `STOP_TRAVERSAL` — a side effect rather than a
+        // value, which the vocabulary has no statements for. {@see Runtime\ConfigClosures} carries the three
+        // ways the callback is odd, all ported as written: the stop fires whether or not a name was found,
+        // the last string argument of that one call wins, and the walk descends into nested closures.
+        'Symplify\PHPStanRules\Rules\Symfony\ConfigClosure\FileNameMatchesExtensionRule::findExtensionName' => [
+            'helper' => 'ConfigClosures::extensionName',
+            'kind' => 'bytes',
+            'takes' => 'context',
+            'arguments' => [0],
+        ],
+
         // `NoInstanceOfStaticReflectionRule::resolveExprStaticType()`, which reads a different field for each
         // of the two kinds its union guard admits. That is the one shape
         // `internal/handoff-multi-kind-hook-is-not-a-redesign.md` tells the inliner not to learn, so the

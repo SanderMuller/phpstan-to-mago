@@ -12817,6 +12817,37 @@ final readonly class Translator
             return ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'php' => 'Support::fileDirectory($context)'];
         }
 
+        // `basename($scope->getFile(), '.php')` — the analysed file's own name, which two config rules
+        // compare against something the file declares about itself. Only of the file, and only with a
+        // literal suffix or none: `basename()` of a computed path is a value this has no rendering for, the
+        // same boundary `dirname()` above draws.
+        if ($expr instanceof FuncCall
+            && $expr->name instanceof Name
+            && $expr->name->toString() === 'basename'
+            && count($expr->getArgs()) <= 2
+            && $expr->getArgs() !== []
+        ) {
+            $of = $this->resolve($expr->getArgs()[0]->value, $line);
+            if ($of['kind'] !== 'file') {
+                throw new Refusal("basename() of a {$of['kind']} rather than of the analysed file", $line);
+            }
+
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('the analysed file’s name, which only the PHP target carries', $line);
+            }
+
+            $suffix = '';
+            if (isset($expr->getArgs()[1])) {
+                $suffix = $this->bytesValue($expr->getArgs()[1]->value, $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'bytes',
+                'php' => 'Support::fileBaseName($context' . ($suffix === '' ? '' : ', ' . $suffix) . ')',
+            ];
+        }
+
         // `$array->items[0]` — an element by position. Null when the literal has fewer, which is what the
         // rule's own `instanceof ArrayItem` guard then tests.
         if ($expr instanceof ArrayDimFetch && $expr->dim instanceof Int_) {
