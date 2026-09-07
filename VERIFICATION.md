@@ -10694,3 +10694,42 @@ Every remaining refusal in the census was read this round. Four groups, and only
 **The reduction is the interesting part and the reason to price it rather than start it.** Mapping the
 question needs the two engines' answers to agree for unions as well as single scalars, and that is a claim
 about PHPStan's `generalize` that no probe in this repository has made yet.
+
+---
+
+## The reduction I priced is unsound, and the case that breaks it is one line
+
+The open question from the entry above is settled by reading rather than probing. `UnionType` declares no
+`generalize()`; it uses `NonGeneralizableTypeTrait`, whose `generalize()` is
+`$this->traverse(fn ($t) => $t->generalize($precision))`, and `UnionType::traverse()` maps over members.
+`ConstantIntegerType::generalize()` returns `new IntegerType()`. So generalizing a union of constant scalars
+does give a union of bare scalars, which is what the reduction assumed.
+
+**It is still unsound, and the reason is the conditional.** `AssertEqualsIsDiscouragedRule` generalizes each
+side only `if ($type->isConstantScalarValue()->yes())`, and on a union that is *every* member being one —
+read from the phar, `notBenevolentUnionResults`. So three shapes, not two:
+
+| both sides | generalized? | mutual `isSuperTypeOf` |
+|:--|:--|:--|
+| `int(1)` and `int(2)` | yes, to `int` and `int` | equal — reports |
+| `int` and `int` | no, already bare | equal — reports |
+| `int(1)\|string` and `int\|string` | **no** — the first is not fully constant | `int(1)\|string ⊆ int\|string` but not back — silent |
+
+The reduction "both scalar-only and the same set of scalar kinds" answers *reports* for that third row, where
+the rule is silent. A mixed union of one literal and one bare scalar is a line of ordinary code —
+`assertEquals(1, $stringOrInt)` — not a contrived shape.
+
+**And the same case defeats the alternative.** Carrying "the generalized form of this type" as a recipe and
+generalizing at each read is equivalent only if unconditional generalization is equivalent to the rule's
+conditional one. It is not, for exactly that row: the rule leaves `int(1)|string` alone and unconditional
+generalization turns it into `int|string`, which then compares equal and reports.
+
+So both routes need the mixed case handled, and a plugin cannot refuse at runtime — it has to answer. The
+honest answer there is `false`, which under-reports on a pair of *identical* mixed unions, where PHPStan
+reports. That is a divergence to state, not to discover, and it makes the fold a pattern match on one
+compound condition with a caveat attached rather than the clean question the reduction promised.
+
+**Priced again, and not built.** The rule is reachable at that cost; it is not reachable at the cost the
+entry above quoted, and the difference is one table row. Recording the row is worth more than the rule:
+*a reduction that holds for every shape you thought of is not a reduction*, and the shape that broke this one
+took working the case rather than liking the algebra.
