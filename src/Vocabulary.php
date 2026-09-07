@@ -801,6 +801,18 @@ final class Vocabulary
             'arguments' => [0],
         ],
 
+        // `RepeatedServiceAdderCallNameFinder::find()`, a static finder over one statement's call chain that
+        // counts `->call(<name>, [<service reference>])` and answers the first name repeated three times.
+        // Ported rather than translated for the same reason as the walk below it, plus a threshold and a
+        // per-name count the vocabulary has no shape for. {@see Runtime\ConfigClosures} states which
+        // spellings of `ref()` and `service()` were measured, and why the resolved name is what it reads.
+        'Symplify\PHPStanRules\Symfony\NodeFinder\RepeatedServiceAdderCallNameFinder::find' => [
+            'helper' => 'ConfigClosures::repeatedAdderCallName',
+            'kind' => 'bytes',
+            'takes' => 'context',
+            'arguments' => [0],
+        ],
+
         // `FileNameMatchesExtensionRule::findExtensionName()`, a `NodeFinder` walk whose answer is a captured
         // variable the callback mutates before returning `STOP_TRAVERSAL` — a side effect rather than a
         // value, which the vocabulary has no statements for. {@see Runtime\ConfigClosures} carries the three
@@ -1130,6 +1142,10 @@ final class Vocabulary
         // An `instanceof` test asked of a node the hook fired for. Mago files it under `Binary` with every
         // other operator, so this is an operator comparison rather than a kind comparison — see
         // {@see Support::isInstanceof()}.
+        // `$stmt instanceof Stmt\Expression`, asked of an item a body's statement list yielded. Mago wraps
+        // each item in a `Statement` category node, so the comparison is one level down and not on the
+        // item's own kind — {@see Runtime\Statements} carries the measurement.
+        Expression::class => 'is_expression_statement',
         Instanceof_::class => 'is_instanceof',
         Dir::class => 'is_dir_constant',
         String_::class => 'is_literal_string',

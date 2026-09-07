@@ -41,6 +41,22 @@ use Mago\Sdk\Syntax\Node;
  */
 final class ConfigClosures
 {
+    /** The method a Symfony config closure adds a service through. */
+    private const string CALL_NAME = 'call';
+
+    /** How many repeats the original treats as worth a tagged iterator. */
+    private const int MIN_ALERT_COUNT = 3;
+
+    /**
+     * `SymfonyFunctionName::REF` and `::SERVICE`, which the package holds fully qualified.
+     *
+     * @var list<string>
+     */
+    private const array REFERENCE_FUNCTIONS = [
+        'Symfony\\Component\\DependencyInjection\\Loader\\Configurator\\ref',
+        'Symfony\\Component\\DependencyInjection\\Loader\\Configurator\\service',
+    ];
+
     /**
      * `findExtensionName()` — the extension a config closure names, or null.
      *
@@ -89,5 +105,134 @@ final class ConfigClosures
         foreach ($context->source->getChildren($node) as $child) {
             self::readEveryExtensionCall($context, $child, $name);
         }
+    }
+
+    /**
+     * The service-adder method name repeated enough times to be worth a tagged iterator.
+     *
+     * `RepeatedServiceAdderCallNameFinder::find()`. Walks one statement's call chain for
+     * `->call(<string>, [<service reference>])`, counts the names, and answers the first that occurs at least
+     * three times — so a chain calling `add` twice and `set` once answers nothing, and one calling `add`
+     * three times answers `add`.
+     *
+     * Three details are the original's rather than a reading of it:
+     *
+     * - **Exactly two arguments**, and the first must be a written string. A `->call()` with a third argument
+     *   is not counted at all.
+     * - **The second argument must be an array of exactly one element**, and that element a reference call.
+     *   A two-element array is not a repeated single-service adder.
+     * - **The count is per name**, and the first name over the threshold in traversal order wins. `array_count_values`
+     *   preserves first-seen order, which is what the `foreach` after it walks.
+     *
+     * `ref()` and `service()` are compared against **fully qualified** names, because that is what
+     * `SymfonyFunctionName` holds and what PHPStan compares: its `NameResolver` rewrites an imported function
+     * call to its FQN before a rule sees it. Mago keeps the written spelling and answers resolution
+     * separately, so the resolved name is what this reads — measured, and all four spellings agree:
+     * `service(..)` under a `use function` import, `ref(..)`, a written-out FQN, and an unimported `other(..)`
+     * which resolves into the current namespace and matches neither. Reading the written text would have
+     * matched none of the first three.
+     */
+    public static function repeatedAdderCallName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        $node = Tree::node($subject);
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        $names = [];
+        self::collectAdderCallNames($context, $node, $names);
+
+        foreach (array_count_values($names) as $name => $count) {
+            if ($count >= self::MIN_ALERT_COUNT) {
+                return (string) $name;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Every `->call(<string>, [<reference>])` name below this node, in traversal order.
+     *
+     * @param list<string> $names
+     */
+    private static function collectAdderCallNames(NodeAnalysisContext $context, Node $node, array &$names): void
+    {
+        if ($node->kind->value === 'MethodCall') {
+            $name = self::adderCallName($context, $node);
+            if ($name !== null) {
+                $names[] = $name;
+            }
+        }
+
+        foreach ($context->source->getChildren($node) as $child) {
+            self::collectAdderCallNames($context, $child, $names);
+        }
+    }
+
+    /** The name this `->call()` adds a single service under, or null when it is not that shape. */
+    private static function adderCallName(NodeAnalysisContext $context, Node $node): ?string
+    {
+        $selector = Calls::selector($context, $node);
+        if (! Names::selectorIsIdentifier($selector) || ! Calls::selectorIs($selector, self::CALL_NAME)) {
+            return null;
+        }
+
+        $list = Calls::argumentList($context, $node);
+        if (Calls::argCount($list) !== 2) {
+            return null;
+        }
+
+        $name = self::literalOf(Calls::positionalArgAt($list, 0));
+        if ($name === null) {
+            return null;
+        }
+
+        return self::isSingleReferenceArray($context, Calls::positionalArgAt($list, 1)) ? $name : null;
+    }
+
+    /** Whether this argument is `[ref(..)]` or `[service(..)]` — one element, and that element a reference call. */
+    private static function isSingleReferenceArray(NodeAnalysisContext $context, ?Part $argument): bool
+    {
+        if (! $argument instanceof Part || $argument->kind->value !== 'Array') {
+            return false;
+        }
+
+        $elements = Tree::findKind($context, $argument, ['ValueArrayElement']);
+        if (count($elements) !== 1) {
+            return false;
+        }
+
+        $value = Calls::nthExpression($context, $elements[0], 0);
+
+        // Through the `Call` category node. Mago files every call kind under one wrapper, so an element
+        // holding `service(..)` arrives as `Call` and a `FunctionCall` test on it answers no  the same
+        // wrapper {@see Calls} keeps its own list for, reached from a position that list does not cover.
+        if ($value instanceof Part && $value->kind->value === 'Call') {
+            $value = $value->firstChild();
+        }
+
+        if (! $value instanceof Part || $value->kind->value !== 'FunctionCall') {
+            return false;
+        }
+
+        $callee = Calls::nthExpression($context, $value, 0);
+        $resolved = $callee instanceof Part ? $context->source->getResolvedName($callee->node)?->name : null;
+
+        return $resolved !== null && in_array(ltrim($resolved, '\\'), self::REFERENCE_FUNCTIONS, true);
+    }
+
+    /**
+     * A written string literal's value, or null for anything computed.
+     *
+     * Takes the argument's *value*, not the argument: {@see Calls::positionalArgAt()} already unwraps the
+     * `Argument`, `PositionalArgument` and `Expression` layers, so calling {@see Calls::argumentValue()} again
+     * here read one level too deep and answered null for every `->call('add', ..)` in the corpus. Measured:
+     * position 0 arrives as a `Literal` whose text is `'add'`, quotes included, which is what
+     * {@see CstLiteral::plainString()} takes.
+     */
+    private static function literalOf(?Part $value): ?string
+    {
+        return $value instanceof Part ? CstLiteral::plainString($value->text) : null;
     }
 }

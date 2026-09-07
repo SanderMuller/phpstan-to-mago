@@ -11251,3 +11251,104 @@ row and `--status` figure re-derived and cross-checked: the emit column sums to 
 170, plus the 40 of `spaze` and `composer/pcre` that make the denominator 210. Suite 1025/1025, PHPStan 0
 errors, Rector and Pint clean — and Pint left the new fixtures alone, which is worth stating given four
 example files have been silently rewritten by formatters here.
+
+## Three silent-plugin bugs in one build, and a control that never reached the code it guarded
+
+`TaggedIteratorOverRepeatedServiceCallRule` emits. php 169 → 170, and symplify passes two thirds. The rule
+needed two navigations and one ported finder; what it actually surfaced was three separate ways to emit a
+plugin that runs and reports nothing.
+
+### The per-item report line already existed
+
+The census's "a report line that is not a node's own" reads like a missing capability. It is not:
+`reportAnchor()` already translates `->line($stmt->getStartLine())` into `Support::anchor($context, $stmt)`,
+and `TranslationContext::$anchorNeedsLoop` already guards a loop-bound anchor emitted outside its loop. So the
+sizing that mattered was one grep, and it turned a four-part build into a two-part one. **A census need names
+where a rule stopped, not what the tool lacks** — checked before building, this time.
+
+### The marker on the wrong table
+
+`ITERABLES` carries the item kind for an iterated descriptor, so marking `subtree` items `as: 'statement'`
+there looks right. The loop binder copies `as` off the **iterated subject**, not off the `ITERABLES` row, so
+the marker was never read — and `$stmt->expr` fell through to a mapping that answered about the *hook node*.
+The emitted plugin read the closure's own first expression once per statement:
+
+```php
+if (!(Support::isMethodCall(Support::nthExpression($context, $node, 0)))) {   // $node, not $stmt
+```
+
+It parsed, loaded, called only helpers that exist, and reported the wrong expression. Reading the emitted
+plugin caught it; nothing else would have, because every statement in the fixture happens to be a method call
+and the guard passed. The marker belongs on the one producer of the `subtree` descriptor.
+
+### `statementsOf(bodyOf($node))` finds nothing, and no rule had ever composed them
+
+`ITERABLES['subtree']` renders as `Support::statementsOf($context, {rust})` and the `->stmts` descriptor
+renders as `Support::bodyOf($context, $node)`. `statementsOf()` calls `bodyOf()` itself, so the composition
+asked for a body *inside* a `Block` and returned the empty list. A `foreach` over a closure's statements ran
+zero times.
+
+`grep -l statementsOf` over the emitted corpus returns nothing, so that composition had never executed. The
+fix is one guard: a body is its own body. It moves no emitted byte, and the full fires gate — every rule with
+a pair, not only the new one — is what says it broke nothing.
+
+### `positionalArgAt()` already unwraps, and a call hides under a wrapper
+
+Two more null-answers inside the ported finder, both measured rather than reasoned about after the first
+guess was wrong:
+
+- `Calls::positionalArgAt()` is `argumentValue(argumentAt(..))`, so it hands back the argument's **value**.
+  Calling `argumentValue()` on that again read one level too deep and answered null for every
+  `->call('add', ..)`. Position 0 arrives as a `Literal` whose text is `'add'`, quotes included.
+- An array element holding `service(..)` arrives as a `Call` category node, not a `FunctionCall`. Mago files
+  every call kind under that wrapper, and `Calls` keeps its own list of wrappers that does not cover this
+  position.
+
+### The name test had no control, and the row that looked like one was caught elsewhere
+
+Five mutations, each asserted to have landed. Four failed immediately. The fifth — replacing the
+`ref()`/`service()` name comparison with `return true` — **passed**, and the good example's
+`->call('add', ['SomeClass'])` row was supposed to be its control.
+
+It was not. A plain string is not a `FunctionCall`, so that row returns false at the *kind* test and never
+reaches the name test. The control the name test needs is an element that **is** a call and is not one of the
+two names: `->call('add', [helper('X')])`. With that row added the mutation fails.
+
+That is the third instrument failure of the day and the same shape as the other two: **a control has to reach
+the fold it is written for, and "the fixture is silent in both engines" does not show that it did.** Two rows
+can both be silent for entirely different reasons, and only mutating the fold tells them apart.
+
+### `ref()` and `service()` are compared fully qualified
+
+`SymfonyFunctionName::REF` and `::SERVICE` hold FQNs, and PHPStan's `NameResolver` rewrites an imported
+function call to its FQN before a rule sees it. Mago keeps the written spelling and answers resolution
+separately, so the resolved name is what the port reads. Measured, four spellings, one file:
+
+| written | mago resolves to | matches |
+|:--|:--|:--|
+| `service(..)` under `use function` | `Symfony\…\Configurator\service` | yes |
+| `ref(..)` under `use function` | `Symfony\…\Configurator\ref` | yes |
+| the FQN written out | `Symfony\…\Configurator\service` | yes |
+| `other(..)`, unimported | `App\Config\other` | no |
+
+Reading the written text would have matched none of the first three. `Names::calledFunctionName()` answers
+**null** for all four, because it resolves through `codebase->getFunction()` and Symfony's configurator
+functions are not in the analysed set — so the right instrument here is `getResolvedName()`, not the helper
+that usually answers this.
+
+### And the third path that had to ask the table before inlining
+
+`RepeatedServiceAdderCallNameFinder::find()` is reached as an *assignment value*, and
+`inlineStaticProducer()` inlined it without consulting `COLLABORATOR_CALLS` — so the port refused inside the
+finder's own body, on the walk it exists to replace. The condition path asks the table at
+`staticHelperStandIn()`, the `$this->` path was corrected this morning, and this is the third. Three call
+paths, one table, three separate lookups: the next one will need it too.
+
+### What moved
+
+php 169 → 170; analyzer 34 and linter 25 unchanged. The emit-all diff across all three targets is three
+files: the new rule, its manifest and worker entries, and the `--out` path — no existing plugin moved a byte,
+and the `bodyOf` change is runtime-only so the diff could not have seen it either way. Census symplify 66 → 67
+emit and 22 → 21 refuse. README's row and `--status` figure re-derived and cross-checked: the emit column sums
+to 108 and the portable column to 170, plus the 40 of `spaze` and `composer/pcre` that make the denominator
+210. Suite 1029/1029, PHPStan 0 errors, Rector and Pint clean.

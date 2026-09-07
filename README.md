@@ -125,7 +125,7 @@ Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and r
 
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
-| `symplify/phpstan-rules` | 89 | 66 | 22 | 1 |
+| `symplify/phpstan-rules` | 89 | 67 | 21 | 1 |
 | `hihaho/phpstan-rules` | 8 | 6 | 2 | 0 |
 | `tomasvotruba/type-coverage` | 10 | 5 | 5 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
@@ -133,7 +133,7 @@ Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and r
 | `phpstan/phpstan-phpunit` | 13 | 4 | 9 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 2 | 0 | 0 |
 
-`--status` counts 107 of 210 here and writes a page under `--out`; `spaze/phpstan-disallowed-calls` (38) and
+`--status` counts 108 of 210 here and writes a page under `--out`; `spaze/phpstan-disallowed-calls` (38) and
 `composer/pcre` (2) are in that denominator and emit nothing. Run it on your own project.
 
 <details>

@@ -106,7 +106,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 66 of 89 portable rules the package registers emit, 1 covered by the engine, 22 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 67 of 89 portable rules the package registers emit, 1 covered by the engine, 21 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -298,9 +298,7 @@ REFUSE  ServicesExcludedDirectoryMustExistRule
 EMIT    SingleArgEventDispatchRule
 EMIT    SingleRequiredMethodRule
 EMIT    StringFileAbsolutePathExistsRule  (the package registers it nowhere)
-REFUSE  TaggedIteratorOverRepeatedServiceCallRule
-        no node predicate for instanceof PhpParser\Node\Stmt\Expression on a expr
-        needs: no node predicate for instanceof PhpParser\Node\Stmt\Expression on a expr
+EMIT    TaggedIteratorOverRepeatedServiceCallRule
 EMIT    UppercaseConstantRule
 
 ## hihaho/phpstan-rules — 6 of 8 portable rules the package registers emit, 0 covered by the engine, 2 refuse, 2 unportable in principle, 11 it registers nowhere

@@ -585,6 +585,20 @@ final class Support
     }
 
     /**
+     * Whether a statement a body yielded is an expression statement  `$stmt instanceof Stmt\Expression`.
+     */
+    public static function isExpressionStatement(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Statements::isExpressionStatement($context, $subject);
+    }
+
+    /** The expression a statement holds  `$stmt->expr`. */
+    public static function statementExpression(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        return Statements::expressionOf($context, $subject);
+    }
+
+    /**
      * Whether this node is an `instanceof` test — `$node instanceof PhpParser\Node\Expr\Instanceof_`.
      *
      * Mago has no node kind for it: an `instanceof` is a `Binary` like `+` and `.` are, and the operator child

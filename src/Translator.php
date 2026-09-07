@@ -3524,6 +3524,17 @@ final readonly class Translator
             return null;
         }
 
+        // A runtime helper stands in for it, asked before inlining. This is the third path that needed the
+        // same correction  the condition path asks the table at `staticHelperStandIn()` and the `$this->` path
+        // at `methodPredicate()`, and a static helper reached as an *assignment value* arrived here and was
+        // inlined regardless. `RepeatedServiceAdderCallNameFinder::find()` is the case: the rule writes
+        // `$name = Finder::find($stmt->expr);`, so inlining refused inside the finder's own body on the walk
+        // the port exists to replace.
+        $stood = $this->staticHelperStandIn($found, $method, $expr->getArgs(), $line);
+        if ($stood !== null) {
+            return ['rust' => self::PHP_ONLY, 'kind' => Vocabulary::COLLABORATOR_CALLS[$this->fullyQualified($found) . '::' . $method]['kind'], 'php' => $stood];
+        }
+
         try {
             $helper = $this->findMethod($found['class'], $method);
         } catch (Refusal) {
@@ -11790,6 +11801,27 @@ final readonly class Translator
             return ['rust' => self::PHP_ONLY, 'kind' => 'node-finder', 'php' => self::PHP_ONLY];
         }
 
+        // `$stmt->expr` on a statement a body's list yielded — the expression it holds. Only of a statement
+        // item: `->expr` on anything else is a different field of a different node, and answering it from
+        // here would be one mapping serving two questions. Mago wraps each item in a `Statement` category
+        // node, so {@see Runtime\Statements::expressionOf()} looks through that before reading it.
+        if ($expr instanceof PropertyFetch
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'expr'
+        ) {
+            $base = $this->resolve($expr->var, $line);
+            if ($base['kind'] === 'expr' && ($base['as'] ?? '') === 'statement') {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal("a statement's expression, which only the PHP target carries", $line);
+                }
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'expr',
+                    'php' => 'Support::statementExpression($context, ' . $this->operand($base) . ')',
+                ];
+            }
+        }
+
         // `$node->stmts` — the statements a node holds, not the node. For a rule counting nested `foreach`
         // statements the distinction is the rule: searching the node itself finds the one it started from.
         if ($expr instanceof PropertyFetch
@@ -11818,6 +11850,13 @@ final readonly class Translator
                 return [
                     'rust' => self::PHP_ONLY,
                     'kind' => 'subtree',
+                    // Marked so the items this yields are known to be *statements* when the loop binds one.
+                    // The binder copies `as` off the iterated subject, not off the `ITERABLES` row, so the
+                    // marker belongs here  put on the row instead it is never read, and `$stmt->expr` fell
+                    // through to a mapping that answered about the hook node. That emitted a plugin reading the
+                    // closure's own first expression for every statement in it: it parsed, loaded, ran and
+                    // reported the wrong thing, which is worse than refusing.
+                    'as' => 'statement',
                     'php' => 'Support::bodyOf($context, ' . $this->operand($base) . ')',
                 ];
             }
@@ -13374,7 +13413,7 @@ final readonly class Translator
 
     private const array PHP_ONLY_PREDICATES = [
         'is_dir_constant', 'is_literal_string', 'is_class_constant_declaration', 'is_property_declaration',
-        'is_instanceof',
+        'is_instanceof', 'is_expression_statement',
     ];
 
     /**
@@ -13386,7 +13425,7 @@ final readonly class Translator
     private const array EXITING_STATEMENTS = ['guard', 'bail', 'bind-arg', 'bind-adapter'];
 
     /** Node predicates that answer from the node's kind, and so have to look it up. */
-    private const array CONTEXT_PREDICATES = ['is_literal_string', 'is_instanceof'];
+    private const array CONTEXT_PREDICATES = ['is_literal_string', 'is_instanceof', 'is_expression_statement'];
 
     /**
      * Descriptor kinds an `instanceof` test narrows, so later field reads navigate the tested kind.

@@ -272,6 +272,14 @@ final class Members
             return null;
         }
 
+        // A body is its own body. `ITERABLES['subtree']` renders as `statementsOf(bodyOf($node))` and
+        // `statementsOf()` calls this itself, so the composition asked for a body *inside* a `Block` and
+        // yielded nothing  a `foreach` over a closure's statements that ran, found no statements and reported
+        // nothing. No emitted rule had reached that composition before, which is why it stayed silent.
+        if (in_array($node->kind->value, self::BODY_KINDS, true)) {
+            return Tree::part($context, $node);
+        }
+
         foreach ($context->source->getChildren($node) as $child) {
             if (! in_array($child->kind->value, self::BODY_KINDS, true)) {
                 continue;
