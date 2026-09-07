@@ -1,5 +1,10 @@
 # phpstan-to-mago
 
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/sandermuller/phpstan-to-mago.svg?style=flat-square)](https://packagist.org/packages/sandermuller/phpstan-to-mago)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/SanderMuller/phpstan-to-mago/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/SanderMuller/phpstan-to-mago/actions/workflows/run-tests.yml)
+[![Total Downloads](https://img.shields.io/packagist/dt/sandermuller/phpstan-to-mago.svg?style=flat-square)](https://packagist.org/packages/sandermuller/phpstan-to-mago)
+[![License](https://img.shields.io/packagist/l/sandermuller/phpstan-to-mago.svg?style=flat-square)](LICENSE)
+
 You run [Mago](https://github.com/carthage-software/mago) and you still run PHPStan, because your team's
 conventions exist only as PHPStan rules. This moves them: a rule's *decisions* usually reduce to guards over
 the syntax tree plus a few questions about the enclosing class, and that much becomes a Mago plugin. The rule
