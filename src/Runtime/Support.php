@@ -2044,6 +2044,16 @@ final class Support
     }
 
     /**
+     * Every interface a named class implements, transitively. {@see Inheritance::interfaceNames}
+     *
+     * @return list<string>
+     */
+    public static function interfaceNames(NodeAnalysisContext $context, ?string $class): array
+    {
+        return Inheritance::interfaceNames($context, $class);
+    }
+
+    /**
      * The classes the enclosing declaration extends, nearest first, as written.
      *
      * `ClassLikeMetadata->parentClasses` rather than `Codebase::getClassAncestors()`: that one folds in

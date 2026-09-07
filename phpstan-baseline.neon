@@ -1,7 +1,7 @@
 parameters:
 	ignoreErrors:
 		-
-			rawMessage: 'Class cognitive complexity is 2549, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 2590, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Translator.php
@@ -55,7 +55,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveReflection()" is 446, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveReflection()" is 461, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
@@ -67,7 +67,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::translateStatement()" is 65, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::translateStatement()" is 75, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php

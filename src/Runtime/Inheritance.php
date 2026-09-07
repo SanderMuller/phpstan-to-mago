@@ -111,6 +111,29 @@ final class Inheritance
     }
 
     /**
+     * Every interface a named class implements, transitively  `ClassReflection::getInterfaces()`.
+     *
+     * `parentInterfaces`, not `directParentInterfaces`: PHPStan\'s `getInterfaces()` is the whole set, and a
+     * rule walking it to compare method names wants an interface an ancestor brought in as readily as one the
+     * class writes. {@see Declares} carries the other choice and the case that separates them.
+     *
+     * Names arrive lowercased from metadata, which is fine here  every consumer looks a method up by them
+     * rather than printing them.
+     *
+     * @return list<string>
+     */
+    public static function interfaceNames(NodeAnalysisContext $context, ?string $class): array
+    {
+        if ($class === null) {
+            return [];
+        }
+
+        $metadata = $context->codebase->getClassLike($class);
+
+        return $metadata instanceof ClassLikeMetadata ? array_values($metadata->parentInterfaces) : [];
+    }
+
+    /**
      * The classes the enclosing declaration extends, nearest first, as written.
      *
      * `ClassLikeMetadata->parentClasses` rather than `Codebase::getClassAncestors()`: that one folds in

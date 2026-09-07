@@ -801,6 +801,16 @@ final class Vocabulary
             'arguments' => [0],
         ],
 
+        // `WrongCaseOfInheritedMethodRule::findMethod()`, which builds its finding rather than answering a
+        // question — ported as a reporter, the shape `AnnotationHelper::processDocComment()` established.
+        // {@see Runtime\Members::reportInheritedCaseMismatch()} states why it reads the native declaration.
+        'PHPStan\Rules\Methods\WrongCaseOfInheritedMethodRule::findMethod' => [
+            'helper' => 'InheritedNames::reportInheritedCaseMismatch',
+            'kind' => 'reports',
+            'takes' => 'context',
+            'arguments' => [0, 1, 2],
+        ],
+
         // `RequireQueryBuilderOnRepositoryRule::isValidRepositoryObjectType()`, which recurses over a union
         // and answers about the receiver's inferred type. `types` because that is what it reads.
         // {@see Runtime\DoctrineEntities::isValidQueryBuilderReceiver()} carries the quirk it preserves:

@@ -11825,3 +11825,63 @@ recorded here so the next attempt starts with three of four already sized rather
 
 What the rule needs, in one line: a branch whose body is a reporter call followed by bookkeeping that
 translates to nothing.
+
+## Eighteen plugins lost a real guard, and the emit-all diff was the only thing that saw it
+
+`WrongCaseOfInheritedMethodRule` emits. php 173 → 174; `phpstan-strict-rules` 25 of 45. The step before
+reverted this rule with three of four pieces built; this one finished it and found the reason the reverted
+version would have been wrong to ship.
+
+### A reported name is inert, and "reported" was read too widely
+
+`findMethod()` builds its own finding, so it is ported as a reporter through `kind: 'reports'`. The rule then
+writes `$m = $this->findMethod(..); if ($m !== null) { $errors[] = $m; }` — the assignment reports, and every
+later read of `$m` is the *original* collecting what it will hand back. A plugin hands back nothing, so those
+reads translate to nothing: a guard on the name, and an append of it.
+
+Both were first gated on `TranslationContext::$reportedErrors`, which holds every name an inlined error
+helper bound. **That dropped `if ($namespace === null) { return; }` from eighteen emitted plugins** — a real
+guard protecting the work after it, on a name that had merely held a finding at some point. The plugins still
+parsed, still loaded, and still looked like rules.
+
+Nothing but the emit-all diff could have caught it. The fires gate covers the rules with pairs, and most of
+the eighteen have none; the snapshots cover twenty-two of fifty-eight; and the new rule's own pair was green
+throughout. `$passReported` is now a separate set holding only names a *runtime reporter* bound, and the
+blast radius is back to the new rule's own files.
+
+### Seven pieces, and each one revealed the next
+
+For the record, because the shape is the point: `getMethodReflection()` on a method hook; `findMethod()` as a
+reporter; `isReportedErrorBookkeeping()` widened from `instanceof RuleError` to `!== null`;
+`isConditionalReport()` widened to accept a trailing bookkeeping `if`; `getInterfaces()` as the transitive
+`parentInterfaces`; the reporter emitted through `pass-call` rather than a raw statement, which has no PHP
+rendering; and `reportsThroughPass` set so the emitter stops looking for a message this rule never builds.
+
+The key was also wrong once: the entry was written under `Symplify\PHPStanRules\…` for a rule that lives in
+`phpstan-strict-rules`, and a `COLLABORATOR_CALLS` key that matches nothing fails exactly like an unmapped
+method.
+
+### `originalName` again, on the class this time
+
+The pair's first run differed in one place: `examples\inheritance\namingbase` where PHPStan writes
+`Examples\Inheritance\NamingBase`. Metadata lowercases class names — recorded in this file as *"fine for
+looking a class up again and wrong for printing"* — and the message puts the ancestor in front of a reader.
+`ClassLikeMetadata->originalName` fixes it. That is the second time this session the same lesson has been
+paid for, the first being method names two rules ago.
+
+### Four mutations, one of which needed a row that did not exist
+
+The lowercased name, the `interface`/`parent` wording, and reporting when the case already matches all fail
+immediately. **Reading `directParentInterfaces` instead of `parentInterfaces` passed**, because every
+interface in the pair was implemented directly. `Labels`, reached only through `NamesThings`, is the row that
+separates them — and the fifth green-gate-measuring-less finding of this session.
+
+### What moved
+
+php 173 → 174; analyzer 34 and linter 25 unchanged. Emit-all is the new rule's own files and nothing else.
+Census `phpstan-strict-rules` 24 → 25 emit and 21 → 20 refuse. Two complexity limits were crossed and neither
+was baselined: `translateIf()` went over again and two more readings moved into
+`takenByALaterBranchReading()`, and `Members` reached 83 against 80, so the reporter moved to
+`Runtime\InheritedNames` — a static bag splits and takes its complexity with it, which is the property
+`Support` was split on. README's row and `--status` re-derived: the emit column sums to 112, portable to 170.
+Suite 1045/1045, PHPStan 0 errors, Rector and Pint clean.

@@ -151,7 +151,6 @@ REFUSE  NewWithFollowingSettersCollector
         needs: no node predicate for instanceof PhpParser\Node\Stmt\If_ on a hook-node
         needs: access path outside the vocabulary: Expr_Cast_Array
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs: guard body is neither `return []` nor `continue`, but Stmt_Foreach
         needs: foreach with a key
         needs: if statement that is not a single-statement guard, but 4 statements: Stmt_Expression + Stmt_If + Stmt_If + Stmt_Expression
@@ -403,7 +402,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 24 of 45 portable rules the package registers emit, 0 covered by the engine, 21 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 25 of 45 portable rules the package registers emit, 0 covered by the engine, 20 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
@@ -554,12 +553,7 @@ EMIT    VariableStaticMethodCallRule
 EMIT    VariableStaticMethodCallableRule
 EMIT    VariableStaticPropertyFetchRule
 EMIT    VariableVariablesRule
-REFUSE  WrongCaseOfInheritedMethodRule
-        assignment value outside the vocabulary: access path outside the vocabulary: $node->getMethodReflection()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: $node->getMethodReflection()
-        needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
-        needs: guard body is neither `return []` nor `continue`, but Stmt_Expression
-        needs: access path outside the vocabulary: ->getInterfaces()
+EMIT    WrongCaseOfInheritedMethodRule
 
 ## phpstan/phpstan-phpunit — 4 of 13 portable rules the package registers emit, 0 covered by the engine, 9 refuse, 1 unportable in principle, 0 it registers nowhere
 

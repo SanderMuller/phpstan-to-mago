@@ -101,6 +101,21 @@ final class TranslationContext
      */
     public bool $reportsThroughPass = false;
 
+    /**
+     * Names bound to a runtime *reporter*, as opposed to a finding this transpiler built.
+     *
+     * Deliberately not {@see $reportedErrors}, which holds every name an inlined error helper bound. A rule
+     * that guards `if ($x === null) { return; }` on one of those is protecting work that follows, and reading
+     * the two sets as one dropped that guard from eighteen emitted plugins  caught by the emit-all diff,
+     * which is the only thing that could have seen it.
+     *
+     * A name here is different: the reporter already reported, so every read of it is bookkeeping the
+     * original needs and the plugin does not.
+     *
+     * @var array<string, true>
+     */
+    public array $passReported = [];
+
     /** @var array<string, string> the rule's own string constants, by name */
     public array $constants = [];
 

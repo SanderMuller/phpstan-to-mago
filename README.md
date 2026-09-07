@@ -129,11 +129,11 @@ Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and r
 | `hihaho/phpstan-rules` | 8 | 6 | 2 | 0 |
 | `tomasvotruba/type-coverage` | 10 | 5 | 5 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
-| `phpstan/phpstan-strict-rules` | 45 | 24 | 21 | 0 |
+| `phpstan/phpstan-strict-rules` | 45 | 25 | 20 | 0 |
 | `phpstan/phpstan-phpunit` | 13 | 4 | 9 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 2 | 0 | 0 |
 
-`--status` counts 111 of 210 here and writes a page under `--out`; `spaze/phpstan-disallowed-calls` (38) and
+`--status` counts 112 of 210 here and writes a page under `--out`; `spaze/phpstan-disallowed-calls` (38) and
 `composer/pcre` (2) are in that denominator and emit nothing. Run it on your own project.
 
 <details>

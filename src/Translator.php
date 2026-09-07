@@ -3884,6 +3884,63 @@ final readonly class Translator
     }
 
     /**
+     * Whether a statement is `if (<name> !== null) { $errors[] = <name>; }` for the name the previous
+     * statement assigned.
+     *
+     * Structural on purpose: the same shape reached at translation time goes through
+     * {@see isReportedErrorBookkeeping()}, which checks the name against the errors a reporter actually bound.
+     * Here the binding has not happened yet, so the pairing with the preceding assignment is what stands in
+     * for it  and a block whose last statement collects a name nothing above it assigned is not this shape.
+     */
+    private function appendsTheNameJustBound(Stmt $statement, Stmt $previous): bool
+    {
+        if (! $statement instanceof If_ || $statement->elseifs !== [] || $statement->else instanceof Else_
+            || count($statement->stmts) !== 1
+            || ! $previous instanceof Expression
+            || ! $previous->expr instanceof Assign
+            || ! $previous->expr->var instanceof Variable
+            || ! is_string($name = $previous->expr->var->name)
+        ) {
+            return false;
+        }
+
+        $tested = $statement->cond;
+        $subject = match (true) {
+            $tested instanceof NotIdentical => $tested->left,
+            $tested instanceof Instanceof_ => $tested->expr,
+            default => null,
+        };
+
+        if (! $subject instanceof Variable || $subject->name !== $name) {
+            return false;
+        }
+
+        $only = $statement->stmts[0];
+
+        return $only instanceof Expression
+            && $only->expr instanceof Assign
+            && $only->expr->var instanceof ArrayDimFetch
+            && ! $only->expr->var->dim instanceof Expr
+            && $only->expr->expr instanceof Variable
+            && $only->expr->expr->name === $name;
+    }
+
+    /** Whether a condition tests a variable that holds what a reporter already reported. */
+    private function testsAReportedError(Expr $condition): bool
+    {
+        $subject = match (true) {
+            $condition instanceof Identical, $condition instanceof NotIdentical => $condition->left,
+            $condition instanceof Instanceof_ => $condition->expr,
+            $condition instanceof BooleanNot => $condition->expr,
+            default => null,
+        };
+
+        return $subject instanceof Variable
+            && is_string($subject->name)
+            && isset($this->context->passReported[$subject->name]);
+    }
+
+    /**
      * `if (COND) { $e = <a built error>; return [$e]; }` written as the one-statement guard it is.
      *
      * The temporary is the rule author's line-length break, not a step: it is assigned once, returned once,
@@ -4090,6 +4147,14 @@ final readonly class Translator
      */
     private function translateIf(If_ $stmt): void
     {
+        // A guard on a name a reporter already reported. `if ($m === null) { continue; }` asks whether the
+        // helper produced a finding, and here the helper *is* the report  so the answer is not available
+        // and is not needed: the plugin reported where the reporter ran, and both branches of this guard lead
+        // to the same place. The append that follows it is dropped for the same reason.
+        if ($this->testsAReportedError($stmt->cond)) {
+            return;
+        }
+
         $stmt = $this->withoutTheReportTemporary($stmt);
 
         // `if (! array_key_exists($k, $cache)) { $cache[$k] = <expr>; }` — filling a cache declared above.
@@ -4124,17 +4189,6 @@ final readonly class Translator
         if ($stmt->elseifs === [] && ! $stmt->else instanceof Else_ && $this->isConditionalReport($stmt->stmts)) {
             $this->translateConditionalReport($stmt);
 
-            return;
-        }
-
-        // `if (COND) { $x = A; } else { $x = B; }` — one name bound two ways, which is a ternary written long.
-        if ($this->bindConditionalValue($stmt)) {
-            return;
-        }
-
-        // `if (str_contains($name, '\\')) { $name = Strings::after($name, '\\', -1); }` — a name shortened
-        // to its last segment, written as a branch because the helper form would need a helper.
-        if ($this->takesTheLastSegment($stmt)) {
             return;
         }
 
@@ -4192,6 +4246,17 @@ final readonly class Translator
      */
     private function takenByALaterBranchReading(If_ $stmt): bool
     {
+        // `if (COND) { $x = A; } else { $x = B; }` — one name bound two ways, which is a ternary written long.
+        if ($this->bindConditionalValue($stmt)) {
+            return true;
+        }
+
+        // `if (str_contains($name, '\\')) { $name = Strings::after($name, '\\', -1); }` — a name shortened
+        // to its last segment, written as a branch because the helper form would need a helper.
+        if ($this->takesTheLastSegment($stmt)) {
+            return true;
+        }
+
         // A block every path of which ends the iteration, which is `if (COND) { continue; }` however many
         // statements it holds.
         if ($this->alwaysEndsTheIteration($stmt)) {
@@ -4396,7 +4461,17 @@ final readonly class Translator
      */
     private function isReportedErrorBookkeeping(If_ $stmt): bool
     {
+        // `!== null` as readily as `instanceof RuleError`. A rule collecting what a reporter already reported
+        // writes whichever null test its helper\'s return type invites  `?IdentifierRuleError` gets the
+        // comparison, `RuleError` gets the instanceof, and both are the same bookkeeping.
         $condition = $stmt->cond;
+        if ($condition instanceof NotIdentical
+            && $condition->right instanceof ConstFetch
+            && strtolower($condition->right->name->toString()) === 'null'
+        ) {
+            $condition = new Instanceof_($condition->left, new Name('PHPStan\\Rules\\RuleError'));
+        }
+
         if (! $condition instanceof Instanceof_
             || ! $condition->expr instanceof Variable
             || ! is_string($condition->expr->name)
@@ -4460,6 +4535,16 @@ final readonly class Translator
             // second. Nineteen rules across the installed packages write the first, and it was refused as a
             // guard body that is not `return []` — which named the statement rather than what it does.
             if ($last && $this->isSingleErrorReturn($statement)) {
+                return true;
+            }
+
+            // The third way a block ends in one finding: `if ($m !== null) { $errors[] = $m; }`, where `$m`
+            // holds what a *reporter* already reported. A rule whose helper builds the finding writes this
+            // instead of appending directly, and the collecting is what the original has to hand back rather
+            // than anything a plugin does  {@see isReportedErrorBookkeeping()} translates it to nothing once
+            // the assignment above has bound the name. Accepted structurally here, because that binding
+            // happens while the body is translated and this runs before it.
+            if ($last && $index > 0 && $this->appendsTheNameJustBound($statement, $statements[$index - 1])) {
                 return true;
             }
 
@@ -6893,6 +6978,19 @@ final readonly class Translator
             ) {
                 $answered = $this->resolveCollaboratorCall($value, $stmt->getStartLine());
                 if ($answered !== null) {
+                    // A helper that *reports* is emitted here rather than bound. Binding it would leave the
+                    // call in a local nothing reads  the rule assigns the finding only to collect it, and
+                    // collecting is what the original hands back rather than anything a plugin does. The name
+                    // is recorded so {@see isReportedErrorBookkeeping()} knows what the collecting refers to.
+                    if ($answered['kind'] === 'reports' && is_string($answered['php'] ?? null)) {
+                        $this->context->lines[] = new Stm('pass-call', ['call' => $answered['php']], $this->context->indent);
+                        $this->context->passReported[$stmt->expr->var->name] = true;
+                        $this->context->reportedInline = true;
+                        $this->context->reportsThroughPass = true;
+
+                        return;
+                    }
+
                     $this->context->locals[$stmt->expr->var->name] = $answered;
 
                     return;
@@ -6903,6 +7001,18 @@ final readonly class Translator
             if ($this->isOwnMethodCall($value)) {
                 $this->inlineErrorHelper($value->name->toString(), $value->getArgs(), $stmt->getStartLine(), $stmt->expr->var);
 
+                return;
+            }
+
+            // $messages[] = $m;  where `$m` holds what a reporter already reported. Inert for the same reason
+            // the conditional form is: the plugin reported at the call, and the array is what the *original*
+            // hands back. Dropping it is not losing a finding  the finding was made where the reporter ran.
+            if ($stmt->expr->var instanceof ArrayDimFetch
+                && ! $stmt->expr->var->dim instanceof Expr
+                && $value instanceof Variable
+                && is_string($value->name)
+                && isset($this->context->passReported[$value->name])
+            ) {
                 return;
             }
 
@@ -11838,6 +11948,50 @@ final readonly class Translator
                 . 'of its checks gives up the per-node dispatch its other checks need',
                 $line,
             );
+        }
+
+        // `$classReflection->getInterfaces()`  every interface the class implements, transitively, which is
+        // what a rule comparing its own method names against the ones it inherits walks. Only of a class this
+        // port already reduced to a name: of anything else there is no class to ask the codebase about.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getInterfaces'
+            && $expr->args === []
+        ) {
+            $subject = $this->resolve($expr->var, $line);
+            if (in_array($subject['kind'], ['named-class', 'class-name'], true)) {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal("a class's interfaces, which only the PHP target carries", $line);
+                }
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'class-names',
+                    'php' => 'Support::interfaceNames($context, ' . $this->operand($subject) . ')',
+                ];
+            }
+        }
+
+        // `$node->getMethodReflection()` on a method-declaration hook  the method the hook fired for, as a
+        // handle. PHPStan hands `InClassMethodNode` a reflection of the method being declared; here the node
+        // *is* that declaration, so the handle is its enclosing class and its own name. Only that hook: on any
+        // other node this would be a reflection of something the hook was not given.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getMethodReflection'
+            && $expr->args === []
+            && $this->resolve($expr->var, $line)['kind'] === 'hook-node'
+            && $this->context->nodeKind === 'Method'
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a method reflection, which only the PHP target carries', $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'method-handle',
+                'php' => self::PHP_ONLY,
+                'classPhp' => 'Support::enclosingClassName($context, $node)',
+                'methodPhp' => 'Support::declarationName($context, $node)',
+            ];
         }
 
         // `$methodReflection->getPrototype()`  answered as the *declaring* method, which is not the same
