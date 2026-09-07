@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Support;
 
+use ReflectionClass;
 use RuntimeException;
 
 /**
@@ -31,7 +32,7 @@ use RuntimeException;
  * `trait.unused`. So each case gets its own namespace, and {@see self::refuseCollidingNamespaces()} refuses
  * before either engine starts rather than letting one case quietly change another's findings.
  */
-final class DivergenceCases
+final readonly class DivergenceCases
 {
     private const string WORKER = <<<'PHP'
         <?php
@@ -76,7 +77,7 @@ final class DivergenceCases
         NEON;
 
     /** @param non-empty-string $root */
-    public function __construct(private readonly string $root) {}
+    public function __construct(private string $root) {}
 
     /**
      * The case directories, by name.
@@ -252,7 +253,7 @@ final class DivergenceCases
     private function transpile(string $rule, string $sandbox, string $case): string
     {
         /** @var class-string $rule */
-        $file = (new \ReflectionClass($rule))->getFileName();
+        $file = (new ReflectionClass($rule))->getFileName();
         if (! is_string($file)) {
             throw new RuntimeException($case . ' names a rule with no file: ' . $rule);
         }

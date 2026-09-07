@@ -280,7 +280,7 @@ final class ReportsInstalledCoverageTest extends TestCase
             }
         }
 
-        $this->assertNotNull($outcome, 'The rule this asserts on is no longer in the package.');
+        $this->assertInstanceOf(RuleOutcome::class, $outcome, 'The rule this asserts on is no longer in the package.');
         $this->assertSame(RuleOutcome::REFUSE, $outcome->verdict);
         $this->assertContains(
             'could not find the reported message',

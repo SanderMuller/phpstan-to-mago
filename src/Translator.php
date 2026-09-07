@@ -68,6 +68,7 @@ use PhpParser\Node\Stmt\Continue_;
 use PhpParser\Node\Stmt\Else_;
 use PhpParser\Node\Stmt\Enum_;
 use PhpParser\Node\Stmt\Expression;
+use PhpParser\Node\Stmt\Finally_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Interface_;
@@ -3864,7 +3865,7 @@ final readonly class Translator
      */
     private function bindsThroughACatch(TryCatch $stmt): bool
     {
-        if ($stmt->finally !== null || $stmt->catches === [] || count($stmt->stmts) !== 1) {
+        if ($stmt->finally instanceof Finally_ || $stmt->catches === [] || count($stmt->stmts) !== 1) {
             return false;
         }
 

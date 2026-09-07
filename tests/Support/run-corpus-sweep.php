@@ -96,7 +96,7 @@ function sweep_one(string $root, string $name, string $path): array
         exit(1);
     }
 
-    $output = (string) stream_get_contents($pipes[1]) . (string) stream_get_contents($pipes[2]);
+    $output = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
     fclose($pipes[1]);
     fclose($pipes[2]);
     proc_close($process);
