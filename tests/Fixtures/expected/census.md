@@ -106,7 +106,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 61 of 89 portable rules the package registers emit, 1 covered by the engine, 27 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 62 of 89 portable rules the package registers emit, 1 covered by the engine, 26 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -211,10 +211,7 @@ REFUSE  NoJustPropertyAssignRule
 EMIT    NoLeadingBackslashInNameRule
 EMIT    NoListenerWithoutContractRule
 ENGINE  NoMissingVariableDimFetchRule  (mago reports undefined-variable)
-REFUSE  NoMissnamedDocTagRule
-        assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
-        needs: getDocComment() on a const-decl
+EMIT    NoMissnamedDocTagRule
 EMIT    NoMockObjectAndRealObjectPropertyRule
 EMIT    NoMockOnlyTestRule
 EMIT    NoOnlyNullReturnInRefactorRule
@@ -265,8 +262,8 @@ REFUSE  ParamNameToTypeConventionRule  (the package registers it nowhere)
         needs: assignment value outside the vocabulary: $paramNamesToTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Convention\ParamNameToTypeConventionRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
         needs: $errorMessage is not a message built in this rule
 REFUSE  PhpUpgradeDowngradeRegisteredInSetRule
-        assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Strings::match()
+        if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Return
+        needs: if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Return
         needs: $errorMessage is not a message built in this rule
 EMIT    PhpUpgradeImplementsMinPhpVersionInterfaceRule
 REFUSE  PreferAutowireAttributeOverConfigParamRule

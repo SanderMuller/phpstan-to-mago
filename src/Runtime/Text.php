@@ -248,8 +248,11 @@ final class Text
      * An empty capture reads as null here. `preg_match()` fills an unmatched optional group with `''`, and a
      * rule's `isset($matches['x'])` cannot tell the two apart — so treating `''` as "not caught" matches what
      * the rule means. No pattern in the corpus has an optional group that can match empty.
+     *
+     * The group is a name or an offset, because a rule writes whichever the pattern gives it: `$matches[1]`
+     * on `#\*\s(@var)\b#mi` is the tag it captured.
      */
-    public static function captured(string $pattern, ?string $subject, string $group): ?string
+    public static function captured(string $pattern, ?string $subject, int|string $group): ?string
     {
         if ($subject === null || preg_match($pattern, $subject, $matches) !== 1) {
             return null;

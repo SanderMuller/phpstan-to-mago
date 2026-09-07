@@ -1540,7 +1540,7 @@ final class Support
      * rule's `isset($matches['x'])` cannot tell the two apart — so treating `''` as "not caught" matches what
      * the rule means. No pattern in the corpus has an optional group that can match empty.
      */
-    public static function captured(string $pattern, ?string $subject, string $group): ?string
+    public static function captured(string $pattern, ?string $subject, int|string $group): ?string
     {
         return Text::captured($pattern, $subject, $group);
     }

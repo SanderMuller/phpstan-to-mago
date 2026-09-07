@@ -1040,6 +1040,70 @@ final readonly class Translator
     }
 
     /**
+     * The group a `$matches[..]` read names, as the literal the emitted call passes.
+     *
+     * An int offset or a string name and nothing else: a computed group would mean the plugin holding a
+     * match array, which {@see boundPatternMatch()} deliberately does not produce.
+     */
+    private function groupOffset(Expr $dim, int $line): string
+    {
+        if ($dim instanceof Int_) {
+            return (string) $dim->value;
+        }
+
+        if ($dim instanceof String_) {
+            return $this->context->backend->bytes($dim->value);
+        }
+
+        throw new Refusal('a match group that is not a written offset or name', $line);
+    }
+
+    /**
+     * `Strings::match($subject, $pattern)` bound to a local, as the two halves a rule then reads.
+     *
+     * The boolean half is {@see patternTest()}; a rule that keeps the result asks a second question of it —
+     * `$matches[1]` — so the descriptor carries the pattern and the subject rather than a value, and each
+     * read re-asks. That is why the kind is its own: anything navigating a `regex-match` other than the two
+     * readings below meets the ordinary "no mapping" refusal instead of a guess.
+     *
+     * The same restrictions {@see patternTest()} states apply and for the same reasons: exactly two
+     * arguments, because Nette's `$utf8` appends the `u` modifier and `$captureOffset` changes the array's
+     * shape; and a pattern that is a literal at transpile time, because it is copied into the plugin.
+     *
+     * One divergence, stated rather than hidden: Nette routes `preg_match` through its own wrapper and turns
+     * a PCRE runtime error — a backtrack limit, say — into a thrown exception, where `preg_match` returns
+     * false and this reads as "no match". The port is silent where the original raises, which is the
+     * under-reporting direction.
+     *
+     * @return Descriptor|null
+     */
+    private function boundPatternMatch(Expr $expr, int $line): ?array
+    {
+        if (! $expr instanceof StaticCall
+            || ! $expr->class instanceof Name
+            || $expr->class->getLast() !== 'Strings'
+            || $this->memberName($expr->name, $line) !== 'match'
+            || count($expr->getArgs()) !== 2
+        ) {
+            return null;
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a pattern match, which only the PHP target carries', $line);
+        }
+
+        [$subject, $pattern] = $expr->getArgs();
+
+        return [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'regex-match',
+            'php' => self::PHP_ONLY,
+            'patternPhp' => $this->bytesValue($pattern->value, $line),
+            'subjectPhp' => $this->nameText($this->resolve($subject->value, $line), $line),
+        ];
+    }
+
+    /**
      * `<a nullable string> === null`, or null when the right-hand side is not the null literal.
      *
      * The shape a rule uses before asking anything of a value. Real rules null-check the namespace before
@@ -1063,6 +1127,15 @@ final readonly class Translator
         }
 
         $subject = $this->resolve($left, $line);
+
+        // `$matches === null` on a bound match — "the pattern did not match", which is the boolean half of
+        // the same call. {@see boundPatternMatch()} carries both halves for exactly this.
+        if ($subject['kind'] === 'regex-match') {
+            return '! ' . $this->context->backend->call(
+                'matches_pattern',
+                [$subject['subjectPhp'] ?? '', $subject['patternPhp'] ?? ''],
+            );
+        }
 
         // A value producer's `=== null` check is the caller re-asking what the producer already answered: every
         // way the producer returns null is a guard that has already bailed by the time this is reached, and
@@ -8191,6 +8264,16 @@ final readonly class Translator
         $name = $assign->var->name;
         $value = $assign->expr;
 
+        // `$matches = Strings::match(..)` — the pattern and its subject, not a value. Bound before the
+        // ordinary resolution because a match array is not something the vocabulary reads; the two questions
+        // a rule asks of it are handled where they are asked.
+        $match = $this->boundPatternMatch($value, $line);
+        if ($match !== null) {
+            $this->context->locals[$name] = $match;
+
+            return;
+        }
+
         // `$analyzer = new SomeAnalyzer();` — a collaborator the code builds for itself rather than taking
         // through a constructor. Remembered as a handle and nothing emitted: such an analyzer carries no state
         // a plugin would have to hold, and the calls on it resolve through the same table an injected one
@@ -11679,7 +11762,11 @@ final readonly class Translator
                 throw new Refusal('getDocComment(), which only the PHP target carries', $line);
             }
 
-            if (! in_array($base['kind'], ['method-decl', 'maybe-method-decl', 'hook-node', 'property'], true)) {
+            // `const-decl` is the constant *declaration* a class-like body gives a rule, alongside the
+            // property declaration already here. Both are members whose docblock is the trivia in front of
+            // them, which is the only thing the helper looks at — verified by running the emitted plugin over
+            // a documented constant rather than by arguing from the shape.
+            if (! in_array($base['kind'], ['method-decl', 'maybe-method-decl', 'hook-node', 'property', 'const-decl'], true)) {
                 throw new Refusal("getDocComment() on a {$base['kind']}", $line);
             }
 
@@ -11760,6 +11847,22 @@ final readonly class Translator
 
         if ($expr instanceof MethodCall && $this->memberName($expr->name, $expr->getStartLine()) === 'getParts') {
             return $this->qualifiedNameParts($expr, $line);
+        }
+
+        // `$matches[1]` on a bound match — the group the pattern captured. Re-runs the pattern rather than
+        // holding the array, which is what letting the descriptor carry the two halves buys: there is no
+        // match array in the emitted plugin for a later read to depend on. Only an int or a string offset,
+        // because those are the two a pattern can give a rule a name for.
+        if ($expr instanceof ArrayDimFetch && $expr->dim instanceof Expr) {
+            $of = $this->resolve($expr->var, $line);
+            if ($of['kind'] === 'regex-match') {
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'bytes',
+                    'php' => 'Support::captured(' . ($of['patternPhp'] ?? '') . ', ' . ($of['subjectPhp'] ?? '')
+                        . ', ' . $this->groupOffset($expr->dim, $line) . ')',
+                ];
+            }
         }
 
         // `$this->reflectionProvider->getFunction($node->name, $scope)` — the function a call names, as the

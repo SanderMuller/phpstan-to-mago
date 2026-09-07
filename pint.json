@@ -54,7 +54,9 @@
     "notPath": [
         "tests/Fixtures/examples/ForbiddenArrayMethodCallRule/BadArrayCallable.php",
         "tests/Fixtures/examples/IllegalConstructorMethodCallRule/Bad.php",
-        "tests/Fixtures/examples/DisallowedBacktickRule/Bad.php"
+        "tests/Fixtures/examples/DisallowedBacktickRule/Bad.php",
+        "tests/Fixtures/examples/NoMissnamedDocTagRule/BadDocTags.php",
+        "tests/Fixtures/examples/NoMissnamedDocTagRule/GoodDocTags.php"
     ],
     "exclude": [
         ".cache",
