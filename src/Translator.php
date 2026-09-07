@@ -11986,6 +11986,11 @@ final readonly class Translator
         }
 
         // `$this->standard->prettyPrintExpr($expr)` — php-parser's printer, asked for an expression's source.
+        // Matched on an injected printer rather than on the method name alone, and on `prettyPrintExpr` only:
+        // php-parser's `prettyPrint()` takes an *array of statements*, so reading its argument as one node
+        // would be a different question under the same name. The kind check below would refuse an array
+        // today, which is why this was a hazard rather than a defect — the name list was still wider than
+        // anything it can answer for.
         // A rule reaching it is comparing two expressions as text, and Mago hands the *written* text back
         // through the same span the node carries, so the question maps even though the printer does not.
         //
@@ -11995,7 +12000,8 @@ final readonly class Translator
         // is the under-reporting direction; a pair written the same — the duplication these rules exist to
         // catch — compares equal in both engines, and the text goes into the message identically.
         if ($expr instanceof MethodCall
-            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['prettyPrintExpr', 'prettyPrint'], true)
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'prettyPrintExpr'
+            && $expr->var instanceof PropertyFetch
             && count($expr->getArgs()) === 1
         ) {
             if (Transpiler::$target !== 'php') {

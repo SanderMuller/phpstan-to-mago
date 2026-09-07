@@ -139,7 +139,7 @@ REFUSE  ForbiddenNodeRule
         needs: $forbiddenNodes is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
         needs: access path outside the vocabulary: Expr_New
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Array
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->standard->prettyPrint()
         needs: $errorMessage is not a message built in this rule
 EMIT    ForbiddenStaticClassConstFetchRule
 EMIT    ForeachCeptionRule

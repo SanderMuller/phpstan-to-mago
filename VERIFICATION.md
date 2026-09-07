@@ -10761,3 +10761,20 @@ value and were left alone, because changing them without a witness would be chur
 Worth stating for whoever meets this next: the hazard is not that the sentinel is wrong, it is that it is a
 *string that parses*. A sentinel which could not survive being emitted — an empty string, or a value
 `operand()` recognises and refuses — would make the whole class impossible instead of latent.
+
+### And the same review found one with a consumer
+
+The printer fold matched on the *method name* alone, and accepted both `prettyPrintExpr` and `prettyPrint`.
+php-parser's `prettyPrint()` takes an **array of statements**; `prettyPrintExpr()` takes one expression. So
+the fold read a statement list as a node under the same name.
+
+That one has a consumer. `ForbiddenNodeRule:60` writes `$this->standard->prettyPrint([$node])`, and the wide
+branch matched it. What stopped it emitting was the kind check further down refusing an `Expr_Array` — and
+the refusal it produced named the *argument*, not the unsupported call, so the census recorded
+`access path outside the vocabulary: Expr_Array` where the obstacle was the printer method. A reader sizing
+work from that line would have gone looking for array support.
+
+Narrowed to `prettyPrintExpr` on an injected printer, matching the receiver the way the reflection fold
+already does. Byte-neutral, and the census line now names the printer call. **The lesson is the pair**: the
+sentinel above is a hazard with no witness and this is the same shape with one, found in the same read, and
+only the census diff told them apart.
