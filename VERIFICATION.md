@@ -11692,3 +11692,48 @@ None is a step. The two capability builds that would each unblock more than one 
 steps ago and both are measurement-sensitive: a `VerbosityLevel::value()` describe mode, and a three-valued
 answer for `->no()` — which the SDK cannot currently supply, since `TypeComparator` returns bools where
 PHPStan returns `TrinaryLogic`.
+
+## `registered` means "wired in a neon the package ships", and one rule shows what that hides
+
+No emission. Ranking the 69 refusals by their *first* obstacle rather than by need count put a new rule at
+the front, and following it settled a question about the census's own denominator.
+
+### The largest first-obstacle group is the withdrawn family
+
+Grouping every refusal by its first recorded reason: the biggest group is six rules on `a chain of 1 elseif
+and an else`, and all six are `OperandsInArithmetic*Rule` — the family withdrawn on a measurement, not on a
+gap. Building for that group would be building for rules this file already decided not to emit. The next
+groups are two apiece: `ParametersAcceptorSelector`, `->getResolvedPhpDoc()`, an unwired constructor
+parameter, and `not a resolvable list of strings`.
+
+### `SeeAnnotationToTestRule`: the reason names a symptom again
+
+Its recorded reason is `not a resolvable list of strings`, which reads like a vocabulary gap. `stringList()`
+does refuse it — the value is `$this->requiredSeeTypes`, a constructor argument, and the resolver reads
+`%parameters%` rather than literal service arguments.
+
+But the operative fact is one level up. `symplify/phpstan-rules` declares four neons under
+`extra.phpstan.includes`, and **neither neon that registers this rule is one of them**. It is wired in
+`config/rector-rules.neon` and `config/configurable-rules.neon`, both opt-in, and the two disagree about its
+configuration: one passes `[Rector\Rector\AbstractRector]`, the other three PHPStan and CodeSniffer types. So
+there is no package default to carry, and a consumer choosing a neon is also choosing the value.
+
+That is the same category seven other rules already sit in, reached from a different direction.
+
+### The census is self-consistent, and the definition still hides something
+
+My first reading was that the census should annotate this rule `(the package registers it nowhere)` and does
+not. That reading is wrong, and `RuleOutcome::$registered` says so in its own docblock: registered means
+*wired in some neon the package ships*. The rule is wired in two, so the annotation is correctly absent.
+
+What the definition does hide is the difference between **wired in a neon the package includes by default**
+and **wired in a neon a consumer must opt into**. A reader of "89 portable rules the package registers"
+reasonably hears the first. `SeeAnnotationToTestRule` is the second, and its two opt-in neons do not agree.
+
+**No count is published for that split, deliberately.** Two attempts to measure it with a parallel regex over
+the package's neons produced two artefacts in a row: the first missed every rule registered as a bare list
+item and answered 9 against a census figure of 89, and the second over-matched, counting `AbstractRector`,
+`Empty_` and `Encapsed` — node class names inside `ForbiddenNodeRule`'s *configuration* — as registered rules.
+The right instrument is the repository's own `PackageConfiguration::registeredClassNames()` restricted to the
+included set, not a second extractor built beside it. Until that exists, the distinction is stated and the
+number is not, which is what this file asks for when a term has no committed definition.
