@@ -11885,3 +11885,46 @@ was baselined: `translateIf()` went over again and two more readings moved into
 `Runtime\InheritedNames` — a static bag splits and takes its complexity with it, which is the property
 `Support` was split on. README's row and `--status` re-derived: the emit column sums to 112, portable to 170.
 Suite 1045/1045, PHPStan 0 errors, Rector and Pint clean.
+
+## Three upstream issues closed as completed, and what that changes here today: nothing yet
+
+Reported by the user, verified against the tracker rather than taken on trust. Every issue this repository
+cites by number:
+
+| issue | state | closed | what it blocks here |
+|:--|:--|:--|:--|
+| `carthage-software/mago#2334` | **completed** | 2026-09-07 | the definedness refusal, and three rules behind it |
+| `carthage-software/mago#2333` | **completed** | 2026-09-07 | the `is_callable` narrowing this file measured a table for |
+| `carthage-software/mago#2311` | completed | 2026-09-04 | already shipped in 1.47.6 and already recorded |
+| `carthage-software/mago#2219` | completed | 2026-08-19 | already shipped |
+| `carthage-software/mago#2310` | **not planned** | 2026-09-04 | closed against us; the trailing-`[]` reading stands |
+
+**None of the two new ones is installable yet.** The newest mago release is **1.47.6, dated 2026-09-04**, and
+both were closed on **2026-09-07** — three days after it. This package requires `^1.47.6`, so every consumer
+today runs a mago without them.
+
+So the refusal text stays exactly as it is. `definednessTest()` now carries the dates and says the sentence is
+**a version boundary rather than a ceiling** — true of every mago installable today, false of the next one.
+Rewriting the refusal before the capability ships would date the file forward, and the reason a rule refuses
+is what the census records.
+
+### What ships when a release carries #2334
+
+Three rules, and the third is only visible because of a reading made earlier this session:
+
+- `OverwriteVariablesWithForeachRule` — names the definedness refusal in the census.
+- `DisallowedImplicitArrayCreationRule` — names `$scope->hasVariableType()`.
+- `OverwriteVariablesWithForLoopInitRule` — reaches the same guard **behind** an `->init` iteration the pass
+  stops at first, so its census line names something else entirely. That was found by reading the For/Foreach
+  pair rather than by the needs list, and it is why the count is three rather than two.
+
+Each still needs its own work behind the guard; #2334 removes the first obstacle, not the rule.
+
+### One recorded claim to re-check on that release, not before
+
+`#2310` was closed **not planned**, which leaves this repository's reading of the trailing-`[]` closure return
+type standing as a divergence rather than a pending fix. Worth stating because a closed issue reads like
+resolution at a glance, and the two states point opposite ways.
+
+Nothing to build today. The action on release is to bump the mago requirement, re-run the corpus, and read
+which of the three moves — and the census's own alarm is what will say so.

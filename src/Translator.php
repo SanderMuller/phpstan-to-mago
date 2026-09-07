@@ -10178,6 +10178,18 @@ final readonly class Translator
      * `carthage-software/mago#2334` asks for, measured. Without this the php target built the Rust call
      * anyway and refused two layers later naming a leaked Rust operand, so the census recorded a downstream
      * shape as the obstacle for a rule whose real blocker is its first guard.
+     *
+     * **That issue is now closed as completed, and the refusal is a version boundary rather than a
+     * ceiling.** Closed 2026-09-07; the newest release is 1.47.6 of 2026-09-04, which this package
+     * requires and which therefore does not carry it. The sentence above is true of every mago a
+     * consumer can install today and false of the next one, so it is kept rather than rewritten — the
+     * reason a rule refuses is what the census records, and replacing it before the capability ships
+     * would date the file forward.
+     *
+     * Three rules turn on this: `OverwriteVariablesWithForeachRule` and
+     * `DisallowedImplicitArrayCreationRule` name it in the census, and
+     * `OverwriteVariablesWithForLoopInitRule` reaches the same guard behind an `->init` iteration the
+     * pass stops at first — which is why its census line names something else.
      */
     private function definednessTest(Expr $argument, string $tail, int $line): string
     {
