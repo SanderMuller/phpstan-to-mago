@@ -1183,7 +1183,19 @@ final class Support
         return Names::selectorIsOneOf($part, $names);
     }
 
-    /** Whether every part of a type is a boolean, which is `Type::isBoolean()->yes()`. {@see Types::typeIsBoolean} */
+    /**
+     * Whether one type contains another  `$container->isSuperTypeOf($input)->yes()`.
+     *
+     * **The `->yes()` polarity only.** PHPStan answers this with a `TrinaryLogic`, and the SDK's
+     * `TypeComparator::isContainedBy()` answers a plain `bool`, so `maybe` and `no` arrive here as the same
+     * `false`. That is exact for `->yes()`, which is what `SuperTypeGuardRule` asks and the only shape any
+     * consumer has needed. It is **not** an equivalent for `->no()`: a rule reporting when a type is
+     * *definitely not* contained would also report on `maybe`, which is wider than the rule.
+     * `MatchingTypeInSwitchCaseConditionRule` is the rule that asks the other way round, and this is one of
+     * the reasons it does not yet emit.
+     *
+     * The arguments are the other way round from the SDK's, so this reads the way the rules write it.
+     */
     public static function typeIsSuperTypeOf(NodeAnalysisContext $context, ?Type $container, ?Type $input): bool
     {
         return Types::typeIsSuperTypeOf($context, $container, $input);
@@ -1194,6 +1206,7 @@ final class Support
         return Types::typeIsObject($type);
     }
 
+    /** Whether every part of a type is a boolean, which is `Type::isBoolean()->yes()`. {@see Types::typeIsBoolean} */
     public static function typeIsBoolean(?Type $type): bool
     {
         return Types::typeIsBoolean($type);

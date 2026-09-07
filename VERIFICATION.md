@@ -11352,3 +11352,58 @@ and the `bodyOf` change is runtime-only so the diff could not have seen it eithe
 emit and 22 → 21 refuse. README's row and `--status` figure re-derived and cross-checked: the emit column sums
 to 108 and the portable column to 170, plus the 40 of `spaze` and `composer/pcre` that make the denominator
 210. Suite 1029/1029, PHPStan 0 errors, Rector and Pint clean.
+
+## No remaining rule is one step away, and the fourth displaced docblock
+
+This step produced no new emission, and the reason is the result: **every rule left in the candidate pool
+needs three or more capabilities, or is dead on configuration and reflection mago does not carry.** Sized rule
+by rule rather than from the census's needs lists, because those name where a pass stopped.
+
+### The pool, and what each one actually costs
+
+| rule | recorded need | what it actually needs |
+|:--|:--|:--|
+| `AttributeRequiresPhpVersionRule` | `getTestMethodReflection()` | the ~200-line `AttributeVersionRequirementHelper`, a PharIo composer-constraint parser, `PhpMinorVersionIterator`, and four messages under one identifier — most branches gated on `bleedingEdge`, off by default |
+| `ClassAttributeRequiresPhpVersionRule` | could not find the reported message | the same helper. Two rules, two different recorded needs, one operative blocker |
+| `MatchingTypeInSwitchCaseConditionRule` | `->cases` iteration | that, plus `->cond` twice, a `VerbosityLevel::value()` describe mode, and a `->no()`-polarity supertype test |
+| `DynamicCallOnStaticMethodsCallableRule` | `->getType()` | plus `canCallMethods`, `getMethod`, `isStatic`, `getDeclaringClass`, `getDisplayName` |
+| `IllegalConstructorStaticCallRule` | `->getTraitAliases()` | mago carries no trait aliases; `getTraitNames()` answers a different question, and the branch cannot be stepped over without reporting a trait-aliased constructor the rule exempts |
+| `OverwriteVariablesWithForLoopInitRule` | `->init` iteration | behind it the definedness test its `Foreach_` sibling already refuses on by name |
+| the five config-closure rules | various | a decision-tree inliner, a `find()` with a closure filter whose every match is walked, or a bind-arg statement whose position decides the answer |
+| `VariablePropertyFetchRule`, `ForbiddenFuncCallRule`, and six more | a constructor parameter | wired to a container parameter the package never declares, or to no neon at all |
+
+Two of those rows are worth keeping for their own sake. **The two version rules have different recorded needs
+and the same real blocker** — a reminder that a needs list is a lower bound per rule, so two rules can look
+unrelated and be the same piece of work. And `kind: 'reports'` *does* have precedent for a findings-building
+helper (`AnnotationHelper::processDocComment`), so "the helper builds the findings" is not automatically fatal
+— it was worth re-asking, and the answer this time is the helper's size rather than its shape.
+
+### Why the switch rule is five pieces and not one
+
+Its recorded need is `->cases`. Two of the four behind it are measurement-sensitive:
+
+- **`Support::describeType()` implements `VerbosityLevel::typeOnly()` only**, and the rule's message
+  interpolates `value()` *and* `typeOnly()` in one `sprintf`. `Runtime\Describe`'s own docblock records that
+  9.38 % of the types at these positions render differently between renderings, so reusing the one mode would
+  produce a wrong message on a measurable share of findings — and the fires gate compares message text.
+- **`typeIsSuperTypeOf()` is the `->yes()` polarity only.** PHPStan answers with a `TrinaryLogic`; the SDK's
+  `TypeComparator::isContainedBy()` answers a plain `bool`, so `maybe` and `no` arrive as the same `false`.
+  That is exact for `->yes()`, which is what its one consumer asks. The switch rule asks
+  `! isSuperTypeOf(..)->no()`, and a port built on the existing helper would report on `maybe` — wider than
+  the rule, which is the direction this repository designs against.
+
+### The fourth displaced docblock, and it had been shipped
+
+`Support::typeIsSuperTypeOf()` carried the docblock *"Whether every part of a type is a boolean, which is
+`Type::isBoolean()->yes()`"*, and `typeIsBoolean()` three methods below carried none. Someone inserted
+`typeIsSuperTypeOf` and `typeIsObject` between a docblock and the method it described.
+
+That is the fourth instance in this file, and the first found in already-committed code rather than during the
+edit that caused it. The three earlier ones were caught by PHPStan, because they displaced `@param` lines that
+the analyser then read as missing types. This one displaced only prose, so nothing caught it: the docblock is
+syntactically valid, describes a real method, and is attached to the wrong one. **The toolchain notices a
+displaced docblock exactly when it carries a type, and never when it carries an explanation.**
+
+Fixed, and `typeIsSuperTypeOf` now states the polarity gap above, where the next port to reach for it will
+read it. Docblocks only: the emit-all diff across the php target is the `--out` path and nothing else, so no
+emitted byte moved. Suite unchanged at 1029/1029, PHPStan 0 errors, Pint clean.
