@@ -10547,3 +10547,68 @@ symplify to 62 emitting and 26 refusing, this rule to EMIT, and `PhpUpgradeDowng
 Suite 311 of 311, PHPStan 0, pint clean. The fires gate ran last, on this tree: 698 of 698, real `mago`
 against real PHPStan over the example pair — so the three member kinds are agreed on line and message by
 both engines rather than only in the one-file run above.
+
+---
+
+## Two argument reads that shared one name, and a rule that compared a value with itself
+
+`NoSetClassServiceDuplicationRule` emits — symplify **63 of 89**, php 165 to 166. It is a linear guard chain
+with no services, closures or recursion, which is what made it the right pick. The defect it surfaced is
+worth more than the rule.
+
+### The defect
+
+An argument binding was named from the argument's **index** — `arg_value` for position 0 — which is a fact
+about the argument and not about where it was read. This rule calls one helper on two receivers:
+
+    $parentSoleArgContents = $this->resolveSoleArgContents($parentMethodCall);
+    $currentSoleArgContents = $this->resolveSoleArgContents($node);
+
+Both inlinings bound `$arg_value`, the second shadowing the first, so both outer locals referenced the same
+name. The rule then reports when the two **match**, and the emitted plugin compared `$arg_value` with itself:
+
+    if (!(Support::textOf($arg_value) === Support::textOf($arg_value))) {
+
+Constantly true. The guard that exists to require a match never fired, so the plugin would have reported
+**every** `$services->set(A)->class(B)` pair, matching or not.
+
+Named from the index rather than from the read is the whole of it, and it took a rule calling one helper
+twice to make it visible. `unusedBindName()` now takes the next free variant, which is safe for a reason the
+shape gives rather than by inspection: the binding's name is recorded on the local's descriptor, so later
+reads render from the descriptor, and the refinement key is the binding too so two cannot alias. Measured —
+no existing emitted plugin renames a bind, so the fix is byte-neutral everywhere but here.
+
+Every `declare` now goes through one method that refuses a name this rule's emission already holds. It fires
+on nothing today, because the argument path is a different statement kind. It is kept anyway: it is the guard
+that would have caught this one, and the next collision will not be an argument.
+
+**Two false starts on the way, both from reading a property that does not exist.** The first guard checked
+`$statement->fields[...]`; `Stm` calls it `$args`. So the loop looked at nothing, found nothing, and the
+emit-all diff said "nothing broke" — which was true and useless. A guard that cannot fire looks exactly like
+a guard with nothing to catch, and the only thing that separated them was that the *rule* kept emitting.
+
+### Three folds behind the rule, each with its divergence stated
+
+- **php-parser's printer answers as the written source text.** They are not the same string: the printer
+  normalises, so `set( Foo::class )` and `class(Foo::class)` print alike where their source differs. A pair
+  written differently but printing the same is therefore missed — under-reporting — and a pair written the
+  same, which is the duplication the rule exists for, compares equal in both engines.
+- **`Strings::after($x, $n, -1)` gets its own helper** rather than the name-segment one it resembles. That
+  one hands back the *whole* string where there is no separator and Nette hands back null; read out of
+  `Strings::after()`, whose `pos()` returns null and short-circuits before the `substr`. Under this rule's
+  own `str_contains` guard the two agree, which is exactly why reusing it would have looked correct.
+- **A helper parameter the call site bound to a literal reads as one.** `isMethodName($node->name, 'class')`
+  compares against `$name`, whose value is known at transpile time — the same table the raw reader already
+  consults. Only that table: a variable holding anything the plugin computes still refuses.
+
+### Verification
+
+Emit-all across all three targets: one new file and no other emitted byte, php 165 to 166, analyzer 34 and
+linter 25 unchanged. The census moves four ways and all four are the change: symplify to 63 emitting and 25
+refusing, this rule to EMIT, one rule past `prettyPrintExpr()` onto `Expr_New`, and another losing its
+`Strings::after()` need.
+
+Both engines on a pair that discriminates: `set(X)->class(X)` reported by both, `set(A)->class(B)` silent in
+both. The second is precisely what the shared local would have mis-reported, and it is in the good example so
+the gate carries it. Suite 311 of 311, PHPStan 0, pint clean, and the fires gate ran last on this tree:
+702 of 702, real `mago` against real PHPStan.
