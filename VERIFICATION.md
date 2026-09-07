@@ -11492,3 +11492,54 @@ Census `phpstan-strict-rules` 22 → 23 emit and 23 → 22 refuse, and the sibli
 advanced from `->getType()` to its real next blocker, a three-statement `if`. README's row and `--status`
 figure re-derived and cross-checked: the emit column sums to 109 and the portable column to 170. Suite
 1033/1033, PHPStan 0 errors, Rector and Pint clean.
+
+## The sibling is two pieces, and one of them has no SDK answer
+
+`DynamicCallOnStaticMethodsRule` is now the closest rule in the corpus: the whole
+`findTypeToCheck(..)->getType()` chain, the `ErrorType` null test, `canCallMethods()`, `getMethod()` on a
+type, `isStatic()` and the canonical-name read all work for it, built for its `Callable` sibling one step ago.
+It refuses on two things and neither is a step to take at the end of a long session.
+
+### The branch shape is a bounded change with one precondition
+
+The reporting branch is three statements where the sibling's is one:
+
+```php
+if ($methodReflection->isStatic()) {
+    $prototype = $methodReflection->getPrototype();
+    if (in_array($prototype->getDeclaringClass()->getName(), [TypeInferenceTestCase::class, PHPStanTestCase::class], true)) {
+        return [];
+    }
+
+    return [ /* the report */ ];
+}
+```
+
+`isConditionalReport()` already accepts leading *assignments* followed by a final report, in either the
+`$errors[] = ..` or the `return [<error>]` spelling. It rejects this body on the middle statement, because a
+nested exiting guard is neither. Extending it to accept a guard among the leading statements is bounded — but
+only under a precondition worth stating: a `return []` inside a conditional branch becomes a `return;` from
+the plugin's `analyze()`, which is correct **only while nothing follows the branch**. Here nothing does; the
+method ends `return [];`. `refuseAHoistedExit()` already exists for the general case, so the extension has to
+be gated on the branch being terminal rather than written as though hoisting were always safe.
+
+### `getPrototype()` has no SDK lookup, and stepping over it reports on this corpus
+
+`Codebase` exposes `getMethod()` and `getDeclaringMethod()` and nothing else at method level — there is no
+prototype. PHPStan's `getPrototype()` answers the *topmost* declaration, walking interfaces and parents, and a
+port would mean walking `getClassAncestors()` and picking the first declarer with PHPStan's resolution order
+**measured** rather than assumed: with several interfaces declaring the same static method, "topmost" is a
+choice, not a fact.
+
+And the branch it guards cannot be stepped over. It exempts subclasses of `TypeInferenceTestCase` and
+`PHPStanTestCase` — PHPStan's own test scaffolding. Those are absent from most consumers, which makes the
+exemption look ignorable, and present in exactly one kind of codebase: a PHPStan extension. That is this
+repository and every corpus package in it. So the shape that makes the guard look safe to drop is the shape
+where dropping it reports.
+
+### Why this is recorded rather than attempted
+
+Two pieces, one of them a semantics port with no SDK support and an ordering question that needs a
+measurement against real PHPStan output. The failure mode of rushing it is the one this file is mostly about:
+a rule that emits, runs, and is confidently wrong on the codebases most likely to run it. The sizing is now
+precise enough that the next step is small and known, which is the whole point of writing it down instead.
