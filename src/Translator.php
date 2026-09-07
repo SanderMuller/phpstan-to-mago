@@ -1106,10 +1106,14 @@ final readonly class Translator
 
         [$subject, $pattern] = $expr->getArgs();
 
+        // No `php` key, deliberately. `PHP_ONLY` is the *string* `/* PHP target only */`, so a descriptor
+        // carrying it as its php operand splices a comment into whatever expression asks for one — a rule
+        // reading this match some third way would emit `sprintf('..', /* PHP target only */)`. Omitting the
+        // key makes {@see operand()} refuse by name instead, which is what the two readings below rely on
+        // being the default for every other read.
         return [
             'rust' => self::PHP_ONLY,
             'kind' => 'regex-match',
-            'php' => self::PHP_ONLY,
             'patternPhp' => $this->bytesValue($pattern->value, $line),
             'subjectPhp' => $this->nameText($this->resolve($subject->value, $line), $line),
         ];

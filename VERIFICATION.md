@@ -10733,3 +10733,31 @@ compound condition with a caveat attached rather than the clean question the red
 entry above quoted, and the difference is one table row. Recording the row is worth more than the rule:
 *a reduction that holds for every shape you thought of is not a reduction*, and the shape that broke this one
 took working the case rather than liking the algebra.
+
+---
+
+## A sentinel that would have leaked, with no witness found
+
+Closeout review of the last two code commits, by hand because Codex was interrupted twice.
+
+`Translator::PHP_ONLY` is the *string* `/* PHP target only */`. It is the right `rust` value for a
+php-only descriptor, and it is what several descriptors also give as their `php` value — including the
+`regex-match` one added this round. `operand()` on the php target returns `$descriptor['php']` verbatim, so a
+descriptor carrying the sentinel there does not refuse: it splices a PHP comment into whatever expression
+asked for an operand. `sprintf('..', /* PHP target only */)` is the shape.
+
+That is the same class as the two leaked-Rust defects recorded above, one of which emitted a `.php` file
+containing Rust that parsed. The fix is to omit the key: `operand()` throws
+`no PHP navigation for … on a … node` when `php` is absent, which is the refusal every other unhandled read
+of this descriptor already gets.
+
+**And no witness was found.** A fixture reading a match array into a message refuses identically with the key
+present and absent, because the message path checks the descriptor's *kind* before it ever asks for an
+operand. So this is a latent hazard removed, **not a defect fixed**, and the distinction is the point: the
+emission is byte-identical, no corpus rule reaches it, and the argument for the change is the shape rather
+than a measurement. Two other descriptors — `node-finder` among them — carry the sentinel as their `php`
+value and were left alone, because changing them without a witness would be churn on the same reasoning.
+
+Worth stating for whoever meets this next: the hazard is not that the sentinel is wrong, it is that it is a
+*string that parses*. A sentinel which could not survive being emitted — an empty string, or a value
+`operand()` recognises and refuses — would make the whole class impossible instead of latent.
