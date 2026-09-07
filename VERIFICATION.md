@@ -10612,3 +10612,37 @@ Both engines on a pair that discriminates: `set(X)->class(X)` reported by both, 
 both. The second is precisely what the shared local would have mis-reported, and it is in the good example so
 the gate carries it. Suite 311 of 311, PHPStan 0, pint clean, and the fires gate ran last on this tree:
 702 of 702, real `mago` against real PHPStan.
+
+---
+
+## "The first package that transpiles whole" was a sentence, not a measurement
+
+`phpstan/phpstan-deprecation-rules` reads **2 of 2 portable rules the package registers emit**, and that is
+exactly true: the package ships two `Rule` classes and both emit. What I wrote next does not follow from it —
+the README bullet said such a package "needs no PHPStan", naming this one.
+
+It does need it. The same `rules.neon` registers five more services:
+
+    RestrictedDeprecatedClassConstantUsageExtension    phpstan.restrictedClassConstantUsageExtension
+    RestrictedDeprecatedFunctionUsageExtension         phpstan.restrictedFunctionUsageExtension
+    RestrictedDeprecatedMethodUsageExtension           phpstan.restrictedMethodUsageExtension
+    RestrictedDeprecatedPropertyUsageExtension         phpstan.restrictedPropertyUsageExtension
+    RestrictedDeprecatedClassNameUsageExtension        phpstan.restrictedClassNameUsageExtension
+
+Those are where "Call to deprecated method X" comes from — they answer PHPStan core's restricted-usage
+mechanism rather than reporting themselves. **They are not `Rule`s, so the census neither counts them nor
+should**, and nothing here ports them. Dropping the package loses all five.
+
+This is the failure pattern this document already names, in its purest form yet: *every number right, and the
+sentence still wrong.* The count is correct, the denominator is correct, the census's own wording —
+"portable rules the package registers" — is correct and carries its scope. The overreach is entirely in the
+word "package", which I substituted for "rules" while writing a bullet about something else.
+
+**And it was caught by a reader who did nothing but ask whether the happy number was true.** Not by
+re-deriving the figure, which is right; not by a control pair, since there is nothing to vary; not by any
+check in this repository, none of which looks at prose. The correction is to say what the unit is: rules are
+the unit, and a package is not. The README says that now.
+
+Worth noting what the near-miss was. The bullet had stood for two commits, and the next thing that would have
+touched it is a release note or an upstream issue quoting it — which is exactly the boundary this document
+records as the one where a claim leaves the repository and stops being checked at all.

@@ -49,8 +49,9 @@ final class ForbiddenStaticConstFetchRule implements Plugin, NodeAnalysisHook
 
 ## What this is for
 
-- A package that transpiles completely needs no PHPStan. `phpstan/phpstan-deprecation-rules` does, both
-  rules; `tomasvotruba/cognitive-complexity` is one short.
+- **Rules are the unit; a package is not.** `phpstan/phpstan-deprecation-rules` is the first with both its
+  rules emitting, and is still not droppable: its neon also registers five `Restricted*UsageExtension`
+  services, where "call to deprecated method" comes from, and none of those is a rule.
 - As a pre-filter: transpiled rules on save and push, full PHPStan on merge or nightly.
 
 It does not make an existing PHPStan run cheaper: dropping rules does not drop the parsing and type
@@ -127,9 +128,8 @@ Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and r
 | `phpstan/phpstan-phpunit` | 13 | 4 | 9 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 2 | 0 | 0 |
 
-`--status` counts 104 of 209 here and writes a page under `--out`. The table is the seven packages that emit
-anything; `spaze/phpstan-disallowed-calls` (38) and `composer/pcre` (2) are in the denominator only. Run it
-on your own project.
+`--status` counts 104 of 209 here and writes a page under `--out`; `spaze/phpstan-disallowed-calls` (38) and
+`composer/pcre` (2) are in that denominator and emit nothing. Run it on your own project.
 
 <details>
 <summary>What the vocabulary covers</summary>
