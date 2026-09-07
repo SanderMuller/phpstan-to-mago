@@ -11662,3 +11662,33 @@ manifest and worker entries, and the `--out` path — plus one new *refusing* fi
 line and no emission. Census `phpstan-strict-rules` 23 → 24 emit and 22 → 21 refuse. README's row and
 `--status` figure re-derived and cross-checked: the emit column sums to 110 and the portable column to 170.
 Suite 1037/1037, PHPStan 0 errors with one baseline entry fewer, Rector and Pint clean.
+
+## Four more eliminated by reading, and what the pool is made of now
+
+No emission this step. Seven rules in, the candidate list is down to sixteen with two or fewer recorded needs,
+and the four best of them were read end to end this step rather than sized from the census. All four are dead
+for reasons the needs list does not say.
+
+| rule | recorded need | what the body actually does |
+|:--|:--|:--|
+| `PhpUpgradeDowngradeRegisteredInSetRule` | the 3-statement branch this step built | resolves a Rector set-list constant by **computed name** — `DowngradeSetList::{$constantName}`, where the name comes from a regex capture — then reads that file off disk and greps it |
+| `RequireRouteNameToGenerateControllerRouteRule` | `->getNativeReflection()` | `InvokeClassMethodResolver::resolve()` hands back a native `ReflectionMethod` whose attributes the rule then walks |
+| `MatchingTypeInSwitchCaseConditionRule` | `->cases` iteration | needs `! isSuperTypeOf(..)->no()`, and `->no()` is a **deliberate, measured refusal**: of 243822 inferred types 4.23 % would make an `isNull()` a `Maybe`, and `TypeComparator` answers a plain bool |
+| `NoJustPropertyAssignRule` | a node predicate on a `bytes` | behind it, `PhpDocResolver::resolve()` and `getVarTags()` — docblock var-tag resolution and a type equality |
+
+The first is worth noting for a reason beyond itself: **the capability this step built was one of its recorded
+needs, and clearing it moved the rule not at all.** The branch shape was real and so was the next obstacle
+behind it, which is the census's own lower-bound warning arriving on the rule that most looked like it had
+been unblocked.
+
+### What the pool is made of
+
+Of the sixteen with two or fewer needs, after this step's reading: seven are a constructor parameter no neon
+wires, three are a findings-building helper of substantial size, three are native reflection, a filesystem
+read or a dynamic constant, two are refusals this file has already measured and recorded as correct
+(`->no()` polarity, local definedness), and one is docblock resolution.
+
+None is a step. The two capability builds that would each unblock more than one rule are unchanged from two
+steps ago and both are measurement-sensitive: a `VerbosityLevel::value()` describe mode, and a three-valued
+answer for `->no()` — which the SDK cannot currently supply, since `TypeComparator` returns bools where
+PHPStan returns `TrinaryLogic`.
