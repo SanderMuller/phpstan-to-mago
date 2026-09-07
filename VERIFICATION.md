@@ -11018,3 +11018,63 @@ constructor the rule exempts.
 **A single-need row is a claim about where the pass stopped, not about how much work is left.** It said one
 thing for the rule that shipped today too: the traverser was the recorded need, and the guard that would have
 made the plugin silent was not in the list at all.
+
+## The drift alarm's three nights, and a refusal whose recorded reason is not its blocker
+
+The nightly `upstream-parity` watch had two issues open, #10 (released) and #11 (dev-main), each
+re-commented three nights running. Both are now accepted into the census. What they turned out to say is
+worth more than the bump.
+
+### The alarm was right, stable, and reproduced exactly
+
+`hihaho/phpstan-rules` v3.15.2 — v3.18.1 adds one rule, `SlowMigrationDdlRule`. The three nightly comments
+carry **byte-identical** census diffs, so nothing was accumulating, and running the alarm locally at v3.18.1
+produced the same four lines. One test failed per leg, `TracksUpstreamDriftTest`, out of 1013.
+
+Two signals in that are results rather than noise:
+
+- **#11 adds nothing substantive over #10.** Its only extra lines are the version block showing symplify,
+  type-coverage and cognitive-complexity on `dev-main`. Three packages' unreleased branches introduce no new
+  rule shape at all.
+- **Three minor versions of upstream drift moved no emitted byte.** The emit-all diff across all three
+  targets, v3.15.2 against v3.18.1, is the `--out` path and nothing else; php stays at 167, analyzer 34,
+  linter 25, with refusals +1 each for the new rule. The census recorded a change in exactly one package's
+  header and one rule, and the six other hihaho rules' emissions are identical.
+
+### `Expr_Array` is where the pass stopped, not what stops the rule
+
+The census records the refusal as `assignment value outside the vocabulary: access path outside the
+vocabulary: Expr_Array` at line 146. That line is:
+
+```php
+$found = [
+    ...$this->inspectSchemaCalls($class, $resolver),
+    ...$this->rawAlterFindings($class, $resolver),
+];
+```
+
+Both spread elements return `list<array{int, IdentifierRuleError}>`. So the array literal is a symptom: the
+rule's body is two helpers that **build findings** rather than answer questions, merged, `usort`ed by a
+comparator closure and `array_map`ped to the errors — the same category the census already names for
+`ClassNameRespectsParentSuffixRule`, "there is nothing here to translate into guards". Around it sit a
+synthesised `new MigrationTableNameResolver($class)`, three injected collaborators and a `NodeFinder` walk.
+
+**One clause of my own sizing needed splitting.** Reading the neon first, I corrected an assumption that
+`outlierTables` was unwired like the package's other refused rules — it is wired, `%outlierTables%` is
+declared with a `parametersSchema` entry and a default of `[]`, so it is the configurable shape this port
+already supports through `flags`, and inertness at the default is faithful because the original is inert
+there too. That is true of the **parameter** and says nothing about the **body**, which is the blocker. Two
+claims of different standing about one rule, and the first reads like a verdict on the second.
+
+So this is a `rule-shapes.md` candidate at best, not a next step, and the honest sizing is the body rather
+than the line the refusal names.
+
+### What did not need changing
+
+The `^3.15.2` constraint stays. `composer.lock` is gitignored here, so the floor is what a consumer resolves
+against, and `LockedCorpus::mismatch()` already makes the corpus tests skip when the installed corpus is not
+the recorded one — which is what a `prefer-lowest` leg installing v3.15.2 now hits, by design rather than
+by accident. README's hihaho row and `--status` denominator re-derived from the census and cross-checked:
+the emit column sums to 105 and the denominator to 210.
+
+Suite 1017/1017, PHPStan 0 errors, Rector and Pint clean, at the new corpus.

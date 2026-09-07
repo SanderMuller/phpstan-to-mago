@@ -68,7 +68,7 @@ agrees with it, so a lock can say what is installed and never what was expected.
 The nightly drift watch sets `WATCH_CORPUS_DRIFT` and is compared anyway. It installs another
 corpus on purpose, so skipping there would be the alarm going green having looked at nothing.
 
-    hihaho/phpstan-rules                      v3.15.2
+    hihaho/phpstan-rules                      v3.18.1
     phpstan/phpstan-deprecation-rules         2.0.5
     phpstan/phpstan-phpunit                   2.0.18
     phpstan/phpstan-strict-rules              2.0.12
@@ -309,7 +309,7 @@ REFUSE  TaggedIteratorOverRepeatedServiceCallRule
         needs: no node predicate for instanceof PhpParser\Node\Stmt\Expression on a expr
 EMIT    UppercaseConstantRule
 
-## hihaho/phpstan-rules — 6 of 7 portable rules the package registers emit, 0 covered by the engine, 1 refuse, 2 unportable in principle, 11 it registers nowhere
+## hihaho/phpstan-rules — 6 of 8 portable rules the package registers emit, 0 covered by the engine, 2 refuse, 2 unportable in principle, 11 it registers nowhere
 
 EMIT    ChainedNoDebugInNamespaceRule  (the package registers it nowhere)
 EMIT    CombinedFuncCallRule
@@ -340,6 +340,10 @@ EMIT    PositionalFlagArgumentNullsafeMethodCallRule
 REFUSE  PositionalFlagArgumentStaticCallRule  (the package registers it nowhere)
         $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
         needs: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
+REFUSE  SlowMigrationDdlRule
+        assignment value outside the vocabulary: access path outside the vocabulary: Expr_Array
+        needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Array
+        needs: statement outside the vocabulary: Stmt_Expression
 REFUSE  StaticChainedNoDebugInNamespaceRule  (the package registers it nowhere)
         ClassReflection test on a service, which the plugin has no equivalent for
         needs: ClassReflection test on a service, which the plugin has no equivalent for
