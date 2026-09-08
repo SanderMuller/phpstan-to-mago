@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
+use Sandermuller\PhpstanToMago\Cli;
 use Sandermuller\PhpstanToMago\Refusal;
 use Sandermuller\PhpstanToMago\Transpiler;
 
@@ -37,6 +38,31 @@ final class StatesWhatSurveyAssumedTest extends TestCase
     protected function tearDown(): void
     {
         Transpiler::$survey = false;
+    }
+
+    /**
+     * The survey says what its refusal is the scope of, next to the count rather than in a document.
+     *
+     * This class's own docblock records a handoff that ranked work from first obstacles and ranked it wrong,
+     * and the census header has carried the same warning in bold for longer than that. Both were read past,
+     * because a warning thirty lines above the data cannot reach someone who greps — so the line is printed
+     * where the refusal is, by the thing that produced it.
+     *
+     * Asserted rather than left as prose: a line nothing checks is one a refactor drops, which is the whole
+     * difference between this and the header that did not work.
+     */
+    public function test_a_survey_says_a_refusal_is_only_the_first_obstacle(): void
+    {
+        Transpiler::$survey = true;
+
+        ob_start();
+        $status = Cli::run(['--survey', self::RULE], sys_get_temp_dir() . '/phpstan-to-mago-survey-scope-' . getmypid());
+        $output = (string) ob_get_clean();
+
+        $this->assertSame(1, $status, $output);
+        $this->assertStringContainsString('REFUSE', $output);
+        $this->assertStringContainsString('first obstacle only', $output);
+        $this->assertStringContainsString('needs-at-least:', $output);
     }
 
     public function test_an_emit_run_refuses_on_the_missing_hook(): void

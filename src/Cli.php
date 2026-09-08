@@ -89,6 +89,19 @@ final class Cli
 
         echo "\nemitted: " . count($rules) . ', refused: ' . count($refused) . ' (target: ' . Transpiler::$target . ")\n";
 
+        // What a refusal is the scope of, printed where the refusal is read. A survey prints the *first*
+        // obstacle a rule hit and nothing about the rest of its body, and sizing work from that alone has
+        // been wrong repeatedly here — the census carries the same warning in its header and the same
+        // mistake was made anyway, because the header is thirty lines from the data and a reader who greps
+        // never sees it. So the line goes next to the count rather than in a document about the count.
+        //
+        // The precedent is the target above: a number means nothing without the configuration it belongs to,
+        // and naming it at the point of use is what stops it being read as something it is not.
+        if ($refused !== [] && Transpiler::$survey) {
+            echo 'each REFUSE is the first obstacle only, not what the rule needs — see `needs-at-least:` '
+                . "in tests/Fixtures/expected/census.md for the rest of a body\n";
+        }
+
         return $refused === [] ? 0 : 1;
     }
 

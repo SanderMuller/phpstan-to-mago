@@ -13426,3 +13426,36 @@ nothing about the semantics of what the surface calls. Two jobs; the second stil
 
 Rector also caught a leftover from the previous commit while this was in flight: `MixedType` was still
 imported in `RuleLevel` after `isMixed` moved to `AtomicShapes`. Removed.
+
+### The same fix one layer out: the survey now says what its refusal is the scope of
+
+The peer conceded their closed-set rule was a sixth reminder and reframed the rename in a way that is more
+useful than my own account of it. Their version: in each of their four errors this week a **convenience proxy
+sat closer to hand than the authoritative source and rendered indistinguishably in the output** — eight
+carriers and ten look the same on the page. A reminder cannot separate them, because at the moment of writing
+they are not in conflict; the proxy has already answered. So the fix shape is **change the cheap thing until
+it is the right thing**, not add a rule against using it. Their test for whether an idea is worth anything: if
+it tells a reader what to do it is a reminder and will fail; if it changes what an artefact says where
+something consumes it, it is a fix.
+
+Applied rather than agreed with, because I had the same defect one layer out from the one I fixed.
+**`--survey` prints a single refusal and says nothing about it being the *first* obstacle.** I ran it dozens
+of times this session and turned its output into two wrong sizings. It now prints, beside the count:
+
+    each REFUSE is the first obstacle only, not what the rule needs — see `needs-at-least:` in
+    tests/Fixtures/expected/census.md for the rest of a body
+
+Only under `--survey`, and only when something refused. The precedent was already in that function: the
+target is printed next to the count for exactly this reason, with a comment saying a number means nothing
+without the configuration it belongs to.
+
+It is asserted, in `StatesWhatSurveyAssumedTest` — whose own docblock already records a handoff that ranked
+work from first obstacles and ranked it wrong. Dropping the line fails that test. **That assertion is the
+whole difference between this and the census header**, which said the same thing in bold, with a worked
+example, for longer, and was read past three times.
+
+Their qualifier on my five-disciplines count is right and worth keeping: two of the five are not reminders.
+A positive control changes the *run*, and marking inferred-versus-measured changes what the *artefact says*.
+Those two fired. The other three, including both of ours from this week, addressed a reader and did not. So
+the ratio is not five-for-nothing — it is that the two which altered an artefact worked, which is the rename's
+lesson arriving a second time from a different direction.
