@@ -13712,3 +13712,29 @@ PHPStan caught it — not as a misplaced comment, but as **four type errors** in
 `$refinements`, which became untyped. One cause, two symptoms, and the symptoms are what made it visible.
 Nine of the previous instances were found by reading; this one announced itself, because the stolen docblock
 carried a type something depended on.
+
+### A session-wide delta I could not stand behind, and the parser that hid it
+
+Reporting the state after the two rules above, I reached for a headline: the census at this session's first
+commit against the census now. `grep -c '^EMIT'` gave **58** then and **131** now, a delta of 73 that no
+amount of work in this context window accounts for.
+
+Checked rather than published. Two things were wrong with the framing and one with the instrument:
+
+- **The session is 368 commits.** Most of it precedes this context window, so a session-wide delta is not a
+  claim about work I can name. The per-package figures quoted throughout — each cross-checked against the
+  census at the time — are sound; the headline is not mine to make.
+- **The header format changed mid-session.** It read `N of M the package registers emit` and now reads
+  `N of M portable rules the package registers emit`. My reconciliation regex was written against the current
+  format and returned **0** against the old file — a parser silently reading zero from a file whose shape
+  moved, which is the same class as the double-included neon that analysed nothing. Summed by hand instead:
+  **52** package-rule emits then, **121** now.
+- **58 against 52** is the local `tests/Fixtures/Rules` fixtures, which have no package section and so appear
+  as `EMIT` lines with nothing in the headers to match them. Two correct counts of two different populations,
+  which is this thread's whole subject.
+
+Recorded because the near-miss is instructive: a generated file's *format* is as much a version as its
+contents, and an extractor pinned to today's shape reads old snapshots as empty rather than as unparseable.
+The `needs-at-least:` rename earlier in this session changed that same file's keys — so any extractor written
+against it before that commit now reads zero `needs:` lines from every later snapshot, and would report a
+corpus with no needs at all.
