@@ -15387,3 +15387,53 @@ resolver that `getArgs()` reached and failed — rather than the construct itsel
 a closure predicate. Harmless to the emit and actively misleading to anyone ranking work off refusal text,
 which is the whole population of readers this file has. Recorded rather than fixed; fixing it changes a census
 line and belongs with a decision about whether refusal messages should name constructs or paths.
+
+### The collaborator cluster, read one by one — and a proxy that failed twice on the way
+
+`phpstan-src-e7` asked the right follow-up to my `SymfonyClosureDetector` finding: if the remaining
+collaborators read like that 27-line one rather than like the file-reading one, the cluster's shape is
+different from what either of us assumed. All nine, read:
+
+| collaborator | lines | shape |
+|:--|--:|:--|
+| `SymfonyClosureDetector` | 27 | **shallow** — static, counts one param, compares a type name |
+| `NamingHelper` | 39 | **shallow** — name comparison, no finder, closure or reflection |
+| `InvokeClassMethodResolver` | 19 | returns a **native `ReflectionMethod`** via `getNativeReflection()` |
+| `SymfonyClosureServicesLoadResolver` | 60 | `NodeFinder->find()` with a closure appending to a **by-reference capture** |
+| `SymfonyClosureServicesExcludeResolver` | 82 | the same shape |
+| `SymfonyClosureServicesSetClassesResolver` | 86 | the same shape |
+| `PhpDocResolver` | 30 | PHPStan's `FileTypeMapper::getResolvedPhpDoc()` |
+| `RepositoryClassResolver` | 71 | `FileSystem::read()` plus a regex |
+| `ClassConstructorTypesResolver` | 82 | `getConstructor()->getOnlyVariant()->getParameters()` |
+
+**Their hypothesis is refuted: two of nine are shallow, not six.** `SymfonyClosureDetector` is the outlier and
+`NamingHelper` is the only one joining it. But the seven deep ones are not seven problems — they are **three
+mechanisms**: a by-reference closure capture inside a `NodeFinder` filter (three collaborators), reflection
+that escapes to PHPStan or PHP itself (three), and disk plus regex (one).
+
+That last regrouping is the first thing in nine turns that looks like a capability with genuine multi-rule
+reach rather than one that is necessary-but-insufficient by construction: **collect values from a subtree
+through a filter closure** serves three collaborators at once. It still does not make any single rule emit —
+the rules above them also want `file_exists`, a `Stmt_Expression` shape and an `array_any` predicate — but it
+is a different shape of lead from anything the refusal texts produced.
+
+#### The proxy I used first, and how it failed
+
+I began with `grep -cE "FileSystem::|preg_|ReflectionProvider|getResolvedPhpDoc|ParametersAcceptor|..."` as a
+depth score, and it reported **six of nine with zero deep signals**. Reading them, that number is wrong twice
+over:
+
+- `InvokeClassMethodResolver` scored 0 and returns a native `ReflectionMethod` — my pattern had
+  `ReflectionProvider` and not `getNativeReflection`.
+- The three closure resolvers scored 0 and every one carries a `use (&$captured)` filter — a shape no keyword
+  in my list described, because I had written the list from the *deep things I already knew about*.
+
+**A keyword list built from known failures cannot find an unknown one.** That is the same defect as the
+case-sensitive search and `head -1`, in its most predictable form: I asked "does this contain something I have
+already seen be deep" and read the answer as "is this deep". The fix that worked was reading nine files, which
+cost about as much as writing the grep did.
+
+The peer also declined the compliment I paid their fifth instance, correctly: the file counts that caught
+their broken command were there to describe the population, not to guard the query, so the guard worked by
+accident. **A scope column doubling as a control is worth adding deliberately rather than receiving by luck**
+— which is the same conclusion as their nette positive control, arrived at from the other direction.
