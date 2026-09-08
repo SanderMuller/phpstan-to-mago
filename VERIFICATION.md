@@ -15253,3 +15253,57 @@ since call-time pass-by-reference is a PHP 8 fatal and refusing the file is corr
 anonymous function-likes and the three syntax-only bindings, with `Arg` in a *checked and not a gap* section —
 the same move this repository's filed issue made by naming `getTrivia()` itself rather than waiting to be
 handed it. **Nothing is filed; that is the user's call.**
+
+### The failure surface was the query, not the reasoning — seven instances, two sessions
+
+`phpstan-src-e7` checked their own record against my "three of my last four instrument failures were the
+pattern rather than the reasoning" and found four of four. **Their rows, from their own log:**
+
+| query | what it missed |
+|:--|:--|
+| `callable\(string\)` across branches | the site spelled `\Closure(string)` |
+| `property_exists($n, 'byRef')` on a fixture | eight carriers where the package has ten |
+| `message\(sprintf\(` for symplify | 14 of 96 where the answer is 73 |
+| `grep -rn "locals" external/ \| head` | reported `head`'s exit status as `grep`'s |
+
+And mine, from this log: a case-sensitive search for `BY_REFERENCE`; `find … | head -1` across two same-named
+enums; `grep -oE "case [A-Za-z]+"` truncating `Function_`; and the zsh no-word-split emit-all that reported
+`emitted: 0` three times.
+
+Seven claims, seven wrong, and **not one of them a reasoning error.** Every one was a query narrower than the
+thing asserted from it, returning something well-formed. That is a better summary of the week than any of the
+disciplines above it: the reasoning was mostly sound and the *queries* were the failure surface throughout.
+
+**The common property is the fix.** `head -1`, a trailing `| head`, `[A-Za-z]+` against `Function_`, a
+case-sensitive literal against an upper-case constant — each silently narrows and returns a clean answer, and
+**none of them can fail loudly**. The one-match and two-match cases are indistinguishable in the output, which
+is exactly why confidence says nothing about correctness here.
+
+So, in the form this log prefers — change the cheap thing rather than add a reminder:
+
+> **When a count is the thing you are about to assert, use a command that reports its own scope, and never
+> pipe it to `head`.** `find … | wc -l` before `find … | head -1`. `grep -c` beside `grep -l`. Zero and one
+> must look different in the *output*, not only in your intention.
+
+#### Applied immediately, and it found something
+
+Re-checking my own partition: the rule-file index was built with `$index[$b] ??= $path`, first-match-wins
+across `vendor/` — the same defect as `head -1`. Counted rather than assumed: **43 refused names, 0 matching
+more than one file**, 11 matching none (local fixtures). So the `??=` never actually chose and the 13 + 19
+split stands — now checked instead of lucky.
+
+Counting the census three ways then surfaced a real ambiguity **in my own reporting**:
+
+    EMIT lines in census.md                        132
+    sum of the seven per-package headline emits     122
+
+Both are correct and they count different populations. The headline is *"N of M portable rules the package
+registers"*, while an `EMIT` line is written for every rule that emits — including ones the package registers
+nowhere. The gap is 5 in symplify and 5 in hihaho, precisely the two packages whose headlines end "8 it
+registers nowhere" and "11 it registers nowhere". `--status` tracks the headline population, which is why it
+reads 122.
+
+I have quoted "census 132" and "`--status` 122" in the same breath without ever saying they measure different
+things. Neither figure is wrong; the pairing was. **A count belongs to its configuration** applies to which
+*population* as much as to which target, and two counts of "the same thing" disagreeing by 10 is the cheapest
+possible prompt to go and find out why.
