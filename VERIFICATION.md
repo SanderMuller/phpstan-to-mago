@@ -12539,3 +12539,47 @@ half of it. No second flag and no new gate mechanism.
 Division alone is the first target, because one emitting rule is what keeps new vocabulary from being
 unexercised — the condition three reverts in this log were made under. The other four follow as predicate
 rows; Addition last, since it reads `->getArrays()` as well.
+
+### The prefer-lowest leg caught what the fix depends on: a version
+
+The commit above went red on CI in one leg of the matrix — `P8.4 - prefer-lowest`, four failures, every other
+leg green and the local suite 1050/1050. Reading the diff direction is the whole diagnosis:
+
+    --- Expected      (PHPStan)
+    +++ Actual        (the plugin)
+    -    'GoodOverloadableObjectOperand.php' => [
+    -        0 => '26: Only numeric types are allowed in post-decrement, GMP given.',
+
+A `-` line is in **Expected** and not in Actual: on that leg **PHPStan reports GMP and the fixed plugin is
+silent.** Not a regression — the object branch does not exist in the version `prefer-lowest` resolves, so
+PHPStan there has the false positive the branch was added to fix, and my port correctly does not reproduce it.
+
+**Re-derived from the tags rather than taken from the peer's two data points**, counting
+`isObject()->yes()` in `src/Rules/Operators/OperatorRuleHelper.php`:
+
+| tag    | occurrences |
+|:-------|------------:|
+| 2.0.10 | 0           |
+| 2.0.11 | 0           |
+| 2.0.12 | 3           |
+
+Three in 2.0.12, one each for the arithmetic, increment and decrement helpers. The peer had 2.0.10 and 2.0.12;
+2.0.11 was the cell neither of us had, and it matters because it is what makes `^2.0.12` the right floor
+rather than a guess one patch too high.
+
+The constraint was `^2.0`, so `prefer-lowest` resolved 2.0.0. Raised to `^2.0.12`, which is a `require-dev`
+entry — the corpus is installed to be read, consumers inherit none of it — so this changes what CI and a
+contributor resolve and nothing a consumer installs. Asserted positively rather than by reading an absence:
+`composer why-not phpstan/phpstan-strict-rules 2.0.11` now names the constraint as the blocker, and 2.0.12 is
+installed. `composer.lock` needed no change and `composer validate` passes.
+
+**What this actually says, and it is bigger than the constraint.** A port's fidelity belongs to a version of
+the original, the same way a count belongs to its configuration. This is the first place in the repository
+where two supported versions of one corpus package disagree about what a rule reports, and where being
+faithful to one means diverging from the other. The census already prints `phpstan/phpstan-strict-rules
+2.0.12` beside its counts, so the version is on the record next to the numbers it produced — that convention
+was written for the census's own auditability and it turns out to carry this too.
+
+And the `pre-release` skill's warning is now a measured event here rather than advice: the matrix has a
+`prefer-lowest` leg precisely because local green is one point in a resolution space. Four failures, one leg,
+and the local run could not have found it — the machine only ever had 2.0.12.
