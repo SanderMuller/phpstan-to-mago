@@ -14209,3 +14209,43 @@ rule actually needs.
 
 Reverted rather than patched, because a half-built fold is how a plugin that loads and misbehaves ships. That
 is the seventh revert in this log and the first where the reverted work had already produced an `EMIT`.
+
+## The first-match fold: the first genuine capability cluster in this corpus
+
+The reverted attempt named the gap — a `return` inside a loop is a fold, *take the first item and stop*, not
+a statement. Sized before building it, and unlike every other cluster this session it holds.
+
+**Six refusing rules carry the shape.** Five found by matching a loop whose body returns a value, plus
+`NoTestMocksRule`, whose single-line body the brace match missed:
+
+    ClassNameRespectsParentSuffixRule   ForbiddenFuncCallRule   ForbiddenNodeRule
+    PreferredClassRule                  RectorCheaperGuardsFirstRule   NoTestMocksRule
+
+**And it is one shape, read at source rather than grouped by label** — the check my own rule about syntactic
+grouping demands. Three of them, side by side:
+
+    foreach ($this->parentClasses as $parentClass)       if (! $classReflection->is($parentClass)) continue;  …  return $expectedSuffix;
+    foreach ($requiredWithMessages as $requiredWith)     if (! $matcher->isMatch($funcName, [..])) continue;   …  return $message;
+    foreach ($stmts as $index => $stmt)                  if (! $stmt instanceof ..) continue;                  …  return $index;
+
+Same fold in each: a guarded search that yields the value derived from the first item satisfying it. One walks
+a configured list, one a statement list, one an inferred type's constant strings — the collection differs and
+the fold does not.
+
+That makes it the **first cluster this session that is not a syntactic wrapper**. Every previous one — the
+`Stmt_Expression` guard bodies, `array_merge()`, `Expr_Ternary`, the four `*TypeDeclarationCollector`s —
+dissolved because the shared item described syntax and the real blockers sat behind it. This one describes a
+capability, which is exactly the distinction the entry above predicted would matter.
+
+### What it is worth, honestly
+
+The fold alone probably unlocks none of the six on its own, and the familiar reason applies: each carries
+other blockers — `ForbiddenFuncCallRule` an unwired constructor parameter, `ClassNameRespectsParentSuffixRule`
+a helper that builds findings rather than answering, `PreferredClassRule` five node kinds including a virtual
+one. `NoTestMocksRule` is the exception and the reason to start here: its other six blockers are **built and
+measured**, reverted only because the fold was missing, so the fold is the whole remaining distance.
+
+So the build order is settled: the fold, then re-apply the six pieces the revert took out, then the pair with
+the configured allow-list that the gate already needs. And the fold has to emit the loop and the return
+*together* — the loop becomes the search, the return its result — rather than resolving the return as though
+the loop were not there, which is precisely what shipped a plugin reading an undefined variable.
