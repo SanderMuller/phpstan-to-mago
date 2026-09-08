@@ -15564,3 +15564,50 @@ claim about a relationship between two things, measured on one of them.
 than a cluster. Whether the other three closure-resolver rules follow depends on their own remaining needs,
 which I have not re-derived under the corrected support list, and I am not repeating the mistake of assuming
 it either way.
+
+### Building the capability refuted "one capability away", and the method we agreed on with it
+
+I retracted *no rule is one capability away* and named `ServicesExcludedDirectoryMustExistRule` as the
+counterexample, from a need list I built by reading. `phpstan-src-e7` and I then agreed the settling
+measurement was mechanical: need list crossed against supplied list, per rule, a set difference rather than a
+judgement.
+
+**I built the capability instead, and it refutes both.**
+
+`find()` with a closure filter turned out to be a small, surgical change: `searchFilteredByAClosure()` already
+had the traversal, the filter recognition and the condition; only the accumulator differed. `declare-null` +
+`assign` + `break` becomes `declare-list` + `append`, the descriptor becomes `found-nodes` instead of
+`found-node`, and `ITERABLES` already knew how to iterate that. About twenty lines.
+
+It works, and the rule still does not emit:
+
+    before   find() with a closure filter … only findFirst() reduces to one question (line 125)
+    after    no node predicate for instanceof PhpParser\Node\Expr\BinaryOp\Concat on a bytes (line 93)
+
+Emit-all across all three targets: **146 / 34 / 25 before and after — zero rules moved.**
+
+#### Why the need list could not have found this
+
+`resolveDirectoryPath()` tests `$arrayItem->value instanceof Concat`. Reading the rule, that is one construct
+and `Concat` is plainly a node. But `array-items` iterates to `expr`, and `->value` on that yields a
+descriptor of kind **`bytes`** — so the `instanceof` has nothing to narrow. **The second gap is not a missing
+capability at all; it is a mismatch between two descriptor kinds inside this transpiler.**
+
+That is invisible from the rule's source, and it is invisible from any list of capabilities, because it is not
+a capability — it is a fact about how two internal kinds compose. So the cross-product we agreed on is **not
+mechanisable**: the "supplied list" is not a set of named features, it is a graph of descriptor kinds whose
+*composition* decides what works. A set difference over feature names cannot see a composition failure.
+
+**The only reliable oracle is building the capability and running the corpus.** That is expensive, and it is
+the third method this week to collapse: refusal-text ranking, then reading bodies, now the cross-product. Each
+was cheaper than the last thing that worked, and each was refuted by doing the expensive thing once.
+
+#### Reverted
+
+Unexercised vocabulary, the condition the nine reverts above share, and it moved nothing. Restored from the
+copy taken first; `git diff` against HEAD is empty. The finding is worth more than the twenty lines, and the
+twenty lines are recorded here precisely enough to rewrite in an hour if a second rule ever needs them.
+
+What I would not now say: that `ServicesExcludedDirectoryMustExistRule` is two capabilities away. I have
+measured the second obstacle and nothing beyond it, and that is exactly the `needs-at-least` trap this log
+opens with. It is at least two.
