@@ -12806,3 +12806,54 @@ all seven rows cross-checked against the census.
 
 The other five arithmetic rules are now one `OPERATOR_KINDS` row each — Addition also reads `->getArrays()` —
 and `DisallowedLooseComparisonRule` wants `Equal` and `NotEqual` from the same table.
+
+## Four more of the arithmetic family, and the control that a prefix match would fool
+
+Subtraction, Multiplication, Modulo and Exponentiation emit. The census goes to 127 rules on the php target,
+`phpstan/phpstan-strict-rules` to 30 of 45, `--status` to 118 of 210. Each rule cost **one
+`OPERATOR_KINDS` row per spelling** and an example pair; the recognizer built for Division needed no change,
+which is what a vocabulary row buying a rule is supposed to look like.
+
+Addition remains, and its refusal has moved from the dispatch to `access path outside the vocabulary:
+->getArrays()`. That is the extra blocker the sizing named — `array + array` is valid, so the rule reads the
+array types — and it is now the primary rather than a `needs:` line behind the dispatch.
+
+### The operators were measured, not assumed to behave like `/`
+
+At the gate's configuration, level 0 with `checkThisOnly` off, with a numeric row in the same run as a control
+that must stay silent, and it did:
+
+| operand         | `-`  | `*`  | `%`  | `**` |
+|:--|:--|:--|:--|:--|
+| `bool` binary   | reports | reports | reports | reports |
+| `bool` compound | reports | reports | reports | reports |
+| `bool` on the right | reports | — | — | — |
+| `int` (control) | silent | silent | silent | silent |
+
+Each identifier is its own (`minus.leftNonNumeric`, `mul.`, `mod.`, `pow.`), so the pairs compare messages
+rather than a shared shape.
+
+### The crossed control, which is the part worth keeping
+
+Every Good fixture carries an operator its rule declines, so that registering the node kinds without reading
+the token would report it. For four of the six that operator is `+`. For **Multiplication and Exponentiation
+they are crossed** — `**` sits in the `*` fixture and `*` in the `**` one — because those two are the pair an
+inexact comparison would confuse, and no other pair in the family is.
+
+Measured rather than argued: replacing `===` with `str_starts_with()` in `Operators::operatorIs()` fails
+**exactly two** of the twenty tests, and they are those two. A `+` control cannot catch that mutation at all,
+because `+` is not a prefix of anything here. The general form is one this log keeps arriving at from
+different directions — **choose the control by the mechanism you are excluding**, and where two values are
+compared as text, the control is the value that shares a prefix rather than the value that is merely
+different.
+
+A second mutation, dropping the operator child's *kind* test so a `Binary` and an `Assignment` stop being
+told apart, fails ten of twenty. Both mutations were linted before running, because two earlier mutations this
+session died at parse time and reported a red gate that proved nothing.
+
+### Emit-all
+
+php 174 → 178; analyzer and linter unchanged. Four new plugins and the three registration files, and **no
+existing plugin moved a byte** — unlike the Division commit, which had to widen `HOOK_KINDS` and moved three
+`getTargets()` lines. Suite 1069/1069, PHPStan 0 errors, Rector clean, README's row and `--status` figure
+re-derived and all seven rows cross-checked against the census.

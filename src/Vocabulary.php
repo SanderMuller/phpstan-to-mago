@@ -12,8 +12,18 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp\Div as AssignOpDiv;
+use PhpParser\Node\Expr\AssignOp\Minus as AssignOpMinus;
+use PhpParser\Node\Expr\AssignOp\Mod as AssignOpMod;
+use PhpParser\Node\Expr\AssignOp\Mul as AssignOpMul;
+use PhpParser\Node\Expr\AssignOp\Plus as AssignOpPlus;
+use PhpParser\Node\Expr\AssignOp\Pow as AssignOpPow;
 use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BinaryOp\Div as BinaryOpDiv;
+use PhpParser\Node\Expr\BinaryOp\Minus as BinaryOpMinus;
+use PhpParser\Node\Expr\BinaryOp\Mod as BinaryOpMod;
+use PhpParser\Node\Expr\BinaryOp\Mul as BinaryOpMul;
+use PhpParser\Node\Expr\BinaryOp\Plus as BinaryOpPlus;
+use PhpParser\Node\Expr\BinaryOp\Pow as BinaryOpPow;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
@@ -1157,9 +1167,10 @@ final class Vocabulary
      * its text, so `binaryOperatorIs()` is false for an `Assignment` (it has no `BinaryOperator` child) and
      * `assignmentOperatorIs()` is false for a `Binary`. One call decides both the kind and the token.
      *
-     * Division only, for now. The other five arithmetic operators are one row each of the same shape and
-     * `DisallowedLooseComparisonRule` wants `Equal` and `NotEqual`, but a row nothing reads is vocabulary this
-     * repository reverts — see the reverted `Expr` widening in `VERIFICATION.md`.
+     * All six arithmetic operators, each in both spellings. `DisallowedLooseComparisonRule` wants `Equal` and
+     * `NotEqual` from the same table and is blocked on other things, so those rows are not here: a row
+     * nothing reads is vocabulary this repository reverts — see the `Expr` widening in `VERIFICATION.md`,
+     * added, reverted for buying nothing, and added back once a rule read it.
      *
      * The third element is the Mago kind the arm narrows the hook node to, so a dispatch arm can be
      * translated with that kind in scope and `->left` or `->var` resolves through {@see REFINEMENTS}.
@@ -1169,6 +1180,16 @@ final class Vocabulary
     public const array OPERATOR_KINDS = [
         BinaryOpDiv::class => ['binary_operator_is', '/', 'Binary'],
         AssignOpDiv::class => ['assignment_operator_is', '/=', 'Assignment'],
+        BinaryOpPlus::class => ['binary_operator_is', '+', 'Binary'],
+        AssignOpPlus::class => ['assignment_operator_is', '+=', 'Assignment'],
+        BinaryOpMinus::class => ['binary_operator_is', '-', 'Binary'],
+        AssignOpMinus::class => ['assignment_operator_is', '-=', 'Assignment'],
+        BinaryOpMul::class => ['binary_operator_is', '*', 'Binary'],
+        AssignOpMul::class => ['assignment_operator_is', '*=', 'Assignment'],
+        BinaryOpMod::class => ['binary_operator_is', '%', 'Binary'],
+        AssignOpMod::class => ['assignment_operator_is', '%=', 'Assignment'],
+        BinaryOpPow::class => ['binary_operator_is', '**', 'Binary'],
+        AssignOpPow::class => ['assignment_operator_is', '**=', 'Assignment'],
     ];
 
     public const array EXPRESSION_KINDS = [
