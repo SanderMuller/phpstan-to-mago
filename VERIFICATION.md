@@ -13928,3 +13928,40 @@ packages rather than extension bridges.
 this project's guidelines gate on approval, and it moves the denominator every figure in this file is quoted
 against. The measured case: larastan is worth about 18 candidate rules in the portable shape; everything else
 locally checkable is already mine, a collector package, or not a rule package at all.
+
+## Why every ranking of the needs list dissolves: it groups by syntax and blocks by capability
+
+The `array_merge()` need touches four rules and the spread in `SlowMigrationDdlRule` is the same concept, so
+it looked like one capability for five. Read at the source:
+
+    NoReferenceRule              array_merge($errorMessages, $this->collectParamErrorMessages(..))   own method
+    ClassCoversExistsRule        array_merge($errors, $this->coversHelper->processCovers(..))        service
+    ClassMethodCoversExistsRule  array_merge($errors, $this->coversHelper->processCovers(..))        service
+    DataProviderDeclarationRule  array_merge($errors, $this->dataProviderHelper->processDataProvider(..))  service
+
+**Three of the four merge an injected service's result**, so the merge is the stated blocker and the real work
+is porting `CoversHelper` or `DataProviderHelper`. The fourth merges an own method and is blocked upstream by
+the `checkMode` threshold anyway. The merge capability alone unlocks nothing.
+
+That is the fifth promising grouping to dissolve on inspection, and they all dissolve the same way, which is
+the part worth generalising:
+
+**The needs that group are the ones describing *syntax*; the needs that block are the ones describing
+*capability*.** Of the twelve needs touching three or more rules, the top eight are wrappers —
+`Stmt_Expression`, `Stmt_Return`, `Expr_Ternary`, `array_merge()`, `2 statements: Stmt_Expression +
+Stmt_If`, `assignment to something other than a simple local`. A wrapper appears wherever the syntax appears,
+which is everywhere, and says nothing about what is behind it. The things that actually stop rules — an
+injected message service, a configured list the package wires nowhere, definedness, a threshold whose cost is
+thirteen rules' bytes — appear once or twice each and never rank.
+
+So **no ranking of this list can find leverage**, and that is a property of the list rather than of my four
+attempts. It explains all five dissolutions at once and it predicts the sixth. Two entries at count three are
+genuine capabilities — `->getLine()` and `$scope->getTraitReflection()` — so the rule is a dominant pattern
+rather than a law; but the pattern is strong enough that the census's own advice, *read the rules a count is
+made of*, is the only method that works here, and reading them is what found both rules that landed this
+window.
+
+The corollary for the shape that did work: `CombinedStaticCallRule` was not found by ranking anything. It was
+found by asking which rules sit in a family whose shape is already proven and which member is held back. That
+question is answerable from the emit/refuse split rather than from the needs list, and it is the one to ask
+first.
