@@ -13370,3 +13370,59 @@ The one countermeasure of ours that would have caught either before a second rea
 committed to: **do not report a rule as unchanged without a row that fires for it.** Aimed at the same
 failure, and it generalises to counts as well as to verdicts — do not report a population without a row that
 would have appeared had it been larger.
+
+## The rule I needed was already in the census, enforced, with my own example
+
+The peer proposed **enumerate from the closed set, not the open one** — `processNode` is closed and readable
+to exhaustion, while "which nodes carry `byRef`" is an open grep over a dependency that gave them eight and
+me ten. It is better than my axis rule and it subsumes both the census case and the `AssignRef` case, and
+they marked it as analysis rather than measurement, which is why the next paragraph is worth more than
+adopting it.
+
+**Before adopting it I checked whether I already had it. I did.** `tests/Fixtures/expected/census.md`'s own
+header, asserted line by line at `TracksUpstreamDriftTest.php:160-188`:
+
+> **A needs list is a lower bound, and it is short in a direction rather than at random.** […] So a rule whose
+> first blocker is expression-level under-reports, and every ranking built from these lists inherits that bias
+> in the same direction.
+>
+> Measured, not deduced: `OverwriteVariablesWithForLoopInitRule` lists one need, and its body also asks
+> `$scope->hasVariableType()`, which no SDK method answers. […] Where a count decides work, read the rules it
+> is made of.
+
+The bold sentence is the rule. The paragraph under it is the mechanism. **The worked example is
+`OverwriteVariablesWithForLoopInitRule` hiding `hasVariableType()` — which I recorded earlier this session as
+a finding, having re-derived it from scratch.** There is a further paragraph telling me to grep the whole line
+rather than the label, and another telling me to grep a capability to count what it is worth before building.
+All of it test-enforced. I read past every word three times.
+
+### Why the enforcement could not reach me, and the one thing that fixes it
+
+`needs:` exists in exactly one artefact, the census, whose header carries the caveat thirty lines above the
+data. Every time I sized this session I ran a **Python extractor** over that file, pulling `needs:` lines by
+regex. **A header cannot reach a parser.** That is the whole mechanism, and it is this log's own
+scope-boundary entry arriving on the artefact rather than on a draft: the rule was enforced where a test could
+see it and read by a route no test covers.
+
+So the label now carries the bound. `needs:` is **`needs-at-least:`** in the census, because the key is what
+an extractor sees. 193 lines renamed; with the label normalised the only other diff is the header sentence
+saying why, which now states that every reader who has got this wrong read the file with an extractor.
+
+**It costs something and the trade is worth stating**: nine more characters per line pushes 95 over-long lines
+to 122 in a generated file. The bound travelling with the data is worth a wider column.
+
+This is the only countermeasure from this whole exchange that reaches a machine rather than a reader, which by
+my own record is the only kind that holds. The axis rule and the closed-set rule are both better *thinking*
+than what I had; neither would have fired, because I had strictly better thinking than both sitting in a file
+a test reads aloud.
+
+### Where the closed-set rule stops, in their words and worth keeping
+
+`processNode` is closed only if the rule does not dispatch elsewhere. `NoReferenceRule` calls
+`collectParamErrorMessages` and the parent resolver, and the resolver's interesting behaviour was **not** in
+its own code — the internal-parent gate and the first-class-like-per-file cache were one call further, in
+`ReflectionParser`, and only came out of runs. So closed-set reading gives the *surface* reliably and says
+nothing about the semantics of what the surface calls. Two jobs; the second still needs instruments.
+
+Rector also caught a leftover from the previous commit while this was in flight: `MixedType` was still
+imported in `RuleLevel` after `isMixed` moved to `AtomicShapes`. Removed.

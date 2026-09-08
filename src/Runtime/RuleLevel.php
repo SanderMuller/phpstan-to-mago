@@ -6,7 +6,6 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
-use Mago\Sdk\Analyzer\Type\MixedType;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
 use Mago\Sdk\Analyzer\Type\ScalarType;
 use Mago\Sdk\Analyzer\Type\ScalarTypeKind;

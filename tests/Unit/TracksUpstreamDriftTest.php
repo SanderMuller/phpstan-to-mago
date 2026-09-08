@@ -157,7 +157,9 @@ final class TracksUpstreamDriftTest extends TestCase
             'does or does not cover — or a change in what a refusal says stops a rule. Both are worth reading:',
             'a refusal naming the wrong obstacle is how work gets sized wrongly.',
             '',
-            'A refused rule also lists what its body `needs:`, which is the half a first blocker never says.',
+            'A refused rule also lists what its body `needs-at-least:`, which is the half a first blocker',
+            'never says. The label carries the bound rather than only this header, because every reader who',
+            'has got this wrong here read the file with an extractor, and an extractor sees the key.',
             'Sizing work from the first obstacle alone has been wrong three times here — a renderer that looked',
             'like one customer, a five-rule family that looked like one missing navigation, a corpus that looked',
             'absent. Grep a capability to count what it is worth before building it.',
@@ -185,7 +187,7 @@ final class TracksUpstreamDriftTest extends TestCase
             'for that reason. The mark comes from the transpiler rather than a curated list: the two places',
             'that refuse a shape no body could fix say so on the refusal itself, and everything else is',
             'provisional, which is the safe direction — a refusal wrongly called permanent stops someone',
-            'looking. No `needs:` is printed under one, because its body is not the obstacle.',
+            'looking. No `needs-at-least:` is printed under one, because its body is not the obstacle.',
             '',
             'Generated against these package versions. A run whose installed corpus differs — `composer update',
             '--prefer-lowest` is the one CI does — is looking at different rules, so the assertions that',
@@ -288,7 +290,7 @@ final class TracksUpstreamDriftTest extends TestCase
                 }
 
                 $lines[] = 'REFUSE  ' . $outcome->name . $where . "\n        " . $outcome->reason
-                    . ($outcome->needs === [] ? '' : "\n        needs: " . implode("\n        needs: ", $outcome->needs));
+                    . ($outcome->needs === [] ? '' : "\n        needs-at-least: " . implode("\n        needs-at-least: ", $outcome->needs));
             }
         }
 

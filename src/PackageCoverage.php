@@ -55,7 +55,7 @@ final readonly class PackageCoverage
                 verdict: $verdict,
                 reason: $reason,
                 registered: isset($registered[$name]),
-                // No `needs:` under an unportable one. That list is what a rule's body would take, and this
+                // No `needs-at-least:` under an unportable one. That list is what a rule's body would take, and this
                 // rule's body is not the obstacle — collecting it would invite exactly the sizing the verdict
                 // exists to prevent.
                 needs: $verdict === RuleOutcome::REFUSE ? self::needs($file) : [],
