@@ -15210,3 +15210,46 @@ answer is **order-dependent** through a first-class-like-in-file cache. So on a 
 per file, exact agreement is not achievable by a *correct* port. Whoever builds this has to decide, before
 starting, whether the fires gate treats that as a divergence or as a known-bug exemption. That decision
 belongs in the gate's own table, not in a commit message discovered later.
+
+### Two enums with one name, and `find | head -1` chose for me
+
+I corrected a peer's claim that `FunctionLikeKind` carries an `ArrowFunction` case. **There are two enums with
+that name**, and we had each read a different one, both correctly:
+
+| file | namespace | cases |
+|:--|:--|:--|
+| `Analyzer/Type/FunctionLikeKind.php` | `Mago\Sdk\Analyzer\Type` | `Function_`, `Method`, `Closure` |
+| `Analyzer/Metadata/FunctionLikeKind.php` | `Mago\Sdk\Analyzer\Metadata` | the same three plus `ArrowFunction` |
+
+Neither file imports the enum; both resolve it from their own namespace. So `FunctionLikeIdentifier`, which
+lives in `Analyzer/Type`, takes the three-case variant, and `FunctionLikeMetadata`, in `Analyzer/Metadata`,
+takes the four-case one.
+
+**The conclusion I drew survived, and it survived by luck.** My command was
+`find … -name 'FunctionLikeKind.php' | head -1`, which silently picked one of two matches. It happened to pick
+the one that decides the point — the identifier's enum — so the sentence "an arrow function cannot be
+addressed" is right. Had `head -1` ordered the other way I would have contradicted a true claim with a false
+one and been equally confident. **`head -1` on a search that can match more than once is not a shortcut, it is
+an unreported coin flip**, and the fix is to resolve a type the way PHP does: through the importing file's
+namespace and `use` statements, never by filename.
+
+The sharper position, which is neither of ours as first stated: **the model can *describe* an arrow function
+and the addressing type cannot *name* one.** That is a better upstream sentence than "no kind at all", because
+it points at one enum rather than at the design.
+
+This is the phar-versus-git line numbers again with the discriminator moved: there the ambiguity was the
+artefact, here it is the namespace. Neither of us gave a path — the peer wrote the claim without one and I
+wrote the correction without one — so the disagreement was only resolvable by a third command. **A type name
+is not an address in this SDK.**
+
+A smaller instance in the same command: my `grep -oE "case [A-Za-z]+"` reported the case as `Function`, and it
+is `Function_`. The character class stopped at the underscore. Same defect class as the case-sensitive search
+above — a pattern narrower than the thing it is pointed at, reporting a clean answer.
+
+#### What goes upstream, after the peer took the `Arg` point
+
+They accepted that listing "mago cannot parse `f(&$x)`" as a gap invites a maintainer to discount the rest,
+since call-time pass-by-reference is a PHP 8 fatal and refusing the file is correct. So the ask is the two
+anonymous function-likes and the three syntax-only bindings, with `Arg` in a *checked and not a gap* section —
+the same move this repository's filed issue made by naming `getTrivia()` itself rather than waiting to be
+handed it. **Nothing is filed; that is the user's call.**
