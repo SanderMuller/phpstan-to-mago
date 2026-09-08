@@ -13862,3 +13862,69 @@ reached the axis, and the null result I explained instead of measuring. Whether 
 order a rule returns, and whether any consumer depends on it, is not a question my repository can answer. Put
 to the peer, with the standing instruction that if the honest answer is "someone would have to check", the
 sort stays load-bearing until they do.
+
+### Q1 settled: PHPStan discards the order a rule returns, so the sort is decoration
+
+The peer answered from source and two of the three claims re-derive here, in this tree's phar:
+
+- `src/Analyser/AnalyserResult.php` names the field **`unorderedErrors`** — seven occurrences — and carries
+  two `usort` calls.
+- The sort key, read out verbatim: `[$a->getFile(), $a->getLine(), $a->getMessage()] <=> [...]`. **The
+  tertiary key is the message**, so two findings on one line come out alphabetised by message text whatever
+  order the rule returned them in. A rule that sorts carefully does not control output order; PHPStan
+  overrides it.
+- `src/Testing/RuleTestCase.php` carries three `usort` calls, so the rule's own upstream tests cannot observe
+  order either.
+- Their third claim — that `AnalysisResult`'s constructor sorts again and every formatter consumes it — is
+  **not verified here**: no file at that path in the phar. Recorded as theirs rather than as mine.
+
+`unorderedErrors` plus a sort keyed on the message is decisive on its own, so `SlowMigrationDdlRule`'s
+`usort` is droppable and the aggregation is about ordering a list that nothing downstream preserves.
+
+**And the peer corrected my reasoning while confirming my conclusion**, which is the more useful half. I was
+about to justify dropping the sort on "my harness cannot see it", and flagged that as the reasoning I have
+been wrong with twice this week. The sound ground is different: the invisibility is **upstream** of my
+harness. PHPStan destroys the order itself, so `FiresGate::sorted()` agrees with something PHPStan already
+does rather than hiding a divergence. Same answer, and the distinction is exactly the one that would have made
+me wrong for the third time.
+
+### Q2 answered with a table rather than an opinion: the case for a dependency is weak
+
+The peer classified every rule package on their disk, and stated the population first: an **availability
+sample of 14 packages that happen to be installed there**, not a survey of the ecosystem.
+
+| package | rules | collectors | literal message | zero-arg ctor |
+|:--|--:|--:|--:|--:|
+| symplify/phpstan-rules | 96 | 1 | 73 | 73 |
+| phpstan/phpstan-strict-rules | 42 | 0 | 41 | 17 |
+| spaze/phpstan-disallowed-calls | 38 | 0 | **0** | 0 |
+| **larastan/larastan** | **18** | 8 | **15** | **8** |
+| phpstan/phpstan-phpunit | 14 | 0 | 8 | 6 |
+| tomasvotruba/unused-public | 5 | 13 | 0 | 0 |
+| tomasvotruba/type-coverage | 5 | 5 | 0 | 0 |
+| phpstan/phpstan-nette | 3 | 0 | 3 | 2 |
+| phpstan/phpstan-mockery, phpstan-webmozart-assert, tomasvotruba/class-leak | 0 | 0 | 0 | 0 |
+
+**Everything large is already in my corpus** — symplify, strict-rules and spaze are the three biggest and all
+three are mine. The only genuinely new pool on their machine is **larastan: 18 rules, 15 with a literal
+message, 8 with no constructor dependencies**, which is exactly the portable shape, plus 8 collectors that are
+not. After that it is `phpstan-nette` at 3. The official `phpstan-*` bridges are type extensions, not rules:
+mockery and webmozart-assert have **zero** rule classes.
+
+Two corrections to what I had recorded:
+
+- **spaze is 0 of 38 with a self-contained message, not thirteen.** The injected-message pattern is the entire
+  package, so the dead end is all 38 rather than the third I had measured from its refusal distribution.
+- **Their own first pass was wrong in this week's characteristic way**, and they said so: counting only
+  `message(sprintf(` and string literals scored symplify at 14 of 96, because symplify's dominant style is
+  `message(self::ERROR_MESSAGE)`. One spelling measured and reported as the concept. Re-run with the constant
+  counted gives 73, matching the 73 zero-argument constructors exactly.
+
+Two packages they named as **unread rather than recommended**: `ergebnis/phpstan-rules` and
+`shipmonk/phpstan-rules`. Neither is on either machine, and the only thing sayable is that both are rule
+packages rather than extension bridges.
+
+**This is a decision for the user, not for me or the peer.** Adding a corpus package is a dependency, which
+this project's guidelines gate on approval, and it moves the denominator every figure in this file is quoted
+against. The measured case: larastan is worth about 18 candidate rules in the portable shape; everything else
+locally checkable is already mine, a collector package, or not a rule package at all.
