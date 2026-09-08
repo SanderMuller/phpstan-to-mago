@@ -13557,3 +13557,44 @@ is the reason I gave for it.
 is the easiest kind to accept without asking what it was a null result *of*, and four reverts under one
 condition suggests testing the condition rather than the changes. I accepted my own null result and explained
 it, instead of measuring it. The measurement took three commands and refuted my explanation twice.
+
+### The measured answer, and my retraction was wrong
+
+The previous entry says I do not know why the `checkMode` setter is skipped for `NoReferenceRule`. Measured
+now, with a trace on each side of the setter and a control that emits:
+
+| configuration                              | assignments | branch | `checkMode` | refusal |
+|:--|--:|--:|:--|:--|
+| HEAD                                       |     —       |   —    | never computed | line 47 |
+| survey path also sets it                   |     0       |   0    | false          | line 47 |
+| survey path sets it **and** the widening    |     0       | **1**  | false (needs ≥2) | line 47 |
+| `OperandsInArithmeticDivisionRule` (control)|     0       |   0    | false          | **emits** |
+
+Three findings, and two of them correct my own last two entries:
+
+- **`translate()` has two body loops.** The survey's assume-a-hook branch at `Transpiler.php:236-252`
+  translates `processNode` in **its own loop and returns early**, never reaching the setter three dozen lines
+  below. That is why no trace fired, and it is a real, second divergence between survey and emit that nothing
+  recorded — the branch's own docblock argues that *the assumption has to travel with the answer*, and the
+  flags did not travel.
+- **My original cause was right and my retraction was wrong.** With the setter running, the count is **0**.
+  "This rule has none of the counted shape" was accurate; I withdrew a correct explanation because I could
+  not see a trace, and the reason I could not see it was a different fact entirely. Retracting under
+  uncertainty is better than asserting under it, but the retraction was published with the same confidence
+  the original had.
+- **The peer's coupling is real and operative.** Widening `delegatedCheck()` takes `branch` from 0 to 1, so
+  the counter and the recognizer are one predicate exactly as they predicted from my description alone. It
+  still changes nothing, because the threshold is two.
+
+**Both changes reverted.** The survey-path setter alters no census line and no refusal, so nothing can defend
+it — and by the discipline this session established, an artefact change is a fix only once something fails
+when it is removed. It is recorded here instead, because the next person to touch that branch should know the
+flags do not travel.
+
+What actually blocks the rule is the **threshold**, not the recognizer: two counted checks, and this rule has
+one even after the widening. Raising it is the corpus-wide change I already declined to make while chasing one
+rule, and that decision is unchanged.
+
+The peer declined to guess at the cause on the grounds that handing me a hypothesis in place of a measurement
+would repeat my own error with a worse-informed author. That was the right call and it is why this table
+exists: nobody supplied an explanation, so I had to go and get one.
