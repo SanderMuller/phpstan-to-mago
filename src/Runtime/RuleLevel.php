@@ -353,9 +353,16 @@ final class RuleLevel
      *   winner. `ErrorType extends MixedType`, so it absorbs the union rather than being absorbed. Verified
      *   here: `union(GMP, ErrorType)` is an `ErrorType` and `union(GMP, NeverType)` is the `ObjectType`. One
      *   contributor returning `ErrorType` therefore decides the answer, and the built-in GMP extension cannot
-     *   outvote it. Not contrived either: phpstan-src's own `GmpOperatorTypeSpecifyingExtension` ends with
-     *   `return new ErrorType();` for operands it does not understand, so the pattern is modelled by the
-     *   codebase, and an extension gated on the operator sigil alone matches a GMP pair without meaning to.
+     *   outvote it.
+     *
+     * **The mechanism is verified; the trigger is hypothetical, and the difference is worth keeping.** It
+     * needs an extension whose `isOperatorSupported()` claims a GMP or `SimpleXMLElement` pair it does not
+     * understand *and* whose `specifyType()` then returns `ErrorType`. A code search for implementations
+     * finds exactly one outside phpstan's own source, docs, tests and vendored copies of it:
+     * `jbboehr/yumemi.php`. Its gate requires one of its own types on a side, so it never claims such a pair
+     * and cannot trigger this — though it does return `ErrorType`, so that half of the pattern is real. No
+     * known extension triggers the whole of it. The bound is stated because it is a correctness claim and
+     * costs a sentence, not because it has been seen.
      *
      * There is no tighter port. The discriminator is the type of a node that does not exist in the file, so
      * the bound is the answer rather than a gap in this implementation.

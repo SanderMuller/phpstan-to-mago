@@ -12583,3 +12583,49 @@ was written for the census's own auditability and it turns out to carry this too
 And the `pre-release` skill's warning is now a measured event here rather than advice: the matrix has a
 `prefer-lowest` leg precisely because local green is one point in a resolution space. Four failures, one leg,
 and the local run could not have found it — the machine only ever had 2.0.12.
+
+### The bound holds; "not contrived" did not, and no fixture can carry it
+
+Two corrections to the entry above, both from the peer walking back their own framing, and one of them is
+about a sentence I had already shipped in a docblock.
+
+**The mechanism is verified; the trigger is hypothetical.** The demonstration used an extension written to
+trigger it, and calling the pattern *"not contrived"* — pointing at phpstan-src's own GMP extension returning
+`ErrorType` — was an argument rather than a measurement. The peer then searched, and **the search reproduces
+here on an independent instrument** (`gh search code 'implements OperatorTypeSpecifyingExtension'`): after
+removing phpstan's own source, its docs, its tests, and vendored copies of it — `ondrejmirtes/phar-git`,
+`ithery/cf`, `cresenity/cf` — plus one code-snippet dataset, exactly one third-party implementation exists,
+`jbboehr/yumemi.php`. Its gate requires one of its own types on a side, so it cannot claim a GMP pair and
+cannot trigger this. It *does* return `ErrorType`, so that half of the pattern is real in the wild; the loose
+gate is the half with no example.
+
+Two agreeing searches are still one bounded search — mine was capped at 20 results — so this is "no known
+extension triggers it", not "none exists". The docblock now says that, and says the bound is stated because
+it is a correctness claim costing a sentence, not because it has been observed.
+
+**And there is nothing for a fixture to assert, which is a better reason than the one I gave.** I declined to
+ship the reproducer extension on the grounds that it would encode a third-party authoring shortcut as though
+it were the contract. True, but weaker than the actual reason: the accepting set is fixed by ancestry, so
+installing an extension changes PHPStan's answer while changing **nothing the plugin can observe**. No input
+distinguishes the two worlds. A fixture would have to fake PHPStan's side of the comparison and would then be
+testing the fake. **The bound is unfalsifiable from inside the plugin**, which is precisely why prose is the
+honest artefact and a test would be theatre.
+
+That is worth generalising, because this repository's instinct is to answer every claim with a fixture: a
+divergence the port cannot observe cannot be gated, and the only place it could legitimately live is the
+differential gate's own PHPStan configuration — a gate entry, not a fixture. With no known trigger, that row
+is not worth spending either.
+
+### What the exchange was, mechanically
+
+Recorded because it is reusable and neither of us designed it. Over four rounds, every real finding came from
+one of us probing a *sentence* the other had written, never from either of us reviewing the other's code —
+which neither could see. In order: my dead-branch bound refuted by running two versions; their plain-object
+explanation corrected by my `stdClass` row; a false positive in four of my shipped plugins found because they
+described a helper's two halves; my one-directional bound refuted by a two-line probe of `TypeCombinator`;
+their "not contrived" walked back by a search that took two commands; and my `^2.0.12` floor made correct by
+counting the 2.0.11 cell they had not.
+
+Six findings, six sentences, zero code reviews. This file already says to budget for a second party rather
+than a more careful self-review; the refinement is that **what you hand the second party is the sentence, not
+the diff** — and that the exchange works because each side can run an instrument the other cannot.
