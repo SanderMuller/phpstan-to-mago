@@ -132,19 +132,6 @@ final readonly class FiresGate
         NEON;
 
     /**
-     * Configured values a rule needs before it can report at all, per rule.
-     *
-     * A package may ship a parameter empty and expect each project to fill it: `traitRequiresInterface` has no
-     * default pairs, so a plugin carrying the package default reports nothing. Both tools would then be silent,
-     * and two tools agreeing on nothing is the one result this gate must never accept.
-     *
-     * So the values are supplied here, to *both* sides, and the pair proves the rule fires when configured. The
-     * emitted plugin still carries the package default — a consumer overrides it in its own worker, which is
-     * what the constructor parameters are for.
-     *
-     * @var array<string, array<string, mixed>>
-     */
-    /**
      * Rules whose configuration comes from a project rather than from the package that ships them.
      *
      * The package registers these nowhere, so there is no neon to read their wiring from and the transpiler
@@ -157,6 +144,19 @@ final readonly class FiresGate
         'ConfiguredByTheProjectRule' => __DIR__ . '/../Fixtures/RegisteredProject',
     ];
 
+    /**
+     * Configured values a rule needs before it can report at all, per rule.
+     *
+     * A package may ship a parameter empty and expect each project to fill it: `traitRequiresInterface` has no
+     * default pairs, so a plugin carrying the package default reports nothing. Both tools would then be silent,
+     * and two tools agreeing on nothing is the one result this gate must never accept.
+     *
+     * So the values are supplied here, to *both* sides, and the pair proves the rule fires when configured. The
+     * emitted plugin still carries the package default — a consumer overrides it in its own worker, which is
+     * what the constructor parameters are for.
+     *
+     * @var array<string, array<string, mixed>>
+     */
     private const array CONFIGURED = [
         // PHPStan's side only, for a rule in {@see FROM_PROJECT}. The plugin is deliberately given nothing:
         // its constructor defaults are what the project's container supplied, and whether those are right is
@@ -176,17 +176,6 @@ final readonly class FiresGate
         ],
     ];
 
-    /**
-     * PHPStan service arguments a rule needs, per rule, for the PHPStan side only.
-     *
-     * Separate from {@see CONFIGURED} because a service is not a configured value: it goes to PHPStan as a
-     * container reference and has no counterpart on the plugin, whose whole point is that it asks Mago the
-     * same question without the service. `CombinedMethodCallRule` takes `PHPStan\Parser\Parser` so it can
-     * parse the file another class is declared in; without it PHPStan cannot construct the rule at all, and
-     * the pair would look like a rule that reports nothing.
-     *
-     * @var array<string, array<string, string>>
-     */
     /**
      * Neon *parameters* a rule needs, per rule, for the PHPStan side.
      *
@@ -250,6 +239,17 @@ final readonly class FiresGate
         'BooleanInDoWhileConditionRule' => ['strictRules' => ['booleansInLoopConditions' => true]],
     ];
 
+    /**
+     * PHPStan service arguments a rule needs, per rule, for the PHPStan side only.
+     *
+     * Separate from {@see CONFIGURED} because a service is not a configured value: it goes to PHPStan as a
+     * container reference and has no counterpart on the plugin, whose whole point is that it asks Mago the
+     * same question without the service. `CombinedMethodCallRule` takes `PHPStan\Parser\Parser` so it can
+     * parse the file another class is declared in; without it PHPStan cannot construct the rule at all, and
+     * the pair would look like a rule that reports nothing.
+     *
+     * @var array<string, array<string, string>>
+     */
     private const array SERVICES = [
         'CombinedMethodCallRule' => [
             'parser' => '@defaultAnalysisParser',
