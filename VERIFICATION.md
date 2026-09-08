@@ -14820,3 +14820,55 @@ claims with different consequences for a configured consumer. **Marked as untrac
 
 Build order settled by these: target defaults-only, fold the constructor's `array_merge($param, self::CONST)`
 to the constant list under no arguments, and do not build the general merge until a configured emit needs it.
+
+### Probe 3, the design fork, and a validated evaluator — nothing landed yet
+
+#### Probe 3 — can the 9-entry constant list be resolved at all? Yes, already.
+
+The list is not nine string literals: it is `SymfonyClass::COMMAND`, `ClassName::SNIFF`,
+`TestClassName::PHPUNIT_TEST_CASE` (constants on *other* classes in the same package), `Exception::class`,
+`Rule::class`, and one plain string. `rawStringLiteral()` already handles every one of those shapes, and its
+own comment names the precedent: "the rules that reach here list `SensioClass::IS_GRANTED` and
+`SymfonyFunctionName::SERVICE`, constants on *other* classes in the same package, and `Name::class`."
+
+**The same method also contains the precedent for the evaluator this build needs.** It folds `Concat` and
+evaluates `trim`/`rtrim`/`ltrim` over things that are already literals, and refuses anything else — a bounded
+transpile-time evaluator, which is exactly the shape `resolveFromClass` calls for.
+
+#### The design fork, decided on honesty rather than effort
+
+`takeReportingPass()` exists precisely for "the rule returns a helper that decides *and* builds the findings",
+with `Runtime\PhpUnitAnnotations` as the precedent. Adding an entry for `processClassNameAndShort` would have
+been the fast route and it is **the wrong one**: for `AnnotationHelper` the pass stands in for a *collaborator's*
+helper while the rule's own guards are still transpiled, whereas `processClassNameAndShort` **is** this rule's
+entire decision. A pass there is hand-porting the rule and booking it as an emit — a hollow entry in the very
+count the peer argued is already a proxy. Rejected.
+
+What survives is smaller than it first looked, because the fold semantics **already exist**: a
+`return [$error];` inside a loop with a pending report emits report-then-bail, and `return [];` inside a loop
+emits a bail (the `PhpUpgradeImplementsMinPhpVersionInterfaceRule` precedent). Both are the three-way outcome
+this rule needs. What is missing is only that the loop sits in a helper whose return value is the rule's
+return, plus a table whose suffix column is derived rather than looked up.
+
+So: derive the (ancestor → suffix) table at transpile time by recognise-and-fold, keep the rule's guards
+transpiled, and add one **generic** runtime primitive parameterised by the derived table. Generic-plus-derived
+is not hand-porting — the table comes out of the source, so upstream drift refuses instead of silently
+changing the rule.
+
+#### The evaluator half is validated against a differential
+
+Written in scratch, deliberately not in `src/`, and checked against the **running** resolver rather than
+against itself:
+
+    all 9 derived pairs match `ClassToSuffixResolver::resolveFromClass()`
+
+Only the four operations the two methods use — last segment after `\`, strip an `Interface` suffix, strip an
+`Abstract` suffix, strip an `Abstract` prefix, and `TestCase` → `Test`.
+
+**What is validated and what is not**, because the two look alike from outside: the *evaluation* half
+reproduces the table exactly. The *recognition* half is not built — the scratch probe only counted statements
+(4 and 4) and never asserted the AST shape, so it would not notice upstream rewriting the body while keeping
+the count. Recognition is what makes drift refuse, so the build is not sound until it exists.
+
+Nothing is committed to `src/`: a runtime primitive with no emitter, or a table nothing reads, is unexercised
+vocabulary and would go straight back out under the condition the nine reverts above share.
