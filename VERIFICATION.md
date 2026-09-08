@@ -13075,3 +13075,63 @@ Emit-all: php 179 → 180, analyzer and linter unchanged, and only the new plugi
 files move — so the two extractions changed no emitted byte and no shipped plugin ever had the duplicate
 property. Suite 1078/1078, PHPStan 0 errors, Rector and Pint clean, README re-derived and all seven rows
 cross-checked.
+
+## The atomic-shape split, done as its own change
+
+`AtomicShapes` now holds the eight readers that take a `Type` and answer a `bool` or another `Type` with no
+flag and no context: `everyAtomicIsString`, `everyAtomicCoercesToNumber`, `everyAtomicIsNumber`, `isNullOnly`,
+`withoutNull`, `isBareObject`, `isThis`, `isMixed`, plus `typeIsWhollyArray` folded in from `ArrayTypes`,
+which existed only because both candidate classes were full and is now deleted.
+
+`RuleLevel` keeps the questions PHPStan answers differently per analysis level. The two scalar-kind tables
+moved with the readers, and `NUMERIC` is public there because `RuleLevel::keepTheNumbersOf()` filters a union
+by the same table — shared rather than duplicated, which is the rule the runtime's earlier splits followed.
+
+**Zero emitted diff across all three targets**, counts identical at 180 php, 34 analyzer, 25 linter. That is
+the pass condition for a refactor and the reason this is a separate commit from the rule that motivated it.
+
+### Why the mechanical version failed twice and this one did not
+
+The first attempt is recorded above as reverted with sixteen PHPStan errors. Both failures came from the same
+assumption — that a method's docblock is the nearest `/**` above its signature:
+
+- `isThis` and `isMixed` have **no docblock at all**, and `isBareObject` above them has a one-line one. So
+  walking back to the previous `/**` gave all three the *same* start offset, and the extractor removed
+  `isBareObject`'s body three times over while leaving the other two behind.
+- Two constants the moved methods read stayed put, because a method-shaped extractor has no reason to look
+  for them.
+
+What made the second attempt work was asserting the structure instead of trusting the locator: take a
+docblock only when it ends on the line immediately above the signature, brace-match the body rather than
+searching for `\n    }`, and **assert that no two spans overlap** before touching the file. That assertion is
+what would have caught the first attempt at the point of location rather than sixteen errors downstream —
+this file's own rule about locating a structure by name, applied to a refactor rather than to an audit.
+
+The two methods with no docblock got one while they were moved.
+
+### And the reason to do it now rather than later
+
+Not headroom for its own sake. `Types` reached 82 against a limit of 80 the moment one type reader was added
+to it, and `RuleLevel` 81 — so the *next* reader had nowhere to live, which is why the previous commit shipped
+a single-method class. `RuleLevel` has now shed eight methods and two constants, so the next one goes where it
+belongs.
+
+Suite 1078/1078, PHPStan 0 errors on 13 baseline entries with no new one, Rector and Pint clean.
+
+### The one-need list is not a queue, measured again
+
+Before starting this, the fourteen refusals stating a single need were checked rather than counted, and none
+is one capability away:
+
+- **`MatchingTypeInSwitchCaseConditionRule`** states `->cases` iteration and has three hard blockers behind
+  it: `!$t->isSuperTypeOf($c)->no()`, where `->no()` is refused by name with a measured reason;
+  `describe(VerbosityLevel::value())`, refused at `Translator.php:13528`, which supports `typeOnly()` only;
+  and `Printer::prettyPrintExpr()`, which has no equivalent.
+- The **largest** family by primary blocker is four rules sharing a `Node::class` hook narrowed by
+  `instanceof`, and the multi-kind handoff's own condition for building it — a second rule of that shape — is
+  finally met. It is still not the target: one is a *collector*, one takes its kinds from a configured value
+  rather than written class names, and two build their findings in helpers. Each carries three or more
+  further needs, so the shared blocker buys no emit on its own.
+
+Both readings come from the source rather than the census, which is the point: **the count ranks blockers,
+the rules say what a blocker is worth.**

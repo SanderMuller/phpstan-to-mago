@@ -6,13 +6,10 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
-use Mago\Sdk\Analyzer\Type\AnyObjectType;
 use Mago\Sdk\Analyzer\Type\MixedType;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
 use Mago\Sdk\Analyzer\Type\ScalarType;
 use Mago\Sdk\Analyzer\Type\ScalarTypeKind;
-use Mago\Sdk\Analyzer\Type\SimpleAtomicType;
-use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
 
 /**
  * PHPStan's `RuleLevelHelper` semantics, ported rather than translated.
@@ -86,12 +83,6 @@ use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
  */
 final class RuleLevel
 {
-    /** The scalar kinds the accepted type `int|float|numeric-string` covers, once mago has dropped the accessory. */
-    private const array NUMERIC = [ScalarTypeKind::Integer, ScalarTypeKind::Float];
-
-    /** Those, plus the one other scalar kind that coerces to a number: `bool`. `null` is not a scalar here. */
-    private const array NUMERIC_OR_COERCIBLE = [ScalarTypeKind::Integer, ScalarTypeKind::Float, ScalarTypeKind::Boolean];
-
     /**
      * Whether an expression's type passes as a boolean, the way `BooleanRuleHelper` decides it.
      */
@@ -113,11 +104,11 @@ final class RuleLevel
         //
         // The subject is `$this` exactly where mago marks the atomic as such, rather than where its name
         // happens to match the enclosing class.
-        if ($checkThisOnly && ! self::isThis($type)) {
+        if ($checkThisOnly && ! AtomicShapes::isThis($type)) {
             return true;
         }
 
-        if (self::isMixed($type)) {
+        if (AtomicShapes::isMixed($type)) {
             return true;
         }
 
@@ -165,7 +156,7 @@ final class RuleLevel
         // *true* and turns off at level 2, so below that PHPStan silences every receiver that is not `$this`.
         // Without it the port reports at a level where the original says nothing  and the fires gate runs at
         // level 0, so this is the flag that decides whether the pair can agree at all.
-        if ($checkThisOnly && ! self::isThis($type)) {
+        if ($checkThisOnly && ! AtomicShapes::isThis($type)) {
             return null;
         }
 
@@ -216,18 +207,18 @@ final class RuleLevel
         bool $checkUnionTypes,
         bool $checkThisOnly,
     ): bool {
-        if (! $type instanceof Type || self::isMixed($type)) {
+        if (! $type instanceof Type || AtomicShapes::isMixed($type)) {
             return true;
         }
 
-        if (! self::everyAtomicCoercesToNumber($type)) {
+        if (! AtomicShapes::everyAtomicCoercesToNumber($type)) {
             return true;
         }
 
         // `findTypeToCheck`'s own short-circuit, which silences every subject that is not `$this` at levels 0
         // and 1. Below the branch above rather than at the top, because the order is the original's: the
         // coercion test runs before `isSubtypeOfNumber()` is reached, and only that call reads the flag.
-        if ($checkThisOnly && ! self::isThis($type)) {
+        if ($checkThisOnly && ! AtomicShapes::isThis($type)) {
             return true;
         }
 
@@ -288,15 +279,15 @@ final class RuleLevel
         bool $checkUnionTypes,
         bool $checkThisOnly,
     ): bool {
-        if (! $type instanceof Type || self::isMixed($type)) {
+        if (! $type instanceof Type || AtomicShapes::isMixed($type)) {
             return true;
         }
 
-        if (self::everyAtomicIsString($type)) {
+        if (AtomicShapes::everyAtomicIsString($type)) {
             return true;
         }
 
-        if ($checkThisOnly && ! self::isThis($type)) {
+        if ($checkThisOnly && ! AtomicShapes::isThis($type)) {
             return true;
         }
 
@@ -409,18 +400,18 @@ final class RuleLevel
      */
     private static function passesAsNumber(Type $type, bool $checkNullables, bool $checkUnionTypes): bool
     {
-        if (! $checkNullables && ! self::isNullOnly($type)) {
-            $type = self::withoutNull($type);
+        if (! $checkNullables && ! AtomicShapes::isNullOnly($type)) {
+            $type = AtomicShapes::withoutNull($type);
         }
 
         // A bare `object` follows the same flag it follows for the boolean family, where PHPStan answers
         // `ErrorType` and both callers read that as a pass. Measured here too: a bare `object` is silent
         // without the flag and reports with it, while a *named* object reports either way.
-        if (! $checkUnionTypes && self::isBareObject($type)) {
+        if (! $checkUnionTypes && AtomicShapes::isBareObject($type)) {
             return true;
         }
 
-        return self::everyAtomicIsNumber(self::keepTheNumbersOf($type, $checkUnionTypes));
+        return AtomicShapes::everyAtomicIsNumber(self::keepTheNumbersOf($type, $checkUnionTypes));
     }
 
     /**
@@ -438,7 +429,7 @@ final class RuleLevel
 
         $kept = [];
         foreach ($type->atomicTypes as $atomic) {
-            if ($atomic instanceof ScalarType && in_array($atomic->kind, self::NUMERIC, true)) {
+            if ($atomic instanceof ScalarType && in_array($atomic->kind, AtomicShapes::NUMERIC, true)) {
                 $kept[] = $atomic;
             }
         }
@@ -447,49 +438,8 @@ final class RuleLevel
     }
 
     /** Whether every part of a type is a string, which is `Type::isString()->yes()`. */
-    private static function everyAtomicIsString(Type $type): bool
-    {
-        foreach ($type->atomicTypes as $atomic) {
-            if (! $atomic instanceof ScalarType || $atomic->kind !== ScalarTypeKind::String) {
-                return false;
-            }
-        }
-
-        return $type->atomicTypes !== [];
-    }
-
-    /**
-     * Whether every part of a type coerces to a number at all — PHPStan's `toNumber()` not answering
-     * `ErrorType`.
-     *
-     * `bool` and `null` coerce and are not numbers, which is the whole population this family reports.
-     */
-    private static function everyAtomicCoercesToNumber(Type $type): bool
-    {
-        foreach ($type->atomicTypes as $atomic) {
-            $coerces = $atomic instanceof SimpleAtomicType
-                ? $atomic->kind === SimpleAtomicTypeKind::Null
-                : $atomic instanceof ScalarType && in_array($atomic->kind, self::NUMERIC_OR_COERCIBLE, true);
-
-            if (! $coerces) {
-                return false;
-            }
-        }
-
-        return $type->atomicTypes !== [];
-    }
 
     /** Whether every part of a type is `int` or `float`, which is what the accepted type covers. */
-    private static function everyAtomicIsNumber(Type $type): bool
-    {
-        foreach ($type->atomicTypes as $atomic) {
-            if (! $atomic instanceof ScalarType || ! in_array($atomic->kind, self::NUMERIC, true)) {
-                return false;
-            }
-        }
-
-        return $type->atomicTypes !== [];
-    }
 
     /**
      * The type `findTypeToCheck` narrows to, or null where it answers `ErrorType`.
@@ -501,11 +451,11 @@ final class RuleLevel
         // `!$type->isNull()->yes()` guards PHPStan's own removal, so a subject that *is* null keeps its type
         // and reports. Stripping unconditionally silenced it instead -- an under-report measured against a
         // real run, where PHPStan reports `null given` at level 7.
-        if (! $checkNullables && ! self::isNullOnly($type)) {
-            $type = self::withoutNull($type);
+        if (! $checkNullables && ! AtomicShapes::isNullOnly($type)) {
+            $type = AtomicShapes::withoutNull($type);
         }
 
-        if (self::isMixed($type)) {
+        if (AtomicShapes::isMixed($type)) {
             return null;
         }
 
@@ -515,7 +465,7 @@ final class RuleLevel
         // reports where PHPStan is quiet, which is the direction that ships a finding nobody can act on, and
         // `phpstan-strict-rules` registers through its own config so a consumer can run these families at
         // level 5.
-        if (! $checkUnionTypes && self::isBareObject($type)) {
+        if (! $checkUnionTypes && AtomicShapes::isBareObject($type)) {
             return null;
         }
 
@@ -547,63 +497,8 @@ final class RuleLevel
     }
 
     /** Whether null is the whole type, which is what stops PHPStan removing it. */
-    private static function isNullOnly(Type $type): bool
-    {
-        foreach ($type->atomicTypes as $atomic) {
-            if (! $atomic instanceof SimpleAtomicType || $atomic->kind !== SimpleAtomicTypeKind::Null) {
-                return false;
-            }
-        }
-
-        return true;
-    }
 
     /** The type with its null member removed. Never called where null is all of it. */
-    private static function withoutNull(Type $type): Type
-    {
-        $kept = [];
-        foreach ($type->atomicTypes as $atomic) {
-            if ($atomic instanceof SimpleAtomicType && $atomic->kind === SimpleAtomicTypeKind::Null) {
-                continue;
-            }
-
-            $kept[] = $atomic;
-        }
-
-        return Type::fromAtomics(...$kept);
-    }
 
     /** Every member an object, and none of them named -- PHPStan's `isObject()->yes()` with no class names. */
-    private static function isBareObject(Type $type): bool
-    {
-        foreach ($type->atomicTypes as $atomic) {
-            if (! $atomic instanceof AnyObjectType) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static function isThis(Type $type): bool
-    {
-        foreach ($type->atomicTypes as $atomic) {
-            if ($atomic instanceof NamedObjectType && $atomic->isThis) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static function isMixed(Type $type): bool
-    {
-        foreach ($type->atomicTypes as $atomic) {
-            if ($atomic instanceof MixedType) {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }
