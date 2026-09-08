@@ -13236,3 +13236,77 @@ Five or six pieces with one shared runtime helper is a real build, and the piece
 collaborator that has ended two attempts in this log already. Recording the measurement and the design is
 worth more than a half-built rule, and the `byRef` fact is reusable: `NoReferenceRule`,
 `DisallowedImplicitArrayCreationRule`'s sibling shapes and the two `byRef` refusals all want it.
+
+## The `NoReferenceRule` design, corrected twice before a line was written
+
+The `phpstan-src-e7` peer answered both questions and both answers changed the design. Recorded because the
+corrections are reusable and one of them would have shipped a false negative.
+
+### The parent-method predicate is cheap, and has two divergences
+
+**Measured by the peer, in their tree.** `ParentClassMethodNodeResolver::resolveParentClassMethod()` walks
+`getAncestors()` — parents and interfaces, self filtered — takes the first with `hasMethod()`, then
+*reparses the declaring file* to produce a `ClassMethod`. My inference from the return type was right about
+that. But `NoReferenceRule` observes **only nullness**:
+
+    if ($parentClassMethod instanceof ClassMethod) { return []; }
+
+So no cross-file AST is needed and the cheap route — "an ancestor declares a method of this name" — is
+viable. Two things it must not do naively:
+
+- **Internal parents.** `ClassReflection::getFileName()` is null for an internal class, so the resolver
+  returns null even though the ancestor plainly declares the method. Their rows: a userland parent is silent,
+  a *vendor* userland parent is silent, and `extends \ArrayObject` **reports**. A port answering "an ancestor
+  declares it" would go silent where PHPStan reports — a false negative, and the line is
+  internal-versus-userland rather than in-the-analysed-paths.
+- **A caching defect.** `ReflectionParser::parseFilenameToClass` caches the **first** `ClassLike` per
+  filename and returns it for every class declared in that file. They demonstrated it by flipping declaration
+  order in one file and nothing else: the same two classes with the same two parents give opposite answers.
+
+So the faithful predicate is three clauses — an ancestor declares it, **and** it is userland with a source
+file, **and** it is the first class-like in that file. The third is a defect rather than a contract, and the
+call is to port the first two and record the third as a known divergence. Emulating it would pin someone
+else's bug, which is the same call this log already made about not shipping a fixture for their twelve-line
+extension.
+
+### My `byRef` design was wrong in three ways
+
+**`Param` was missing from my list**, and it is the node the second half of the rule reads —
+`$param->byRef` at `NoReferenceRule.php:83`, reached through `$functionLike->params` rather than through the
+hook. Building against my seven would have implemented the hook half and silently dropped the parameter half.
+
+Two corrections to their correction, verified here rather than repeated:
+
+- **`Arg` is not another rule's business.** It sits in this rule's own narrowing list at line 42 beside
+  `Closure`, `ArrowFunction`, `Function_`, `ClassMethod`, `Foreach_` and `ArrayItem`, so the hook set of seven
+  was right; `Param` is an eighth node reached by iteration, not a replacement for one of them.
+- **Ten php-parser classes carry `byRef`**, not eight: those eight plus `ClosureUse` and `PropertyHook`.
+  Counted here.
+
+**And the `&` has three homes, not one.** Their measured offsets: return-by-reference puts it after the
+`function`/`fn` keyword and *before the name* — and a `Closure` has no name, so there is no operand child for
+it to precede at all. A declared by-ref parameter puts it after any type hint and before the variable. A
+by-ref value binding puts it before the value expression.
+
+So one positional helper cannot serve the return-by-ref family, and **my "character immediately before the
+operand's span" is wrong even for the family it was aimed at.** Their rows, each a real spelling:
+
+    int & $p                  whitespace between & and the variable
+    int &...$p                the variadic ellipsis sits between them
+    int /* & not this */ &$p  a comment between hint and &, containing a decoy &
+    ?array &$p                & at +7
+    int|string &$p            & at +11
+    private array &$promoted  promoted constructor parameter, & at +14
+
+I predicted that a text search would fail and did not predict that adjacency would. What works is a
+**backward token scan** from the operand's span start: skip whitespace, skip comment trivia, skip `...`, then
+require `&`. The trivia store this repository already probed — `SourceFile::getTrivia()`, comment kinds with
+spans — is what makes it possible. One such helper serves `Param`, `Foreach_` and `ArrayItem`;
+return-by-reference needs its own, anchored on the keyword.
+
+### What this exchange keeps demonstrating
+
+Their line on it is the sharper one and worth keeping verbatim in substance: a tool that reports a lower
+bound and a person who reports an unsurveyed one fail the same way, and **neither is caught by re-reading the
+number.** My census's needs list is the first; their "not contrived" was the second. Both were real
+measurements with the wrong scope, and both were caught by someone asking what the number was a number *of*.
