@@ -241,14 +241,26 @@ final class TranspilesToPhpTest extends TestCase
      * sandbox flattened its examples and its guard tests the file's path. The gate copies directories now, so that
      * second hole is closed too — but this check is the one that does not depend on anybody writing an example.
      *
-     * Cheap enough to run over the whole corpus: this transpiles, it does not analyse.
+     * Cheap enough to run over the whole corpus: this transpiles, it does not analyse. And it *is* the whole
+     * corpus — every installed package's `src`, rather than the one package the glob used to name.
      */
     public function test_every_helper_the_corpus_calls_exists(): void
     {
-        $rules = glob(dirname(__DIR__, 2) . '/vendor/symplify/phpstan-rules/src/Rules/{,*/,*/*/}*Rule.php', GLOB_BRACE);
+        // Every installed package, not one of them. The docblock above has said "the whole corpus" since
+        // this check was written and the glob named `symplify` alone, so a missing helper emitted by a
+        // `hihaho`, `phpstan-*` or `tomasvotruba` rule went unchecked — a claim wider than the code, which
+        // is the failure this repository's log is largely made of. Found while a broken plugin of my own
+        // referenced `Support::namedClassIsInstanceOf()` after the helper had been reverted from under it.
+        $roots = glob(dirname(__DIR__, 2) . '/vendor/*/*/src', GLOB_ONLYDIR);
+        $rules = [];
+        foreach ($roots === false ? [] : $roots as $root) {
+            $found = glob($root . '/{,*/,*/*/,*/*/*/}*Rule.php', GLOB_BRACE);
+            $rules = [...$rules, ...($found === false ? [] : $found)];
+        }
+
         $emitted = 0;
 
-        foreach ($rules === false ? [] : $rules as $file) {
+        foreach ($rules as $file) {
             try {
                 $plugin = (new Transpiler($file))->transpile()['rust'];
             } catch (Refusal) {

@@ -14275,3 +14275,50 @@ an undefined variable, and the difference between that and a correct one is prec
 loop and the return *together*. Starting that at the end of a long session is how the last one went wrong; the
 design is now at code level, with file and line for every piece, so a fresh start begins by writing rather
 than by looking.
+
+## Second attempt at the fold, and the check that would have caught it
+
+The `constant-strings` loop arm turned out to be a **table row** rather than code —
+`translateForeach()` dispatches on `Vocabulary::ITERABLES[$kind]['item']`, so one row binding the item as a
+`constant-string` connects the producer at `Translator.php:12127` to the consumer at `:12106`. Added, and the
+loop then translated: the refusal moved off the loop and back onto `Expr_New`, so the body was reached.
+
+Re-applying the six pieces from the reverted attempt then reached `EMIT` again. **The plugin was still
+wrong**, and worse than last time:
+
+    foreach (Support::constantStringsOf(Support::expressionType($context, $arg_value)) as $constant_string_type) {
+    }
+
+    return;
+    if (!($constant_string_type !== null)) {
+
+An empty loop body *and* a bare `return;` after it, making everything below dead code — the plugin does
+nothing at all. So the ITERABLES row was necessary and not sufficient, exactly as the previous entry said: a
+`return` inside a loop in a value-producing helper needs the **fold**, and without it the return becomes a
+statement-level exit from the hook rather than the loop's result. My own analysis was right and my hope that
+the row alone would carry it was not.
+
+Reverted again — eighth revert here, second on this rule.
+
+### The check that caught the other half, and the hole in it
+
+The same plugin also called `Support::namedClassIsInstanceOf()`, a helper the earlier revert had taken out
+from under it. `TranspilesToPhpTest::test_every_helper_the_corpus_calls_exists()` exists for exactly that and
+its docblock says *"cheap enough to run over the whole corpus"* — but its glob named
+**`vendor/symplify/phpstan-rules` alone**. A missing helper emitted by a `hihaho`, `phpstan-*` or
+`tomasvotruba` rule went unchecked, and the docblock had claimed otherwise since the check was written.
+
+Widened to every installed package's `src`. It now makes **1267 assertions** where it made a fraction of
+that, and the widening is load-bearing rather than decorative: removing `Support::namedClassIsSubclassOf()`
+— called only by `CombinedStaticCallRule`, a *hihaho* rule — now fails with
+
+    CombinedStaticCallRule.php emits a call to Support::namedClassIsSubclassOf(), which does not exist.
+    The plugin would load and then kill the worker.
+
+Before the widening that removal passed silently. So the rule work produced nothing and the attempt still
+closed a real hole in a load-bearing gate: **a claim in a docblock wider than the code under it**, which is
+the failure this log is largely made of, found because a broken plugin of mine walked into the gap.
+
+Suite 1088/1088, PHPStan 0 errors, Rector and Pint clean. Three defects of my own in the widened check —
+a short ternary the project forbids, a `=== false` that became unreachable once `$rules` was a list, and a
+missing blank line — all caught by the gauntlet rather than by me.
