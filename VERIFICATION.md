@@ -14049,3 +14049,56 @@ does it starts from the design rather than from the survey.
 without looking, then measured it and was right; I assumed the guard narrowed the variable, then measured it
 and was wrong. Same session, same kind of claim, opposite outcomes — which is the argument for measuring both
 rather than for trusting the instinct that happened to be right.
+
+## The computed-name test, built — and kept, which is a departure from five reverts
+
+`NoJustPropertyAssignRule` still refuses, but on `$this->phpDocResolver->resolve()` at line 90 rather than on
+`instanceof Expr on a bytes` at line 81. The capability is built and the change is kept rather than reverted.
+Both halves need justifying.
+
+### The provenance was one edit after all, and I had looked in the wrong place
+
+The previous entry concluded that carrying the owner node meant the local-*assignment* path, which is diffuse
+— `expr instanceof Assign` is recognised at eight or more separate sites. That was true and irrelevant.
+Descriptors are **created** in `resolve()` and a local stores whatever it returned, so the field rides along
+through whichever write path applies. Instrumenting the refusal printed the descriptor and settled it:
+
+    kind  bytes
+    key   $node->expr->var->name
+    php   Support::constantNameText(Support::nthExpression($context, Support::nthExpression($context, $node, 0), 0))
+
+The owner node was already in the operand, wrapped by `constantNameText`, at a single creation site — `->name`
+on a plain `expr`, `Translator.php:13295`. Setting `of` there is one line, and it uses a convention the
+descriptor shape already has for constant-string reads. **I had reasoned about where a value is stored
+instead of where it is made.**
+
+### Why it is kept when five comparable changes were reverted
+
+Emit-all is byte-identical across all three targets and the counts are unchanged at 182, 34 and 25. So by the
+usual test — does it move an emitted byte — this is unexercised vocabulary and the five previous reverts
+apply.
+
+It is kept because it moves something else that is pinned. The census now records:
+
+    - no node predicate for instanceof PhpParser\Node\Expr on a bytes
+    + assignment value outside the vocabulary: access path outside the vocabulary: $this->phpDocResolver->resolve()
+
+That is the census header's own stated value — *a refusal naming the wrong obstacle is how work gets sized
+wrongly* — and the drift test pins the new message, so removing the capability fails a test. The five reverts
+were changes that moved **nothing observable at all**; this one is defended by a snapshot. The distinction is
+between "no rule uses it" and "nothing can detect it", and only the second is undefendable.
+
+### What the rule needs now, and it is not small
+
+`shoulSkipMoreSpecificTypeByDocblock()` resolves the statement's doc comment through an injected
+`PhpDocResolver` and compares the `@var` tags against the assigned expression's type. Reading the docblock
+text is reachable — the peer confirmed `SourceFile::getTrivia()` returns comment trivia with spans — but
+resolving `@var` into a type and comparing it is PHPStan's own machinery, not a navigation. So the rule is
+behind a service port, which is where three of the four `array_merge` rules also sit.
+
+**And the shortcut is still closed for the reason recorded last entry**: folding the docblock skip away would
+report where PHPStan stays silent, because the skip exists precisely to suppress a finding.
+
+Suite 1088/1088, PHPStan 0 errors on 13 baseline entries with no new one, Rector and Pint clean. The branch
+was extracted to `computedNameTest()` rather than left in `instanceofPredicate()`, which is already baselined;
+that method still drifts 128 → 131 and the class 2643 → 2647, both patched in place.

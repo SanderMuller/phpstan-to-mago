@@ -9748,6 +9748,34 @@ final readonly class Translator
     }
 
     /**
+     * `$variable->name instanceof Expr` — php-parser types a variable's name as `string|Expr`, so the
+     * test asks whether the name is *computed*. The name resolves to bytes and a string cannot answer it,
+     * which is what `no node predicate for instanceof Expr on a bytes` was saying.
+     *
+     * In Mago the question is the owner's node kind: a written `$x` is a `DirectVariable`, and `$$x` and
+     * `${expr}` are `IndirectVariable` and `NestedVariable`. `HOOK_KINDS[Variable::class]` registers all
+     * three and its docblock already says a rule asking `is_string($node->name)` is asking which fired —
+     * this is the same question asked of a node the rule navigated to, answered off the `of` the name
+     * read carries.
+     *
+     * Not folded to false, which was the tempting shortcut: the rule's earlier guard requires
+     * php-parser's `Variable`, and that covers all three kinds, so `$$x = $this->service;` reaches this
+     * test and PHPStan answers true and stays silent. Folding would report it.
+     */
+    private function computedNameTest(string $owner, int $line): string
+    {
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a computed-name test, which only the PHP target carries', $line);
+        }
+
+        return '! ' . $this->context->backend->call('node_kind_is', [
+            '$context',
+            $owner,
+            $this->context->backend->bytes('DirectVariable'),
+        ]);
+    }
+
+    /**
      * The runtime helper that stands in for a static collaborator method, or null when none does.
      *
      * The same table {@see resolveCollaboratorCall()} reads, reached from the other kind of call. A helper
@@ -9895,6 +9923,10 @@ final readonly class Translator
         // `$node->class instanceof Expr` — php-parser types a written class part as `Name` and anything computed
         // as an expression, so this asks "is the class dynamic". Mago has no such split in the tree; the
         // question is whether the part is a written name.
+        if ($wanted === Expr::class && $subject['kind'] === 'bytes' && isset($subject['of'])) {
+            return $this->computedNameTest((string) $subject['of'], $expr->getStartLine());
+        }
+
         if ($wanted === Expr::class && in_array($subject['kind'], ['expr', 'name-expr', 'name-part'], true)) {
             if (Transpiler::$target !== 'php') {
                 throw new Refusal('a dynamic-name test, which only the PHP target carries', $expr->getStartLine());
@@ -13298,6 +13330,12 @@ final readonly class Translator
                     'kind' => 'bytes',
                     'key' => $key,
                     'php' => 'Support::constantNameText(' . $this->operand($base) . ')',
+                    // The node the name was read *off*, carried so a later question about the name can be
+                    // answered about its owner. `$variable->name instanceof Expr` is that question: php-parser
+                    // types a variable's name as `string|Expr` and the test asks whether it is computed, which
+                    // in Mago is the owner's node kind rather than anything about the string. The `of`
+                    // convention is already used this way for constant-string reads.
+                    'of' => $this->operand($base),
                 ];
             }
 

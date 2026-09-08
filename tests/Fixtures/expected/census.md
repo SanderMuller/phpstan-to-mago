@@ -199,8 +199,8 @@ REFUSE  NoIntegerRefactorReturnRule
         needs-at-least: statement outside the vocabulary: Stmt_Expression
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: array_diff()
 REFUSE  NoJustPropertyAssignRule
-        no node predicate for instanceof PhpParser\Node\Expr on a bytes
-        needs-at-least: no node predicate for instanceof PhpParser\Node\Expr on a bytes
+        assignment value outside the vocabulary: access path outside the vocabulary: $this->phpDocResolver->resolve()
+        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->phpDocResolver->resolve()
 EMIT    NoLeadingBackslashInNameRule
 EMIT    NoListenerWithoutContractRule
 ENGINE  NoMissingVariableDimFetchRule  (mago reports undefined-variable)
