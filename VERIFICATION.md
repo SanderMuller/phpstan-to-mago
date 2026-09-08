@@ -11928,3 +11928,76 @@ resolution at a glance, and the two states point opposite ways.
 
 Nothing to build today. The action on release is to bump the mago requirement, re-run the corpus, and read
 which of the three moves — and the census's own alarm is what will say so.
+
+## #2310 closed *not planned*, so the divergence becomes a PR and a document
+
+The user's direction, once `carthage-software/mago#2310` came back **not planned**: PR the codebases that use
+the ambiguous notation, document how to write the docblock, and **do not** work around it in the transpiler.
+Nothing in `src/` changed for this.
+
+### Every instance, derived rather than recalled
+
+Grepping the installed dependency tree for a callable return type ending in `[]`:
+
+| package | file | sites |
+|:--|:--|--:|
+| `symfony/console` | `Question/Question.php` | 3 |
+| `symfony/console` | `Helper/QuestionHelper.php` | 1 |
+| `laravel/framework` | `Illuminate/Console/Concerns/InteractsWithIO.php` | 1 |
+
+Five, and **all five sit on a parameter or return whose native hint is `callable` or `?callable`** — so the
+docblock contradicts the signature rather than merely being imprecise about an unannotated value.
+
+### Seven spellings, measured here
+
+`internal/probe-callable-return-spellings*.php`. One parameter declared `callable` in PHP, seven docblocks,
+`Type::$atomicTypes` read from inside a plugin:
+
+| docblock | Mago infers | callable? |
+|:--|:--|:--|
+| `callable(string):string[]` | `array` | no |
+| `callable(string):(string[])` | `callable` | yes |
+| `callable(string):array<string>` | `callable` | yes |
+| `callable(string):list<string>` | `callable` | yes |
+| `(callable(string):string[])\|null` | `array\|null` | no |
+| `(callable(string):(string[]))\|null` | `callable\|null` | yes |
+| `(callable(string):array<string>)\|null` | `callable\|null` | yes |
+
+This reproduces the three rows the retraction earlier in this file recorded, and adds four. Rows five and six
+are the pair that matters for the PR: **parenthesising the whole callable, which the `|null` union already
+forces, does not disambiguate it** — the parentheses have to go round the return type.
+
+### The evidence that makes the PRs worth filing
+
+Running mago's own analyzer over the three real files, not the fixture:
+
+```
+symfony/Question.php:203  error[docblock-type-mismatch]   docblock return vs native `(callable(...mixed=): mixed)|null`
+symfony/Question.php:217  error[docblock-type-mismatch]   same for the `$callback` parameter
+symfony/Question.php:223  error[invalid-callable]         `array<…callable…>` cannot be treated as a callable
+symfony/Question.php:195  error[possibly-invalid-argument]  knock-on at the call site
+laravel/InteractsWithIO.php:180  error[possibly-invalid-argument]  knock-on
+```
+
+**Mago already reports these files today.** That changes the ask from "please help a third-party transpiler"
+to "your docblock contradicts your signature and an engine says so", which is the version worth sending.
+`invalid-callable` is the sharp one: the engine has been told the code invokes an array.
+
+`QuestionHelper.php:230` also reports, on `array_map` with a callable-array — **unrelated**, and separated
+here so a reader does not carry it into the PR.
+
+### What was written, and what was not
+
+- `internal/guidance-callable-return-types.md` — the guidance, with the measured table and the three
+  spellings to prefer. Drafted under `internal/` rather than published: `/docs` is gitignored here, and
+  where a *published* page should live is a repo-shape decision rather than one to make in passing.
+- `internal/pr-symfony-console-callable-return.md` and `internal/pr-laravel-framework-callable-return.md` —
+  drafts with exact diffs, each ending in a *Before opening* section: re-derive the diagnostics against the
+  upstream default branch rather than the installed copy, and decide `array<string>` against `list<string>`
+  on intent. Laravel's forwards to symfony's, so symfony goes first and Laravel matches it.
+- **Nothing in the README.** It is 1236 words against a ~900 budget and a 1200 ceiling, so a section there
+  would push it further over; the guidance is a file of its own and the README is unchanged. A one-line
+  pointer is a trim decision, not a free addition.
+- **Nothing in `src/`.** The transpiler reads what mago reads, which is the point of the direction: a
+  workaround here would make this port disagree with the engine it targets in order to agree with a docblock
+  that is wrong.
