@@ -15163,3 +15163,50 @@ rest — a partial port, which is a refusal here rather than a shipped approxima
 That is a far better upstream ask than the one I nearly filed: not "there is no by-reference signal" but
 "`BY_REFERENCE` exists for parameters and function-likes, and foreach targets, array elements and assignments
 have no equivalent." Narrow, checkable, and true.
+
+### `NoReferenceRule`, closed out: the flag exists, and reaches four of ten concerns
+
+`phpstan-src-e7` found `BY_REFERENCE` independently and then measured how far it reaches, which is the part my
+retraction above left open. **Their rows, run live over the protocol from a node hook — not reproduced here:**
+
+| concern | route | verdict |
+|:--|:--|:--|
+| parameter by-ref, named function | `getFunction(name)->parameters[i]->flags` | yes |
+| parameter by-ref, method | `getMethod(class, m)->parameters[i]->flags` | yes |
+| return by-ref, function | `getFunction(name)->flags` | yes |
+| return by-ref, method | `getMethod(class, m)->flags` | yes |
+| return by-ref, closure / arrow function | not in the function registry | **no route** |
+| foreach value, array item, `$a = &$b` | syntax only, no metadata | **no route** |
+| call-time `f(&$x)` | mago cannot parse the file | **no route** |
+
+They also separated the two meanings by measurement — `FunctionLikeMetadata::flags` BY_REFERENCE is
+*return*-by-reference and `ParameterMetadata::flags` BY_REFERENCE is the parameter, distinct objects sharing
+one bit — and confirmed `Type/TypeFlags::$byReference` crossing the wire in an earlier probe.
+
+**Re-derived here, because a citation repeated is a citation owed:**
+
+- `FunctionLikeIdentifier::__construct` requires a **non-empty name**, and compares `Closure` identifiers by
+  exact string where functions and methods use `strcasecmp`. So a closure is *representable* but needs a
+  synthetic name a node hook has no way to obtain — structurally consistent with their registry measurement.
+- `FunctionLikeKind` has **`Function`, `Method`, `Closure`** and **no `ArrowFunction`** case. Their message
+  said it carries both; it does not. Passed back.
+- The rule's parameter half is gated to `Function_ || ClassMethod` — read directly from the source, so that
+  half is fully covered by metadata with no span work.
+
+**Verdict: refused, and now for a measured reason rather than a guessed one.** The top-level `$node->byRef`
+test applies to all seven non-`AssignRef` kinds and is reachable for two of them. A port would find
+parameter- and return-by-reference in named functions and methods, and silently miss return-by-reference in
+closures and arrow functions, `foreach ($x as &$v)`, `[&$v]`, and `$a = &$b`. That is a partial port, which
+this repository refuses rather than ships.
+
+Call-time `f(&$x)` deserves its own line: it is a **fatal error in PHP 8**, so mago declining to parse it is
+correct behaviour, not a limitation. A rule concern that only fires on code the language rejects is not a gap.
+
+#### A caution I am recording before it can be forgotten
+
+Their earlier measurement of `resolveParentClassMethod()` says only nullness is observed, so the port needs
+"an ancestor declares this method and is userland with a file" rather than cross-file AST — but PHPStan's own
+answer is **order-dependent** through a first-class-like-in-file cache. So on a corpus with several class-likes
+per file, exact agreement is not achievable by a *correct* port. Whoever builds this has to decide, before
+starting, whether the fires gate treats that as a divergence or as a known-bug exemption. That decision
+belongs in the gate's own table, not in a commit message discovered later.
