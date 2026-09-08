@@ -12161,3 +12161,63 @@ place on one side and `Members` intact on the other.
 The three `Translator` counts that drifted with it (2590 → 2598, `methodPredicate` 115 → 120,
 `resolveReflection` 461 → 464) were patched as three string substitutions, not by regenerating the file — a
 generated file is not a text stream, and rewriting this one has already unbaselined everything in it once.
+
+## Sizing the remaining refusals, and what the needs list understates
+
+Fourteen refusals state exactly one need. None of the fourteen is a one-row fix, and checking why is worth
+recording, because the needs list is a lower bound by construction — an expression-level blocker ends the
+pass — and this is the first time the gap has been measured across the whole tail rather than per rule.
+
+Three of the fourteen, read at the source rather than off the census:
+
+- **`OverwriteVariablesWithForLoopInitRule`** states `->init` iteration. Behind it sits
+  `$scope->hasVariableType($expr->name)->yes()` — the definedness test its sibling
+  `OverwriteVariablesWithForeachRule` already refuses on, blocked upstream at carthage-software/mago#2334. The
+  stated need is the cheap half of a rule whose other half cannot be built today.
+- **`MatchingTypeInSwitchCaseConditionRule`** states `->cases` iteration. Behind it are
+  `describe(VerbosityLevel::value())` and `Printer::prettyPrintExpr()`, both interpolated into the message.
+  The translator supports `typeOnly()` and refuses every other verbosity **by name** at
+  `src/Translator.php:13528`, so the second rendering is a known gap rather than an unknown one.
+- **`IllegalConstructorStaticCallRule`** states `->getTraitAliases()`. `ClassLikeMetadata` has no
+  trait-method-alias field — `typeAliases` is `@phpstan-type` and `usedTraits` is names only. The CST does
+  carry `NodeKind::TraitUseAliasAdaptation`, so a route may exist, but it depends on whether Mago analyses a
+  trait body once or once per using class, which decides whether the branch has a using-class context at all.
+  Not probed.
+
+### The arithmetic family is one blocker, not six rules
+
+Ten files in `phpstan/phpstan-strict-rules` reference `OperatorRuleHelper`. Six are the
+`OperandsInArithmetic*` rules — Addition, Subtraction, Multiplication, Division, Modulo, Exponentiation — and
+all six refuse with an identical blocker set. That makes it the largest single-cause cluster left in the
+census, which is the reason to size it before picking another single rule.
+
+Their messages use `typeOnly()` only, so the rendering that stops
+`MatchingTypeInSwitchCaseConditionRule` does not apply here. And **the two-identifier report shape is already
+supported**: the refusal reads *"a second identifier before the first was reported"*, and the guard at
+`src/Translator.php:8321` fires only when the first identifier was never reported under — a rule that reports
+two different things one after the other is expressly allowed. So that census line names a symptom of an
+earlier failure, not a missing capability.
+
+What is left is the entry gate and one semantic question:
+
+- **A branch that binds rather than guards.** `if ($node instanceof BinaryOpDiv) { $left = ..; $right = ..; }
+  elseif ($node instanceof AssignOpDiv) { $left = ..; $right = ..; } else { return []; }` is a dispatch on
+  node kind that binds two locals per arm. Every `if` shape the translator recognises today either guards or
+  reports.
+- **A synthesized AST node, which is the one that may have no port at all.**
+  `isValidForArithmeticOperation()` tests operator overloading with
+  `$scope->getType(new Expr\BinaryOp\Plus($expr, new Int_(1)))` — a node that does not exist in the analysed
+  file. A plugin receives span-keyed inferred types for positions it declared an interest in, so a node with
+  no span has no type. **Inferred, not measured:** this branch has no port.
+
+Whether that kills the family depends on a question this repository cannot answer from its own tree: the
+branch is guarded by `$type->isObject()->yes()`, and if core PHPStan returns `ErrorType` for `object + int`
+with no operator-overloading extension installed, then treating every object operand as invalid agrees with
+PHPStan exactly, and the six rules could emit under a stated bound — faithful unless the consumer installs
+such an extension. If instead GMP or `BCMath\Number` support ships inside phpstan-src, the branch is live on
+every install and the bound is worthless.
+
+Asked of the `phpstan-src-e7` peer, with the reading marked as inferred and a request to mark their answer
+the same way. **Nothing is built on it yet, and the sentence above is the claim to check first** if this
+entry is read before the answer arrives — it is the load-bearing inference, and a bound stated on a wrong
+reading of it is the *"every number right, and the sentence still wrong"* failure this file already records.
