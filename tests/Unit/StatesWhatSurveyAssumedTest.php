@@ -65,6 +65,29 @@ final class StatesWhatSurveyAssumedTest extends TestCase
         $this->assertStringContainsString('needs-at-least:', $output);
     }
 
+    /**
+     * An emit run says what an emit is the scope of, for the same reason the survey does.
+     *
+     * Found by sweeping for the pattern rather than by hitting the defect: the target-and-count pair already
+     * carried its configuration, the survey line was added when a refusal had been misread, and the emit
+     * count was the third instance of the same shape sitting untreated three lines away. After fixing one,
+     * look for it in adjacent code.
+     */
+    public function test_an_emit_run_says_an_emit_is_not_a_result(): void
+    {
+        ob_start();
+        $status = Cli::run(
+            [__DIR__ . '/../Fixtures/Rules/EveryExpressionRule.php'],
+            sys_get_temp_dir() . '/phpstan-to-mago-emit-scope-' . getmypid(),
+        );
+        $output = (string) ob_get_clean();
+
+        $this->assertSame(0, $status, $output);
+        $this->assertStringContainsString('emitted: 1', $output);
+        $this->assertStringContainsString('not that the plugin loads or reports', $output);
+        $this->assertStringContainsString('fires gate', $output);
+    }
+
     public function test_an_emit_run_refuses_on_the_missing_hook(): void
     {
         $this->expectException(Refusal::class);

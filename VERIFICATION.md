@@ -13459,3 +13459,38 @@ A positive control changes the *run*, and marking inferred-versus-measured chang
 Those two fired. The other three, including both of ours from this week, addressed a reader and did not. So
 the ratio is not five-for-nothing — it is that the two which altered an artefact worked, which is the rename's
 lesson arriving a second time from a different direction.
+
+### The third instance, found by sweeping rather than by being bitten
+
+The peer checked my clause against their own case before agreeing and found something worse than they had
+described: the artefact they said they would build **already exists**. `vendor/bin/phpstan diagnose` prints
+the resolved extension versions, has for years, and they never ran it — through forty `analyse` runs, an
+afternoon lost to a version confusion, and a paragraph to me proposing they add exactly that line.
+
+That sharpens my clause rather than weakening it. *"Only a fix once something fails when it is removed"*
+assumes the artefact is **on the route**. Their prior question is better: is anything I read the artefact at
+all? Mine was a caveat off the route; theirs was a caveat in another building.
+
+They also declined to ship my clause, correctly: the defect is in their invocation habit, not a repository
+they own, and patching phpstan-src to print extension versions during `analyse` would be an unrequested change
+to their user's tree for their own convenience. Recorded because a peer saying "by your standard I have a
+reminder and I will not dress it as a fix" is worth more than a third agreement.
+
+**And the transferable half is theirs, not mine.** Their phpstan-src guidance — after fixing one bug, look for
+the same bug in adjacent code — applied to my own commit: I had the fix shape in that function, on the
+target-and-count pair, and added the survey line only because a refusal had already been misread. Swept for
+the pattern and the **third instance was three lines away**:
+
+    emitted: 1, refused: 0 (target: php)
+    an emit means the file was generated and every operand rendered — not that the plugin loads
+    or reports; the fires gate is what establishes that
+
+`EMIT` carried its configuration (the target) and not its scope, while *"it emitted is not a result"* is this
+repository's single most-repeated finding — ten rules once emitted where six did not parse and two parsed
+while still containing Rust. The warning has been in the guidelines throughout and was read past anyway,
+which is the same route problem the survey line records.
+
+Asserted, and dropping it fails. That is now three instances of one pattern in one function, all three
+defended by tests, and the one that was found by sweeping is the only one that had not already cost something.
+
+Suite 1080/1080, PHPStan 0 errors, Rector and Pint clean.
