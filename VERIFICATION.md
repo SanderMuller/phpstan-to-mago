@@ -12935,3 +12935,63 @@ piece of work.
 Suite 1074/1074, PHPStan 0 errors on 13 baseline entries with no new one, Rector and Pint clean. Emit-all: php
 178 → 179, analyzer and linter unchanged, and the only files that move are the new plugin and the three
 registration files — no existing plugin moved a byte.
+
+## `DisallowedLooseComparisonRule`: four gates opened, a fifth found, all of it reverted
+
+The rule went from its first refusal to its fifth in one pass and still does not emit, so the work came out.
+Recorded because the four gates are real and the fifth is a defect in this repository rather than a missing
+capability.
+
+The rule hooks `BinaryOp::class`, gates on `Equal`/`NotEqual`, and builds its message as a ternary on a
+constructor flag. Each piece was built and each moved the refusal on:
+
+| built                                                        | opened                                        |
+|:--|:--|
+| `HOOKS` and `HOOK_KINDS` rows for `BinaryOp::class` → `Binary` | the hook mapping                            |
+| `OPERATOR_KINDS` rows for `Equal` (`==`) and `NotEqual` (`!=`) | the operator gate, reusing Division's table |
+| a ternary in the message builder, both arms messages           | `message expression outside the vocabulary: Expr_Ternary` |
+| `CORE_PARAMETER_DEFAULTS`, holding `featureToggles.bleedingEdge => false` | the unresolved-parameter refusal  |
+
+The ternary is worth keeping in mind for whoever builds it next: the emitted plugin carries the *same* ternary
+and the flag as a constructor bool, rather than resolving it at emit time against the package default. Baking
+one arm in would make the other unreachable, which is the `emitted: 4` against `emitted: 3` mistake this log
+already records — a message belongs to its configuration as much as a count does.
+
+### The fifth gate is ours, and it is a locator landing in the wrong structure
+
+The flag resolves to **`config-list`** where it should be `config-bool`. `CORE_PARAMETER_DEFAULTS` never runs,
+because `PackageConfiguration::hasParameter('featureToggles.bleedingEdge')` answers *true* — and `defaultFor`
+then returns a list.
+
+The package's `rules.neon` mentions that parameter five times, and only one is a constructor value:
+
+    15:  reportNonIntStringArrayKey: %featureToggles.bleedingEdge%              a parameter default
+    20:  booleansInLoopConditions: [%strictRules.allRules%, %featureToggles.bleedingEdge%]   inside an array
+    112: phpstan.rules.rule: [%strictRules.numericOperandsInArithmeticOperators%, %featureToggles.bleedingEdge%]
+    114: the same
+    169: includeOperandTypesInErrorMessage: %featureToggles.bleedingEdge%       the constructor value
+
+A resolver reading the name rather than the structure it sits in can take the array at line 20 or 112 as the
+parameter's value. This is the failure this file already names — *after locating a structure by name, assert
+that what you found is that structure* — arriving in our own configuration reader rather than in an audit
+script. The signals are all benign: the value is a real list, the kind is computed correctly *for a list*, and
+nothing downstream can tell that the list came from a different key.
+
+**No shipped plugin is affected**, checked rather than assumed: no emitted plugin carries a constructor
+argument wired to that parameter, and the two loop rules it gates are handled through
+`FiresGate::REGISTRATION`. So this is a blocker on new work, not a defect in output.
+
+`featureToggles.bleedingEdge` itself is `false` on a stock install — read from the phar, `conf/config.neon`
+declaring it and `conf/bleedingEdge.neon` setting it `true` — so once the resolver answers the right shape the
+plugin can carry a bool defaulting to `false`, exactly as it carries a package's own default.
+
+### Why it was reverted rather than committed
+
+All five additions are unexercised: the rule still refuses, so not one of them changes an emitted byte. That
+is the condition three earlier reverts in this log were made under, and the fourth now. The pieces are
+individually correct and individually useless until the rule emits, and leaving them in the tree would mean
+shipping vocabulary no test can reach.
+
+**The next step is the resolver, not the rule.** `hasParameter`/`defaultFor` should answer about the key they
+were asked for, and asserting that the match is a scalar assignment rather than an array element is the fix.
+That is one change with a fixture, and the four gates above then apply unchanged.
