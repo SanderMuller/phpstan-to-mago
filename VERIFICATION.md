@@ -12001,3 +12001,47 @@ here so a reader does not carry it into the PR.
 - **Nothing in `src/`.** The transpiler reads what mago reads, which is the point of the direction: a
   workaround here would make this port disagree with the engine it targets in order to agree with a docblock
   that is wrong.
+
+## Four of the five sites were already fixed, and the handover could not have known
+
+A peer session reported that `symfony/console` was fixed two days before our handover carried a draft to fix
+it. Verified here against the raw upstream branches rather than taken on trust, 2026-09-08:
+
+| branch | `Question.php` `@var` / `@return` / `@param` | `QuestionHelper.php` |
+|:--|:--|:--|
+| `8.2` (default) | `list<string>` ×3 | `list<string>` |
+| `7.4` | `list<string>` ×3 | `list<string>` |
+| `8.0` | `string[]` ×3 | — |
+
+`symfony/symfony#65860`, *[Console] Disambiguate the autocompleter callback return type*, merged into 7.4 on
+2026-09-06. So the symfony draft is superseded and marked so in place rather than deleted.
+
+**Two corrections, in both directions.**
+
+The peer's message says our first site "was never broken", because the default branch reads `list<string>`
+there. The rows above say otherwise: `8.0` carries `string[]` at that same `@var`, and `8.0` branched before
+the fix. It reads `list<string>` on 7.4 and 8.2 *because it was fixed*, not because it never needed fixing.
+The PR's own `+2/-2` on `Question.php` accounts for two of that file's three sites, so the third was fixed by
+something else — provenance not traced, and it changes no action.
+
+Ours: **our lockfile is `symfony/console v8.1.6`**, which is why this repository's vendor tree still shows the
+old notation. The grep was accurate about our tree and our tree is behind. The record now says which branch
+each row belongs to, because "five sites" without a branch is the same species of claim as a count without its
+configuration.
+
+### What the miss actually was
+
+Every figure in the handover was verified where it said it was verified, and the line numbers were labelled as
+installed-tree — which is what let the peer resolve the discrepancy in one call. Nothing in it was wrong about
+what it claimed.
+
+The gap was a question neither of us asked: **had someone already fixed it?** That is not a measurement error
+and no control catches it, because it is not about the subject at all — it is about the world the subject sits
+in. The rule this file already carries for absence claims — *is there another route to the same answer?* — has
+a sibling worth stating: **before acting on a defect, look for the change that already fixed it.** The peer
+named the same guard from their own side.
+
+`laravel/framework` remains live and is a different site from that peer's own merged `#61444`
+(`Connection::withFreshQueryLog()`): `InteractsWithIO.php` at `12.x:172` and `13.x:187`. It targets **12.x**,
+because Laravel merges forward only. The draft carries `list<string>` now, since that is what symfony landed
+and `$choices` forwards straight into it.
