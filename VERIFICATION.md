@@ -14634,3 +14634,34 @@ exemption can fire, not the rate.** The rule further requires an object property
 differs from the inferred type, and some of the 83 fail the first. That turns "cannot be honoured" into at
 most 4.2% of candidate sites, probably well under — which is a different kind of thing to put to a user than
 a blocker, and it is the form the filed issue should carry.
+
+### Three rules picked because their first obstacle looked like one mapping. All three were deep.
+
+`phpstan-src-e7` argued the marginal value of any capability here is about one rule, structurally rather than
+incidentally, and that five rankings finding no lever is the finding rather than a search failure. This is
+that argument tested from the other side: instead of looking for a capability many rules share, take the
+rules whose refusal names the *smallest* obstacle and ask what each actually needs.
+
+Selection was blind to the answer — the three refusals in the reachable pool that name a single mapping:
+
+| rule | refusal names | what the body then needs |
+|:--|:--|:--|
+| `NoIntegerRefactorReturnRule` | `->returnType` on a maybe-method-decl | `getMethod('refactor')`, `isPublic()`, a class-wide scan collecting constant names, `array_diff`, and a report at another node's line |
+| `ClassDependencyTreeRule` | `->hasConstructor()` | `ParametersAcceptorSelector::selectFromArgs`, an injected cognitive-complexity analyzer that walks the class, `getOriginalNode()` |
+| `ParamNameToTypeConventionRule` | no hook mapping for `Param` | a config-map lookup, and a required ctor parameter nothing wires — correct-forever |
+
+The named field exists in every case: `FunctionLikeMetadata` carries `$declaredReturnType` and `$returnType`,
+and mago has a `FunctionLikeParameter` node kind. So none of the three is blocked on the thing its refusal
+names.
+
+**This is `needs-at-least:` behaving exactly as documented, and it is worth measuring rather than restating.**
+The census header warns the field is a lower bound. What these three show is that the bound is not merely
+loose, it is *anti-correlated with the work*: a refusal reads shallowest when the pass stopped earliest, and
+the pass stops earliest on the bodies that go on to do the most. So ranking candidates by how small their
+refusal sounds selects for depth. That is the opposite of the intended effect, and it is how three turns of
+mine got spent.
+
+The practical consequence, and it is a change of method rather than a result: **a candidate cannot be assessed
+from its refusal at all.** The only assessment that holds is reading the whole body and listing every need,
+which costs the same whether the rule turns out reachable or not. Six such readings would have replaced five
+rankings.
