@@ -12728,3 +12728,81 @@ That does not make the addition wrong; the row's established practice is exactly
 assignments for an `Expr` hook, so the seven-kind list is a **known false negative** for any rule on it. It
 means the addition should be made deliberately, with the rule that needs it, and the tension stated where the
 row is — not smuggled in as a one-word edit that looks like a table update.
+
+## `OperandsInArithmeticDivisionRule` emits, and the dispatch was the last of three blockers
+
+The census goes to 123 rules emitting on the php target, `phpstan/phpstan-strict-rules` to 26 of 45, and
+`--status` to 114 of 210.
+
+The interesting part is that `EmittedRuleFiresTest` had been tracking this exact rule as the last example pair
+with no emitting rule, and its comment named all three blockers and watched two of them close. **Both facts I
+"discovered" this session were already written down there**: that the operand-binding shape dissolves because
+a `Binary` and an `Assignment` hold their operands in the same two positions, and that mago's mis-reporting of
+a compound assignment's right-hand operand was fixed upstream in 1.47.6. I re-measured the first with a probe
+that was also already in the tree. Reading the orphaned-pair list before starting would have saved most of a
+turn — the same lesson as the `HOOK_KINDS` retraction one entry above, twice in two turns.
+
+### What was actually built
+
+- **`Vocabulary::OPERATOR_KINDS`**, carrying a kind *and* a token. `EXPRESSION_KINDS` maps a class to one
+  kind and `NODE_PREDICATES` to one predicate name, and neither has anywhere to put `/` — but `BinaryOp\Div`
+  and `AssignOp\Div` are one kind each plus an operator.
+- **`Operators::assignmentOperatorIs()`**, the fourth sibling of a family whose docblock already set out the
+  pattern. The emitted guard is the operator test *alone*, with no node-kind test beside it, and that is exact
+  rather than a shortcut: `operatorIs()` matches a child of a named `NodeKind`, so the `Binary` reader is false
+  for an `Assignment` and vice versa. One call decides kind and token together.
+- **`Assignment` in `HOOK_KINDS[Expr::class]`**, which is the widening reverted one commit earlier for buying
+  nothing. It buys something now, and the emitted plugin proved it was needed: without it `getTargets()` omits
+  `Assignment` and the `/=` arm can never fire.
+- **`Translator::translatesAnOperatorDispatch()`**, the one new mechanism.
+
+### The recognizer proves the collapse instead of assuming it
+
+The arms bind the same two navigations, so the dispatch emits as one guard plus the bindings once. But the
+identity is **proved per rule, not assumed**: each arm is translated with its own Mago kind in scope, so
+`->left` resolves through `REFINEMENTS['Binary']` and `->var` through `REFINEMENTS['Assignment']`, and the
+resulting descriptors are compared before a single line is emitted. Where they differ the recognizer declines
+and the rule keeps its old refusal.
+
+That is the difference between this and the design the `targetKinds()` docblock rejects twice. It does not
+infer what the rule reads; it checks, per rule, that two spellings resolve to the same thing, and refuses when
+they do not.
+
+### What the gate measured, and the row it was missing
+
+The pair passed **before** the arm rows existed, which is the session's recurring failure arriving one more
+time: `BadDivision` and `GoodDivision` held only the binary `/`, so the `Assignment` target,
+`assignmentOperatorIs()` and the whole `/=` arm were unexercised and the gate could not have failed on any of
+them. Three rows added — a `bool /= 2` that reports, an `int /= 2` control that does not, and `+`/`+=` in the
+Good file so that registering the kinds without reading the token would report.
+
+Four mutations, each measured with `php -l` first because two earlier mutations this session died at parse
+time and reported a red gate that proved nothing:
+
+| mutation                                          | result                                      |
+|:--|:--|
+| drop `Assignment` from the `Expr` targets         | 1 failure — the `/=` arm cannot fire        |
+| `assignmentOperatorIs()` always true              | 2 failures — the `+=` control reports       |
+| the binary arm's token `/` → `+`                  | 2 failures                                  |
+| `Assignment`'s operands swapped, so arms disagree | the rule **refuses**, surveyed EMIT → REFUSE |
+
+The last is the identity check working, and it needed a positive control rather than a test count: with the
+arms disagreeing the rule leaves `coveredRules` entirely and PHPUnit reports *"No tests found"*, which my
+summary line rendered as `failed 0 failed` — a red result with nothing behind it. `--survey` printing REFUSE
+against EMIT is the assertion that actually says what happened.
+
+### Emit-all, and why it changed on purpose
+
+php 173 → 174; analyzer and linter unchanged, because the operator test refuses outside the php target. Seven
+files move: the new plugin plus the three registration files, and the `getTargets()` line — **and only that
+line** — in the three rules already on the `Expr` hook. Their fires gates pass with the wider target set,
+which is the check that row's docblock prescribes: a target a guard fails to decline is a finding the original
+does not make.
+
+Suite 1054/1054, PHPStan 0 errors with 13 baseline entries and no new one, Rector clean. Pint rewrote imports
+in `Translator.php` and `Vocabulary.php` after the change and the snapshots still passed, which is the
+standing evidence that a formatter cannot move an emitted byte. README's row and `--status` figure re-derived,
+all seven rows cross-checked against the census.
+
+The other five arithmetic rules are now one `OPERATOR_KINDS` row each — Addition also reads `->getArrays()` —
+and `DisallowedLooseComparisonRule` wants `Equal` and `NotEqual` from the same table.

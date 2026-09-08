@@ -298,19 +298,16 @@ final class EmittedRuleFiresTest extends TestCase
         // — by emitting, once a record folded across a loop became locals rather than expressions. Their
         // pairs had been running nothing until then, which is what this check exists to say out loud.
         //
-        // What is left was written before the rule that would use it, and what it is waiting for has moved
-        // twice. Not the operand-binding shape, which dissolved — a `Binary` and an `Assignment` hold their
-        // operands in the same two positions. Not the operand *type* either, which was mago reporting a
-        // compound assignment's right-hand operand as the value the assignment produces: fixed upstream in
-        // 1.47.6, which is why this package requires it.
+        // `OperandsInArithmeticDivisionRule` was the last entry and it left the same way the two above did,
+        // by emitting. The three blockers this comment tracked are all closed: the operand-binding shape
+        // dissolved (a `Binary` and an `Assignment` hold their operands in the same two positions), mago's
+        // reporting of a compound assignment's right-hand operand was fixed upstream in 1.47.6, and the
+        // dispatch itself is now translated — `Translator::translatesAnOperatorDispatch()` proves the arms
+        // bind the same descriptors and then emits one operator guard with the bindings once.
         //
-        // What blocks it now is the dispatch itself — `if ($node instanceof BinaryOpDiv) { .. } elseif
-        // ($node instanceof AssignOpDiv) { .. } else { return []; }`, which needs a plugin registering two
-        // kinds and binding the same two positions in each arm. That is a translator change rather than a
-        // vocabulary row, and until it lands this pair has nothing to run.
-        $expected = [
-            'OperandsInArithmeticDivisionRule',
-        ];
+        // The list is empty, which is the state to keep it in: an example pair with no emitting rule is a
+        // pair running nothing, and this check exists to say so out loud rather than let it pass as green.
+        $expected = [];
         sort($orphaned);
 
         $this->assertSame(

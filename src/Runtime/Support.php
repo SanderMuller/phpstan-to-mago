@@ -590,6 +590,12 @@ final class Support
         return Operators::binaryOperatorIs($context, $subject, $operator);
     }
 
+    /** {@see Operators::assignmentOperatorIs()} */
+    public static function assignmentOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
+    {
+        return Operators::assignmentOperatorIs($context, $subject, $operator);
+    }
+
     /** Whether a method body calls `parent::<method>()` as one of its own statements. {@see Statements::callsParentMethod} */
     public static function callsParentMethod(
         NodeAnalysisContext $context,

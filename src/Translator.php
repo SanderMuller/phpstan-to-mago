@@ -66,6 +66,7 @@ use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Continue_;
 use PhpParser\Node\Stmt\Else_;
+use PhpParser\Node\Stmt\ElseIf_;
 use PhpParser\Node\Stmt\Enum_;
 use PhpParser\Node\Stmt\Expression;
 use PhpParser\Node\Stmt\Finally_;
@@ -4196,6 +4197,10 @@ final readonly class Translator
             return;
         }
 
+        if ($this->translatesAnOperatorDispatch($stmt)) {
+            return;
+        }
+
         if ($stmt->elseifs !== [] || count($stmt->stmts) !== 1
             || ($stmt->else instanceof Else_ && ! $this->isFlagAssignment($stmt->stmts[0]))
         ) {
@@ -4806,6 +4811,172 @@ final readonly class Translator
     }
 
     /** A branch whose body is a guard chain ending in a built rule error, which is a check. */
+    /**
+     * `if ($node instanceof BinaryOpDiv) { $l = $node->left; $r = $node->right; }
+     * elseif ($node instanceof AssignOpDiv) { $l = $node->var; $r = $node->expr; }
+     * else { return []; }`
+     *
+     * The six arithmetic rules in `phpstan-strict-rules` open with this, and it reads as a branch that
+     * *binds* — which no other `if` shape here does, since every one of them guards or reports. It is not.
+     * `internal/probe-binary-operands.php` shows `Binary` and `Assignment` carrying identical children in
+     * identical order, so `->left`/`->var` and `->right`/`->expr` are one navigation apiece and both arms
+     * bind the same two things. What is left is a guard: the rule acts on these operators and declines
+     * everything else, which is what the `else` says.
+     *
+     * **The identity is proved per rule, not assumed.** Each arm is translated with its own Mago kind in
+     * scope, so `->left` resolves through `REFINEMENTS['Binary']` and `->var` through
+     * `REFINEMENTS['Assignment']`, and the resulting descriptors are compared. Where they differ this
+     * refuses and the rule keeps its old refusal, because collapsing arms that bind different things would
+     * emit a rule that reads one operand and reports about the other — a plugin that loads and is wrong.
+     */
+    private function translatesAnOperatorDispatch(If_ $stmt): bool
+    {
+        $arms = $this->operatorDispatchArms($stmt);
+        if ($arms === null) {
+            return false;
+        }
+
+        $bindings = null;
+        foreach ($arms as [$kind, $statements]) {
+            $resolved = $this->dispatchArmBindings($kind, $statements);
+            if ($resolved === null) {
+                return false;
+            }
+
+            if ($bindings !== null && $resolved !== $bindings) {
+                return false;
+            }
+
+            $bindings = $resolved;
+        }
+
+        if ($bindings === null || $bindings === []) {
+            return false;
+        }
+
+        $tests = [];
+        foreach ($arms as [, , $condition]) {
+            $tests[] = $this->stripOuterParentheses($this->translateCondition($condition));
+        }
+
+        $this->context->lines[] = new Stm('guard', [
+            'condition' => '!(' . implode(' || ', $tests) . ')',
+            'exit' => $this->context->backend->bail(),
+        ], $this->context->indent);
+
+        // Arm one, with its kind in scope. Every arm was proved to bind the same descriptors above, so which
+        // one is emitted cannot matter — and emitting through the ordinary statement path keeps the locals
+        // registered the way every later read of them expects.
+        [$kind, $statements] = $arms[0];
+        $outer = $this->context->nodeKind;
+        $this->context->nodeKind = $kind;
+
+        try {
+            foreach ($statements as $statement) {
+                $this->translateStatement($statement);
+            }
+        } finally {
+            $this->context->nodeKind = $outer;
+        }
+
+        return true;
+    }
+
+    /**
+     * The dispatch's arms as `[mago kind, statements, condition]`, or null when this is not that shape.
+     *
+     * Requires the `else` to decline outright. An `else` doing anything else means the rule has a path this
+     * would drop, and an arm testing anything but an operator class on the hook node is a different shape.
+     *
+     * @return list<array{string, list<Stmt>, Expr}>|null
+     */
+    private function operatorDispatchArms(If_ $stmt): ?array
+    {
+        if (! $stmt->else instanceof Else_ || count($stmt->else->stmts) !== 1) {
+            return null;
+        }
+
+        $decline = $stmt->else->stmts[0];
+        if (! $decline instanceof Return_ || ! $decline->expr instanceof Array_ || $decline->expr->items !== []) {
+            return null;
+        }
+
+        $arms = [];
+        // `array_values`, because `Stmt::$stmts` is an `array` and the arms are compared as lists: PHPStan
+        // reads a non-empty-array where the shape declares a list, and a re-keyed body would compare unequal
+        // to an identical one written elsewhere.
+        foreach ([[$stmt->cond, array_values($stmt->stmts)], ...array_map(
+            static fn (ElseIf_ $arm): array => [$arm->cond, array_values($arm->stmts)],
+            $stmt->elseifs,
+        )] as [$condition, $statements]) {
+            $kind = $this->operatorArmKind($condition);
+            if ($kind === null || $statements === []) {
+                return null;
+            }
+
+            $arms[] = [$kind, $statements, $condition];
+        }
+
+        return count($arms) < 2 ? null : $arms;
+    }
+
+    /** The Mago kind an arm's `instanceof` narrows the hook node to, or null when it is not one. */
+    private function operatorArmKind(Expr $condition): ?string
+    {
+        if (! $condition instanceof Instanceof_ || ! $condition->class instanceof Name) {
+            return null;
+        }
+
+        if (! $condition->expr instanceof Variable || $condition->expr->name !== 'node') {
+            return null;
+        }
+
+        $wanted = $this->resolveClassName($condition->class);
+
+        return Vocabulary::OPERATOR_KINDS[$wanted][2] ?? null;
+    }
+
+    /**
+     * What one arm binds, as `local name => emitted expression`, or null when it binds anything else.
+     *
+     * Resolved with the arm's kind in scope and *without* emitting, so the comparison in
+     * {@see translatesAnOperatorDispatch()} happens before any line is written.
+     *
+     * @param list<Stmt> $statements
+     *
+     * @return array<string, string>|null
+     */
+    private function dispatchArmBindings(string $kind, array $statements): ?array
+    {
+        $outer = $this->context->nodeKind;
+        $this->context->nodeKind = $kind;
+
+        try {
+            $bindings = [];
+            foreach ($statements as $statement) {
+                if (! $statement instanceof Expression
+                    || ! $statement->expr instanceof Assign
+                    || ! $statement->expr->var instanceof Variable
+                    || ! is_string($statement->expr->var->name)
+                ) {
+                    return null;
+                }
+
+                $bindings[$statement->expr->var->name] = $this->operand(
+                    $this->resolve($statement->expr->expr, $statement->getStartLine()),
+                );
+            }
+
+            return $bindings;
+        } catch (Refusal) {
+            // A navigation this arm cannot express is not a reason to fail the rule here: returning null
+            // hands it back to the ordinary path, which refuses with the message that names the real cause.
+            return null;
+        } finally {
+            $this->context->nodeKind = $outer;
+        }
+    }
+
     public function isBranchCheck(If_ $statement): bool
     {
         if ($statement->elseifs !== [] || $statement->else instanceof Else_) {
@@ -9698,6 +9869,20 @@ final readonly class Translator
             }
 
             return count($tests) === 1 ? $tests[0] : '(' . implode(' || ', $tests) . ')';
+        }
+
+        // `$node instanceof BinaryOp\Div` and `$node instanceof AssignOp\Div` — php-parser gives every
+        // operator its own class, and Mago keeps the operator as a child of one kind. So the test is the
+        // operator's own text, and that alone: the helper matches a child of a named `NodeKind`, so the
+        // `Binary` reader answers false for an `Assignment` and vice versa. {@see Vocabulary::OPERATOR_KINDS}
+        if ($subject['kind'] === 'hook-node' && isset(Vocabulary::OPERATOR_KINDS[$wanted])) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('an operator test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            [$helper, $operator] = Vocabulary::OPERATOR_KINDS[$wanted];
+
+            return $this->context->backend->call($helper, ['$context', '$node', $this->context->backend->bytes($operator)]);
         }
 
         if ($wanted === Class_::class && $subject['kind'] === 'hook-node') {

@@ -45,6 +45,20 @@ final class Operators
         return self::operatorIs($context, $subject, NodeKind::BinaryOperator, $operator);
     }
 
+    /**
+     * Whether a compound assignment's operator is the one written — `/=` rather than `/`.
+     *
+     * The fourth sibling, and it earns its place the same way the other three do: an `Assignment` keeps its
+     * operator in an `AssignmentOperator` child, so this answers false for a `Binary` and `binaryOperatorIs()`
+     * answers false for an `Assignment`. That is what lets the six arithmetic rules gate on the operator alone
+     * with no node-kind test beside it — php-parser splits `$a / $b` and `$a /= $b` into `BinaryOp\Div` and
+     * `AssignOp\Div`, and here they are two kinds distinguished by which operator child they carry.
+     */
+    public static function assignmentOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
+    {
+        return self::operatorIs($context, $subject, NodeKind::AssignmentOperator, $operator);
+    }
+
     /** The first operator child of the given kind, compared as text. */
     private static function operatorIs(
         NodeAnalysisContext $context,

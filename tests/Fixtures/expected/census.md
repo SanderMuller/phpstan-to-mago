@@ -402,7 +402,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 25 of 45 portable rules the package registers emit, 0 covered by the engine, 20 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 26 of 45 portable rules the package registers emit, 0 covered by the engine, 19 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
@@ -488,12 +488,7 @@ REFUSE  OperandsInArithmeticAdditionRule
         needs: no PHP navigation for node.expr (kind expr) on a Expr node
         needs: access path outside the vocabulary: ->getArrays()
         needs: a second identifier before the first was reported
-REFUSE  OperandsInArithmeticDivisionRule
-        if statement that is not a single-statement guard, but a chain of 1 elseif and an else
-        needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else
-        needs: no PHP navigation for node.var (kind expr) on a Expr node
-        needs: no PHP navigation for node.expr (kind expr) on a Expr node
-        needs: a second identifier before the first was reported
+EMIT    OperandsInArithmeticDivisionRule
 REFUSE  OperandsInArithmeticExponentiationRule
         if statement that is not a single-statement guard, but a chain of 1 elseif and an else
         needs: if statement that is not a single-statement guard, but a chain of 1 elseif and an else

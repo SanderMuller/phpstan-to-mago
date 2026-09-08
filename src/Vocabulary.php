@@ -11,7 +11,9 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\AssignOp\Div as AssignOpDiv;
 use PhpParser\Node\Expr\BinaryOp\Concat;
+use PhpParser\Node\Expr\BinaryOp\Div as BinaryOpDiv;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
@@ -1103,6 +1105,10 @@ final class Vocabulary
      * @var array<class-string, list<string>>
      */
     public const array HOOK_KINDS = [
+        // `Assignment` is here for the compound operators — `$a /= 2` is an `AssignOp\Div` to php-parser and
+        // an `Assignment` here, and the six arithmetic rules read both spellings in one dispatch. It was added
+        // once before and reverted for buying nothing while three rules declined it; it earns its place now
+        // that a rule reads it, which is the bar this row's other entries were added under.
         // `Binary` is every operator PHPStan spells as a `BinaryOp` subclass plus `instanceof`, which has no
         // kind of its own here — so one entry registers what php-parser splits over two dozen classes, and
         // the rule's own `instanceof` guard declines the operators it does not read, the way every other
@@ -1110,7 +1116,7 @@ final class Vocabulary
         // that emit on this hook and nothing else: both open each branch with an explicit kind test, so a
         // `Binary` node reaches neither report. Checked, because a target a guard fails to decline is a
         // finding the original does not make.
-        Expr::class => ['ClassConstantAccess', 'StaticPropertyAccess', 'MethodCall', 'StaticMethodCall', 'FunctionCall', 'PropertyAccess', 'Binary'],
+        Expr::class => ['ClassConstantAccess', 'StaticPropertyAccess', 'MethodCall', 'StaticMethodCall', 'FunctionCall', 'PropertyAccess', 'Binary', 'Assignment'],
         // The three call kinds share their children exactly — `Expression`, `ClassLikeMemberSelector`,
         // `ArgumentList`, in that order, probed on all of them — which is why one body reads all three
         // without rebinding. A first-class callable is a *different* kind (`MethodPartialApplication`), so a
@@ -1136,6 +1142,33 @@ final class Vocabulary
         // The written variable and the two computed ones. A rule asking `is_string($node->name)` is asking
         // which of these fired, so all three have to arrive or the question has one answer.
         Variable::class => ['DirectVariable', 'IndirectVariable', 'NestedVariable'],
+    ];
+
+    /**
+     * php-parser's operator classes, which Mago spells as one node kind carrying the operator's own text.
+     *
+     * Separate from {@see EXPRESSION_KINDS} because that maps a class to a single kind and these need a kind
+     * *and* a token: `BinaryOp\Div` and `AssignOp\Div` are two classes, and in Mago they are a `Binary` and
+     * an `Assignment` told apart by the operator child each carries. Separate from {@see NODE_PREDICATES}
+     * for the same reason — its values are one predicate name per class, with nowhere to put the token.
+     *
+     * The emitted test is the operator alone, with no node-kind test beside it, and that is exact rather than
+     * a shortcut: {@see Runtime\Operators::operatorIs()} matches a child of a named `NodeKind` and compares
+     * its text, so `binaryOperatorIs()` is false for an `Assignment` (it has no `BinaryOperator` child) and
+     * `assignmentOperatorIs()` is false for a `Binary`. One call decides both the kind and the token.
+     *
+     * Division only, for now. The other five arithmetic operators are one row each of the same shape and
+     * `DisallowedLooseComparisonRule` wants `Equal` and `NotEqual`, but a row nothing reads is vocabulary this
+     * repository reverts — see the reverted `Expr` widening in `VERIFICATION.md`.
+     *
+     * The third element is the Mago kind the arm narrows the hook node to, so a dispatch arm can be
+     * translated with that kind in scope and `->left` or `->var` resolves through {@see REFINEMENTS}.
+     *
+     * @var array<string, array{string, string, string}>
+     */
+    public const array OPERATOR_KINDS = [
+        BinaryOpDiv::class => ['binary_operator_is', '/', 'Binary'],
+        AssignOpDiv::class => ['assignment_operator_is', '/=', 'Assignment'],
     ];
 
     public const array EXPRESSION_KINDS = [

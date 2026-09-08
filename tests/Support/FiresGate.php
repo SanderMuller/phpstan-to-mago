@@ -200,6 +200,11 @@ final readonly class FiresGate
         'BooleanInTernaryOperatorRule' => ['checkThisOnly' => false],
         // The same flag for the arithmetic family, and for the same reason: `checkThisOnly` silences every
         // subject that is not `$this` at this gate's level, so both sides would agree on zero.
+        // The six binary arithmetic rules follow the same flag as their unary siblings, and for the same
+        // reason: at the level-0 default `checkThisOnly` silences every subject that is not `$this`, so both
+        // tools would agree on zero. Measured — with the flag off and nothing else changed, `bool / 2` and
+        // `bool /= 2` both report, so one flag reaches both arms of the rule's operator dispatch.
+        'OperandsInArithmeticDivisionRule' => ['checkThisOnly' => false],
         'OperandInArithmeticUnaryPlusRule' => ['checkThisOnly' => false],
         'OperandInArithmeticUnaryMinusRule' => ['checkThisOnly' => false],
         'OperandInArithmeticPreIncrementRule' => ['checkThisOnly' => false],
