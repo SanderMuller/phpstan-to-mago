@@ -14432,3 +14432,49 @@ census.
 **The countermeasure this argues for is the one already in this log**: after editing a document for any
 reason, re-derive its figures from their sources, one command per figure. A dependency change is "any
 reason", and it reached three numbers in two files that nothing would have flagged.
+
+### The first-match fold was never the blocker, and building it would have moved zero rules
+
+I named the fold the leading remaining route for several turns, on the strength of "six rules share it,
+verified as one shape at source". The shape claim was true. The *blocking* claim was never checked, and it is
+false. Resolving all six mechanically:
+
+| rule | first obstacle |
+|:--|:--|
+| `NoTestMocksRule` | `Expr_New` (line 82) — and an unwireable `$allowedTypes` behind it |
+| `ClassNameRespectsParentSuffixRule` | the helper builds the findings, not a verdict |
+| `ForbiddenFuncCallRule` | `$forbiddenFunctions`, a constructor parameter no shipped neon wires |
+| `ForbiddenNodeRule` | `PhpParser\Node` narrowed to several kinds by `instanceof` |
+| `PreferredClassRule` | the same, over five kinds |
+| `RectorCheaperGuardsFirstRule` | `foreach` with a key (line 166) |
+
+Six rules, six different obstacles, and the fold is not one of them. Every rule reaches its fold only *after*
+the blocker above, so the fold's marginal value is **zero rules** until each of those is cleared separately.
+
+**This is `needs-at-least:` read as `needs:`** — the exact misreading the census header warns about, made by
+whoever wrote the warning. The six do share the fold; I ranked a *later* need as though it were the gate. A
+shared shape is evidence about what a capability would be used for, never evidence that building it moves
+anything.
+
+**Superseded, marked rather than deleted:** the phrase "verified as one shape at source, the first
+non-syntactic cluster" holds for the first half only. Reading the source told me the six folds are alike, and
+reading the source is what cannot answer the question I was using it for — the blocker is the transpiler's
+first refusal, which only a run reports.
+
+#### What the attempt did establish
+
+A whole-helper recogniser for `resolveMockedObjectType()` — the pattern `lastNameSegmentHelper()` sets — plus
+an `object-type` null-test arm cleared two of `NoTestMocksRule`'s guards and moved its refusal from
+`Expr_New` to `$allowedTypes`. So the fourth attempt on that rule did work, and revealed that the rule is
+blocked **correct-forever**: `private array $allowedTypes = []` is wired by no neon the package ships, and
+reading the declared default is the approximation `takeDeclaredDefault()` was reverted for.
+
+Both folds are **reverted**: an emit-all across 191 corpus rules is 145 php / 34 analyzer / 25 linter both
+with and without them, so they are unexercised vocabulary and go out under the same condition as the nine
+before them. The finding is worth more than the code was.
+
+#### The lead this leaves
+
+`ForbiddenNodeRule` and `PreferredClassRule` refuse on the *same* blocker — a `PhpParser\Node` hook narrowed
+to several kinds by `instanceof`. That is a genuine two-rule cluster and the first one measured as blocking
+rather than merely shared.
