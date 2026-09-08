@@ -15053,3 +15053,64 @@ Its `requiredSeeTypes` has no default and no auto-included neon supplies it, so 
 default configuration — the same correct-forever shape as the eight already counted. Beyond that it needs
 `PhpDocResolver::resolve()` for `getDeprecatedTag()` and a `@see` tag finder, so it sits behind the resolved-
 phpdoc gap that blocks `NoJustPropertyAssignRule` as well. Two independent blockers; neither is close.
+
+### The refusal pool, read to the bottom: no rule is within one capability of emitting
+
+Nine turns of ranking never answered "which capability unlocks the most", because every ranking used the
+*first* obstacle. This is the same question answered from complete needs lists, which is only possible now
+that every rule has been read.
+
+#### The correct-forever count is 13, not 8
+
+The earlier partition tested "does any neon name this rule". The right test is the transpiler's own:
+`PackageConfiguration::argumentsFor()`, which reads only the neons a package **auto-includes** — the
+configuration a consumer gets without opting in. Re-run against every refused rule, a rule with a
+config-shaped constructor parameter that has no default and no auto-included wiring cannot be constructed at
+all:
+
+    ForbiddenNewArgumentRule            ParamNameToTypeConventionRule       ForbiddenFuncCallRule
+    ForbiddenNodeRule                   PreferredClassRule                  SeeAnnotationToTestRule
+    PositionalFlagArgumentMethodCallRule PositionalFlagArgumentStaticCallRule WriteNamedArgumentManifestRule
+    NoUnsafeRequestDataRule             NoUnsafeRequestFacadeRule           NoUnsafeRequestHelperRule
+    UnvalidatedFormRequestFieldRule
+
+`PreferredClassRule` and `ForbiddenNodeRule` move into this set, which retires the "multi-kind `instanceof`"
+cluster I spent two turns on: both members are unconstructable, so the capability their refusals name would
+move neither.
+
+#### The 19 that remain, grouped by what they actually need
+
+| what it needs | rules |
+|:--|:--|
+| an injected collaborator inlined | 9 — and every collaborator read so far bottoms out deeper still |
+| statement-order dataflow inside a method | `RectorCheaperGuardsFirstRule`, `NoIntegerRefactorReturnRule` |
+| resolved phpdoc keyed by variable | `NoJustPropertyAssignRule` |
+| disk reads at analysis time | `PhpUpgradeDowngradeRegisteredInSetRule`, `ServicesExcludedDirectoryMustExistRule` |
+| a collector aggregate | `NewOverSettersRule` |
+| PHPStan reflection selectors | `ClassDependencyTreeRule` |
+| a config map with a keyed walk | `SlowMigrationDdlRule` |
+| upstream mago | `NoMissingVariableDimFetchRule` |
+| a policy decision that is the user's | `NoTestMocksRule` |
+| nothing — an artefact of my own test corpus | `UppercaseConstantRule` |
+
+The nine-rule collaborator cluster looked like the answer and is not. `RepositoryClassResolver` is 71 lines
+that end in `FileSystem::read()` and a regex; `ClassConstructorTypesResolver` walks
+`getConstructor()->getOnlyVariant()->getParameters()`; `SymfonyClosureDetector` and a `NodeFinder` subtree
+search sit behind four more. **Inlining the collaborator is necessary for all nine and sufficient for none** —
+the same necessary-but-not-sufficient shape this log already records for cross-class resolution, which was
+implemented and moved the count by zero.
+
+#### The conclusion, stated as narrowly as it was measured
+
+**No rule in this corpus is one capability away from emitting.** That is a claim about the 32 refusals in the
+four corpus packages plus my fixtures, on the php target, read individually — not a claim about PHPStan rules
+in general, and not a claim that the remaining capabilities are not worth building.
+
+What it does mean is that the cheap end is finished. `ClassNameRespectsParentSuffixRule` was the last rule
+whose whole body was shallow, and it cost ~400 lines of transpiler to port ~20 lines of PHP. Every remaining
+rule needs one of the deep capabilities above, and each of those is a project rather than a step.
+
+The honest options from here are all larger than a turn: build one deep capability and accept it moves one or
+two rules; take the corpus question to the user, since a different rule package is a dependency decision and
+larastan already taught us a proxy does not predict emission; or stop adding rules and spend the effort on
+what the peer argued for — depth on what already emits, where the fires gate found real bugs.
