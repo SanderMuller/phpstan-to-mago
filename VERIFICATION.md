@@ -15611,3 +15611,52 @@ twenty lines are recorded here precisely enough to rewrite in an hour if a secon
 What I would not now say: that `ServicesExcludedDirectoryMustExistRule` is two capabilities away. I have
 measured the second obstacle and nothing beyond it, and that is exactly the `needs-at-least` trap this log
 opens with. It is at least two.
+
+### Three obstacles, one root, and the count was never inspectable
+
+`phpstan-src-e7` pushed back on both halves of the previous entry: that the composition graph *is* derivable
+because my transpiler is a closed artefact, and that building reveals only the **next** obstacle rather than
+the remaining count. Both are right, and testing the first produced the second.
+
+**Their first point is confirmed.** The graph is largely tabulated — 17 named tables in `Vocabulary`, 98
+distinct kind strings, 74 `(base → member → kind)` edges. The obstacles that followed were table rows, not
+capabilities:
+
+| obstacle | what it actually was |
+|:--|:--|
+| 1. `find()` with a closure filter | an accumulator: `declare-list`/`append` instead of `declare-null`/`assign`/`break`, ~20 lines |
+| 2. `instanceof Concat` | a missing `NODE_PREDICATES` row; mago has no `Concat` kind, so the predicate asks `binaryOperatorIs(…, '.')` |
+| 3. `->left` on a `bytes` | no `value` edge for the kind the array item arrives as |
+
+I built 1 and 2. The rule still does not emit.
+
+**Obstacles 2 and 3 share one root, and it is a design tension rather than a missing row.** `array-items`
+iterates to a generic `expr`, and only two `'value'` edges exist — on `const-item` and on `argument`. There is
+none for an array item, so `->value` falls through to a path yielding `bytes`. It is unmapped *because the
+member name is ambiguous*: `->value` on a `String_` is the string, on an `ArrayItem` it is a sub-expression,
+and a generic `expr` descriptor cannot tell them apart. The honest fix is for `array-items` to iterate to an
+`array-item` kind carrying its own `value` edge — a vocabulary change touching what 2 emitted plugins already
+iterate, so it is byte-affecting and cannot be validated cheaply.
+
+**Their second point is the one that changes what to do.** A build reveals the next obstacle, never the
+remaining count. I said "at least two" after obstacle 2 and it was three; I would have been wrong again saying
+"three". Answering *how many rules are one capability away* would need each candidate carried to completion,
+and completion is exactly the unbounded quantity. So the question is not expensive — **it is unanswerable
+short of finishing each port, and an unanswerable question should be abandoned rather than budgeted for.**
+
+Which forces the selection criterion to change. If closeness is unmeasurable, selecting by closeness is
+impossible, and selection has to run on something observable: the value of a rule, or the cost of its **next**
+obstacle — the one thing a single build does report reliably. This rule's next obstacle is now known and
+priced, which is worth more than the emit it did not produce.
+
+**All three changes reverted**, from copies taken first; `git diff` against HEAD is empty. Recorded precisely
+enough to rebuild: obstacle 1 is twenty lines in `searchFilteredByAClosure()`, obstacle 2 is one
+`NODE_PREDICATES` row plus `isConcatenation()` delegating to `binaryOperatorIs(…, '.')` and registration in
+`CONTEXT_PREDICATES` and `PHP_ONLY_PREDICATES`.
+
+**The sharpest thing in their message is about why every cheap method failed.** All three measured the rule
+side because the rule side is the side with a stable public artefact — refusal texts, rule bodies, capability
+names, all readable and all on one side of the interaction. **The transpiler has no artefact describing its
+own composition behaviour**, so every cheap method drifted to the side that did. That is an argument for
+building the missing artefact, not for abandoning cheap methods — and the 17 tables say most of it is already
+written down, just never assembled into one.
