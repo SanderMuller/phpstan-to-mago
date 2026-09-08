@@ -14405,3 +14405,30 @@ removing it is `composer remove --dev larastan/larastan` plus dropping the ignor
 the six-rule idiom above is a genuine cluster and the arm that serves it is recorded here ready to re-apply —
 but that is a judgement the user should overrule freely, since the reason it was added turned out not to be
 true.
+
+### The dependency made three test-enforced figures stale, and the tests did not notice
+
+Adding larastan broke claims in the census header, which is asserted line by line by
+`TracksUpstreamDriftTest`. Re-derived rather than re-read:
+
+| claim | was | is |
+|:--|--:|--:|
+| `--status` portable rules | 209 | **236** |
+| rule lines in this file | 190 | **192** |
+| other packages beyond the corpus | two | **three** |
+
+**The suite passed with all three wrong**, which is the mechanism worth naming. The header is asserted as
+literal strings, so a test compares the generated file against the expected file and both carry the same stale
+number — the assertion pins the text against drift in the *generator*, and cannot see the text drifting away
+from the *world*. A figure inside a test-enforced artefact is only as fresh as whoever last re-derived it.
+
+The `190` was already stale before this session touched anything: the census has held 192 rule lines for some
+time. So of the three, one was mine and two were waiting.
+
+Fixed in the header and in the README, which quoted the same `--status` figure and named the two packages in
+that denominator — now three, with larastan's `(26)`. All seven README rows re-cross-checked against the
+census.
+
+**The countermeasure this argues for is the one already in this log**: after editing a document for any
+reason, re-derive its figures from their sources, one command per figure. A dependency change is "any
+reason", and it reached three numbers in two files that nothing would have flagged.

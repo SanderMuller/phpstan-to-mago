@@ -133,8 +133,9 @@ Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and r
 | `phpstan/phpstan-phpunit` | 13 | 5 | 8 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 2 | 0 | 0 |
 
-`--status` counts 121 of 210 here and writes a page under `--out`; `spaze/phpstan-disallowed-calls` (38) and
-`composer/pcre` (2) are in that denominator and emit nothing. Run it on your own project.
+`--status` counts 121 of 236 here and writes a page under `--out`; `spaze/phpstan-disallowed-calls` (38),
+`composer/pcre` (2) and `larastan/larastan` (26) are in that denominator and emit nothing. Run it on your
+own project.
 
 <details>
 <summary>What the vocabulary covers</summary>
