@@ -15347,3 +15347,43 @@ their four instrument failures, only two reached me as wrong claims — the othe
 re-ran, which is the instrument working rather than failing. They also marked their two-shipped figure as a
 **lower bound**, since they had not applied the widened rule retrospectively to everything sent this week.
 Both corrections make their number smaller and less flattering to the point they were making.
+
+### Three corrections to my own capability table, from reading the cells I had generalised over
+
+The table two entries above groups the 19 open rules by what they need. Its conclusion survives; two of the
+reasons under it were wrong, and I found them by reading cells I had asserted without opening.
+
+**1. `NodeFinder` is supported, and I listed it as a blocker.** Counted rather than assumed: **10 of the
+emitting rules use `NodeFinder`** — `ForeachCeptionRule`, `NoConstructorOverrideRule`,
+`TaggedIteratorOverRepeatedServiceCallRule` and seven more. So "a `NodeFinder` subtree search" was never what
+stopped `PreferAutowireAttributeOverConfigParamRule`. What refuses is a narrower thing: a `find()` **closure
+filter**, which is a different construct that happens to sit near one.
+
+**2. "Every collaborator read so far bottoms out deeper still" generalised two cells to nine.** The phrasing
+was honest about its evidence and the sentence built on it — *necessary for all nine and sufficient for none*
+— was not, because sufficiency was asserted for seven collaborators I had never opened. The counterexample is
+the first one I read afterwards: `SymfonyClosureDetector::detect()` is **27 lines**, a static method that
+counts one closure parameter, checks its type is a `Name`, and compares it to a constant. Nothing deep, and
+static-call inlining already exists here. It sits behind four of the nine.
+
+This is *the generalisation to an unmeasured cell*, which this log records twice already, and the tell was
+present in my own wording: "read so far" is a scope, and I put a conclusion on top of it that had none.
+
+**3. The conclusion still holds, for better-checked reasons.** All four detector rules have further needs —
+a `find()` closure filter, a `Stmt_Expression` shape, `file_exists`, and for the one I read in full an
+`array_any` with a closure predicate calling a helper that runs its own `NodeFinder`. So no rule among them is
+one capability away, which is what I claimed. I reached a right answer through two wrong steps, and only the
+answer was checked.
+
+#### A refusal message that names the wrong construct
+
+`PreferAutowireAttributeOverConfigParamRule` refuses with *"not a resolvable list of strings (line 109)"*.
+Line 109 is:
+
+    return array_any($methodCall->getArgs(), fn (Arg $arg): bool => $this->isParamFuncOrString($arg->value));
+
+There is no list of strings there. The message names the vocabulary path the construct fell through — a list
+resolver that `getArgs()` reached and failed — rather than the construct itself, which is an `array_any` with
+a closure predicate. Harmless to the emit and actively misleading to anyone ranking work off refusal text,
+which is the whole population of readers this file has. Recorded rather than fixed; fixing it changes a census
+line and belongs with a decision about whether refusal messages should name constructs or paths.
