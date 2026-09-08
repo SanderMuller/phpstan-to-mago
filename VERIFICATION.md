@@ -14154,3 +14154,58 @@ Not started, and that is a judgement rather than a blocker: three pieces at the 
 the previous six reverts began, and this candidate is now characterised well enough that starting it fresh
 costs nothing. The machinery to extend is named, the collapse is the one already proven twice, and the family
 has nine emitters vouching for the shape.
+
+## `NoTestMocksRule` emitted, and the plugin was wrong — reverted
+
+Six blockers cleared in sequence and the rule emitted. The emitted plugin was **wrong**, the fires gate caught
+it, and the whole attempt is out. This is the clearest instance in this log of *"it emitted" is not a result*,
+and it is worth recording in full because everything up to the last step looked right.
+
+### The six, each small and each real
+
+1. `return new ObjectType(<name>)` read as a value — `objectTypeName()` already read the inline form and
+   `bindConstructedObjectType()` the assignment form, so this was the third spelling.
+2. `instanceof ObjectType` on that descriptor — the construction is conditional in every rule that writes
+   one, so the test is whether there was a name to construct from.
+3. **`takeDeclaredDefault()`** — a parameter the neon does not wire still has a value when the constructor
+   declares one, and that is what PHPStan uses for a consumer registering the rule with no arguments.
+   `array $allowedTypes = []` is the case.
+4. `->getClassName()` on a constructed type — the identity, beside the `getValue()` arm that already does the
+   same for a constant string.
+5. `isInstanceOf()` on a constructed type against a runtime name — both sides are names, so ancestry.
+6. `Reflect::namedClassIsInstanceOf()` — the **inclusive** sibling of `namedClassIsSubclassOf()`, because
+   PHPStan's `isInstanceOf` counts the class itself and `isSubclassOf` does not. Two helpers rather than one
+   with a flag, for the reason the docblock states.
+
+I also caught and fixed a defect of my own along the way: the emitted `@param` docblock said
+`PHPStan's %allowedTypes%` for a value that came from the constructor. That line is **read by
+`tests/Support/ConsumerParameters`** to map a plugin's arguments back to PHPStan parameters for differential
+runs, so naming a parameter nobody declares would send that lookup after nothing. Declared defaults now get
+`the rule's own constructor default`, which its regex deliberately does not match.
+
+### What was wrong, and why nothing before the gate could see it
+
+    foreach (Support::constantStringsOf(Support::expressionType($context, $arg_value)) as $constant_string_type) {
+    }
+
+    if (!($constant_string_type !== null)) {
+
+**The loop body is empty.** The rule's `return new ObjectType(..)` sits *inside* the `getConstantStrings()`
+walk, and my change made that return resolve to a descriptor without emitting a statement — so the loop binds
+a variable, does nothing, and the code after it relies on PHP leaving the loop variable set. On a file where
+the loop never runs, that reads an **undefined variable**, and the test then falls the wrong way.
+
+Every check before the gate passed: it parsed, `php -l` was clean, no Rust leaked, every `Support::` helper
+existed, and the census recorded an EMIT. The plugin reported nothing on its bad example, which is the one
+thing only running it can show.
+
+### The real gap, named
+
+A `return` inside a loop that produces the helper's value is a **fold**, not a statement: it means "take the
+first item the loop reaches and stop". The vocabulary has no such shape, and my change made the return
+resolve as though the loop were not there. Building it means the loop and the return together — the loop
+becomes the search and the return its result — which is a different piece from the six above and the one this
+rule actually needs.
+
+Reverted rather than patched, because a half-built fold is how a plugin that loads and misbehaves ships. That
+is the seventh revert in this log and the first where the reverted work had already produced an `EMIT`.
