@@ -13965,3 +13965,52 @@ The corollary for the shape that did work: `CombinedStaticCallRule` was not foun
 found by asking which rules sit in a family whose shape is already proven and which member is held back. That
 question is answerable from the emit/refuse split rather than from the needs list, and it is the one to ask
 first.
+
+## Running my own corollary, and a correction to the saturation claim
+
+The corollary said: ask which rules sit in a family whose shape is proven and which member is held back,
+answerable from the emit/refuse split rather than the needs list. Run systematically over every source
+directory:
+
+| family | emit | refuse |
+|:--|--:|--:|
+| symplify `Rules/Symfony` | 20 | 2 |
+| symplify `Rules` | 14 | 7 |
+| symplify `Rules/PHPUnit` | 9 | 1 |
+| symplify `Rules/Rector` | 8 | 3 |
+| symplify `Rules/Doctrine` | 8 | 1 |
+| strict-rules `BooleansInConditions` | 6 | 2 |
+| strict-rules `VariableVariables` | 6 | 1 |
+| symplify `Rules/Complexity` | 4 | 2 |
+
+`BooleansInConditions` looked strongest — six siblings emitting and the two refusals being `&&`/`||` operator
+variants, the shape that made the arithmetic family work. It is not: both need seven things including
+`$node->getRightScope()`, a per-operand scope on a PHPStan *virtual* node, which a plugin does not get.
+
+### The correction: one rule **is** one capability away
+
+`NoJustPropertyAssignRule` sits in a family where four emit, and its single need traces to one concrete
+capability. So *"nothing in the installed corpus is one capability from emitting"*, recorded twice above, is
+**too strong** — and it was reached by ranking needs, which the entry above establishes cannot find leverage.
+The corollary found in one pass what four rankings missed.
+
+The rule asks `$varName instanceof Expr` where `$varName = $variable->name`. php-parser types a variable's
+name as `string|Expr`, so the question is *is the name computed*. In Mago that is the variable's own node
+kind: a written `$x` is a `DirectVariable`, `$$x` and `${expr}` are `IndirectVariable` and `NestedVariable`.
+`HOOK_KINDS[Variable::class]` already registers all three and its docblock already says a rule asking
+`is_string($node->name)` is asking which of them fired — so the semantics are settled and recorded.
+
+**What stops it is provenance, not semantics.** Attempted and reverted: a branch answering `instanceof Expr`
+on a `bytes` subject by testing the base's node kind works only when the tested expression *is* the property
+fetch. Here it is a local assigned from one, so the name's descriptor has to carry the node it came from.
+The descriptor shape already has an `of` field for exactly this kind of provenance — used to carry a source
+operand for constant-string reads — so the change is to set it where a local is assigned a variable's
+`->name` and read it in the `instanceof` branch. That is the local-assignment path rather than one edit,
+which is why this is recorded rather than half-built: sixth revert in this log, same condition.
+
+### What the two entries together say
+
+Ranking the needs list cannot find leverage, because it groups by syntax. Ranking the **emit/refuse split by
+family** found the two rules that landed this window and has now found a third that is genuinely one
+capability away. That is the method to use, and the needs list is for reading a candidate once the family
+has nominated it.
