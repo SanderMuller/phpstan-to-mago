@@ -14478,3 +14478,75 @@ before them. The finding is worth more than the code was.
 `ForbiddenNodeRule` and `PreferredClassRule` refuse on the *same* blocker — a `PhpParser\Node` hook narrowed
 to several kinds by `instanceof`. That is a genuine two-rule cluster and the first one measured as blocking
 rather than merely shared.
+
+### Most of what is left to "make emit" is not a capability gap
+
+Three candidates died on one cause in a row -- `NoTestMocksRule`, `ForbiddenFuncCallRule`,
+`ParamNameToTypeConventionRule` -- so the cause is worth a number rather than another anecdote.
+
+**Configuration**: an emit-all over the four corpus packages **plus `tests/Fixtures/Rules`** (191 rules, php
+target), which is 45 refusals over 44 distinct rules. This is *not* the census population -- the census is 192
+vendor rules and excludes the fixtures.
+
+| partition | n | what it means |
+|:--|--:|:--|
+| my own refusal fixtures | 11 | designed to refuse; a pass |
+| **no consumer wiring exists** | **8** | correct-forever |
+| has config params, wiring exists | 7 | reachable |
+| no config params | 11 | reachable |
+| no constructor | 7 | reachable |
+
+So of the 33 non-fixture refusals, **8 are correct-forever**: the rule takes a required config-shaped
+constructor parameter with no default, and no neon any installed package ships names the rule at all. There is
+nothing to wire it from, so no transpiler capability makes it emit.
+
+The transpiler **independently agrees on 7 of the 8** -- it names the parameter and the missing wiring in its
+own refusal. The eighth, `ParamNameToTypeConventionRule`, refuses earlier on a missing `Param` hook; its
+configuration blocker sits behind that and was confirmed by hand, with a positive control (`PreferredClassRule`
+resolves to two neons, the candidate to none).
+
+#### An unclearable need blocks from any position; a clearable one only helps from the first
+
+This is the inverse of the fold error recorded above, and the pair is the useful part. There I ranked a
+*later* need as the gate and it moved zero rules, because clearing a capability only helps when it is the
+**first** obstacle. Configuration is the opposite: a required parameter nothing can supply blocks the rule
+**from wherever it sits in the order**, so finding it behind an earlier refusal is still decisive. Which way
+the asymmetry runs depends entirely on whether the need can be cleared at all -- so that is the question to
+ask about a need before ranking it, and it is not the question `needs-at-least:` answers.
+
+#### "Reachable: 25" is my label and it does not survive contact
+
+Naming the rest reachable overstates it. At least four of the 25 are blocked on something other than
+transpiler capability, and I found them by reading the list I had just labelled:
+
+- `NoTestMocksRule` -- `$allowedTypes = []` *has* a default, so the wiring test passes it. It is blocked on
+  this repository's deliberate refusal to read a declared default (`takeDeclaredDefault()`, reverted). A
+  policy decision, and not mine to reverse.
+- `WriteNamedArgumentManifestRule` -- writes a file and returns no findings, so there is nothing for a lint
+  rule to report. Correct-forever.
+- `NoMissingVariableDimFetchRule` -- definedness, blocked upstream in mago.
+- `UppercaseConstantRule` -- collides on output filename with a fixture of mine of the same name. An artefact
+  of running the corpus and the fixtures together; it blocks no census rule.
+
+That leaves roughly 21 genuinely capability-blocked, and "roughly" is honest: I did not audit the remaining 21
+the way I audited these four, so the same reading would probably find more.
+
+#### Answered in passing: the open question in two refusal messages
+
+Both multi-kind refusals end "Whether this body does has not been checked here." Checked:
+
+- `NoReferenceRule` -- **yes**. Seven of its eight kinds are handled by one `if ($node->byRef)`, literally the
+  same child in every branch; `AssignRef` is the eighth and needs no field, since its presence is the
+  violation.
+- `PreferredClassRule` -- **no**. Four arms read a class-name child, but the `InClassNode` arm reads the
+  parent class reflection instead.
+
+Neither emits on that alone -- both also carry an injected resolver, and `PreferredClassRule` needs a config
+map and a keyed `foreach`.
+
+#### The instrument, again
+
+The first run of this partition read **19 of 54** neons: the glob was `vendor/*/*/config/**/*.neon` and
+`hihaho/phpstan-rules` ships its neons at package root. That misfiled two rules as unconfigurable. The count
+beside the glob is what caught it -- the same check that caught the emit-all zero, which is now three times
+this instrument class has been wrong in the same direction.
