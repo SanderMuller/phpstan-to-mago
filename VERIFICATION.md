@@ -12995,3 +12995,83 @@ shipping vocabulary no test can reach.
 **The next step is the resolver, not the rule.** `hasParameter`/`defaultFor` should answer about the key they
 were asked for, and asserting that the match is a scalar assignment rather than an array element is the fix.
 That is one change with a fixture, and the four gates above then apply unchanged.
+
+## `DisallowedLooseComparisonRule` emits, and the cause I published last turn was wrong
+
+The census goes to 129 rules on the php target, `phpstan/phpstan-strict-rules` to 32 of 45, `--status` to 120
+of 210. The four gates from the reverted pass all applied unchanged, which is what that entry predicted.
+
+### Correcting the record first
+
+The previous entry says the fifth gate was `PackageConfiguration::hasParameter('featureToggles.bleedingEdge')`
+answering *true* and `defaultFor` returning a list, because the parameter's name also appears inside arrays
+elsewhere in the package's neon. **That is false, and I asserted it without tracing it.** Measured directly:
+
+    hasParameter('featureToggles.bleedingEdge')  ->  bool(false)
+    defaultFor('featureToggles.bleedingEdge')    ->  NULL
+
+The resolver is correct and always was. What I had was a real observation — the flag resolved as `config-list`
+— and an invented mechanism, published as the traced cause and as the next step. This is precisely the *wrong
+"why"* this repository forbids, in the form it warns about: reproduction steps and the fix both get built on
+the stated cause, and mine would have sent the next session into a resolver that has no defect.
+
+The plausible story was available and the trace was two `var_dump`s away.
+
+### The real cause, traced
+
+`Transpiler::traceConstructorBody()` records `$this->x = $x` as a **derived** property, because
+`isPureDerivation()` answers true for a bare variable. `Translator`'s derived-property branch then returns
+`kind => 'config-list'` for every such property, so a `bool` parameter is read as a list and the ternary
+condition refuses. Instrumenting both ends is what settled it — *set* `config-bool`, *read* `config-list`, and
+the read never reaching the configured branch at all.
+
+The fix is upstream of the kind: a constructor assigning its own parameter through derives nothing, so
+`isPassThrough()` skips it and the promoted constructor property carries the value as it already did. A first
+attempt patched the *kind* instead and left the declaration, which produced a plugin the emitter wrote the
+property into twice — promoted with the parameter's type and again as the `private readonly array` every
+derived value gets — and PHP rejected the file with "Cannot redeclare".
+
+**That broken file is worth stating precisely, because it is easy to overclaim.** It was not a pre-existing
+defect and the tool never emitted it on its own: without the kind patch the rule *refuses*. The duplicate
+declaration became reachable only once my own half-fix let the condition through. The correct summary is that
+a wrong fix produced a non-loading plugin, not that the emitter had been producing them.
+
+`php -l` on the emitted file is what caught it, and no existing check would have: the backend's operand check
+passes, the census records an EMIT, and the fires gate never ran because the rule is not one it covers yet.
+
+### What the pair pins
+
+Both loose operators, since they are the rule's two identifiers and two branches, with `===` and `!==` as the
+Good controls. Those are chosen for the mechanism again rather than for being different: **`==` is a prefix of
+`===` and `!=` of `!==`**, so replacing the exact comparison in `Operators::operatorIs()` with
+`str_starts_with()` fails exactly two of the four tests. A `<` row is there too, a kind this hook registers
+and the rule declines.
+
+The pass-through fix is load-bearing through the refusal path, confirmed with a positive control rather than a
+test count: without it the survey prints REFUSE where it now prints EMIT, and PHPUnit reports zero tests
+because the rule leaves `coveredRules` — the third time this session that a red-looking `0 failed` needed
+`--survey` to say what actually happened.
+
+### The message keeps its flag
+
+`includeOperandTypesInErrorMessage` is wired to PHPStan's `%featureToggles.bleedingEdge%`, `false` on a stock
+install — read from the phar, where `conf/config.neon` declares it and `conf/bleedingEdge.neon` sets it true.
+The emitted plugin carries the same ternary and the same flag as a constructor bool rather than resolving it
+at emit time, so a consumer on bleeding edge gets the longer message. Baking one arm in would make the other
+unreachable, which is the `emitted: 4` against `emitted: 3` mistake already in this log.
+
+### Two new complexity entries, both extracted rather than baselined
+
+`translateMessageExpression()` reached 21 and `collectConfiguration()` 22 against a limit of 20 — new entries,
+which is the thing this repository watches for. Extracted to `messageChosenByAFlag()`, `isPassThrough()` and
+`takeCoreParameter()`; the baseline holds 13 entries before and after, and the two class totals were patched
+in place.
+
+One of my own edits also produced the ninth displaced docblock in this log: adding
+`CORE_PARAMETER_DEFAULTS` directly above `OPERATOR_KINDS` left it wearing that constant's docblock and
+`@var`, which PHPStan caught only because the stolen `@var` carried a type the value did not match.
+
+Emit-all: php 179 → 180, analyzer and linter unchanged, and only the new plugin and the three registration
+files move — so the two extractions changed no emitted byte and no shipped plugin ever had the duplicate
+property. Suite 1078/1078, PHPStan 0 errors, Rector and Pint clean, README re-derived and all seven rows
+cross-checked.

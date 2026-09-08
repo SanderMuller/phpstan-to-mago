@@ -1663,7 +1663,48 @@ final readonly class Translator
             return implode(' . ', $parts);
         }
 
+        // `$this->includeOperandTypesInErrorMessage ? sprintf('.. %s ..', $a) : '..'` — a rule whose message
+        // shape is a configured choice rather than a fact about the subject. Both arms are messages and the
+        // condition is the rule's own flag, so the emitted plugin carries the same ternary and a consumer
+        // gets whichever arm their configuration selects.
+        //
+        // Not resolved at emit time against the package default: that bakes one configuration into the file
+        // and makes the other unreachable, which is the `emitted: 4` against `emitted: 3` mistake this
+        // repository already recorded once. A message belongs to its configuration as much as a count does.
+        if ($expr instanceof Ternary && $expr->if instanceof Expr) {
+            return $this->messageChosenByAFlag($expr);
+        }
+
         throw new Refusal('message expression outside the vocabulary: ' . $this->describe($expr), $expr->getStartLine());
+    }
+
+    /**
+     * A message whose shape a configured flag chooses, carried as the same ternary.
+     *
+     * `$this->includeOperandTypesInErrorMessage ? sprintf('.. %s ..', $a) : '..'` in
+     * `DisallowedLooseComparisonRule`. Both arms are messages and the condition is the rule's own flag, so
+     * the emitted plugin keeps the choice and a consumer gets whichever arm their configuration selects.
+     *
+     * Not resolved at emit time against the package default: that bakes one configuration into the file and
+     * makes the other unreachable, which is the `emitted: 4` against `emitted: 3` mistake this repository
+     * already recorded once. A message belongs to its configuration as much as a count does.
+     */
+    private function messageChosenByAFlag(Ternary $expr): string
+    {
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a message chosen by a flag, which only the PHP target carries', $expr->getStartLine());
+        }
+
+        if (! $expr->if instanceof Expr) {
+            throw new Refusal('a short ternary as a message', $expr->getStartLine());
+        }
+
+        $condition = $this->predicate($expr->cond);
+        $whenTrue = $this->translateMessageExpression($expr->if);
+        $whenFalse = $this->translateMessageExpression($expr->else);
+        $this->context->messageIsExpression = true;
+
+        return '(' . $condition . ' ? ' . $whenTrue . ' : ' . $whenFalse . ')';
     }
 
     /** `sprintf(<format>, <args>)` -> `format!("...", ...)`, with PHP's specifiers rewritten. */
@@ -9569,6 +9610,10 @@ final readonly class Translator
                 }
 
                 return 'Support::argumentIsUnpacked(' . $this->operand($subject) . ')';
+            }
+
+            if ($subject['kind'] === 'config-bool') {
+                return $this->operand($subject);
             }
         }
 

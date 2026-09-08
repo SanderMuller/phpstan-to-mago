@@ -133,7 +133,7 @@ REFUSE  ForbiddenNewArgumentRule  (the package registers it nowhere)
         needs: $forbiddenTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Complexity\ForbiddenNewArgumentRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
 REFUSE  ForbiddenNodeRule
         PhpParser\Node covers several node kinds, and this rule narrows to them with `instanceof` against a value rather than a written class name — a configured list of node classes. A plugin declares its targets statically, so there is no shape to register: the rule's target set is only known at analysis time
-        needs: $forbiddenNodes is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
+        needs: $forbiddenNodes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\ForbiddenNodeRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
         needs: access path outside the vocabulary: Expr_New
         needs: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
         needs: assignment value outside the vocabulary: access path outside the vocabulary: $this->standard->prettyPrint()
@@ -146,9 +146,8 @@ REFUSE  NewOverSettersRule
         needs: no aggregate mapped for the collector NewWithFollowingSettersCollector
 REFUSE  NewWithFollowingSettersCollector
         PhpParser\Node covers several node kinds, and this rule narrows to 7 of them with `instanceof`: ClassMethod, Function_, If_, ElseIf_, While_, Foreach_, For_. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
-        needs: condition outside the vocabulary: ->isEnabled
-        needs: collector returns something other than a list of values
         needs: no node predicate for instanceof PhpParser\Node\Stmt\If_ on a hook-node
+        needs: collector returns something other than a list of values
         needs: access path outside the vocabulary: Expr_Cast_Array
         needs: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
         needs: guard body is neither `return []` nor `continue`, but Stmt_Foreach
@@ -402,7 +401,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 31 of 45 portable rules the package registers emit, 0 covered by the engine, 14 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 32 of 45 portable rules the package registers emit, 0 covered by the engine, 13 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
@@ -458,13 +457,7 @@ REFUSE  DisallowedImplicitArrayCreationRule
         needs: method call outside the vocabulary ->no()
         needs: method call outside the vocabulary ->maybe()
         needs: a second message before the first was reported
-REFUSE  DisallowedLooseComparisonRule
-        no hook mapping for node type PhpParser\Node\Expr\BinaryOp
-        needs: no node predicate for instanceof PhpParser\Node\Expr\BinaryOp\Equal on a hook-node
-        needs: assignment value outside the vocabulary: no PHP navigation for node.left (kind expr) on a BinaryOp node
-        needs: assignment value outside the vocabulary: no PHP navigation for node.right (kind expr) on a BinaryOp node
-        needs: message expression outside the vocabulary: Expr_Ternary
-        needs: a second identifier before the first was reported
+EMIT    DisallowedLooseComparisonRule
 EMIT    DisallowedShortTernaryRule
 EMIT    DynamicCallOnStaticMethodsCallableRule
 EMIT    DynamicCallOnStaticMethodsRule

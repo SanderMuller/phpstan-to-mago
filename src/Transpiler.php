@@ -759,7 +759,7 @@ final class Transpiler
             // emitting a rule whose `string[]` option is the string `'universalObjectCratesClasses'`. That
             // rule loads, runs, and iterates the characters of its own parameter name.
             if (! $configuration instanceof PackageConfiguration || ! $configuration->hasParameter($argument['reference'])) {
-                $this->context->unresolvedParameters[$name] = $argument['reference'];
+                $this->takeCoreParameter($name, $argument['reference']);
 
                 continue;
             }
@@ -846,6 +846,19 @@ final class Transpiler
                 continue;
             }
 
+            // `$this->x = $x;` — a constructor that assigns its parameter straight through derives nothing.
+            // It reached `isPureDerivation()` below, which answers true for a bare variable, and the property
+            // was then emitted *twice*: once promoted on the constructor with the parameter's own type and
+            // once as the `private readonly array` every derived value gets. PHP refuses the file with
+            // "Cannot redeclare", so the rule emitted and could not load — the failure the refusal invariant
+            // exists to prevent, reached through a fold rather than through a missing check.
+            //
+            // Traced from `DisallowedLooseComparisonRule`, whose `bool` flag is assigned exactly this way.
+            // The promoted parameter already carries the value, so there is nothing to record here.
+            if ($this->isPassThrough($constructor, $statement->expr->expr)) {
+                continue;
+            }
+
             if ($this->isPureDerivation($statement->expr->expr)) {
                 $this->context->pure[$property] = $statement->expr->expr;
 
@@ -929,6 +942,59 @@ final class Transpiler
      * nobody vouched for all make it impure: any of them could depend on state the plugin does not have, and a
      * class constant provably does — the generated plugin carries no constants.
      */
+    /**
+     * A `%parameter%` the package does not declare: carried when PHPStan's core default is known, else
+     * recorded as unresolved so the rule refuses by name.
+     *
+     * {@see Vocabulary::CORE_PARAMETER_DEFAULTS} says which parameters qualify and where each default was
+     * read from. Everything else stays refused, because the fallback would take the parameter's own *name*
+     * as the value.
+     */
+    private function takeCoreParameter(string $property, string $reference): void
+    {
+        $core = Vocabulary::CORE_PARAMETER_DEFAULTS[$reference] ?? null;
+        if ($core === null) {
+            $this->context->unresolvedParameters[$property] = $reference;
+
+            return;
+        }
+
+        $this->context->configured[$property] = [
+            'parameter' => $reference,
+            'default' => $core,
+            'kind' => $this->translator->configKind($core),
+        ];
+    }
+
+    /**
+     * `$this->x = $x;` — a constructor assigning its own parameter through, which derives nothing.
+     *
+     * It reached {@see isPureDerivation()}, which answers true for a bare variable, so the property was
+     * recorded as derived. `DisallowedLooseComparisonRule` then refused, because a derived value resolves as
+     * a list and its `bool` flag is read as a condition; and had that refusal been lifted alone, the emitter
+     * would have written the property twice — promoted on the constructor with the parameter's type, and
+     * again as the `private readonly array` every derived value gets, which PHP rejects with "Cannot
+     * redeclare". The promoted parameter already carries the value, so there is nothing to record.
+     */
+    private function isPassThrough(ClassMethod $constructor, Expr $assigned): bool
+    {
+        return $assigned instanceof Variable
+            && is_string($assigned->name)
+            && $this->constructorTakes($constructor, $assigned->name);
+    }
+
+    /** Whether the constructor declares a parameter of this name, promoted or not. */
+    private function constructorTakes(ClassMethod $constructor, string $name): bool
+    {
+        foreach ($constructor->params as $parameter) {
+            if ($parameter->var instanceof Variable && $parameter->var->name === $name) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function isPureDerivation(Expr $expr): bool
     {
         foreach ((new NodeFinder())->find([$expr], static fn (Node $node): bool => true) as $node) {

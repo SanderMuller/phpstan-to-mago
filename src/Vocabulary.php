@@ -17,11 +17,14 @@ use PhpParser\Node\Expr\AssignOp\Mod as AssignOpMod;
 use PhpParser\Node\Expr\AssignOp\Mul as AssignOpMul;
 use PhpParser\Node\Expr\AssignOp\Plus as AssignOpPlus;
 use PhpParser\Node\Expr\AssignOp\Pow as AssignOpPow;
+use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BinaryOp\Div as BinaryOpDiv;
+use PhpParser\Node\Expr\BinaryOp\Equal;
 use PhpParser\Node\Expr\BinaryOp\Minus as BinaryOpMinus;
 use PhpParser\Node\Expr\BinaryOp\Mod as BinaryOpMod;
 use PhpParser\Node\Expr\BinaryOp\Mul as BinaryOpMul;
+use PhpParser\Node\Expr\BinaryOp\NotEqual;
 use PhpParser\Node\Expr\BinaryOp\Plus as BinaryOpPlus;
 use PhpParser\Node\Expr\BinaryOp\Pow as BinaryOpPow;
 use PhpParser\Node\Expr\BooleanNot;
@@ -188,6 +191,7 @@ final class Vocabulary
         // below answer for every one of them, which is what makes one `kind` enough: `->name` is a selector
         // under five and the called expression under `FunctionCall`, and `namePart()` covers both.
         Expr::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'Expr', 'phpOnly' => true],
+        BinaryOp::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'Binary', 'phpOnly' => true],
         // `CallLike` is `FuncCall`, `MethodCall`, `NullsafeMethodCall`, `StaticCall` and `New_`, and a rule
         // asking for it narrows in its own body. Registered for every call kind it covers rather than for the
         // ones a given rule keeps, for the reason {@see HOOK_KINDS} gives: what a node type covers is a fact
@@ -1131,6 +1135,7 @@ final class Vocabulary
         // `ArgumentList`, in that order, probed on all of them — which is why one body reads all three
         // without rebinding. A first-class callable is a *different* kind (`MethodPartialApplication`), so a
         // hook on these never sees one, and `isFirstClassCallable()` cannot hold under these targets.
+        BinaryOp::class => ['Binary'],
         CallLike::class => ['MethodCall', 'StaticMethodCall', 'NullSafeMethodCall', 'FunctionCall'],
         // All four, not the two a given rule narrows to: the kinds a node type *covers* are a fact about the
         // type, and letting a rule's own `instanceof` decide the registration would make the targets depend on
@@ -1177,7 +1182,34 @@ final class Vocabulary
      *
      * @var array<string, array{string, string, string}>
      */
+    /**
+     * PHPStan *core* container parameters whose default a generated plugin can carry, with that default.
+     *
+     * A `%parameter%` the rule's own package does not declare normally has no value this transpiler can read,
+     * and the fallback would take the parameter's *name* as the default — the comment at the refusal in
+     * `Transpiler` records `universalObjectCratesClasses` nearly producing a rule that iterated the
+     * characters of its own parameter name. That case stays refused: PHPStan builds the list at analysis time
+     * and there is no default to carry.
+     *
+     * A feature toggle is different, and only because its default is written down. Read out of the phar
+     * rather than assumed: `conf/config.neon` declares `featureToggles: bleedingEdge: false` and
+     * `conf/bleedingEdge.neon` sets it `true`, so `false` is what a stock install has. The generated plugin
+     * carries a constructor bool defaulting to `false`, exactly as it carries a package's own default, and a
+     * consumer on bleeding edge sets it — the convention `FiresGate::REGISTRATION` already follows for the
+     * two loop rules this same toggle gates.
+     *
+     * Narrow on purpose: an entry here asserts a value about someone else's configuration, so each one names
+     * the file it was read from and nothing goes in unread.
+     *
+     * @var array<string, bool>
+     */
+    public const array CORE_PARAMETER_DEFAULTS = [
+        'featureToggles.bleedingEdge' => false,
+    ];
+
     public const array OPERATOR_KINDS = [
+        Equal::class => ['binary_operator_is', '==', 'Binary'],
+        NotEqual::class => ['binary_operator_is', '!=', 'Binary'],
         BinaryOpDiv::class => ['binary_operator_is', '/', 'Binary'],
         AssignOpDiv::class => ['assignment_operator_is', '/=', 'Assignment'],
         BinaryOpPlus::class => ['binary_operator_is', '+', 'Binary'],
