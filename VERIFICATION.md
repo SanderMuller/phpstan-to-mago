@@ -14665,3 +14665,51 @@ The practical consequence, and it is a change of method rather than a result: **
 from its refusal at all.** The only assessment that holds is reading the whole body and listing every need,
 which costs the same whether the rule turns out reachable or not. Six such readings would have replaced five
 rankings.
+
+### The fires gate, mutation-checked for the first time
+
+Switching from breadth to depth, as the user chose after the peer argued emit count is a proxy this
+repository's own guidelines warn against — an emit is a claim about the generator, not about the rule.
+
+**What the gate covers.** `--group engine` runs 660 tests in 190 s: about four per rule across ~165 rules —
+does the plugin report the bad example, stay silent on the good one, does PHPStan report the bad example, and
+do the two agree. `test_every_emitted_rule_has_an_example_pair()` closes it in both directions, so coverage of
+emitted rules is essentially complete. That was already true before this pass; what had never been done is
+checking that any of it is load-bearing.
+
+**The mutation.** `Calls::argCount()` returns `count(...) + 1` — one token, in the helper 24 emitted plugins
+call. Chosen because it changes *behaviour* without changing an emitted byte, which separates the two
+instruments instead of tripping both.
+
+| instrument | expected | observed |
+|:--|:--|:--|
+| 133 `TranspilesToPhpTest` snapshots | green — bytes unmoved | **green**, 1972 assertions |
+| 660 fires-gate tests | red | **25 failures across 12 rules** |
+
+**The control is the point of the design.** The snapshots staying green proves the emitted bytes were
+identical, so the 25 failures are attributable to the gate reading *behaviour* and to nothing else. A mutation
+that moved bytes would have failed both and told me only that something noticed.
+
+The gate caught it in both directions, which is more than the mutation strictly required:
+
+- **11 rules reported nothing on their bad example** — the false-negative direction, and the failure message
+  is the one that matters here: *"It parses and loads, so this is the failure that static checks cannot see:
+  the plugin ran and found nothing."*
+- **`SingleArgEventDispatchRule` reported its *good* example** — the false-positive direction, from the same
+  off-by-one. A gate that only checked bad examples would have missed this.
+- **13 `agrees_with_phpstan` disagreements**, including `CombinedMethodCallRule`, where one file lost a finding
+  and another lost all of them — a partial divergence rather than an all-or-nothing one.
+
+Restored from the copy taken beforehand, not with `git checkout`, per the git-safety rule above; `git diff`
+against HEAD is empty, so the green state needs no re-run to be claimed.
+
+#### A false caveat I nearly recorded
+
+I read `mago --version` as 1.45.0, saw `composer.json` requires `^1.47.6`, and started writing that the gate's
+green was produced by a binary two minors behind the SDK it ships against. That would have been wrong. The
+gate symlinks `vendor/bin/mago`, which is **1.47.6** and matches the lock; 1.45.0 is what sits on *my* PATH at
+`~/.local/bin/mago`. There is no drift.
+
+`mago --version` answered a question about my shell, and I was about to act on it as an answer about the gate.
+That is the *probe answers a narrower question* rule, and the thing that caught it was tracing how the gate
+locates its binary rather than trusting a version string that looked authoritative on its own.
