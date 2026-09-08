@@ -14014,3 +14014,38 @@ Ranking the needs list cannot find leverage, because it groups by syntax. Rankin
 family** found the two rules that landed this window and has now found a third that is genuinely one
 capability away. That is the method to use, and the needs list is for reading a candidate once the family
 has nominated it.
+
+### `NoJustPropertyAssignRule`: both shortcuts closed, by measurement
+
+The previous entry said threading provenance is "the local-assignment path rather than one edit" and left it
+there. That was an assertion, so both halves of it are now measured.
+
+**Is it one edit?** No, and the reason is structural rather than a matter of effort. The local writes at
+`Translator.php:5615-5677` are helper-call *inlining*, not plain assignment, and a plain `$x = $y->name`
+has no single write site: `expr instanceof Assign` appears at 2342, 2633, 2674, 2687, 2822, 2755, 2950,
+3738 and on, each a different shape recognised in its own place. There is no one line where a local's
+descriptor is minted from a resolved value, so `of` cannot be set in one.
+
+**Is there a route that needs no provenance?** No, and this is the more useful half. The rule guards with
+`isLocalPropertyFetchAssignToVariable()` before reaching the test, and I expected that guard to have already
+narrowed the target to a *written* variable — which would make `$varName instanceof Expr` provably false and
+foldable with a stated reason. It does not. The guard requires php-parser's `Variable`, and php-parser's
+`Variable` covers all three of Mago's kinds:
+
+    $x  = $this->service;      DirectVariable     name is a string
+    $$x = $this->service;      IndirectVariable   name is an Expr
+    ${$k} = $this->service;    NestedVariable     name is an Expr
+
+So `$$x = $this->service;` passes the guard, reaches the test, and PHPStan answers **true** there and stays
+silent. Folding the test to false would make the plugin report it — a false positive on a construct that is
+rare but legal, which is exactly the *plausible-but-wrong rule* this repository's refusal invariant exists to
+prevent.
+
+Both shortcuts closed, so the capability is what it is: the name's descriptor has to carry the node it came
+from. That is worth doing when a second rule wants it, and it is now characterised well enough that whoever
+does it starts from the design rather than from the survey.
+
+**And the pattern in my own work is worth naming.** I dismissed the provenance route as "not one edit"
+without looking, then measured it and was right; I assumed the guard narrowed the variable, then measured it
+and was wrong. Same session, same kind of claim, opposite outcomes — which is the argument for measuring both
+rather than for trusting the instinct that happened to be right.
