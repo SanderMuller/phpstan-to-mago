@@ -13494,3 +13494,31 @@ Asserted, and dropping it fails. That is now three instances of one pattern in o
 defended by tests, and the one that was found by sweeping is the only one that had not already cost something.
 
 Suite 1080/1080, PHPStan 0 errors, Rector and Pint clean.
+
+### `NoReferenceRule`'s first branch is gated by `checkMode`, and one attempt was reverted
+
+The rule's first blocker is not the hook targets. It is line 47, `if ($node instanceof AssignRef) { return
+[$this->createRuleError()]; }`, which reaches the **guard-exit** handler — a branch returning a finding is a
+report, and that handler only knows exits.
+
+The nearest existing shape is `delegatedCheck()`, which accepts `return $this->processX(..)` and hands the
+branch's whole case to a helper that builds the error. Extending it to accept the same call wrapped in a
+one-element array literal is two lines and semantically identical. **It moved the refusal by nothing, so it
+was reverted.**
+
+The reason is upstream of the shape: `delegatedCheck()` is reached only through `isBranchCheck()`, which
+`translateIf()` consults only when `context->checkMode` is on, and `Transpiler::independentChecks()` requires
+**two or more** independent checks to turn it on. It counts top-level `$x = $this->helperThatBuildsAnError()`
+assignments plus `branchChecks()`. `NoReferenceRule` has neither shape at top level — its accumulation is
+`$errorMessages[] = ...` and its one helper assignment calls `collectParamErrorMessages()`, which builds its
+findings through `createRuleError()` rather than through `RuleErrorBuilder` directly.
+
+So the piece is correct, contained, and unreachable for this rule, which is the fourth revert in this log made
+under the same condition. Recorded rather than kept, because a two-line change that no rule can reach is
+vocabulary a test cannot defend.
+
+**What the next attempt has to decide first**, and it is a design question rather than a missing row: a
+top-level branch that reports and returns is the same thing `isConditionalReport()` handles for the
+`$errors[] = ..` spelling, and the honest options are to widen that recognizer to the `return [<error>]`
+spelling or to widen what `independentChecks()` counts. The second changes `checkMode` for every rule and
+would move emitted bytes across the corpus, so it is not a change to make while chasing one rule.
