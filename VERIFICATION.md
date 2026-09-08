@@ -12629,3 +12629,71 @@ counting the 2.0.11 cell they had not.
 Six findings, six sentences, zero code reviews. This file already says to budget for a second party rather
 than a more careful self-review; the refinement is that **what you hand the second party is the sentence, not
 the diff** — and that the exchange works because each side can run an instrument the other cannot.
+
+### Superseded: there is no plumbing blocker, and the table already answers the question
+
+The entry above names `Emitter.php:640` re-deriving `targetKinds($hook)` at emit time as the blocker, calls it
+"two sources of truth for one list", and says it must be fixed before anything reads a body-derived kind. That
+is **wrong**, and it is wrong because I wrote it without reading `Vocabulary::HOOK_KINDS` first.
+
+`HOOK_KINDS[Expr::class]` already exists and already registers `Binary`:
+
+    Expr::class => ['ClassConstantAccess', 'StaticPropertyAccess', 'MethodCall', 'StaticMethodCall',
+                    'FunctionCall', 'PropertyAccess', 'Binary'],
+
+Re-deriving from that table at emit time is not a second source of truth — **the table is the source**, and
+`TranslationContext::$hookKinds` is a cache of it for the translator. There is nothing to fix.
+
+Worse, the design I proposed is one this repository has already tried and rejected, twice, and the rejection
+is recorded three lines from the code I was about to change. `Emitter::targetKinds()`'s own docblock:
+
+> Two earlier attempts tried to decide the breadth from whether the rule narrows: a syntactic pre-pass over
+> the source, then the flag the fold set during translation. Both were wrong in the same direction, because
+> neither the presence of the predicate nor its translation proves the *rule* is class-only: compounded or
+> negated, it is not. Not deciding is exact.
+
+And the `FunctionLike` row states the principle directly: the kinds a node type *covers* are a fact about the
+type, and letting a rule's own `instanceof` decide the registration would make the targets depend on the body
+rather than on what PHPStan would have visited. The `Binary` row adds the corollary — one entry registers what
+php-parser splits over two dozen classes, **and the rule's own guard declines the operators it does not
+read.**
+
+So the dispatch is not a target-set declaration after all. It is a guard, and guards are where this design
+already puts that work. My previous entry reached the opposite conclusion by generalising from the `Assert*`
+handoff, which said "the guard is a target-set declaration" about a *different* hook — `CallLike`, where the
+narrowed set genuinely is what PHPStan visits. Carried across to `Expr::class`, where it is not.
+
+**Reading the table before writing the design would have cost one command.** This is the third correction in
+this log arriving from prose I wrote about code I had not opened, against zero from generated output. The
+failure rate still tracks whether a thing is executed.
+
+### What the step actually is, with what already exists
+
+Everything the dispatch navigates is in the tree:
+
+| piece                                    | status                                                      |
+|:--|:--|
+| `Binary.left` / `.right`                 | `REFINEMENTS['Binary']`, operands 0 and 1                   |
+| `Assignment.var` / `.expr`               | `REFINEMENTS['Assignment']`, operands 0 and 1               |
+| operator text of a `Binary`              | `Operators::binaryOperatorIs()`, and `operatorIs()` is generic over the operator kind |
+| `Binary` registered on the `Expr` hook   | `HOOK_KINDS[Expr::class]`                                   |
+
+So the remaining work is four small things and one recognizer:
+
+1. `Assignment` into `HOOK_KINDS[Expr::class]`, because an assignment is an expression and these rules read
+   it. It widens the two rules already emitting on that hook, so it needs the check that row's docblock
+   already models — that their guards decline the new kind — and it moves their `getTargets()` line, which is
+   a deliberate emitted-byte change.
+2. `assignmentOperatorIs()` beside `binaryOperatorIs()`, over `NodeKind::AssignmentOperator`. The generic
+   `operatorIs()` already takes the kind.
+3. A table carrying the operator dimension, which `NODE_PREDICATES` cannot: its values are predicate *names*,
+   one string per php-parser class, and `BinaryOp\Div` needs a kind *and* an operator. Twenty-odd operator
+   classes behind one row each, not twenty predicates.
+4. `instanceof <BinaryOp|AssignOp subclass>` on a hook-node emitting the conjunction of the kind test and the
+   operator test.
+5. The `if/elseif/else` recognizer — arms binding the same locals to the same navigations, `else` declining —
+   emitted as one guard plus the bindings once. Unchanged from the previous entry, and now the only genuinely
+   new mechanism.
+
+`DisallowedLooseComparisonRule` reuses 3 and 4 for `Equal`, which is why the table is worth having rather than
+special-casing division.
