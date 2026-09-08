@@ -15522,3 +15522,45 @@ caveat: the list is what the traversal returns, the accumulator is what you buil
 `$map[$class] = $node->getStartLine()` inside a `foreach` is the same shape with a different assignment
 target. Two clean, not one-and-a-half. Recording it because I added a qualifier that had no mechanism under it
 — the small, quiet version of the same error as generalising over unread cells.
+
+### Retracting "no rule is one capability away": `ServicesExcludedDirectoryMustExistRule` is
+
+I published that conclusion after reading every refused rule, and a peer restructured their own argument
+around it. **It is wrong.** `ServicesExcludedDirectoryMustExistRule` needs exactly one thing this transpiler
+does not have.
+
+Its complete need list, each item checked rather than assumed:
+
+| need | status |
+|:--|:--|
+| `SymfonyClosureDetector::detect($node)` | 27-line static; static inlining exists — and the refusal fires *after* it, so it already translates |
+| `NodeFinder->find($closure, <pure predicate>)` returning a list | **missing** |
+| nested `foreach` accumulating findings | supported — 7 emitted plugins already nest two or more |
+| `file_exists($path)` | supported, `Translator.php:11545`: *"A plugin is PHP, so it asks the filesystem the same question the rule asks"* |
+| `__DIR__` | supported, `Vocabulary`: `Dir::class => 'is_dir_constant'` |
+| `dirname($scope->getFile())` | supported, and only in that exact form |
+| `str_contains`, `sprintf`, a report on an inner item's line | all supported |
+
+And the refusal names the gap precisely rather than misleadingly:
+
+    find() with a closure filter, whose every match the rule then walks —
+    only findFirst() reduces to one question (line 125)
+
+**How I got it wrong.** My capability table filed this rule under "disk reads at analysis time", a category I
+invented from reading `realpath` in a *different* collaborator and never checked against the transpiler. Disk
+reads are supported and have been. I then never completed this rule's need list, because the table had already
+answered the question for it. **A category assigned once is not re-examined**, which is how a rule that is one
+capability away sat inside a group labelled unreachable.
+
+Worth naming precisely: the individual reads I claimed as evidence were reads of the *rule bodies*. I checked
+what each body needs and never checked what the transpiler already supplies, so "no rule is one capability
+away" rested on half the comparison. That is the same defect as ranking by refusal text, one level up — a
+claim about a relationship between two things, measured on one of them.
+
+#### The lead is now a build target with a name
+
+`Support::collectWhere(array $items, callable $predicate): array` beside the shipped
+`anyOf(array, callable): bool` — the sibling identified two entries above, now with a rule behind it rather
+than a cluster. Whether the other three closure-resolver rules follow depends on their own remaining needs,
+which I have not re-derived under the corrected support list, and I am not repeating the mistake of assuming
+it either way.
