@@ -15660,3 +15660,55 @@ names, all readable and all on one side of the interaction. **The transpiler has
 own composition behaviour**, so every cheap method drifted to the side that did. That is an argument for
 building the missing artefact, not for abandoning cheap methods — and the 17 tables say most of it is already
 written down, just never assembled into one.
+
+### The rule emitted, loaded, and reported nothing — and I spent four guesses instead of one probe
+
+Carrying the previous entry forward: obstacles 1 and 2 rebuilt, and the root behind 2 and 3 fixed by giving
+`array-items` its own `array-item` kind with a `value` edge. **It emits.** php goes 146 → **147**, analyzer and
+linter unchanged, and `diff -rq` over the whole php tree names exactly three files: the manifest, the worker,
+and the new plugin. **No existing plugin's bytes moved**, which is what the `array-item` re-kinding had to be
+checked against.
+
+The emitted body reads correctly against the source: the closure detector becomes a param-count-and-hint test,
+`find()` collects the `exclude()` calls, the nested walk tests `isConcatenation`, then `isDirConstant` on the
+left operand and `isLiteralString` on the right, skips `*` and `{`, builds the path and asks the filesystem.
+
+**It reports nothing.** PHPStan reports the bad example; the plugin runs and finds nothing.
+
+#### Two real defects found before that, both by the gate
+
+- **`Support::isConcatenation()` did not exist.** The plugin emitted, parsed, and passed `php -l` while calling
+  a method that was never added — I had reverted the runtime half in an earlier cycle and restored only the
+  Translator and Vocabulary halves. Static checks cannot see this; the gate said
+  `Call to undefined method`. Fourth time this session the gate caught something nothing else could.
+- **The identity `value` edge was wrong.** I mapped `array-item->value` to `{base}` on the reasoning that
+  `expressionType()` and `constantStringAt()` both accept an element and descend. They do — but a *predicate*
+  does not descend: `binaryOperatorIs()` looks for a `BinaryOperator` among its subject's **own** children, and
+  an element wrapping a `Binary` keeps the operator one level deeper. **An identity that holds for every
+  helper that descends is not an identity.** Replaced with `Support::arrayItemValue()`.
+
+#### The part worth recording is how I spent the rest
+
+Four hypotheses, none instrumented, all wrong: the short `use`-imported hint name; a top-level `return
+<closure>` versus one inside a class method; chained `->services()->exclude()` versus a bound `$services`
+variable; and before those, `arrayElements()` filtering the wrong `NodeKind` — which a passing gate on
+`ForbiddenArrayMethodCallRule` refuted in thirty seconds.
+
+**That last one is the shape of the whole detour.** One of my four checks was cheap and decisive because it
+tested against a *working analogue* rather than against my expectation. The other three changed the fixture and
+re-ran, which cannot localise anything: a silent plugin is silent for the same reason before and after.
+
+I know what the right instrument is and did not build it — a probe plugin with the guards removed from the
+bottom up, run against the sandbox, which localises in one pass. I chose four one-minute guesses over one
+ten-minute probe, and this log already carries the rule that says not to.
+
+#### Reverted, and why the emit does not count
+
+`git diff` against HEAD is empty. A plugin that emits and does not fire is precisely what the gate exists to
+stop shipping, and *"it emitted is not a result"* is this repository's oldest rule. The census would have
+recorded a 133rd EMIT for a rule that reports nothing.
+
+What is durable: `array-items` → `array-item` with an unwrapping `value` edge is **correct and byte-neutral**,
+verified across all three targets. The `find()` accumulator and the `Concat` predicate are recorded above. The
+remaining unknown is a single question — which guard in that body answers false — and it is answerable by the
+probe I did not build.
