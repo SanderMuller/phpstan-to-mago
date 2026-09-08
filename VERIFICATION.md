@@ -14872,3 +14872,60 @@ the count. Recognition is what makes drift refuse, so the build is not sound unt
 
 Nothing is committed to `src/`: a runtime primitive with no emitter, or a table nothing reads, is unexercised
 vocabulary and would go straight back out under the condition the nine reverts above share.
+
+### Three more unknowns closed, one of my own inferences corrected, and why nothing landed
+
+Continuing the build. Every remaining unknown is now settled, and the pieces I wrote are **reverted** — the
+reasons for that are at the end and they are the repository's own rules, not caution.
+
+#### The `InClassNode` emission path works, and I said otherwise
+
+Earlier this session I read the 145 emitted plugins, found no `ClassDeclarationHook`, and concluded the
+`InClassNode` hook mapping was unexercised vocabulary — a serious problem for a candidate that hooks it.
+**Wrong.** The emitted plugins reach a class declaration through `NodeAnalysisHook` with a `NodeKind::Class_`
+target, not through a separate trait: **34 of them target a class declaration**, and at least ten
+`InClassNode` rules emit today, `ForbiddenExtendOfNonAbstractClassRule` and `NoProtectedClassStmtRule` among
+them.
+
+I grepped for the mechanism I expected instead of for the outcome I cared about. A grep for a trait name
+answers "does this trait appear"; the question was "does a class-declaration rule emit". Same shape as the
+`mago --version` miss recorded above, and the same fix: ask for the outcome.
+
+#### The two remaining unknowns
+
+- **The nine ancestors resolve.** `rawStringLiteral()` already handles constants on other classes in the same
+  package and `::class` fetches, which is all nine. Probe 3 above.
+- **A collaborator's AST is reachable.** `hierarchy()` is built on
+  `$this->context->index->find($shortName, $this->file)`, a package-scoped lookup by short name, so
+  `ClassToSuffixResolver` in `src/Naming/` can be loaded and its shape *verified* from a rule in `src/Rules/`.
+  This is what makes recognise-and-fold possible rather than a tabulated guess: upstream rewriting the body
+  produces a refusal.
+
+#### The emitted shape this design produces
+
+Read off a real sibling (`ForbiddenExtendOfNonAbstractClassRule`) rather than imagined:
+
+    if (Support::namedClassIsAbstract($context, Support::enclosingClassName($context, $node))) { return; }
+    $suffix = Support::missingAncestorSuffix($context, $node, ['<ancestor>' => '<Suffix>', ...]);
+    if ($suffix === null) { return; }
+    $context->report(... sprintf('Class should have suffix "%s" to respect parent type', $suffix) ...);
+
+44 emitted plugins already interpolate a message with `sprintf`, so that half is well-trodden.
+
+#### Why nothing landed
+
+I wrote `Inheritance::missingAncestorSuffix()` and its `Support` delegation, and reverted both from copies
+taken first. Two of this repository's rules say so:
+
+- **Unexercised vocabulary gets reverted.** A runtime primitive with no emission path behind it is exactly the
+  condition the nine reverts above share. It cannot land before the recogniser that calls it.
+- **A green run over material you wrote is the weakest evidence available.** What remains is a ~250-line AST
+  recogniser, and committing one written in a single pass without an emit behind it is how a
+  plausible-but-wrong plugin ships.
+
+**What remains, in order:** the recogniser for the helper's five-statement fold; the resolver-shape check plus
+the bounded evaluator (validated above, against the running resolver); emission of the three lines shown; a
+fixture pair whose Bad example covers **both** a class ancestor and an interface ancestor, since a class-only
+ancestry bug would otherwise pass the gate green; `ClassToSuffixResolver` autowired on PHPStan's side, with
+`FiresGate::SERVICES` as the precedent; then the full gauntlet — emit-all byte diff across three targets,
+suite including the 660 engine tests, PHPStan, Rector, Pint, census regeneration, README re-derivation.
