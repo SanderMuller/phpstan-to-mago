@@ -801,6 +801,18 @@ final class Vocabulary
             'arguments' => [0],
         ],
 
+        // `ShouldCallParentMethodsRule::hasParentClassCall()`, a walk over a method's own statements looking
+        // for `parent::<name>()`. Ported rather than inlined because it opens with an early `return false`
+        // on a null statement list, which the boolean inliner has no shape for.
+        // {@see Runtime\Statements::callsParentMethod()} records that the walk is top level only — the
+        // original does not descend, so a call inside an `if` does not count.
+        'PHPStan\Rules\PHPUnit\ShouldCallParentMethodsRule::hasParentClassCall' => [
+            'helper' => 'Support::callsParentMethod',
+            'kind' => 'bool',
+            'takes' => 'context',
+            'arguments' => [0, 1],
+        ],
+
         // `WrongCaseOfInheritedMethodRule::findMethod()`, which builds its finding rather than answering a
         // question — ported as a reporter, the shape `AnnotationHelper::processDocComment()` established.
         // {@see Runtime\Members::reportInheritedCaseMismatch()} states why it reads the native declaration.

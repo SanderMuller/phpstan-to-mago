@@ -391,6 +391,16 @@ final class EmittedRuleFiresTest extends TestCase
             // PHP only lets exist inside a class-like. A function, closure or arrow function is deliberately
             // not among them, because those genuinely may sit outside one.
             'this hook fires only on a class-like or one of its members, so the scope it carries is always in a class',
+            // The reflection-side twin of the entry above, and the same proof by construction reached
+            // through `getClassReflection() === null` rather than through `isInClass()`.
+            // `ShouldCallParentMethodsRule` is the first rule in the corpus to reach it. In code the drop
+            // is gated on `everyHookKindIsInAClass()`, which requires *every* kind the hook registers to
+            // be one of `HOOK_KINDS_ALWAYS_IN_A_CLASS`, which is exactly `Class`, `Interface`, `Trait`,
+            // `Enum`, `Method` and `AnonymousClass`. PHP has no method outside a class-like, so no example
+            // can hold the filtered case, exactly as for its neighbour. A function, closure or arrow
+            // function is deliberately absent from that list, because those may genuinely sit outside one.
+            'this hook fires on a class-like or on one of its members, so the scope it carries always has '
+            . 'a class reflection',
             // The guards ahead of it establish the index; the good examples hold each case they filter — a
             // named argument, a spread, a non-bool, a call past the end of the parameter list.
             'an index produced behind guards is never null once those guards have run',

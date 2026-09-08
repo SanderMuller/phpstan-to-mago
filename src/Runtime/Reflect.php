@@ -309,6 +309,25 @@ final class Reflect
     }
 
     /**
+     * Whether a class declares this method natively  `ClassReflection::hasNativeMethod()`.
+     *
+     * The sibling of {@see methodExists()} and deliberately not the same: that one goes through
+     * {@see Mixins::declaringMethod()}, so it answers yes for a method an `@mixin` supplies, which is what
+     * `hasMethod()` does. `hasNativeMethod()` asks only about a real declaration, and the rules that ask it
+     * go on to read the declaration  a magic method has none to read.
+     *
+     * Inherited counts: `getDeclaringMethod()` resolves the hierarchy, and PHPStan\'s native lookup does too.
+     */
+    public static function nativeMethodExists(NodeAnalysisContext $context, ?string $class, ?string $method): bool
+    {
+        if ($class === null || $method === null || $class === '' || $method === '') {
+            return false;
+        }
+
+        return $context->codebase->getDeclaringMethod($class, $method) instanceof FunctionLikeMetadata;
+    }
+
+    /**
      * The class PHPStan would call a method's declaring class, spelled as it was written.
      *
      * Read from `getDeclaringMethod()->identifier->class`, which is the only answer that covers a method a

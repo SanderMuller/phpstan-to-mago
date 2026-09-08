@@ -65,6 +65,12 @@ abstract class Assert
 
 abstract class TestCase extends Assert
 {
+    /** Declared so `ShouldCallParentMethodsRule` has a parent method to find. */
+    protected function setUp(): void {}
+
+    /** The same, for the other half of the pair. */
+    protected function tearDown(): void {}
+
     public function createMock(string $class): MockObject
     {
         return new MockObject();

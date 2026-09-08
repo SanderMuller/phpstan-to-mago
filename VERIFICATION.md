@@ -12045,3 +12045,119 @@ named the same guard from their own side.
 (`Connection::withFreshQueryLog()`): `InteractsWithIO.php` at `12.x:172` and `13.x:187`. It targets **12.x**,
 because Laravel merges forward only. The draft carries `list<string>` now, since that is what symfony landed
 and `$choices` forwards straight into it.
+
+## The verification harness measured nothing, twice in one command
+
+`ShouldCallParentMethodsRule` takes the census to 122 rules emitting on the php target across the seven
+packages this repository installs — `grep -c '^EMIT ' tests/Fixtures/expected/census.md`, which is the only
+figure here with a command behind it. The step is worth recording for what happened to the checks rather
+than for the rule.
+
+### An emit-all diff that was clean because it emitted nothing
+
+`CLAUDE.md` warns that a `git worktree` baseline gives an empty diff for the wrong reason, and names the
+symlink that causes it. This was the same failure from two causes neither of which is that one:
+
+- **The subcommand does not exist.** The invocation was `bin/phpstan-to-mago generate <paths>`, and paths are
+  positional here — so `generate` was read as a rule file, refused by name, and the run ended `emitted: 0,
+  refused: 1`.
+- **zsh does not word-split an unquoted parameter.** With `CORPUS="a b c"`, `bin/phpstan-to-mago $CORPUS`
+  passes one argument holding all five paths. The refusal line said so verbatim — `no file at
+  vendor/symplify/phpstan-rules vendor/hihaho/phpstan-rules …` — and still read as a normal refusal.
+
+Both runs printed a **pass**: `diff -r` over the two trees reported no difference, because both trees held
+five files and neither held a plugin. What caught it was not reading the diff but reading the *count* beside
+it: 5 files where the corpus emits 209. The fix is the rule already in this file at a smaller granularity —
+**an aggregate cannot separate "agreed" from "never looked"** — applied to the instrument itself rather than
+to a measurement it produced. A byte-for-byte diff is an aggregate over zero when the emitter refused, and a
+refusal is the emitter's *correct* behaviour, so nothing in the pipeline is in an error state.
+
+One thing the corrected run surfaced and this step does **not** explain: 34 analyzer and 25 linter, where
+`CLAUDE.md` records 42 and 33 for the same four packages plus `tests/Fixtures/Rules`. Coverage growth cannot
+produce a decrease. Both sides of the diff agree, so it predates this change and is not a regression from it —
+the likely candidate is the hihaho corpus bump, which changed what the denominator holds. Recorded rather than
+chased, and not corrected in `CLAUDE.md`, which is boost-managed and reverts a hand edit on the next
+`composer install`.
+
+Recorded countermeasure, since the emit-all diff is the repository's primary invariant check: **print the
+emitted count and the file count next to the diff, and assert the count rather than reading it.** Once the
+invocation was right the run emitted 143 php, 34 analyzer, 25 linter, both sides, and the only difference
+across 209 files was the `--out` path inside `mago.toml.snippet`.
+
+### A fold with a row that could not discriminate
+
+The rule's `parent::` test is that a statement is a static call whose class is the `parent` keyword. Deleting
+the class test entirely — accepting *any* static call with the right method name — left the fires gate green.
+
+The Bad fixture's violating methods call `$this->prepare()`. There is no static call in them at all, so a fold
+that accepted every static call named `setUp` still reported them, and the class test was doing nothing the
+gate could see.
+
+This joins the run of green-gate-measuring-less findings recorded above — the nearest is *"Three rows, three
+folds"*, which counted itself the fourth instance and the third distinct reason. **No tally is given here on
+purpose.** "Instance" has never been defined in this file, the earlier entries count within a session while
+this one would count across the repository, and a count whose unit is undecided is the carried figure this
+file has a rule against. The entries are the record; the pointer is the honest form.
+
+The cause is **not** new either, and saying so is the point: it is *a row that existed but did not
+discriminate*, already named in this file. The Bad fixture does reach `callsParentMethod()` — it is the fold's
+own subject — but every row in it holds the class axis constant at "no static call at all", so the half of the
+fold that tests the class was never varied. A fold can be fully covered on one axis and untested on another,
+and the coverage on the first axis is what makes it look tested.
+
+The control is one class beside the violation in the same file: an override calling `SharedFixtures::setUp()`
+— a static call, the right method name, the wrong class. PHPStan reports it, because it is not the parent.
+With the control in place the same mutation fails the gate. Written the way this file prescribes — one row
+that varies the axis under test, one beside it that must not move, in the same file rather than a second
+fixture.
+
+### A fold the gate cannot falsify, and why that is the right answer
+
+`nativeMethodExists()` reads `getDeclaringMethod()` rather than the mixin-aware `Mixins::declaringMethod()`,
+because the original asks `hasNativeMethod()`. Swapping it for the mixin-aware lookup **leaves the gate
+green**, and no fixture can change that: `TestCase` natively declares `setUp()` and `tearDown()` — real
+PHPUnit at `TestCase.php:271` and `:302`, and the gate's own stub at `Framework.php:69` and `:72` — and every
+subject of this rule is a `TestCase` descendant, so the parent class is always somewhere in that chain and
+`hasNativeMethod()` is always true for the only two method names the rule looks at. The native/mixin
+distinction is unobservable *for this rule*, not merely unexercised by these examples.
+
+So the fold is recorded as **inert by construction rather than as verified**. It is still the right call —
+the next rule to reach this helper will not be asking about `setUp`, and a helper that matches the original's
+question is the one to keep — but the mutation result is evidence of nothing, and the mutation was run to
+learn which of those two it was. This is the distinction the file's own rule about probes asks for: the
+mutation answered "does any example separate these two lookups", and the question that decides the code is
+"can any example separate them". Only reading `TestCase` answers the second.
+
+### The top-level walk is faithful, and now pinned
+
+`hasParentClassCall()` in the original iterates `$stmts` and never recurses, so `parent::setUp()` nested in an
+`if` is not a call as far as the rule is concerned and PHPStan reports the class. The plugin reads the same
+top level, which was faithful by accident of how `statementsOf()` works rather than by decision — nothing in
+the fixtures said so either way.
+
+`GuardedParentCall` says so now: both engines report it. Making the walk recursive — `Tree::findKind()` over
+the whole body, the obvious improvement — fails the gate, because PHPStan still reports and the plugin falls
+silent. The first attempt at that mutation failed *for the wrong reason*, a missing `NodeKind` import giving a
+fatal and a red gate that proved nothing; the recorded rule about a mutation that does not express its change
+applies to a mutation that does not compile too, and `php -l` on the mutated file is the cheap guard.
+
+### Two folds that were already load-bearing
+
+Both mutations failed the gate on the fixtures as they stood, so they are recorded as measured rather than
+assumed: an exact-case selector compare in place of `strcasecmp` (`parent::setUp()` never matches a rule
+looking for `setup`, so the plugin reported every class that *did* call its parent), and skipping the `Block`
+descent inside a `MethodBody` (the statement list comes back empty, so every subject reports).
+
+### `Members` crossed the limit and the split changed no byte
+
+Adding the reflected-method readers took `Members` to 82 against a limit of 80 — a **new** baseline entry,
+which is the thing this repository watches for. `ReflectedMethods` takes the six methods that reach metadata
+through `Mixins::declaringMethod()` and none that touch the tree, so the group is the transitive closure of
+one lookup, per the rule that has been splitting this runtime since `Support` was 448 (`ls src/Runtime` is
+the class count; it is not a figure worth writing down here). The baseline holds 13 entries before and
+after. The emit-all diff above is the evidence the extraction moved nothing: it ran with the extraction in
+place on one side and `Members` intact on the other.
+
+The three `Translator` counts that drifted with it (2590 → 2598, `methodPredicate` 115 → 120,
+`resolveReflection` 461 → 464) were patched as three string substitutions, not by regenerating the file — a
+generated file is not a text stream, and rewriting this one has already unbaselined everything in it once.

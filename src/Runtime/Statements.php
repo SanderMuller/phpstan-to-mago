@@ -53,6 +53,59 @@ final class Statements
         return $concrete instanceof Node ? Calls::nthExpression($context, $concrete, 0) : null;
     }
 
+    /**
+     * Whether a method body calls `parent::<method>()` as one of its own statements.
+     *
+     * `ShouldCallParentMethodsRule::hasParentClassCall()`. **Top level only**  the original iterates the
+     * statement list it was handed and does not descend, so a `parent::setUp()` inside an `if` does not
+     * count. That reads like an oversight and is the rule\'s behaviour; a nested walk would be silent where
+     * the original reports.
+     *
+     * The class side is a `Keyword` holding `parent`, measured beside a named class which is an `Identifier`
+     *  so the test is the keyword text rather than a resolved name, and `parent` never resolves to one.
+     * The method name is compared case-insensitively, because the original lowercases both sides.
+     */
+    public static function callsParentMethod(
+        NodeAnalysisContext $context,
+        Part|Node|null $subject,
+        ?string $method,
+    ): bool {
+        if ($method === null) {
+            return false;
+        }
+
+        foreach (Members::statementsOf($context, $subject) as $statement) {
+            if (! self::isExpressionStatement($context, $statement)) {
+                continue;
+            }
+
+            $call = self::expressionOf($context, $statement);
+            if ($call instanceof Part && $call->kind->value === 'Call') {
+                $call = $call->firstChild();
+            }
+
+            if (! $call instanceof Part || $call->kind->value !== 'StaticMethodCall') {
+                continue;
+            }
+
+            $class = Calls::nthExpression($context, $call, 0);
+            if (! $class instanceof Part || strcasecmp(trim($class->text), 'parent') !== 0) {
+                continue;
+            }
+
+            // Case-insensitively: {@see Calls::selectorIs()} compares exactly, and the original lowercases
+            // both sides  `toLowerString() === $methodName` against a name the caller already lowercased. An
+            // exact compare found `parent::setUp()` for a rule looking for `setup` exactly never, so the
+            // plugin reported every class that *did* call its parent.
+            $selector = Calls::selector($context, $call);
+            if ($selector instanceof Part && strcasecmp(trim($selector->text), $method) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** The one concrete statement a `Statement` wrapper holds, or the node itself when it is not wrapped. */
     private static function concrete(NodeAnalysisContext $context, Part|Node|null $subject): ?Node
     {

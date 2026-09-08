@@ -10550,6 +10550,31 @@ final readonly class Translator
             ]);
         }
 
+        // `$parentClass->hasNativeMethod($name)` on a class this port already reduced to a name. Native, so
+        // it is not {@see Support::classHasMethod()}\'s question: that one goes through the mixin-aware
+        // lookup and answers yes for a method an `@mixin` supplies, and a rule asking the native form goes on
+        // to read the declaration "" which a magic method does not have. {@see Runtime\Reflect::nativeMethodExists()}
+        // states the split.
+        if ($method === 'hasNativeMethod' && count($args) === 1) {
+            $subject = $this->resolve($expr->var, $expr->getStartLine());
+            if (! in_array($subject['kind'], ['named-class', 'class-name'], true)) {
+                throw new Refusal(
+                    "hasNativeMethod() on a {$subject['kind']} rather than on a class this port has a name for",
+                    $expr->getStartLine(),
+                );
+            }
+
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a native-method test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return $this->context->backend->call('native_method_exists', [
+                '$context',
+                $this->operand($subject),
+                $this->operand($this->methodNameArgument($args, $method, $expr->getStartLine())),
+            ]);
+        }
+
         // `$classReflection->implementsInterface($name)` — asked of the declaration the hook fired for.
         if ($method === 'implementsInterface' && count($args) === 1) {
             $subject = $this->resolve($expr->var, $expr->getStartLine());
@@ -12125,7 +12150,7 @@ final readonly class Translator
             // rule looked the method up by. PHPStan reads it off the reflection, so a call written
             // `$o->STATICMETHOD(...)` interpolates the declared spelling into the message; reusing the
             // written name would diverge on any method not spelled as declared, and the gate compares message
-            // text. {@see Runtime\Members::reflectedMethodName()} reads `originalName` for the same reason.
+            // text. {@see Runtime\ReflectedMethods::reflectedMethodName()} reads `originalName` for the same reason.
             if ($base['kind'] === 'method-handle') {
                 if (Transpiler::$target !== 'php') {
                     throw new Refusal('a reflected method name, which only the PHP target carries', $line);
@@ -12302,6 +12327,16 @@ final readonly class Translator
 
         // `$node->stmts` — the statements a node holds, not the node. For a rule counting nested `foreach`
         // statements the distinction is the rule: searching the node itself finds the one it started from.
+        // `getStmts()` is the same question as `->stmts` one call along: `InClassMethodNode` hands a rule the
+        // declaration and the rule asks it for its body either way. Folded here rather than mapped separately
+        // so the `as: statement` marker below cannot be set on one spelling and not the other.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getStmts'
+            && $expr->args === []
+        ) {
+            $expr = new PropertyFetch($expr->var, new Identifier('stmts'), $expr->getAttributes());
+        }
+
         if ($expr instanceof PropertyFetch
             && $this->memberName($expr->name, $expr->getStartLine()) === 'stmts'
         ) {
@@ -13018,7 +13053,10 @@ final readonly class Translator
         // and every question a rule asks of one — a parameter's name, whether it is variadic, which class
         // declares it — takes the class and the method name, so the handle is that pair.
         if ($expr instanceof MethodCall
-            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getConstructor', 'getMethod'], true)
+            // `getNativeMethod()` alongside them: the handle it produces is the same pair of names, and what
+            // separates the two lookups is whether a mixin can answer — which is a question about the
+            // *predicate* beside it, not about the handle. {@see Runtime\Reflect::nativeMethodExists()}.
+            && in_array($this->memberName($expr->name, $expr->getStartLine()), ['getConstructor', 'getMethod', 'getNativeMethod'], true)
         ) {
             $subject = $this->resolve($expr->var, $line);
             // A class name a loop bound stands for the class, exactly as a reflection handle does.

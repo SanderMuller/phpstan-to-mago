@@ -169,6 +169,12 @@ final class Support
      * `getDeclaringMethod()` hands back the method, not the class that declares it, so the class is found by
      * asking each ancestor in turn which one declares it directly.
      */
+    /** Whether a class declares this method natively, mixins excluded. {@see Reflect::nativeMethodExists} */
+    public static function nativeMethodExists(NodeAnalysisContext $context, ?string $class, ?string $method): bool
+    {
+        return Reflect::nativeMethodExists($context, $class, $method);
+    }
+
     /**
      * Whether a named class declares or inherits a method, which is `ClassReflection::hasMethod()`.
      *
@@ -582,6 +588,15 @@ final class Support
     public static function binaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
     {
         return Operators::binaryOperatorIs($context, $subject, $operator);
+    }
+
+    /** Whether a method body calls `parent::<method>()` as one of its own statements. {@see Statements::callsParentMethod} */
+    public static function callsParentMethod(
+        NodeAnalysisContext $context,
+        Part|Node|null $subject,
+        ?string $method,
+    ): bool {
+        return Statements::callsParentMethod($context, $subject, $method);
     }
 
     /**
@@ -1620,27 +1635,27 @@ final class Support
     }
 
     /** Whether the codebase's method is public. A method that is not found is not public. */
-    /** Whether the codebase's method is static. {@see Members::reflectedMethodIsStatic} */
+    /** Whether the codebase's method is static. {@see ReflectedMethods::reflectedMethodIsStatic} */
     public static function reflectedMethodIsStatic(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
-        return Members::reflectedMethodIsStatic($context, $class, $method);
+        return ReflectedMethods::reflectedMethodIsStatic($context, $class, $method);
     }
 
-    /** The canonical name the codebase declares a method under. {@see Members::reflectedMethodName} */
+    /** The canonical name the codebase declares a method under. {@see ReflectedMethods::reflectedMethodName} */
     public static function reflectedMethodName(NodeAnalysisContext $context, ?string $class, ?string $method): ?string
     {
-        return Members::reflectedMethodName($context, $class, $method);
+        return ReflectedMethods::reflectedMethodName($context, $class, $method);
     }
 
     public static function reflectedMethodIsPublic(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
-        return Members::reflectedMethodIsPublic($context, $class, $method);
+        return ReflectedMethods::reflectedMethodIsPublic($context, $class, $method);
     }
 
     /** Whether the codebase's method is private. */
     public static function reflectedMethodIsPrivate(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
-        return Members::reflectedMethodIsPrivate($context, $class, $method);
+        return ReflectedMethods::reflectedMethodIsPrivate($context, $class, $method);
     }
 
     public static function methodIsStatic(?Part $method): bool

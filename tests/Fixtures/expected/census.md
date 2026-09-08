@@ -555,7 +555,7 @@ EMIT    VariableStaticPropertyFetchRule
 EMIT    VariableVariablesRule
 EMIT    WrongCaseOfInheritedMethodRule
 
-## phpstan/phpstan-phpunit — 4 of 13 portable rules the package registers emit, 0 covered by the engine, 9 refuse, 1 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-phpunit — 5 of 13 portable rules the package registers emit, 0 covered by the engine, 8 refuse, 1 unportable in principle, 0 it registers nowhere
 
 REFUSE  AssertEqualsIsDiscouragedRule
         guard body is neither `return []` nor `continue`, but Stmt_Expression
@@ -605,12 +605,7 @@ REFUSE  MockMethodCallRule
         needs: no PHP navigation for node.var (kind expr) on a MethodCall node
 EMIT    NoMissingSpaceInClassAnnotationRule
 EMIT    NoMissingSpaceInMethodAnnotationRule
-REFUSE  ShouldCallParentMethodsRule
-        method call outside the vocabulary ->hasNativeMethod()
-        needs: method call outside the vocabulary ->hasNativeMethod()
-        needs: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeMethod()
-        needs: access path outside the vocabulary: ->getStmts()
-        needs: condition outside the vocabulary: Expr_Variable
+EMIT    ShouldCallParentMethodsRule
 
 ## phpstan/phpstan-deprecation-rules — 2 of 2 portable rules the package registers emit, 0 covered by the engine, 0 refuse, 0 unportable in principle, 0 it registers nowhere
 
