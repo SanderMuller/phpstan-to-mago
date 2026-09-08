@@ -15009,3 +15009,47 @@ additive, and the honest insertion point is *after* the anchor's closing brace, 
 - The census drift alarm fired, its diff was read, and it named exactly one change: this rule REFUSE → EMIT.
 - All seven README package rows re-derived mechanically against the census, and the `--status` figure with
   them.
+
+### The untraced configuration question, traced — and it was load-bearing for the rule I just shipped
+
+The previous entry marked one thing untraced: why `argumentsFor()` returns nothing for a rule two shipped
+neons wire with arguments. Four rules now measure the same way — `SeeAnnotationToTestRule`,
+`ClassNameRespectsParentSuffixRule`, `PreferredClassRule`, `ForbiddenNodeRule` all answer `registers=true,
+arguments=NONE` — so it is systematic, not incidental.
+
+**Traced.** `PackageConfiguration::fromManifest()` reads only the neons named in `composer.json`'s
+`extra.phpstan.includes`, which for `symplify/phpstan-rules` is four files:
+`services/services.neon`, `ctor-rules.neon`, `mock-rules.neon`, `phpstan-extensions.neon`. Neither
+`rector-rules.neon` nor `configurable-rules.neon` is among them, so their arguments are correctly absent.
+The asymmetry with `registers()` — which is deliberately broad over *every* neon — is documented in that
+method and is the right shape: registration is a consumer fact, while the arguments are the default a consumer
+gets without opting in.
+
+**This mattered more than a loose end.** I emitted `ClassNameRespectsParentSuffixRule`'s table on the strength
+of "the parameter keeps its `[]` default", and had the rector arguments actually been in scope the plugin would
+have been built for a configuration nobody runs. They are not, so the emit is right — but it was right by a
+mechanism I had not checked when I shipped it. **Marking a claim untraced is not the same as it being safe to
+depend on**, and I depended on this one in the same session I marked it.
+
+What the trace also shows is a sharper caveat than I recorded: the rule is in **no** auto-included neon at all.
+A consumer reaches it through `naming-rules.neon` (no arguments, the 9 defaults) or `rector-rules.neon` (three
+prepended, and the constructor merges configured entries *ahead* of the defaults so they match first). The
+emitted plugin is exact for the first and **narrower** than the second — it misses `RectorInterface` and
+`PostRectorInterface`, though not `AbstractRector`, which the defaults already carry. Narrower means it
+under-reports there; it never reports something PHPStan would not.
+
+So the plugin now says so, in the file, above the table:
+
+    // The 9 ancestors this rule declares as its own defaults. A neon that wires more passes them ahead of
+    // these, so add them at the front rather than the back.
+
+That is *a count belongs to its configuration* applied to a plugin rather than to a number, and printed in the
+tool as that rule asks. Re-verified after the change: php diff is exactly the one added comment line, analyzer
+and linter zero diff, suite 1092/1092, engine 778/778, PHPStan 0, Rector 0, Pint clean, `src/` purely additive.
+
+#### `SeeAnnotationToTestRule`, read in full and not a candidate
+
+Its `requiredSeeTypes` has no default and no auto-included neon supplies it, so it is unconstructable in the
+default configuration — the same correct-forever shape as the eight already counted. Beyond that it needs
+`PhpDocResolver::resolve()` for `getDeprecatedTag()` and a `@see` tag finder, so it sits behind the resolved-
+phpdoc gap that blocks `NoJustPropertyAssignRule` as well. Two independent blockers; neither is close.

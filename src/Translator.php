@@ -6444,6 +6444,17 @@ final readonly class Translator
             $table[$ancestor] = $resolver($ancestor);
         }
 
+        // The table is the *unconfigured* one, and saying so in the file is the difference between a plugin a
+        // reader can trust and one they have to re-derive. `PackageConfiguration` reads only the neons a
+        // package auto-includes, so a rule a consumer opts into through some other neon may be wired there
+        // with extra entries -- which the constructor merges *ahead* of these, so they would match first.
+        $this->context->lines[] = new Stm('comment', [
+            'text' => sprintf(
+                'The %d ancestors this rule declares as its own defaults. A neon that wires more passes them '
+                . 'ahead of these, so add them at the front rather than the back.',
+                count($table),
+            ),
+        ], $this->context->indent);
         $this->context->lines[] = new Stm('assign', [
             'target' => $suffix,
             'value' => 'Support::missingAncestorSuffix($context, $node, ' . $this->renderedTable($table) . ')',
