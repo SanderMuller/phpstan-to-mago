@@ -14713,3 +14713,62 @@ gate symlinks `vendor/bin/mago`, which is **1.47.6** and matches the lock; 1.45.
 `mago --version` answered a question about my shell, and I was about to act on it as an answer about the gate.
 That is the *probe answers a narrower question* rule, and the thing that caught it was tracing how the gate
 locates its binary rather than trusting a version string that looked authoritative on its own.
+
+### Reading whole bodies instead of refusals, and the one candidate it found
+
+The previous entry concluded a candidate cannot be assessed from its refusal, only by reading the whole body
+and listing every need. This is that method run over the ten unread rules in the reachable pool.
+
+**Three read in full. All deep, and the third is the sharpest case of the anti-correlation yet:**
+
+| rule | refusal names | body actually needs |
+|:--|:--|:--|
+| `NoIntegerRefactorReturnRule` | `->returnType` | a class-wide constant scan, `array_diff`, a report at another node's line |
+| `ClassDependencyTreeRule` | `->hasConstructor()` | `ParametersAcceptorSelector`, an injected analyzer that walks the class |
+| `PhpUpgradeDowngradeRegisteredInSetRule` | an `if` with 3 statements | **`FileSystem::read()` off disk**, a named-capture regex, and `DowngradeSetList::{$constantName}` — a constant resolved by computed name |
+
+A refusal reading "an `if` with 3 statements" in front of disk I/O and dynamic constant resolution is the
+clearest illustration available that the field cannot rank candidates.
+
+**Seven more got a needs inventory** — every `Class::method` and `->method(` each body calls, deduped. Not a
+depth proxy: it enumerates what the body asks for. Six of the seven call an injected resolver, a closure
+detector, a collector aggregate, or `file_exists`. One does not.
+
+#### `ClassNameRespectsParentSuffixRule` — complete needs list
+
+Nothing in it touches disk, regex, reflection selectors or an injected analyzer:
+
+| need | status |
+|:--|:--|
+| `InClassNode` hook | already mapped |
+| `getOriginalNode() instanceof Class_` | already narrowed this way elsewhere |
+| `isAbstract()`, `isAnonymous()` | shallow |
+| `$classReflection->is($ancestor)` per entry | `namedClassIsSubclassOf` exists (`is()` is inclusive, so this needs care) |
+| `str_ends_with(getName(), $suffix)` | shallow |
+| `ClassToSuffixResolver::resolveFromClass()` | **48 lines, pure string manipulation, no PHPStan API** |
+| a first-match fold in a helper whose return is the rule's return | **the remaining structural need** |
+
+The resolver is the find: it is a pure function of a compile-time-constant class name, so the whole
+ancestor-to-suffix mapping is decidable. Measured by running it rather than deriving it by hand:
+
+    Command -> Command                    TestCase -> Test          Rule -> Rule
+    EventSubscriberInterface -> EventSubscriber                     Exception -> Exception
+    AbstractController -> Controller      Sniff -> Sniff            FixerInterface -> Fixer
+    AbstractRector -> Rector
+
+**Two shipped configurations, and they differ.** `naming-rules.neon` registers the rule with no arguments — 9
+entries. `rector-rules.neon` adds three, and because the constructor does `array_merge($parentClasses,
+DEFAULT_PARENT_CLASSES)` the configured ones come **first**, so they win the fold: 12 entries led by
+`RectorInterface -> Rector`, `AbstractRector -> Rector`, `PostRectorInterface -> PostRector`. Entry 12
+duplicates entry 2, harmlessly under first-match. So this rule cannot be emitted without naming which
+configuration it was emitted for — the rule this repository already states as *a count belongs to its
+configuration*, arriving here as *a plugin belongs to its configuration*.
+
+#### Nuance the fold retirement needs
+
+The entry above says the first-match fold blocks none of the six rules that share it, and that building it
+moves zero rules. That stands: this rule needs the fold **and** the collaborator inlining, so the fold alone
+still emits nothing. But the two shapes are closer than my table implied — I listed this rule's obstacle as
+"the helper builds the findings" and treated it as distinct from the fold, when the helper's body *is* a
+first-match fold. The distinction that survives is positional, not structural: an inline fold in `processNode`
+versus a helper whose return value is the rule's return.
