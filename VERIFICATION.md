@@ -12697,3 +12697,34 @@ So the remaining work is four small things and one recognizer:
 
 `DisallowedLooseComparisonRule` reuses 3 and 4 for `Equal`, which is why the table is worth having rather than
 special-casing division.
+
+### The `Expr` widening measured clean and was reverted anyway
+
+Adding `Assignment` to `HOOK_KINDS[Expr::class]` was tried and taken back out. Recording it because the
+measurement was the good outcome and the decision went the other way.
+
+**What it measured.** One failure in 1050: `EveryExpressionRule`'s reviewed snapshot, whose `getTargets()`
+line gains `NodeKind::Assignment`. Every fires gate passed. So the two real rules on that hook —
+`NoDynamicNameRule` and `NoInstanceOfStaticReflectionRule` — still agree with PHPStan under the wider target
+set, which is exactly the check the `Binary` row's own docblock prescribes: *a target a guard fails to decline
+is a finding the original does not make.* All three rules branch on concrete kinds
+(`StaticPropertyFetch`, `MethodCall`, `FuncCall`) and an `Assignment` reaches no report.
+
+**Why it came out anyway.** Harmless is not the same as useful. Until a rule reads an assignment through this
+hook, the widening buys nothing and costs three shipped plugins a hook call on every assignment in every
+analysed file — pure overhead, plus a snapshot change with no behaviour behind it. That is the
+unexercised-vocabulary shape this log has reverted three times before, and the argument does not weaken for
+the change being small. It lands in the same commit that makes Division emit, or not at all.
+
+**And the row has a tension worth naming rather than resolving quietly.** `HOOK_KINDS` carries two doctrines.
+The `FunctionLike` and `ClassLike` rows say the kinds a node type covers are a fact about the *type*: all
+four, not the subset a rule narrows to. The `Expr` row cannot follow that — `Expr` covers some two dozen
+expression kinds and the row lists seven — so in practice it is the kinds corpus rules on this hook actually
+read, each justified by a rule plus a check that the others decline. Adding `Assignment` for Division's
+benefit is target selection driven by a body, arriving through the table instead of through
+`targetKinds()`, which is the thing that function's docblock rejects twice.
+
+That does not make the addition wrong; the row's established practice is exactly this, and PHPStan does visit
+assignments for an `Expr` hook, so the seven-kind list is a **known false negative** for any rule on it. It
+means the addition should be made deliberately, with the rule that needs it, and the tension stated where the
+row is — not smuggled in as a one-word edit that looks like a table update.
