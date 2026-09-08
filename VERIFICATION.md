@@ -13522,3 +13522,38 @@ top-level branch that reports and returns is the same thing `isConditionalReport
 `$errors[] = ..` spelling, and the honest options are to widen that recognizer to the `return [<error>]`
 spelling or to widen what `independentChecks()` counts. The second changes `checkMode` for every rule and
 would move emitted bytes across the corpus, so it is not a change to make while chasing one rule.
+
+### Correcting the revert's stated cause, which was wrong in two ways
+
+The peer raised a hypothesis about the previous entry, marked as reasoning from my description alone: the
+counter and the recognizer might share a predicate, in which case my null result measured half of a coupled
+change — I widened the recognizer while the count was still computed by the old predicate, so the flag stayed
+off for the reason the widening was supposed to remove.
+
+**The coupling is real.** `Transpiler::branchChecks()` calls `Translator::isBranchCheck()`, which calls
+`delegatedCheck()` — the function I widened. So they are one predicate, and the objection was correct in
+form.
+
+**But it is not what my null result was about, and my stated cause was wrong twice.** Instrumented at both
+ends:
+
+- `OperandsInArithmeticDivisionRule` — which **emits** — reports `independentChecks assignments=0 branch=0
+  total=0`. So `checkMode` is off for a rule that emits, and "the path is gated by `checkMode`" was never a
+  sufficient explanation of anything.
+- `NoReferenceRule` — the `independentChecks` trace **never fires at all**, while a backtrace at the throw
+  site shows `Cli::run → Transpiler::transpile → translate → translateOrCollect → translateStatement →
+  translateIf → guardExit`. That is the loop three lines *below* the line that sets `checkMode`, so the
+  setter should have run. Re-applying the widening with the instrumentation still in place changed nothing.
+
+So: the coupling exists, the refusal is not explained by it, and **I do not know why the line that sets
+`checkMode` does not execute for this rule.** Stated that way on purpose. The previous entry asserted a
+mechanism — "this rule has none of the counted shape" — that the measurement does not support, which is the
+*wrong why* this log forbids, committed one entry after recording a peer's version of the same error.
+
+The revert itself stands: the widening moves no refusal, so it is unexercised either way. What does not stand
+is the reason I gave for it.
+
+**What the peer's framing got right beyond the specific hypothesis** is the part worth keeping: a null result
+is the easiest kind to accept without asking what it was a null result *of*, and four reverts under one
+condition suggests testing the condition rather than the changes. I accepted my own null result and explained
+it, instead of measuring it. The measurement took three commands and refuted my explanation twice.
