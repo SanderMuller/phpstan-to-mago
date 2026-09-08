@@ -14772,3 +14772,51 @@ still emits nothing. But the two shapes are closer than my table implied — I l
 "the helper builds the findings" and treated it as distinct from the fold, when the helper's body *is* a
 first-match fold. The distinction that survives is positional, not structural: an inline fold in `processNode`
 versus a helper whose return value is the rule's return.
+
+### Two probes before building `ClassNameRespectsParentSuffixRule`, one of which could have killed it
+
+The design is a transpile-time (ancestor → suffix) table with a runtime first-match loop. Two things decide
+whether that is viable, and both come before any `Translator` work.
+
+#### Probe 1 — does ancestry include implemented *interfaces*? Yes.
+
+Four of the nine default ancestors are interfaces (`EventSubscriberInterface`, `Sniff`, `Rule`,
+`FixerInterface`), and PHPStan's `ClassReflection::is()` covers them. If mago's ancestry did not, the emitted
+plugin would silently never fire on nearly half the table — a plausible-but-wrong rule, not a gap.
+
+Answered by this repository's own recorded measurements rather than a new probe, corroborated in two
+independent places:
+
+- `Runtime/Support.php` — "`Codebase::getClassAncestors()`: that one **folds in interfaces and traits**", which
+  is why `parentClassNames()` deliberately reads `parentClasses` instead.
+- `Translator.php` — mago "answers `getClassAncestors()` for both as the same sorted, lowercased list", written
+  in a passage specifically about an ancestor *interface* declaring a method, and citing
+  `internal/probe-prototype-vs-ancestors-*.php`. Those three files exist locally (`internal/` is gitignored),
+  so the citation re-derives.
+
+`namedClassIsSubclassOf` is built on `getClassAncestors` and compares with `strcasecmp`, which also handles the
+lowercasing trap recorded elsewhere in this log. So the four interface entries will match.
+
+**One divergence to carry into the build:** `getClassAncestors` folds in **traits**, and `is()` does not. None
+of the nine ancestors is a trait, so the shipped configuration is exact; a *configured* trait ancestor would
+make the port wider than the rule.
+
+#### Probe 2 — which of the two configurations does the transpiler resolve? The defaults-only one.
+
+The rule is wired by two shipped neons: `naming-rules.neon` with no arguments (9 entries) and
+`rector-rules.neon` with three prepended (12, and prepended entries win the fold).
+
+I inferred from `$arguments[$class] = self::classify($wiring)` — a plain assignment keyed by class — that the
+last neon read would silently win, giving the 12-entry rector table. **Measured, and that is wrong.**
+`argumentsFor()` for this rule returns `[]`, while `registers()` returns `true`. So the transpiler resolves no
+arguments at all, the constructor parameter keeps its `[]` default, and the effective list is the nine
+constants — the `naming-rules.neon` behaviour.
+
+The inference was reasonable and the measurement took one command. Worth noting *why* it was wrong is still
+unestablished: the assignment is last-write-wins as read, so something upstream — which neons the manifest walk
+reaches — is what keeps the rector wiring out. I have not traced that, and it is the difference between "the
+transpiler chooses defaults-only" and "the transpiler happens not to see the other file", which are different
+claims with different consequences for a configured consumer. **Marked as untraced rather than asserted.**
+
+Build order settled by these: target defaults-only, fold the constructor's `array_merge($param, self::CONST)`
+to the constant list under no arguments, and do not build the general merge until a configured emit needs it.
