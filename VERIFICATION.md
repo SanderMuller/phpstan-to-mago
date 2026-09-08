@@ -14550,3 +14550,40 @@ The first run of this partition read **19 of 54** neons: the glob was `vendor/*/
 `hihaho/phpstan-rules` ships its neons at package root. That misfiled two rules as unconfigurable. The count
 beside the glob is what caught it -- the same check that caught the emit-all zero, which is now three times
 this instrument class has been wrong in the same direction.
+
+### Coming at it from mago's SDK instead of from the refusals, and what that did not find
+
+Every previous ranking started from the refusal texts. Those groupings saturated: the ones that are large
+describe syntax, the ones that block describe deep capability. So this pass started from the other end —
+what the SDK exposes that this repository has never mentioned — and asked which refusals that retires.
+
+The sweep is mechanical: for each class under `vendor/carthage-software/mago/composer/src/Sdk`, whether its
+short name appears anywhere in `src/`. Two hits looked like they answered a live blocker:
+
+- `Analyzer/ClassLikeAnalysisHook` with `Analyzer/ClassLikeTarget::descendantsOf($ancestor)`.
+- `Analyzer/ReferenceRegistry` and `SymbolReference`, the reverse index this log has costed before.
+
+**Neither retires a refusal, and the first one is the instructive miss.** READ FROM THE DOCBLOCK, not
+measured: `ClassLikeAnalysisHook` "inspects class-like declarations descending from selected ancestors",
+resolving ancestry natively so only matching descendants cross the extension boundary. That reads exactly
+like the missing piece for a rule of the shape *a class extending X must be Y* — and `PreferredClassRule`'s
+`InClassNode` arm looked like the customer.
+
+It is not, for two separate reasons, and either alone is decisive:
+
+- **The capability is already covered by another path.** `Vocabulary` has mapped `InClassNode` to
+  `ClassDeclarationHook` / `on_enter_class` with `ClassLikeMetadata` all along. So "unused SDK class" did not
+  mean "capability this tool lacks"; it meant a second route to something already reachable. An unused-symbol
+  sweep cannot tell those apart, which is the flaw in the instrument rather than in the result.
+- **Using it here would approximate.** `descendantsOf()` matches descendants *transitively*, while the rule
+  compares `getParentClass()->getName()` — the **direct** parent only. Substituting one for the other
+  over-reports on a grandchild, which is the plausible-but-wrong rule this repository refuses to emit. The
+  target is also an analyzer-side hook, so it could not serve the shipped php target regardless.
+
+So the SDK direction is answered for now, negatively, and that is worth recording because the search was
+cheap and the *shape* of the miss recurs: **an unused symbol is evidence about this repository's vocabulary,
+never about the consumer's need.** The sweep ranks by what we have not called, and what decides a refusal is
+what a rule asks for.
+
+Left standing for whoever picks this up: `ReferenceRegistry` was costed here on performance grounds and never
+on capability grounds, and I did not read it this pass. That is an open thread, not a finding.
