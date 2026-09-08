@@ -13135,3 +13135,56 @@ is one capability away:
 
 Both readings come from the source rather than the census, which is the point: **the count ranks blockers,
 the rules say what a blocker is worth.**
+
+## Three candidate capabilities sized, each buying zero emits
+
+No rule emitted this pass, and the useful result is why. Three named gaps were sized by counting their
+dependents in the installed corpus rather than by reading how important they sound.
+
+**`describe(VerbosityLevel::value())`** — refused by name at `Translator.php:13528`, which supports
+`typeOnly()` only. I guessed last pass that "several rules sit behind it". **Exactly one does**:
+`MatchingTypeInSwitchCaseConditionRule`, which also needs `!…->no()` and `Printer::prettyPrintExpr()`. For
+scale, 27 files use `typeOnly()`, which is already supported. So the capability buys nothing on its own, and
+the guess cost one command to refute.
+
+**`->no()` on a trinary** — refused with a measured reason (of 93 trinary tails in the installed packages, 86
+are `->yes()`, six `->no()`, one `->maybe()`). It is also *expressible*, which the refusal does not claim: the
+existing readers answer "every atomic satisfies" for `->yes()`, and `->no()` is "no atomic satisfies", with
+Maybe the remainder. Three census rules use it and every one is blocked elsewhere —
+`MatchingTypeInSwitchCaseConditionRule` as above, `ArrayFilterStrictRule` with fifteen further needs, and
+`DisallowedImplicitArrayCreationRule` which turns *entirely* on `$scope->hasVariableType()`.
+
+**Definedness** — that last rule is the interesting one, because it is one capability away and the capability
+is not ours. `carthage-software/mago#2334` is **CLOSED/COMPLETED on 2026-09-07** and the newest release is
+**1.47.6, 2026-09-04**, which is what we install. The fix is merged and unreleased, so the highest-value
+unlock left is a wait rather than a task.
+
+### The multi-kind family is reachable, and still not worth building yet
+
+Four rules share the largest primary blocker — a `Node::class` hook narrowed by `instanceof` — and the
+refusal that reports it already names the design: a plugin can register several targets, so what is needed is
+a hook and a field mapping per kind plus a body that reads the same child in every branch.
+
+That also resolves a tension this log flagged one entry earlier. `Emitter::targetKinds()`'s docblock rejects
+deriving targets from the body, twice, and the `FunctionLike` row says the kinds a node type covers are a fact
+about the *type*. Both hold where a `HOOK_KINDS` row is possible. **`Node::class` covers 227 `NodeKind` cases**
+— counted, not estimated — so no row is practical there and the body's own `instanceof` set is the only
+statement of what the rule can see. The narrow rule that follows: derive from the body *only* where the node
+type has no usable kind list.
+
+It still buys zero emits today. `NewWithFollowingSettersCollector` is a collector, `ForbiddenNodeRule` takes
+its kinds from a configured value known only at analysis time, and `NoReferenceRule` and `PreferredClassRule`
+each carry three or more further needs. Building it now would be the unexercised-vocabulary revert for the
+fifth time.
+
+### Where the effort goes next, named so the next pass starts with a plan
+
+`NoReferenceRule` is the most tractable of the four: eight kinds (`AssignRef`, `Closure`, `ArrowFunction`,
+`Function_`, `ClassMethod`, `Arg`, `Foreach_`, `ArrayItem`), a `Closure` node predicate, and guard bodies that
+return a value rather than `return []` or `continue`. Three pieces, all mechanical, none depending on
+upstream. `PreferredClassRule` is worse: it narrows to `InClassNode`, a PHPStan *virtual* node with no
+syntactic counterpart, and builds its findings in helpers.
+
+**The cheap seam is exhausted.** Eight rules emitted in this session by adding a row or two to a table; what
+is left needs either an upstream release or three-to-fifteen capabilities per rule. That is worth stating
+plainly rather than discovering it once per pass — and it is why this entry is a sizing rather than a rule.
