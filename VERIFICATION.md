@@ -14587,3 +14587,50 @@ what a rule asks for.
 
 Left standing for whoever picks this up: `ReferenceRegistry` was costed here on performance grounds and never
 on capability grounds, and I did not read it this pass. That is an open thread, not a finding.
+
+### Correcting the reason I gave for the phpdoc blocker, and a bound that replaces it
+
+**Superseded, marked rather than edited away.** The entry above says mago "exposes docblock trivia with spans
+and, as far as I know, nothing that resolves a block". The conclusion it supports — that
+`NoJustPropertyAssignRule` cannot emit — is right. The reason is false, and `phpstan-src-e7` caught it.
+
+Re-derived here from the installed SDK, not repeated on their word:
+
+| claim | verified |
+|:--|:--|
+| `Analyzer/TypeComparator::equals(Type, Type): bool` exists | yes, line 43 |
+| `Metadata/TypeMetadata` carries `$type`, `$fromDocblock`, `$inferred`, `$location` | yes, all four |
+| `PropertyMetadata` exposes `$declaredType`, `$type`, `$writeType`, `$defaultType` | yes, each `?TypeMetadata` |
+| any var-tag API keyed by variable name | **no match anywhere in the SDK** |
+
+So mago **does** resolve docblocks, for declared members, and carries the provenance flag that says a type came
+from one. What it does not carry is a **statement-level `@var` keyed by variable name**, which is the gap
+`mago#2334` was filed for. The rule needs the second. The correct sentence is *this one block sits on a node
+the protocol does not carry* — not *nothing resolves a block*.
+
+Two things fall out that are worth more than the correction:
+
+- `TypeComparator` and `TypeMetadata` are **already used** in `src/`, so the unused-symbol sweep was right not
+  to flag them — and my prose asserted an absence the sweep had never tested. The sweep ranks what we have not
+  called; I turned that into a claim about what the SDK does not have. Different questions.
+- `fromDocblock` is read **nowhere** in `src/`. Provenance is available and unexploited. Not a finding, a
+  thread.
+
+#### The bound, and whose row it is
+
+**Measured by `phpstan-src-e7`, over 43,515 files across three trees. Not reproduced here.** They tested their
+own hypothesis — that the inline-`@var` exemption might be a zero-divergence simplification, making the rule
+portable without #2334 — and refuted it:
+
+| statements of shape `$x = $this->prop;` | 1986 |
+|:--|--:|
+| carrying an inline `@var` on the statement | 83 (4.2%) |
+
+Not zero, and the instances are the deliberate-narrowing case the exemption protects, so omitting it would
+report false positives. Their idea is dead by their own measurement.
+
+What survives is a bound, and they were careful to state it as one: **83 is an upper bound on how often the
+exemption can fire, not the rate.** The rule further requires an object property type and a `@var` that
+differs from the inferred type, and some of the 83 fail the first. That turns "cannot be honoured" into at
+most 4.2% of candidate sites, probably well under — which is a different kind of thing to put to a user than
+a blocker, and it is the form the filed issue should carry.
