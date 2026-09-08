@@ -12395,3 +12395,66 @@ That is not an equivalence and it is documented as not being one. Every emitted 
 because the vocabulary entry declares `'takes' => 'context'`, so nothing shipped takes that path — and
 `SimpleXMLIterator` is therefore checked by the fires gate rather than by the unit test. A fallback that
 quietly answers a different question is how a port diverges with every test still green.
+
+### Superseded: the bound was two-directional, and the reason I gave belonged to the other half
+
+The entry above states the bound as one-directional — an extension can make `++` valid for another class and
+this port still reports it, but *not* the reverse, "because an extension cannot change `toNumber()`". The
+`phpstan-src-e7` peer demonstrated the reverse direction end to end, and it is the direction that ships a
+**false negative**.
+
+**Their demonstration**, on strict-rules 2.0.12 at level 9, one variable changed: with a twelve-line
+third-party extension whose `isOperatorSupported()` matches on the operator sigil alone and whose
+`specifyType()` returns `new ErrorType()`, PHPStan reports `GMP++` and `SimpleXMLElement++`. This port stays
+silent, because its accepting set is fixed by ancestry and cannot know an extension is installed.
+
+**The mechanism, verified here rather than taken from their prose** — both halves, because this is what the
+correction rests on:
+
+    union(GMP, ErrorType) = PHPStan\Type\ErrorType    instanceof ErrorType: YES
+    union(GMP, NeverType) = PHPStan\Type\ObjectType   instanceof ErrorType: no
+    ErrorType extends MixedType: yes
+
+and `OperatorTypeSpecifyingExtensionRegistry` — read in the phar, so the artefact is named — filters *every*
+extension whose `isOperatorSupported()` matches and returns `TypeCombinator::union(...$extensionTypes)`,
+picking no winner. So one contributor returning `ErrorType` decides the answer and the built-in GMP extension
+cannot outvote it. The peer expected `mixed` and probed to confirm it; the probe said `ErrorType`, and that is
+the whole finding.
+
+**Where my reason went wrong, and it is the shape worth keeping.** "An extension cannot change `toNumber()`"
+is *true*, and it is exactly why the six arithmetic rules need no bound at all: every object there either
+fails the `toNumber()` gate and returns true two branches early, or is one of these two, and no extension
+reaches that gate. The increment half **has no `toNumber()` gate** — its only discriminator is `expr + 1`,
+which is precisely what an extension reaches. I took a justification that holds for one half of a helper and
+applied it to the half where the gate it depends on is absent.
+
+That is the same error the peer had made two messages earlier, in the opposite direction, about plain objects.
+Twice in one exchange, from both sides: **a true sentence about one branch, restated about a sibling whose
+preconditions differ.** It is the *"cell stated as a property"* failure this file already records, with the
+sibling relationship supplying the false confidence — the two halves sit in one class, share a name stem, and
+read as one mechanism.
+
+The code does not change. There is no tighter port: the discriminator is the type of a node that does not
+exist in the file, so the bound is the answer rather than a gap. What changes is the sentence, in
+`Runtime\RuleLevel::acceptsAnIncrementOperator()`, now stating both directions and which half each reason
+belongs to.
+
+### And a sizing sentence of mine that over-generalised the same way
+
+"The `OperandsInArithmetic*` family is six rules with an identical blocker set" is wrong by this
+repository's own census: `OperandsInArithmeticAdditionRule` carries `access path outside the vocabulary:
+->getArrays()` that the other five do not, because `array + array` is valid there and the rule reads it. It is
+five plus one. Flagged by a reviewer reading the census rows I had already printed — the count was in front of
+me and the word "identical" was not checked against it.
+
+### What neither of us was doing
+
+Worth recording as its own result, because it has now happened in both directions in one exchange. The peer
+could not see the false positive in my four shipped plugins; they described a structure and the consequence
+was mine to find. I could not see their tree either; the thing that broke my bound was a two-line probe of a
+library function neither of us had reason to doubt.
+
+**Neither of us was reviewing the other's code. We were each testing a sentence the other had written**, which
+is cheaper than review and catches a different class of defect — the class this file is almost entirely made
+of. The countermeasure already recorded here is "budget for a second party rather than for a more careful
+self-review". This sharpens it: what the second party should be handed is not the diff. It is the sentence.

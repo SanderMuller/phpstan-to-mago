@@ -334,9 +334,31 @@ final class RuleLevel
      *
      * One accepting set serves both directions, which is why one function still serves both.
      *
-     * The bound: a third-party `OperatorTypeSpecifyingExtension` can make `++` valid for another class, and
-     * this port would still report it. It cannot go the other way — an extension cannot change `toNumber()`,
-     * so nothing it does makes one of these two report.
+     * ## The bound, which runs in both directions
+     *
+     * An earlier version of this docblock said the bound was one-directional, because an extension cannot
+     * change `toNumber()`. That reason is sound and it is the reason the **arithmetic** sibling needs no
+     * bound at all — every object there either fails the `toNumber()` gate and returns true two branches
+     * early, or is one of these two, and no extension can reach that gate. It does not hold here, because
+     * this half has no `toNumber()` gate: its only discriminator is the type of `expr + 1`, which is exactly
+     * what an extension reaches.
+     *
+     * So with a third-party `OperatorTypeSpecifyingExtension` installed, the two can disagree either way:
+     *
+     * - It can make `++` valid for some other class, where this port still reports. The direction already
+     *   stated.
+     * - It can make `GMP` or `SimpleXMLElement` **reported by PHPStan**, where this port is silent — a false
+     *   negative. `OperatorTypeSpecifyingExtensionRegistry` calls `specifyType()` on *every* extension whose
+     *   `isOperatorSupported()` matches and returns `TypeCombinator::union(...)` of all of them, picking no
+     *   winner. `ErrorType extends MixedType`, so it absorbs the union rather than being absorbed. Verified
+     *   here: `union(GMP, ErrorType)` is an `ErrorType` and `union(GMP, NeverType)` is the `ObjectType`. One
+     *   contributor returning `ErrorType` therefore decides the answer, and the built-in GMP extension cannot
+     *   outvote it. Not contrived either: phpstan-src's own `GmpOperatorTypeSpecifyingExtension` ends with
+     *   `return new ErrorType();` for operands it does not understand, so the pattern is modelled by the
+     *   codebase, and an extension gated on the operator sigil alone matches a GMP pair without meaning to.
+     *
+     * There is no tighter port. The discriminator is the type of a node that does not exist in the file, so
+     * the bound is the answer rather than a gap in this implementation.
      */
     private static function acceptsAnIncrementOperator(?NodeAnalysisContext $context, Type $type): bool
     {
