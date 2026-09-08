@@ -755,7 +755,7 @@ final class Vocabulary
         'PHPStan\Rules\Operators\OperatorRuleHelper::isValidForIncrement' => [
             'helper' => 'RuleLevel::isValidForIncrementOrDecrement',
             'kind' => 'bool',
-            'takes' => 'none',
+            'takes' => 'context',
             'arguments' => [],
             'types' => [1],
             'flags' => ['checkNullables', 'checkUnionTypes', 'checkThisOnly'],
@@ -763,7 +763,7 @@ final class Vocabulary
         'PHPStan\Rules\Operators\OperatorRuleHelper::isValidForDecrement' => [
             'helper' => 'RuleLevel::isValidForIncrementOrDecrement',
             'kind' => 'bool',
-            'takes' => 'none',
+            'takes' => 'context',
             'arguments' => [],
             'types' => [1],
             'flags' => ['checkNullables', 'checkUnionTypes', 'checkThisOnly'],

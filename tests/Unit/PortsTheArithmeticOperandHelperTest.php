@@ -130,7 +130,7 @@ final class PortsTheArithmeticOperandHelperTest extends TestCase
     public function test_an_absent_type_says_nothing(): void
     {
         $this->assertTrue(RuleLevel::isValidForArithmeticOperation(null, false, false, false));
-        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, false, false, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, null, false, false, false));
     }
 
     /**
@@ -145,27 +145,52 @@ final class PortsTheArithmeticOperandHelperTest extends TestCase
         $array = Type::array(Type::int(), Type::string());
         $object = Type::namedObject('Acme\\Money');
 
-        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement($array, false, false, false));
-        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement($object, false, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(null, $array, false, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(null, $object, false, false, false));
 
         $this->assertTrue(RuleLevel::isValidForArithmeticOperation($array, false, false, false));
         $this->assertTrue(RuleLevel::isValidForArithmeticOperation($object, false, false, false));
     }
 
+    /**
+     * The two object hierarchies `++` and `--` are defined for, which is the row this table was missing.
+     *
+     * `Acme\\Money` above reads as "a named object is a finding", and that generalisation shipped a false
+     * positive: `ObjectType::toNumber()` answers `float|int` for `GMP` and `SimpleXMLElement` and `ErrorType`
+     * for every other object, so those two increment cleanly and PHPStan stays silent. The emitted plugins
+     * reported all three until a fixture put `GMP` beside `stdClass`.
+     *
+     * A null context answers the two names without ancestry — see
+     * {@see RuleLevel::isValidForIncrementOrDecrement()} — so `SimpleXMLIterator` is checked by the fires
+     * gate rather than here, where there is no codebase to resolve it against.
+     */
+    public function test_gmp_and_simple_xml_are_valid_increment_operands(): void
+    {
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, Type::namedObject('GMP'), false, false, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, Type::namedObject('SimpleXMLElement'), false, false, false));
+
+        // The control: one more named object, which must still report.
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(null, Type::namedObject('stdClass'), false, false, false));
+
+        // And the arithmetic sibling passes every object either way, which is why it needed no fix.
+        $this->assertTrue(RuleLevel::isValidForArithmeticOperation(Type::namedObject('GMP'), false, false, false));
+        $this->assertTrue(RuleLevel::isValidForArithmeticOperation(Type::namedObject('stdClass'), false, false, false));
+    }
+
     /** A bare `object` follows `checkUnionTypes`, where a named one reports either way. */
     public function test_a_bare_object_follows_check_union_types_for_an_increment(): void
     {
-        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(Type::object(), false, false, false));
-        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(Type::object(), false, true, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, Type::object(), false, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(null, Type::object(), false, true, false));
     }
 
     /** `bool` and `null` report at every setting here as well. */
     public function test_a_boolean_and_a_null_are_not_valid_increment_operands(): void
     {
-        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(Type::bool(), false, false, false));
-        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(Type::null(), false, false, false));
-        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(Type::bool(), true, true, false));
-        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(Type::null(), true, true, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(null, Type::bool(), false, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(null, Type::null(), false, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(null, Type::bool(), true, true, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(null, Type::null(), true, true, false));
     }
 
     /**
@@ -178,8 +203,8 @@ final class PortsTheArithmeticOperandHelperTest extends TestCase
     {
         $intOrString = Type::union(Type::int(), Type::string());
 
-        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement($intOrString, false, false, false));
-        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement($intOrString, false, true, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, $intOrString, false, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(null, $intOrString, false, true, false));
         $this->assertTrue(RuleLevel::isValidForArithmeticOperation($intOrString, false, true, false));
     }
 
@@ -192,9 +217,9 @@ final class PortsTheArithmeticOperandHelperTest extends TestCase
      */
     public function test_a_string_passes_because_mago_cannot_tell_a_numeric_one_apart(): void
     {
-        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(Type::string(), false, false, false));
-        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(Type::string(), true, true, false));
-        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(Type::literalString('12'), true, true, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, Type::string(), false, false, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, Type::string(), true, true, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, Type::literalString('12'), true, true, false));
     }
 
     /** `?int` needs both flags here too, and for the same reason. */
@@ -202,15 +227,15 @@ final class PortsTheArithmeticOperandHelperTest extends TestCase
     {
         $nullableInt = Type::union(Type::int(), Type::null());
 
-        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement($nullableInt, false, false, false));
-        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement($nullableInt, false, true, false));
-        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement($nullableInt, true, false, false));
-        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement($nullableInt, true, true, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, $nullableInt, false, false, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, $nullableInt, false, true, false));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, $nullableInt, true, false, false));
+        $this->assertFalse(RuleLevel::isValidForIncrementOrDecrement(null, $nullableInt, true, true, false));
     }
 
     /** And `checkThisOnly` silences this family the same way. */
     public function test_check_this_only_silences_an_increment_as_well(): void
     {
-        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(Type::bool(), false, false, true));
+        $this->assertTrue(RuleLevel::isValidForIncrementOrDecrement(null, Type::bool(), false, false, true));
     }
 }

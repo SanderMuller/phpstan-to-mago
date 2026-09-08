@@ -12302,3 +12302,96 @@ phpstan-src's bundled 2.0.10 copy. They measured GMP being reported and nearly s
 have **confirmed my dead-branch inference for the wrong reason**. Including a package's neon does not choose
 that package's code; the autoloader does. This is the artefact-that-confirms-the-hypothesis case, caught by
 the person who could run the instrument, which is the only place it can be caught.
+
+## A false positive that had shipped in four plugins, and the sentence that caused it
+
+`OperandInArithmeticPostIncrementRule` and its three siblings emit and have emitted for some time. All four
+reported `GMP`, `SimpleXMLElement` and `SimpleXMLIterator` where PHPStan reports nothing:
+
+    GoodOverloadableObjectOperand.php
+      26: Only numeric types are allowed in post-increment, GMP given.
+      27: Only numeric types are allowed in post-increment, SimpleXMLElement given.
+      28: Only numeric types are allowed in post-increment, SimpleXMLIterator given.
+
+Nothing was wrong with the gate. The example pair had no row for these classes, so there was nothing to
+disagree about — the failure this file keeps recording, arriving in the one place it has not been recorded
+before: **in shipped output rather than in a measurement**.
+
+### The sentence
+
+`Runtime\RuleLevel::isValidForIncrementOrDecrement()` carried a measured table with this row:
+
+    | `bool`, `null`, `array`, a named object   | always |
+
+Every cell of it was measured. "A named object" was measured on **one** named object, and the phrase has no
+row under it — this is *"a generalisation to an unmeasured cell"*, the first entry in this file's own list of
+sentences that were wrong while every figure was right. It was even written with the honest reason beside it:
+`isValidForIncrement()` has no `toNumber()` pass, so an object *is* this rule's own finding rather than
+core's. True for `stdClass`, and the conclusion drawn from it was that objects are the rule's population.
+
+The correction, read off phpstan-src rather than guessed: `ObjectType::toNumber()` answers `float|int` for
+the `SimpleXMLElement` and `GMP` hierarchies and `ErrorType` for every other object. So `++` and `--` are
+defined for exactly those two, PHPStan stays silent on them, and the port has to as well.
+
+### How it was found, which is not by looking
+
+The `phpstan-src-e7` peer volunteered it. They had just corrected their own advice — their allowlist was
+wrong for the six arithmetic rules, where **no object is ever reported**, and they said so — and then noted
+that the same helper's increment half has the object branch with no `toNumber()` gate above it, so there the
+branch is the only discriminator. That sentence is what sent me to look, and the four rules were already
+shipped. **The peer was not reviewing my code and could not see it**; they were describing a mechanism, and
+the consequence was mine to find.
+
+Worth naming precisely, because it is the third time in two days a peer has caught something no instrument
+here would have: this repository's gate cannot fail on a row nobody wrote, and no amount of re-running it
+produces that row. What produced it was someone describing the *original's* structure well enough that a gap
+in my fixtures became visible.
+
+### Measured before the fix, at the gate's own configuration
+
+Level 0 with `checkThisOnly` off — the flags `FiresGate::PARAMETERS` sets for this family — with `bool++` in
+the same run as a control that must fire, and it did:
+
+| operand              | `$x++`  | `$x--`  | `++$x`  | `--$x`  |
+|:---------------------|:--------|:--------|:--------|:--------|
+| `GMP`                | silent  | silent  | silent  | silent  |
+| `SimpleXMLElement`   | silent  | silent  | silent  | silent  |
+| `SimpleXMLIterator`  | silent  | silent  | silent  | silent  |
+| `stdClass`           | REPORTS | REPORTS | REPORTS | REPORTS |
+
+One accepting set for both directions and both fixities, which is why one ported function still serves all
+four rules.
+
+### The fix, and what it costs
+
+`acceptsAnIncrementOperator()` is the original's last branch, in its original position — below
+`isSubtypeOfNumber()`, not above it. It cannot ask the original's question: that branch reads
+`$scope->getType(new Expr\PreInc($expr))`, a node with no span, and a plugin gets span-keyed types for
+declared positions only. It can *answer* it, because the branch is reached only for objects and the accepting
+set is knowable by name — by ancestry, not by name compare, since the original asks `isInstanceOf()`.
+
+The bound is one-directional and worth stating: a third-party `OperatorTypeSpecifyingExtension` can make `++`
+valid for some other class and this port will still report it. It cannot go the other way, because an
+extension cannot change `toNumber()`.
+
+Three mutations, each failing the gate with 8 failures: dropping the branch (which is the bug as shipped),
+dropping `SimpleXMLElement` from the table, and comparing the two names exactly instead of by ancestry — that
+last one is what the `SimpleXMLIterator` row is in the fixture for. A fourth attempt failed *for the wrong
+reason* — it called a private method and did not compile — which is the second time this session a mutation
+died at parse time and reported a red gate that proved nothing. `php -l` on the mutated file, every time.
+
+**The emit-all diff changed, deliberately, and this is the shape to expect from a bug fix:** four files, one
+line each, `$context` added as the first argument to the ported helper. Counts identical on all three targets
+(173 php, 34 analyzer, 25 linter), so no rule gained or lost emission, and no other plugin moved a byte.
+
+### One thing the fix had to state rather than hide
+
+`Types::typeIsInstanceOf()` needs a codebase for ancestry, and the unit test beside `RuleLevel` has no
+context to give — a `NodeAnalysisContext` is built from an `AfterFileAnalysisContext`, a `SourceFile`, a
+`Node` and a `NodeAnalysisData`, and nothing in `tests/` constructs one. So the parameter is nullable and a
+null context answers the **narrower** question: the two names exactly, no subclasses.
+
+That is not an equivalence and it is documented as not being one. Every emitted plugin passes a real context,
+because the vocabulary entry declares `'takes' => 'context'`, so nothing shipped takes that path — and
+`SimpleXMLIterator` is therefore checked by the fires gate rather than by the unit test. A fallback that
+quietly answers a different question is how a port diverges with every test still green.

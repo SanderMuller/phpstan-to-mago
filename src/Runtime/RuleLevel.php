@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Runtime;
 
+use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
 use Mago\Sdk\Analyzer\Type\AnyObjectType;
 use Mago\Sdk\Analyzer\Type\MixedType;
@@ -234,6 +235,16 @@ final class RuleLevel
     }
 
     /**
+     * The object hierarchies `++` and `--` are defined for, with no extension installed.
+     *
+     * Read off `ObjectType::toNumber()` in phpstan-src rather than guessed: it names these two and answers
+     * `ErrorType` for every other object. {@see acceptsAnIncrementOperator()} carries the measured table.
+     *
+     * @var list<string>
+     */
+    private const array INCREMENTABLE_OBJECTS = ['GMP', 'SimpleXMLElement'];
+
+    /**
      * Whether an expression's type is a valid increment or decrement operand.
      *
      * One function for both, and for `++` and `--` alike, because the port cannot separate them — see the
@@ -243,14 +254,15 @@ final class RuleLevel
      *
      * | operand                                   | reports when                           |
      * |:------------------------------------------|:---------------------------------------|
-     * | `bool`, `null`, `array`, a named object   | always                                 |
+     * | `bool`, `null`, `array`, most named objects | always                               |
+     * | `GMP`, `SimpleXMLElement` and subclasses  | never — {@see acceptsAnIncrementOperator()} |
      * | a bare `object`, `int\|bool`, `int\|string` | `checkUnionTypes`                      |
      * | `?int`                                    | `checkNullables` and `checkUnionTypes` |
      * | `int`, `float`, `numeric-string`, `mixed` | never                                  |
      * | a plain `string`                          | `--` and `$x--` only, never `++`       |
      *
-     * Note how much wider this is than the arithmetic family: an `array` and an object report here at every
-     * setting, and they never report there. The original is why — `isValidForIncrement()` and
+     * Note how much wider this is than the arithmetic family: an `array` and most objects report here at
+     * every setting, and they never report there. The original is why — `isValidForIncrement()` and
      * `isValidForDecrement()` have no `toNumber()` pass, so nothing hands those shapes to PHPStan core.
      * Reusing the arithmetic table would have silenced the largest part of this rule's population.
      *
@@ -270,6 +282,7 @@ final class RuleLevel
      * The increment half is exact — PHPStan passes every string there too.
      */
     public static function isValidForIncrementOrDecrement(
+        ?NodeAnalysisContext $context,
         ?Type $type,
         bool $checkNullables,
         bool $checkUnionTypes,
@@ -287,7 +300,74 @@ final class RuleLevel
             return true;
         }
 
-        return self::passesAsNumber($type, $checkNullables, $checkUnionTypes);
+        if (self::passesAsNumber($type, $checkNullables, $checkUnionTypes)) {
+            return true;
+        }
+
+        // Last, because it is last in the original: the object branch sits below `isSubtypeOfNumber()`.
+        return self::acceptsAnIncrementOperator($context, $type);
+    }
+
+    /**
+     * Whether `++` and `--` are defined for this object type, which is the original's last branch.
+     *
+     * `isValidForIncrement()` and `isValidForDecrement()` each end by asking whether
+     * `$scope->getType(new Expr\PreInc($expr))` is an `ErrorType`. That node does not exist in the analysed
+     * file, and a plugin receives span-keyed inferred types for the positions it declared, so a node with no
+     * span has no type and the question cannot be asked. It can be *answered*, because the branch is reached
+     * only for objects and the set of objects it accepts is knowable by name.
+     *
+     * `ObjectType::toNumber()` answers `float|int` for the `SimpleXMLElement` and `GMP` hierarchies and
+     * `ErrorType` for every other object, and core's arithmetic typing reads it — so those two increment
+     * cleanly and nothing else does. By ancestry rather than by name: the original asks `isInstanceOf()`, so
+     * a subclass is covered, and a port comparing the two names exactly would report `SimpleXMLIterator`.
+     *
+     * Measured at the gate's own configuration — level 0 with `checkThisOnly` off — over both directions and
+     * both fixities, with `bool++` in the same run as a control that must fire:
+     *
+     * | operand              | `$x++` | `$x--` | `++$x` | `--$x` |
+     * |:---------------------|:-------|:-------|:-------|:-------|
+     * | `GMP`                | silent | silent | silent | silent |
+     * | `SimpleXMLElement`   | silent | silent | silent | silent |
+     * | `SimpleXMLIterator`  | silent | silent | silent | silent |
+     * | `stdClass`           | REPORTS| REPORTS| REPORTS| REPORTS|
+     *
+     * One accepting set serves both directions, which is why one function still serves both.
+     *
+     * The bound: a third-party `OperatorTypeSpecifyingExtension` can make `++` valid for another class, and
+     * this port would still report it. It cannot go the other way — an extension cannot change `toNumber()`,
+     * so nothing it does makes one of these two report.
+     */
+    private static function acceptsAnIncrementOperator(?NodeAnalysisContext $context, Type $type): bool
+    {
+        // Ancestry needs a codebase, and the unit test beside this class has no context to give: a
+        // `NodeAnalysisContext` is built from an `AfterFileAnalysisContext`, a `SourceFile`, a `Node` and a
+        // `NodeAnalysisData`, none of which a unit test holds. So a null context answers the *narrower*
+        // question — the two names exactly, no subclasses — rather than answering nothing.
+        //
+        // Deliberately narrower and not equivalent. Every emitted plugin passes a real context, because the
+        // vocabulary entry declares `'takes' => 'context'`, so nothing shipped takes this path. It is stated
+        // here rather than hidden because a fallback that silently answers a different question is how a port
+        // diverges without a test noticing.
+        if (! $context instanceof NodeAnalysisContext) {
+            foreach ($type->atomicTypes as $atomic) {
+                if ($atomic instanceof NamedObjectType
+                    && in_array(ltrim($atomic->name, '\\'), self::INCREMENTABLE_OBJECTS, true)
+                ) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        foreach (self::INCREMENTABLE_OBJECTS as $class) {
+            if (Types::typeIsInstanceOf($context, $type, $class)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
