@@ -13738,3 +13738,61 @@ contents, and an extractor pinned to today's shape reads old snapshots as empty 
 The `needs-at-least:` rename earlier in this session changed that same file's keys — so any extractor written
 against it before that commit now reads zero `needs:` lines from every later snapshot, and would report a
 corpus with no needs at all.
+
+## The search is saturated, measured four ways
+
+Recorded so the next session does not repeat the search. Four independent cuts at the 48 remaining refusals,
+each one made because the previous one came back empty:
+
+1. **Primary blockers, ranked.** The largest family is four rules on a `Node::class` hook narrowed by
+   `instanceof`. One is a collector, one takes its kinds from a value known only at analysis time, and two
+   carry three or more further needs.
+2. **The thirteen refusals stating one need.** Each checked at the source; none is one capability away.
+3. **Named capabilities, counted rather than assumed.** `describe(VerbosityLevel::value())` has exactly one
+   dependent, itself multiply blocked. `->no()` has three, each blocked elsewhere — including one that turns
+   entirely on definedness, which is merged upstream and unreleased.
+4. **All needs by full text**, which is the only valid grouping and the census header says so. The top entry
+   touches seven rules and dissolves on inspection: four are `*TypeDeclarationCollector`s from
+   `tomasvotruba/type-coverage`, and **exactly one need is shared by all four** while each carries four to six
+   unique ones. A shared wrapper, not a shared capability.
+
+The distribution of `needs-at-least` per refusal, which is the summary figure worth keeping:
+
+| needs | refusals |
+|--:|--:|
+| 1 | 13 |
+| 2 | 9 |
+| 3 | 5 |
+| 4–7 | 19 |
+| 9, 14 | 2 |
+
+Read with the bound the label now carries: these are lower bounds, and the thirteen at one were each verified
+to hide more. **No remaining rule in the installed corpus is one capability from emitting.**
+
+### The cross-cutting residue, which is where leverage would be if there were any
+
+Needs touching three or more rules, grouped by full text:
+
+    7  guard body is neither `return []` nor `continue`, but Stmt_Expression
+    5  statement outside the vocabulary: Stmt_Expression
+    5  guard body is neither `return []` nor `continue`, but Stmt_Return
+    4  $errorMessage is not a message built in this rule
+    4  collector returns something other than a list of values
+    4  array_merge() as an access path
+    4  Expr_Ternary as an access path
+    3  ->getLine()   ·   3  $scope->getTraitReflection()   ·   3  an accumulator as a message argument
+
+Every one of them advances rules without emitting any, and vocabulary that changes no emitted byte is the
+condition five reverts in this log were made under. So the residue is a list of things worth building **when a
+rule needs them**, not a queue.
+
+### What the seams have actually produced
+
+Two rules this context window (`CombinedStaticCallRule`, `StaticChainedNoDebugInNamespaceRule`), both from
+the `checkMode` distribution rather than from any needs ranking — a rule refusing while two siblings of the
+same family emit. **That is the shape that worked and the one to look for first next time:** not the smallest
+need list, but a member of a family whose shape is already proven.
+
+The three remaining seams are named rather than guessed: an upstream release for definedness, a six-piece
+aggregation rule (`SlowMigrationDdlRule`), and a `checkMode` threshold whose cost is thirteen rules' emitted
+bytes.
