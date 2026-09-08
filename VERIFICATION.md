@@ -14322,3 +14322,35 @@ the failure this log is largely made of, found because a broken plugin of mine w
 Suite 1088/1088, PHPStan 0 errors, Rector and Pint clean. Three defects of my own in the widened check —
 a short ternary the project forbids, a `=== false` that became unreachable once `$rules` was a list, and a
 missing blank line — all caught by the gauntlet rather than by me.
+
+### Third look: the reduction already exists, and the wall is unchanged
+
+`ConstantStrings::at()` opens with exactly `Types::constantStringOf(Support::expressionType($context,
+$subject))` and adds two fallbacks — magic constants and a declared literal — that PHPStan's
+`$scope->getType()` also covers. So it is a faithful *superset* of what the helper computes, not a looser
+answer, and `resolveMockedObjectType()` reduces whole to `constantStringAt($context, <the argument node>)`.
+
+**And that reduction is already wired.** The `getValue()` arm at `Translator.php:12109` reads:
+
+    'php' => isset($of['of'])
+        ? 'Support::constantStringAt($context, ' . $of['of'] . ')'
+        : 'Support::constantStringOf(' . $this->operand($of) . ')',
+
+A type descriptor carrying the node it came from already emits the whole question. So the pieces are all
+present: the collection kind, its item kind, the reduction, and the node to ask it of.
+
+**The wall is unchanged and it is the same one.** A `return` inside an emitted loop, in a helper whose value
+the caller consumes, has to become the loop's *result* rather than a statement. Three attempts have now ended
+there: the first emitted an empty loop and leaked the loop variable, the second added the missing ITERABLES
+row and emitted an empty loop plus a dead `return;`, and this one traced the reduction far enough to confirm
+that nothing short of the fold closes it.
+
+`inlineValueProducer()`'s chain is the right home — `lastNameSegmentHelper()` shows the shape, about forty
+lines of statement matching ending in a descriptor — but a recogniser there must match the *whole* helper,
+and this one's body is four statements of chained locals before the loop. Matching that chain is brittle;
+letting the leading statements bind normally and folding only the tail is not something the chain supports.
+
+**Stopping on this rule.** Three attempts, two broken plugins, and the remaining gap is a design change to how
+a value-producing helper's return interacts with an emitted loop — not a row, and not something to start at
+this depth. Everything a fresh attempt needs is now recorded down to file and line, including the reduction
+it should aim at rather than the fold it might otherwise build from scratch.
