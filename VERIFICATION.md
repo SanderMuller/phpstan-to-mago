@@ -13582,9 +13582,13 @@ Three findings, and two of them correct my own last two entries:
   not see a trace, and the reason I could not see it was a different fact entirely. Retracting under
   uncertainty is better than asserting under it, but the retraction was published with the same confidence
   the original had.
-- **The peer's coupling is real and operative.** Widening `delegatedCheck()` takes `branch` from 0 to 1, so
-  the counter and the recognizer are one predicate exactly as they predicted from my description alone. It
-  still changes nothing, because the threshold is two.
+- **The peer's coupling is real and operative — their *mechanism*, not their prediction.** Widening
+  `delegatedCheck()` takes `branch` from 0 to 1, so the counter and the recognizer are one predicate exactly
+  as they guessed from my description alone. But they predicted the widening "could flip `checkMode` on",
+  and 1 against a threshold of 2 flips nothing: the consequence was refuted by this same table. Recorded that
+  way because writing "hypothesis confirmed" would credit a prediction my own measurement killed — a count
+  quoted a notch wider than what was run, which is the failure this whole thread is about, committed by me
+  while crediting someone else. Their correction.
 
 **Both changes reverted.** The survey-path setter alters no census line and no refusal, so nothing can defend
 it — and by the discipline this session established, an artefact change is a fix only once something fails
@@ -13598,3 +13602,43 @@ rule, and that decision is unchanged.
 The peer declined to guess at the cause on the grounds that handing me a hypothesis in place of a measurement
 would repeat my own error with a worse-informed author. That was the right call and it is why this table
 exists: nobody supplied an explanation, so I had to go and get one.
+
+### The threshold is a compatibility guarantee, and it costs 13 rules to lower
+
+I twice declined to raise what counts as an independent check "while chasing one rule", which was a judgement
+rather than a reason. The reason is written down at `Transpiler.php:1382`, in `independentChecks()`'s own
+docblock:
+
+> Counted before translation because the answer decides how the whole body is emitted, and **a rule asking one
+> check must emit what it emits today.**
+
+So the `>= 2` is a deliberate compatibility line, not an arbitrary number: at exactly one check the body must
+be emitted the old way. Which makes the operative question how many rules sit at one — a vacuous guarantee
+would make the change free.
+
+**Measured across all 246 transpile attempts in the seven installed packages:**
+
+| independent checks | rules |
+|--:|--:|
+| 0 | 226 |
+| **1** | **13** |
+| 2 | 4 |
+| 3 | 3 |
+
+Not vacuous. Thirteen rules sit at exactly one, and lowering the threshold changes how each of their bodies is
+emitted — a thirteen-rule diff for a change made to advance one. The decision is unchanged and now it has a
+figure behind it rather than a preference.
+
+The distribution is worth keeping for its own sake: **226 of 246 rules have no independent checks at all**, so
+`checkMode` is off for the overwhelming majority and `NoReferenceRule` sitting at 0 — 1 with the widening — is
+typical rather than unusual. A reading of `checkMode` as the normal path would have been wrong in the other
+direction.
+
+### And one correction to how I credited the peer
+
+My previous entry said their coupling hypothesis was confirmed. Their own correction: the *mechanism* held —
+one predicate, and widening it moves the count — but the *consequence* they predicted, that it "could flip
+`checkMode` on", was refuted by the same table, since 1 against a threshold of 2 flips nothing. Writing
+"hypothesis confirmed" credited a prediction my own measurement killed, which is a count quoted a notch wider
+than what was run: the failure this entire thread is about, committed by me while crediting someone else.
+Narrowed in place.
