@@ -14354,3 +14354,54 @@ letting the leading statements bind normally and folding only the tail is not so
 a value-producing helper's return interacts with an emitted loop — not a row, and not something to start at
 this depth. Everything a fresh attempt needs is now recorded down to file and line, including the reduction
 it should aim at rather than the fold it might otherwise build from scratch.
+
+## larastan added and measured: 0 of 26, and the estimate it was chosen on did not hold
+
+Added as a dev dependency on the user's decision, to test a peer's classification that it held ~18 rules in
+the portable shape. Measured:
+
+    emit run    emitted: 0, refused: 26
+    survey      emitted: 0, refused: 26
+
+**Zero, on both paths.** The peer's figure was a proxy — rules with a literal message and no constructor
+dependencies — and it does not predict emission. Stated plainly because the decision rested on it: 18
+candidates in the *shape* became 0 rules translated, which is the proxy-versus-authoritative-source failure
+this thread has recorded five times, this time inside the estimate a dependency was taken on.
+
+Two things were done right and are worth keeping:
+
+- **`larastan/larastan` went into `extra."phpstan/extension-installer".ignore` before the require**, beside
+  `hihaho/phpstan-rules`. Registering a corpus's rules against this repository's own source is not what a
+  corpus is for, and larastan expects a Laravel application — this repository's own PHPStan run is still 0
+  errors because the ignore landed first.
+- **The census denominator did not move.** It reads a curated package list rather than everything installed,
+  so every figure in this file and the README still means what it meant.
+
+### What the package does contain, which is a real cluster
+
+Its largest refusal is `Expr_New` in **six** rules, and they are one idiom rather than six problems:
+
+    (new ObjectType(Mailable::class))->isSuperTypeOf($type)->yes()      UsedEmailViewCollector
+    (new ObjectType(Translator::class))->isSuperTypeOf(..)             UsedTranslationTranslatorCollector
+    (new ObjectType(Factory::class))->isSuperTypeOf(..)                UsedViewMakeCollector
+    (new ObjectType(Auth::class))->isSuperTypeOf(..)                   NoAuthFacadeInRequestScopeRule
+    (new ObjectType(AuthManager::class))->isSuperTypeOf(..)            NoAuthHelperInRequestScopeRule
+    (new ObjectType(Enumerable::class))->isSuperTypeOf(..)             NoUnnecessaryEnumerableToArrayCallsRule
+
+A constructed type on the left and an *inferred* one on the right — "is this type a `Foo`" — which is
+`Runtime\Types::typeIsInstanceOf()`, already built, already carrying the union behaviour PHPStan's `yes()`
+means. `Translator.php:10350` already handles the case where **both** sides are constructed, so this fell
+through to the general type query and refused on the construction.
+
+**Built, measured, reverted.** The arm moved two of the three rules past `Expr_New` — onto
+`->getTemplateType()` and `Expr_Match` — and the package still emits 0. Emit-all over the seven census
+packages is byte-identical, so nothing exercises it. Ninth revert here, and the first for a capability aimed
+at a package outside the census.
+
+### Where that leaves the dependency
+
+It costs a `require-dev` entry and buys no rule today. Its justification did not survive measurement, and
+removing it is `composer remove --dev larastan/larastan` plus dropping the ignore entry. Kept for now because
+the six-rule idiom above is a genuine cluster and the arm that serves it is recorded here ready to re-apply —
+but that is a judgement the user should overrule freely, since the reason it was added turned out not to be
+true.
