@@ -13796,3 +13796,42 @@ need list, but a member of a family whose shape is already proven.
 The three remaining seams are named rather than guessed: an upstream release for definedness, a six-piece
 aggregation rule (`SlowMigrationDdlRule`), and a `checkMode` threshold whose cost is thirteen rules' emitted
 bytes.
+
+### The one gap in the search, closed: `spaze/phpstan-disallowed-calls`
+
+That package has 38 rules and **no census section**, so none of the four cuts above covered it. Checked
+rather than assumed to be covered by the header's prose:
+
+    survey     emitted: 14, refused: 24
+    emit run   emitted:  0, refused: 38
+
+The survey figure is the assume-a-hook path and the emit run is the truth, which is what the header already
+records as *0 of 38* against *a survey says 14*. The refusal distribution on the real run:
+
+    13  could not find the reported message
+     3  $disallowedCalls is computed in the constructor and the package wires no configured values
+     …  the rest one apiece, mostly missing hooks for statement kinds
+
+So the package is a measured dead end, not an unexamined one. The thirteen are the documented case: the
+message is built by an injected `DisallowedKeywordRuleErrors` over a keyword list the package wires nowhere,
+and both ways past it are wrong — step over the filter and the plugin reports every `break`, carry an empty
+list and it reports nothing.
+
+**And the twelve hook rows the header describes are not in the tree.** `Stmt\Echo_`, `Break_`, `Goto_`,
+`Return_` and `Unset_` all return zero from `Vocabulary`. They were added, measured to move the emit run by
+zero, and reverted — the same discipline five reverts in this log follow. The header says *"twelve rows added
+to `HOOK_KINDS` … moved the emit run by zero"*, which is true of the experiment and reads as true of the
+current state. One clause would fix it, and it is the same failure this whole session has been about: a
+sentence read a notch wider than what it says.
+
+### Where that leaves the work
+
+Nothing in the installed corpus is one capability from emitting, now including the package that had no
+section. The four remaining routes are all outside what I can do unilaterally or cheaply:
+
+- **An upstream release** for definedness — `carthage-software/mago#2334` closed completed 2026-09-07, newest
+  release 1.47.6 from 2026-09-04.
+- **A six-piece rule** — `SlowMigrationDdlRule`, whose blocker is a sorted findings aggregation over tuples.
+- **The `checkMode` threshold** — measured at thirteen rules' emitted bytes.
+- **A new corpus package**, which is a dependency this repository's own guidelines say not to add without
+  approval, and which would change the denominator every figure here is quoted against.
