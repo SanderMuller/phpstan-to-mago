@@ -1252,6 +1252,12 @@ final class Support
      * that ask this question require exactly one object class reflection too, so refusing to answer for
      * a union matches the original rather than guessing at its intent.
      */
+    /** {@see ArrayTypes::typeIsWhollyArray()} */
+    public static function typeIsWhollyArray(?Type $type): bool
+    {
+        return ArrayTypes::typeIsWhollyArray($type);
+    }
+
     public static function typeIsInstanceOf(NodeAnalysisContext $context, ?Type $type, string $name): bool
     {
         return Types::typeIsInstanceOf($context, $type, $name);

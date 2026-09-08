@@ -12857,3 +12857,81 @@ php 174 → 178; analyzer and linter unchanged. Four new plugins and the three r
 existing plugin moved a byte** — unlike the Division commit, which had to widen `HOOK_KINDS` and moved three
 `getTargets()` lines. Suite 1069/1069, PHPStan 0 errors, Rector clean, README's row and `--status` figure
 re-derived and all seven rows cross-checked against the census.
+
+## Addition emits, and its array guard is inert — proved rather than assumed
+
+All six `OperandsInArithmetic*` rules now emit. The census goes to 128 rules on the php target,
+`phpstan/phpstan-strict-rules` to 31 of 45, `--status` to 119 of 210.
+
+Addition's extra blocker was `count($leftType->getArrays()) > 0 && count($rightType->getArrays()) > 0`, which
+declines when both operands are arrays because `array + array` is a valid union.
+
+### `getArrays()` does not mean what it reads like
+
+My first reading was "the array atomics within this type", which would make the test *any atomic is an
+array*. Probed against PHPStan directly, it is not:
+
+| PHPStan type                             | `count(getArrays())` |
+|:-----------------------------------------|---------------------:|
+| `array`, `non-empty-array`, `list`       | 1                    |
+| a constant array shape, the empty array  | 1                    |
+| `array<int,string>\|array<string,string>`| 1                    |
+| `array\|int`                             | **0**                |
+| `array\|bool`                            | **0**                |
+
+A union carrying a non-array member answers **zero**. So the question is *every* atomic, the same shape
+`RuleLevel` already asks of strings and numbers — and `Runtime\ArrayTypes::typeIsWhollyArray()` is named for
+that rather than for the API it ports.
+
+This mattered before it was built: the union rows I first wrote to separate "any" from "every" could not
+separate anything, because a type containing an array is *valid* for arithmetic either way and both readings
+are silent. **The discriminating row was in the type API, not in a fixture.**
+
+### The guard cannot change what the rule reports
+
+Two independent proofs, and I built the honest implementation anyway:
+
+- **Mechanism.** Every type above with a non-zero count has an `ErrorType` from `toNumber()`, and
+  `isValidForArithmeticOperation()` returns *valid* two branches earlier for exactly that. Eight shapes, zero
+  counterexamples. So an array operand never reports, and declining when both are arrays removes a finding
+  that was never going to be made.
+- **Behaviour.** Removing the guard from PHPStan's own copy left its findings byte-identical over a twelve-row
+  fixture whose other rows *do* report — a positive control in the same run.
+
+And the emitted plugin agrees: making `typeIsWhollyArray()` return **false unconditionally** — the guard never
+declining — leaves the fires gate green. The helper is therefore **inert by construction**, the second such
+case this session after `nativeMethodExists()`, and it is recorded as inert rather than as verified.
+
+Kept regardless, because it is the question the original asks. Folding it away would make this port depend on
+`isValidForArithmeticOperation()` keeping its `toNumber()` gate — upstream's to change, and a version bump has
+already broken one of this repository's assumptions about that exact file this week.
+
+### Two instruments that measured nothing, and one that measured the wrong axis
+
+- A corpus differential over three vendor trees reported *identical* findings with and without the guard.
+  PHPStan had **aborted**: one of the three paths did not exist, so nothing was analysed. The signature is by
+  now familiar — a clean result from a run that never happened.
+- Fixed, the same differential produced 30 findings and **zero** `plus.*` ones, so real code never triggers
+  this rule and the comparison still said nothing. The positive control is what made that visible rather than
+  reading as a pass.
+- Two of the three mutations on `typeIsWhollyArray()` failed to express their change: replacing only the final
+  `return` left the loop deciding non-array atomics, so "always true" behaved like the original. The mutation
+  that *did* bite bit on the wrong axis, and reading its 2 failures as "the every/any distinction is
+  load-bearing" would have been wrong.
+
+### `Types` and `RuleLevel` are both at their ceiling
+
+Adding the reader to `Types` took it to 82 against a limit of 80; moving it to `RuleLevel`, beside
+`everyAtomicIsString()` where it belongs by shape, took *that* class to 81. Both are full.
+
+Extracting the nine pure atomic-shape readers out of `RuleLevel` is the right split — a `Type` in, a `bool` or
+`Type` out, no flag and no context, so it is a genuine transitive closure and a static bag that takes its
+complexity with it. **It was attempted and reverted**: a mechanical extraction swallowed a neighbouring method
+whose body ended the same way, left visibility unchanged, and stranded two constants, for sixteen PHPStan
+errors. Reverted from git rather than repaired, because a split under a feature commit is how a refactor stops
+being reviewable. `Runtime\ArrayTypes` holds the one reader instead, and the split is the next standalone
+piece of work.
+
+Suite 1074/1074, PHPStan 0 errors on 13 baseline entries with no new one, Rector and Pint clean. Emit-all: php
+178 → 179, analyzer and linter unchanged, and the only files that move are the new plugin and the three
+registration files — no existing plugin moved a byte.

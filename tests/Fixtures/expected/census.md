@@ -402,7 +402,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 30 of 45 portable rules the package registers emit, 0 covered by the engine, 15 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 31 of 45 portable rules the package registers emit, 0 covered by the engine, 14 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
@@ -481,9 +481,7 @@ EMIT    OperandInArithmeticPreDecrementRule
 EMIT    OperandInArithmeticPreIncrementRule
 EMIT    OperandInArithmeticUnaryMinusRule
 EMIT    OperandInArithmeticUnaryPlusRule
-REFUSE  OperandsInArithmeticAdditionRule
-        access path outside the vocabulary: ->getArrays()
-        needs: access path outside the vocabulary: ->getArrays()
+EMIT    OperandsInArithmeticAdditionRule
 EMIT    OperandsInArithmeticDivisionRule
 EMIT    OperandsInArithmeticExponentiationRule
 EMIT    OperandsInArithmeticModuloRule

@@ -11497,10 +11497,64 @@ final readonly class Translator
     }
 
     /** `$intNode->value >= 1`, `count($found) <= 1` and friends. */
+    /**
+     * `count($type->getArrays()) > 0` — the whole idiom as one boolean, not a count of anything.
+     *
+     * `OperandsInArithmeticAdditionRule` opens with `count($leftType->getArrays()) > 0 &&
+     * count($rightType->getArrays()) > 0` and declines, because `array + array` is a valid union in PHP. The
+     * count is incidental: `getArrays()` answers a *type* question, and comparing its length against zero is
+     * how PHPStan spells "is this type an array". Recognised whole rather than by modelling a collection this
+     * vocabulary does not have — {@see Runtime\Types::typeIsWhollyArray()} carries the measured semantics,
+     * including the part that is not the obvious reading: a union with a non-array member answers zero.
+     *
+     * Only `> 0`. Any other comparison against a length this port does not represent would be answering a
+     * question about a collection with a boolean, so it falls through and refuses by its own name.
+     */
+    private function whollyArrayTest(BinaryOp $expr): ?string
+    {
+        if (! $expr instanceof Greater || $this->intLiteral($expr->right, $expr->getStartLine()) !== 0) {
+            return null;
+        }
+
+        $counted = $expr->left;
+        if (! $counted instanceof FuncCall
+            || ! $counted->name instanceof Name
+            || $counted->name->toString() !== 'count'
+            || count($counted->getArgs()) !== 1
+        ) {
+            return null;
+        }
+
+        $inner = $counted->getArgs()[0]->value;
+        if (! $inner instanceof MethodCall
+            || ! $inner->name instanceof Identifier
+            || $inner->name->toString() !== 'getArrays'
+            || $inner->getArgs() !== []
+        ) {
+            return null;
+        }
+
+        $subject = $this->resolve($inner->var, $expr->getStartLine());
+        if ($subject['kind'] !== 'type') {
+            return null;
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('an array-type test, which only the PHP target carries', $expr->getStartLine());
+        }
+
+        return $this->context->backend->call('type_is_wholly_array', [$this->operand($subject)]);
+    }
+
     private function intComparison(BinaryOp $expr): string
     {
         $left = $expr->left;
         $operator = $this->numericOperator($expr);
+
+        $arrayTest = $this->whollyArrayTest($expr);
+        if ($arrayTest !== null) {
+            return $arrayTest;
+        }
 
         // `count(<a list>) <= N` — a plain PHP comparison, since both sides are numbers rather than nodes.
         if ($left instanceof FuncCall && $left->name instanceof Name && $left->name->toString() === 'count') {
