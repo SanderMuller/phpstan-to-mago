@@ -12221,3 +12221,84 @@ Asked of the `phpstan-src-e7` peer, with the reading marked as inferred and a re
 the same way. **Nothing is built on it yet, and the sentence above is the claim to check first** if this
 entry is read before the answer arrives — it is the load-bearing inference, and a bound stated on a wrong
 reading of it is the *"every number right, and the sentence still wrong"* failure this file already records.
+
+### Superseded: the bound above was worthless, and the level was the bigger miss
+
+The entry above asks whether core PHPStan errors on `object + int` with no operator-overloading extension,
+calls that the load-bearing inference, and says to check it first. It is **false**, and the `phpstan-src-e7`
+peer refuted it with measurements. Marked here rather than edited away, because the reason it was wrong is
+the useful part.
+
+**Measured by the peer, in their tree, not by me:** `phpstan-src` ships four operator extensions of its own —
+`GmpOperatorTypeSpecifyingExtension`, `GmpUnaryOperatorTypeSpecifyingExtension`,
+`BcMathNumberOperatorTypeSpecifyingExtension` and its unary twin — all carrying `#[AutowiredService]`, so they
+register on every install with no config. `GMP + 1` is `GMP`, not an `ErrorType`. And the decisive pair, which
+no source read gives you: `strict-rules` **2.0.10 has no object branch and reports a false positive on GMP**;
+**2.0.12 has the branch and correctly reports nothing**. The branch is the only difference in that method
+between the two versions, so it is load-bearing on a stock install and exists to fix that false positive.
+Treating every object operand as invalid would reproduce the bug 2.0.12 fixes.
+
+Their caveat, flagged by them rather than buried: the `BcMath\Number` row is **inconclusive**, because
+`BcMath\Number` was not in their build's stubs and PHPStan reported `class.notFound`, so the extension could
+not fire whatever its version gate says. GMP is decisive on its own.
+
+Note what the wrong inference was *not*. It was labelled as inferred, it named itself as the thing to check
+first, and the peer was asked to mark their answer the same way — every countermeasure this file prescribes
+was applied, and the sentence was still wrong. **Marking a claim as unverified does not make it less wrong; it
+only makes it cheaper to correct.** That is the whole value, and it is worth stating plainly rather than
+treating the marking as a substitute for the check.
+
+### The route needs no node synthesis
+
+The inference that a synthesized node has no port stands, and the peer confirms it from their own SDK work:
+the protocol carries span-keyed types for positions the plugin declared, so a node with no span has no type
+and there is no way to ask. But the branch does not need synthesis to be *reproduced*. It fires only for
+objects, and on a stock install the overload-capable set is knowable by class name — an allowlist of `GMP` and
+`BcMath\Number` gives the same answer. The bound then moves to where it belongs: faithful unless the consumer
+installs a **third-party** operator extension, which is a far smaller caveat than the one this entry was
+about to state.
+
+### The level, which is mine and changes the gate
+
+**Measured here, in this repository, by the probe at `$SP/lvl/src/Probe.php`** — the peer measured the same
+thing on their own file and this table is the re-derivation, not a repeat of theirs:
+
+| probe row              | level 0 | level 8 and 9                             |
+|:--|:--|:--|
+| `?int $n / 2`          | nothing | `div.leftNonNumeric`, `int\|null`         |
+| `int $n / 2` (control) | nothing | nothing                                   |
+| `int\|string / 2`      | nothing | core `binaryOp.invalid`, no `div.*`       |
+| `\GMP / 2`             | nothing | nothing                                   |
+| `\stdClass / 2`        | nothing | core `binaryOp.invalid`, no `div.*`       |
+
+`Type::toNumber()` takes no scope and no level, so that branch cannot vary; `isSubtypeOfNumber()` goes through
+`RuleLevelHelper`, whose five flags are `#[AutowiredParameter]` and flipped per level in
+`conf/config.level*.neon` — `checkUnionTypes` at 7, `checkNullables` at 8, `checkExplicitMixed` at 9,
+`checkImplicitMixed` at 10 (the peer's reading of the mechanism; the table above is what this tree does).
+
+**The fires gate runs PHPStan at level 0, so it sees nothing at all from these six rules.** At level 0 a
+faithful port and a stub that always returns false are indistinguishable — this file's own *agreement on zero
+is not evidence* rule, arriving at the instrument rather than at a measurement. The gate already has this
+problem once and already has the fix: `FiresGate::PARAMETERS` sets `checkThisOnly => false` for the
+dynamic-call rules for exactly this reason, and `Runtime\RuleLevel::narrowedReceiverType()` already takes
+`checkNullables` and `checkUnionTypes` as parameters. So the pattern to reuse is in the tree; it is the
+per-rule parameter override, not a new mechanism.
+
+**Two broken instruments before that table, both silent.** The first probe included
+`vendor/phpstan/phpstan-strict-rules/rules.neon` explicitly while `extension-installer` already registers it;
+PHPStan printed *"This file is included multiple times"* and analysed nothing, so every level reported zero.
+The second added `strictRules: allRules: true` and kept the include — same warning, same empty result, and the
+zero now looked like a confirmed finding across five levels. Only dropping the include produced a run. **A
+five-row table of zeros reads exactly like a measurement**, and the fix was to notice that the run had no
+findings *of any kind*, not that it had no `div.*` findings.
+
+The rules are also gated behind `%strictRules.numericOperandsInArithmeticOperators%`, defaulting to
+`%strictRules.allRules%`. A probe that forgets it measures a rule that never registered — the same
+configuration-belongs-to-the-count rule, on the input side.
+
+**The peer's own process note, which is the sharper version of mine:** their first run included 2.0.12's
+`rules.neon` but executed `phpstan-src`'s binary, so the autoloader resolved `OperatorRuleHelper` to
+phpstan-src's bundled 2.0.10 copy. They measured GMP being reported and nearly sent it — a result that would
+have **confirmed my dead-branch inference for the wrong reason**. Including a package's neon does not choose
+that package's code; the autoloader does. This is the artefact-that-confirms-the-hypothesis case, caught by
+the person who could run the instrument, which is the only place it can be caught.
