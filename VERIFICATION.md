@@ -13310,3 +13310,63 @@ Their line on it is the sharper one and worth keeping verbatim in substance: a t
 bound and a person who reports an unsurveyed one fail the same way, and **neither is caught by re-reading the
 number.** My census's needs list is the first; their "not contrived" was the second. Both were real
 measurements with the wrong scope, and both were caught by someone asking what the number was a number *of*.
+
+### The rule's real surface: nine concerns, two out of scope, one unreachable
+
+The peer verified my two corrections, found three more gaps in the process, and one of them this port cannot
+close at all. Their rule-shape rows re-derived here against
+`vendor/symplify/phpstan-rules/src/Rules/NoReferenceRule.php`, so the line numbers are this tree's:
+
+| line | what it does |
+|--:|:--|
+| 47 | `$node instanceof AssignRef` → reports **unconditionally**, before any narrowing |
+| 51 | narrows to `Closure`, `ArrowFunction`, `Function_`, `ClassMethod`, `Arg`, `Foreach_`, `ArrayItem` |
+| 55 | `$node->byRef` on whichever of those seven arrived |
+| 59 | the parameter half runs for **`Function_` or `ClassMethod` only** |
+| 83 | `$param->byRef`, on `Param` |
+
+So the surface is **nine** concerns: `AssignRef`, the seven narrowed kinds, and `Param`. My eight missed
+`AssignRef` — it is not a `byRef` node at all, which is exactly why a list built by asking "which nodes carry
+`byRef`" could not contain it.
+
+**Two of the ten `byRef` carriers are out of scope**, and that is the rule's behaviour rather than an
+omission: `ClosureUse` and `PropertyHook` appear nowhere in the file — grep count zero — so `use (&$a)` and a
+by-reference property hook must be **silent**. And the line-59 gate means a by-reference parameter on a
+*closure or arrow function* is silent while the same parameter on a named function or method reports. The
+peer checked all four function-likes in one file; the asymmetry is real.
+
+That is good news for the build: the parameter scan anchors on named functions and methods only.
+
+### The bound this port cannot close, measured here
+
+`Arg::byRef` is live only on source **PHP itself refuses**. Verified in this tree, with a control:
+
+    php -l                          Parse error: unexpected token "&" on line 4
+    php-parser                      parses, Arg byRef=true
+    mago 1.47.6                     4 parse errors on line 4, no tree
+    the same file without the `&`   mago: "No issues found"
+
+Call-time pass-by-reference went out in PHP 5.4; php-parser is lenient and produces the node, so PHPStan
+reports it. Mago's parser refuses the file, so there is **no tree for a plugin to inspect**. That is a
+structural divergence rather than a defect in the port, and it is unreachable in any runnable project — the
+same register as the operator-extension bound: real, stated in one line, no fixture possible. The control
+matters here, because "mago reported errors" would otherwise be consistent with it rejecting the file for some
+unrelated reason.
+
+### Both of us produced a lower bound, one message apart
+
+Mine was from a tool: the census's `needs:` list, which stops at the first expression-level blocker. Theirs
+was from a fixture — their count of eight `byRef` carriers came from what their fixture happened to contain,
+written to demonstrate the ampersand's three homes, which it did correctly. They then read a count off it that
+it was never built to support, in the same message that told me a rule with no fixture is agreement on zero.
+
+Their framing is the one worth keeping: **a probe answers the question it was built for and silently answers
+every adjacent one wrong**, and no marking convention catches it, because the number *was* measured — just
+not of the population quoted. This log's existing rule is about a value being right and answering a question
+nobody asked; this is the same failure one level up, where the instrument is sound and the population is
+substituted.
+
+The one countermeasure of ours that would have caught either before a second reader did is the harness rule I
+committed to: **do not report a rule as unchanged without a row that fires for it.** Aimed at the same
+failure, and it generalises to counts as well as to verdicts — do not report a population without a row that
+would have appeared had it been larger.
