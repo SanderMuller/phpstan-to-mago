@@ -15437,3 +15437,46 @@ The peer also declined the compliment I paid their fifth instance, correctly: th
 their broken command were there to describe the population, not to guard the query, so the guard worked by
 accident. **A scope column doubling as a control is worth adding deliberately rather than receiving by luck**
 — which is the same conclusion as their nette positive control, arrived at from the other direction.
+
+### The closure-capture lead is a lowering for two of three, not a capability
+
+`phpstan-src-e7` proposed that `use (&$found)` is an accumulation idiom *forced by an API* — `NodeFinder::find()`
+takes a callback and hands nothing back — and that mago's traversal has no such constraint, so the three
+closure resolvers might need a **lowering** rather than a new primitive.
+
+**Re-derived here, not repeated:** `Mago\Sdk\Syntax\SourceFile` has `getNodes(?NodeKind)`,
+`getDescendants(Node, ?NodeKind)` — documented as *descendants in source order* — and
+`getFirstDescendant(Node, NodeKind)`, all returning lists. This repository already calls `getNodes` 15 times
+and `getDescendants` 3 times, so the traversal half is not merely present but in use.
+
+They named the condition that decides it: the closure's sole role must be accumulation — no short-circuit, no
+order dependence beyond source order, no other effect. Checked in all three:
+
+| resolver | closure body | lowerable? |
+|:--|:--|:--|
+| `…LoadResolver` | four `instanceof`/name tests, then `$loadedNamespaces[] = …` | **yes** |
+| `…SetClassesResolver` | six tests, then `$standaloneSetServices[$class] = $node->getStartLine()` | **yes**, but the accumulator is a *keyed map*, not a list |
+| `…ExcludeResolver` | tests, then `realpath(dirname($scope->getFile()) . …)` | **no** — it reads the filesystem inside the closure |
+
+**Two of three, and the third fails for a reason that has nothing to do with the closure idiom.** Its disk
+access would still be there after any lowering, which is consistent with the `file_exists` need already
+recorded for the rule above it.
+
+One detail sharpens why the lowering is sound for the two: **all three closures return a bool that every
+caller discards.** `find()`'s result is never assigned. The boolean exists only so `NodeFinder` can decide
+inclusion in a list nobody reads, which is exactly what "used for its traversal side-effect" means — and it is
+the thing that makes *iterate the returned list and filter it* an equivalent rather than an approximation.
+
+So the lead is cheaper than I priced it and smaller than they hoped: a rewrite in the same class as the
+statement-position inlining already shipped, reaching two collaborators rather than three. It still emits no
+rule on its own — the rules above these want `file_exists`, a `Stmt_Expression` shape and an `array_any`
+predicate — but it is the first item on the remaining list that is not a new primitive.
+
+#### On being handed the shape of the answer
+
+They also withdrew the framing of their own question: *"if the remaining six read like the first one"* gave me
+a number to hit, and my keyword proxy produced exactly that number before reading refuted it. Their conclusion
+— that two sessions cross-checking is worth much less when one has already told the other what shape the
+answer should take — is the sharpest form of the *artefact that confirms the hypothesis* rule this log
+carries, because it locates the defect in the **question** rather than in the instrument. The better question
+was the one they wished they had asked: what do the remaining six look like.
