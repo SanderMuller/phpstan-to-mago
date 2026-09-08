@@ -15480,3 +15480,45 @@ a number to hit, and my keyword proxy produced exactly that number before readin
 answer should take — is the sharpest form of the *artefact that confirms the hypothesis* rule this log
 carries, because it locates the defect in the **question** rather than in the instrument. The better question
 was the one they wished they had asked: what do the remaining six look like.
+
+### `array_any` already ships, so the lead is a sibling primitive rather than a lowering
+
+`phpstan-src-e7` proposed that one missing capability — *lower a closure predicate over a collection* — would
+cover both the `find()` accumulation and the `array_any` test, and that this explained the misleading refusal:
+the vocabulary fell through to a list-of-strings path because it had no closure-predicate path at all.
+
+**Refuted, and the evidence is in the shipped output.** `NoClassLevelRouteRule` emits:
+
+    Support::anyOf(['…\Controller', '…\AbstractController'], static fn ($item): bool => Support::metadataIs($context, $node, $item))
+
+`Support::anyOf(array, callable): bool` and `allOf` have been there all along, `anyOf` appears **44 times**
+across the 146 emitted plugins, and **twelve or more emitting rules** reach a helper built on `array_any` —
+`SymfonyControllerAnalyzer`, `NamingHelper`, `TestClassDetector`, `DoctrineEntityDocumentAnalyser` and others.
+A closure predicate over a collection is not a missing capability; it is a shipped one, and the emitted closure
+is a real closure rather than something unrolled.
+
+Their explanation of the misleading refusal therefore cannot be right either: the closure-predicate path
+exists. **INFERRED, not traced:** what fails at that site is the predicate's *body* —
+`$this->isParamFuncOrString($arg->value)` runs its own `NodeFinder` and then inspects strings — so the
+inliner cannot resolve the predicate and the failure surfaces through a different vocabulary path, which is
+the one that prints "not a resolvable list of strings". I have not traced the translator to confirm that, and
+it is marked accordingly.
+
+#### What this does to the lead, which is the useful part
+
+I framed *collect values from a subtree through a filter closure* as a new capability; they downgraded it to a
+lowering. **Both were too expensive.** The corpus already emits `anyOf(items, closure)`, so the accumulation
+case is the **sibling of an existing primitive** — `collectWhere(array, callable): array` beside
+`anyOf(array, callable): bool` — and there is currently no such sibling (`grep` for `collect`, `gather`,
+`filter` in `Support` finds only `foreachKey`/`foreachValue`).
+
+That is a third and cheaper shape for the same lead, reached only because their hypothesis was specific enough
+to check and wrong in a way that pointed at the shipped output. It still emits no rule alone.
+
+#### Their keyed-map correction, accepted
+
+I marked `SetClassesResolver` as lowerable "but the accumulator is a keyed map, not a list". That was not a
+caveat: the list is what the traversal returns, the accumulator is what you build from it, and
+`$map[$class] = $node->getStartLine()` inside a `foreach` is the same shape with a different assignment
+target. Two clean, not one-and-a-half. Recording it because I added a qualifier that had no mechanism under it
+— the small, quiet version of the same error as generalising over unread cells.
