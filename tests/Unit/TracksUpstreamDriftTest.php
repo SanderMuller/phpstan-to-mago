@@ -124,6 +124,78 @@ final class TracksUpstreamDriftTest extends TestCase
         $this->assertStringContainsString('EMIT    UppercaseConstantRule', $this->census());
     }
 
+    public function test_every_package_headline_accounts_for_every_rule_line(): void
+    {
+        // Two counts of "how many rules" live in this file and they are not the same number: the EMIT lines
+        // total 132 while the seven headlines sum to 122. Both are right -- a headline counts the rules a
+        // package *registers*, and a line is written for every rule including the ones it registers nowhere.
+        // Quoting them side by side without saying so is a mistake this log records making, so the
+        // relationship is asserted here rather than explained in prose: get it wrong later and this goes red.
+        //
+        // Per package, every rule gets exactly one verdict line, and every rule is either one the package
+        // registers or one it does not.
+        foreach ($this->headlines() as $package => [$portable, $registeredNowhere]) {
+            $lines = preg_match_all(
+                '/^(?:EMIT|REFUSE|ENGINE|UNPORTABLE)/m',
+                $this->sectionFor($package),
+            );
+            $this->assertNotFalse($lines, sprintf('Could not count the rule lines in the %s section.', $package));
+
+            $this->assertSame(
+                $portable + $registeredNowhere,
+                $lines,
+                sprintf(
+                    'The %s section holds %d rule lines, but its headline accounts for %d + %d. A rule has '
+                    . 'gained or lost a verdict line, or the headline is counting a population the lines are '
+                    . 'not.',
+                    $package,
+                    $lines,
+                    $portable,
+                    $registeredNowhere,
+                ),
+            );
+        }
+    }
+
+    /**
+     * Each package headline's `portable` and `registers nowhere` figures, keyed by package.
+     *
+     * @return array<string, array{int, int}>
+     */
+    private function headlines(): array
+    {
+        preg_match_all(
+            '/^## (\S+) — \d+ of (\d+) portable rules the package registers emit, \d+ covered by the '
+            . 'engine, \d+ refuse, \d+ unportable in principle, (\d+) it registers nowhere$/m',
+            $this->census(),
+            $matches,
+            PREG_SET_ORDER,
+        );
+
+        // Asserted rather than assumed: a headline whose wording drifts stops matching, and a silently empty
+        // set would make the loop above pass by never looping -- the shape this log calls agreement on zero.
+        $this->assertCount(7, $matches, 'The census no longer holds seven parseable package headlines.');
+
+        $headlines = [];
+        foreach ($matches as $match) {
+            $headlines[$match[1]] = [(int) $match[2], (int) $match[3]];
+        }
+
+        return $headlines;
+    }
+
+    /** One package's section, from its headline to the next one or the end of the file. */
+    private function sectionFor(string $package): string
+    {
+        $census = $this->census();
+        $start = strpos($census, '## ' . $package . ' — ');
+        $this->assertNotFalse($start, sprintf('No %s section in the census.', $package));
+
+        $next = strpos($census, "\n## ", $start + 1);
+
+        return $next === false ? substr($census, $start) : substr($census, $start, $next - $start);
+    }
+
     /** The census text: every rule in every installed package, with what this transpiler does with it. */
     private function census(): string
     {
