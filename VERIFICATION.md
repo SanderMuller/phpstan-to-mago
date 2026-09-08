@@ -14102,3 +14102,55 @@ report where PHPStan stays silent, because the skip exists precisely to suppress
 Suite 1088/1088, PHPStan 0 errors on 13 baseline entries with no new one, Rector and Pint clean. The branch
 was extracted to `computedNameTest()` rather than left in `instanceofPredicate()`, which is already baselined;
 that method still drifts 128 → 131 and the class 2643 → 2647, both patched in place.
+
+## `NoTestMocksRule`: the best-characterised candidate left, and a note I misread on the way
+
+The family method nominated it — `symplify/Rules/PHPUnit` has nine emitting and one refusing.
+
+### First, a note I took for a refusal
+
+The census line reads `REFUSE  NoTestMocksRule  (the package registers it nowhere)` with no refusal text, and
+I read the parenthetical as the blocker. It is a **note**: the rule's constructor is
+`__construct(private array $allowedTypes = [])`, one parameter with a default, so nothing needs wiring and
+registration is not what stops it. I had already started reasoning about narrowing the unregistered-rule
+policy, and had measured that of the nine rules carrying that note **exactly one** has an all-defaulted
+constructor — a real measurement aimed at the wrong question.
+
+Surveying the rule directly gives the actual refusal: `access path outside the vocabulary: Expr_New (line
+82)`. Reading the rule rather than the census is what corrected it, which is the census's own instruction and
+the third time this session it has paid.
+
+There is also a precedent worth recording against the policy: `StaticChainedNoDebugInNamespaceRule`, which
+emits, is *also* unregistered by its package. So the note describes discovery, not translatability.
+
+### What actually blocks it, and how close the machinery already is
+
+    private function resolveMockedObjectType(MethodCall $methodCall, Scope $scope): ?ObjectType
+    {
+        $variableType = $scope->getType($methodCall->getArgs()[0]->value);
+        foreach ($variableType->getConstantStrings() as $constantStringType) {
+            return new ObjectType($constantStringType->getValue());
+        }
+
+        return null;
+    }
+
+The `ObjectType` wrapper dissolves, the same way `getClass(Facade::class)` did two entries ago: everything the
+rule does with it is `instanceof ObjectType` (was there a constant string), `getClassName()` (the string
+itself) and an allow-list compare. **And most of that is already built** —
+`Translator::objectTypeName()` reads `new ObjectType(..)` written inline, and
+`bindConstructedObjectType()` at `:9243` handles the *assignment* form, with a docblock already saying "there
+is no `ObjectType` at runtime here, only the class name the comparison needs".
+
+Three pieces, in order:
+
+1. `return new ObjectType(<x>)` from an inlined helper — the same recognition `bindConstructedObjectType()`
+   applies to an assignment, applied where a helper hands the value back.
+2. `foreach ($type->getConstantStrings() as $s) { return ..; }` — a loop that returns on its first item, which
+   is "the sole constant string" rather than an iteration.
+3. `$s->getValue()` — the string off that.
+
+Not started, and that is a judgement rather than a blocker: three pieces at the end of a long session is how
+the previous six reverts began, and this candidate is now characterised well enough that starting it fresh
+costs nothing. The machinery to extend is named, the collapse is the one already proven twice, and the family
+has nine emitters vouching for the shape.
