@@ -15114,3 +15114,52 @@ The honest options from here are all larger than a turn: build one deep capabili
 two rules; take the corpus question to the user, since a different rule package is a dependency decision and
 larastan already taught us a proxy does not predict emission; or stop adding rules and spend the effort on
 what the peer argued for — depth on what already emits, where the fires gate found real bugs.
+
+### An absence I asserted and retracted within the hour, because my grep was case-sensitive
+
+I wrote that mago's node model exposes no by-reference marker, and sent it to a peer as the reason
+`NoReferenceRule` is unportable. **It was wrong.** `Mago\Sdk\Analyzer\Metadata\MetadataFlags::BY_REFERENCE
+= 1 << 26` exists, and both `ParameterMetadata` and `FunctionLikeMetadata` carry a `MetadataFlags $flags`.
+This repository already reads flags that way in `Runtime/Deprecations.php`; `BY_REFERENCE` is simply
+unexploited.
+
+**The instrument was the defect, and the exact shape is worth carrying.** Both searches were case-sensitive
+against an upper-case constant:
+
+    grep "byReference\|by_reference\|byRef\|isReference"   → misses BY_REFERENCE
+    grep "eference"  (then filtered)                        → misses EFERENCE
+
+Then I checked the 227 `NodeKind` cases, found no ampersand or reference kind, and read that as corroboration.
+It was not corroboration — it was **the same wrong question asked of a second place.** The flag was never
+going to be in the syntax layer: by-reference is a semantic property, so it lives in analyzer metadata. I
+searched where I expected the answer, and treated a silence there as an answer about the system.
+
+This is the *instrument can be silent about the distinction you need* rule with a new failure mode: not a
+lossy rendering, just a pattern that cannot match. And it nearly produced an upstream issue against a
+capability that ships.
+
+What caught it was going to look in the one place I had told the peer I had not checked. The question in my
+message — "metadata rather than syntax, anything on `FunctionLikeMetadata`?" — was the right question. I
+asked it of someone else while asserting the absence myself in the same paragraph, which is the ordering
+error. **Ask your own open question before you publish the claim it would settle.** Retracted to the peer
+before they spent anything on it.
+
+#### `NoReferenceRule`, assessed completely, is still blocked — narrowly
+
+With the flag found, the rule's eight kinds split by whether anything can carry it:
+
+| kind | by-reference reachable? |
+|:--|:--|
+| `Param` | yes — `ParameterMetadata->flags` |
+| `Closure`, `ArrowFunction`, `Function_`, `ClassMethod` | yes — `FunctionLikeMetadata->flags`, and note this is *return*-by-reference |
+| `Arg` (`f(&$x)`) | moot — call-site pass-by-reference is gone in PHP 8 |
+| `Foreach_` (`as &$v`) | **no** — `ForeachTarget` is syntax, with no metadata |
+| `ArrayItem` (`[&$v]`) | **no** — `ValueArrayElement`, likewise |
+| `AssignRef` (`$a = &$b`) | **no** — there is no `AssignmentByReference` kind, only `Assignment` |
+
+So five of eight positions have a signal and three do not, and a port covering five would under-report the
+rest — a partial port, which is a refusal here rather than a shipped approximation.
+
+That is a far better upstream ask than the one I nearly filed: not "there is no by-reference signal" but
+"`BY_REFERENCE` exists for parameters and function-likes, and foreach targets, array elements and assignments
+have no equivalent." Narrow, checkable, and true.
