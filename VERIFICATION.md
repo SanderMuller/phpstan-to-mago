@@ -13188,3 +13188,51 @@ syntactic counterpart, and builds its findings in helpers.
 **The cheap seam is exhausted.** Eight rules emitted in this session by adding a row or two to a table; what
 is left needs either an upstream release or three-to-fifteen capabilities per rule. That is worth stating
 plainly rather than discovering it once per pass — and it is why this entry is a sizing rather than a rule.
+
+## `NoReferenceRule` needs five or six pieces, not three, and `byRef` has no model
+
+### Correcting my own sizing first
+
+The previous entry names this rule as "three pieces, all mechanical". That number came from the census's three
+`needs:` lines, **not from reading the rule** — the lower-bound mistake this log records against the one-need
+list, made in my own plan one entry after writing it down. Read at the source, `processNode` needs:
+
+1. eight kinds off a `Node::class` hook (the multi-kind blocker);
+2. `$node instanceof AssignRef` reporting immediately, per kind;
+3. the negated conjunction over the other seven declining;
+4. **`$node->byRef`**, on all seven kinds;
+5. a second dispatch — `Function_|ClassMethod` — into a helper;
+6. that helper's `$this->parentClassMethodNodeResolver->resolveParentClassMethod()`, a service, plus
+   iteration over declared params reading `byRef` again, and a finding per param.
+
+### `byRef` is readable, and only from the text
+
+Measured with `internal/probe-by-reference-shapes.php`, kept for the next attempt:
+
+    FunctionLikeParameter   int &$out       children: Hint, DirectVariable
+    FunctionLikeParameter   int $out        children: Hint, DirectVariable      <- identical
+    Foreach  ... as &$row                   children: Keyword, Expression, Keyword, ForeachTarget, ForeachBody
+    Foreach  ... as $row                    the same, ForeachTarget text `$row` instead of `&$row`
+
+**There is no `&` node and no by-reference flag.** A by-ref parameter and a plain one have the same children
+in the same order; the ampersand exists only inside the node's own source text. This repository already
+*refuses* on `byRef` in two places (`Translator.php:2237` and `:8155`) rather than reading it, and now there is
+a measurement saying why.
+
+That makes this the one case where this log's hardest rule — **read the model, never a rendering** — does not
+apply as written. It forbids reading a rendering *instead of* an available model, and here the model does not
+carry the fact at all. The honest form is that the text is the only source, and the design has to be robust in
+a way a `str_contains($text, '&')` is not: a hint, a default value or a comment can all contain an ampersand.
+
+The sound shape, since every kind gives the operand its own child with a span: **look at the character
+immediately before that child's span, inside the parent's**. That is positional rather than pattern-matching,
+and it answers the same question for a parameter, a `ForeachTarget`, an argument and an array element without
+a table of seven text shapes.
+
+### Not started, deliberately
+
+Five or six pieces with one shared runtime helper is a real build, and the piece that decides it —
+`resolveParentClassMethod`, a service asking whether an ancestor declares the method — is the kind of
+collaborator that has ended two attempts in this log already. Recording the measurement and the design is
+worth more than a half-built rule, and the `byRef` fact is reusable: `NoReferenceRule`,
+`DisallowedImplicitArrayCreationRule`'s sibling shapes and the two `byRef` refusals all want it.
