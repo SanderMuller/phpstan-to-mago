@@ -299,14 +299,12 @@ EMIT    StringFileAbsolutePathExistsRule  (the package registers it nowhere)
 EMIT    TaggedIteratorOverRepeatedServiceCallRule
 EMIT    UppercaseConstantRule
 
-## hihaho/phpstan-rules — 6 of 8 portable rules the package registers emit, 0 covered by the engine, 2 refuse, 2 unportable in principle, 11 it registers nowhere
+## hihaho/phpstan-rules — 7 of 8 portable rules the package registers emit, 0 covered by the engine, 1 refuse, 2 unportable in principle, 11 it registers nowhere
 
 EMIT    ChainedNoDebugInNamespaceRule  (the package registers it nowhere)
 EMIT    CombinedFuncCallRule
 EMIT    CombinedMethodCallRule
-REFUSE  CombinedStaticCallRule
-        ClassReflection test on a service, which the plugin has no equivalent for
-        needs-at-least: ClassReflection test on a service, which the plugin has no equivalent for
+EMIT    CombinedStaticCallRule
 NEVER   FlagArgumentManifestCollector
         every rule that consumes this collector reports nothing and writes a file instead, so the pair cannot become a plugin whatever the collector body does
 EMIT    NoDebugInNamespaceRule  (the package registers it nowhere)
@@ -334,9 +332,7 @@ REFUSE  SlowMigrationDdlRule
         assignment value outside the vocabulary: access path outside the vocabulary: Expr_Array
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Array
         needs-at-least: statement outside the vocabulary: Stmt_Expression
-REFUSE  StaticChainedNoDebugInNamespaceRule  (the package registers it nowhere)
-        ClassReflection test on a service, which the plugin has no equivalent for
-        needs-at-least: ClassReflection test on a service, which the plugin has no equivalent for
+EMIT    StaticChainedNoDebugInNamespaceRule  (the package registers it nowhere)
 EMIT    TraitRequiresInterfaceRule
 REFUSE  UnvalidatedFormRequestFieldRule  (the package registers it nowhere)
         $fieldAccessorsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from

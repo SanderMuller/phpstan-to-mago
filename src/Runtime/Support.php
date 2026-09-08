@@ -60,6 +60,12 @@ final class Support
         return Reflect::namedClassIsAbstract($context, $name);
     }
 
+    /** {@see Reflect::namedClassIsSubclassOf()} */
+    public static function namedClassIsSubclassOf(NodeAnalysisContext $context, ?string $name, ?string $ancestor): bool
+    {
+        return Reflect::namedClassIsSubclassOf($context, $name, $ancestor);
+    }
+
     /** The direct parent of a class named by a value. {@see Reflect::parentClassName} */
     public static function parentClassName(NodeAnalysisContext $context, ?string $name): ?string
     {

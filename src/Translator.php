@@ -1433,6 +1433,25 @@ final readonly class Translator
             ];
         }
 
+        // A class handle the constructor derived, recorded by {@see Transpiler::classHandleBehind()}. Every
+        // question the body asks of a `ClassReflection` here is a question about the class it names, so the
+        // descriptor is the name.
+        if (isset($this->context->classHandles[$property])) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal(
+                    "\${$property} holds a class handle, which only the PHP target carries",
+                    $line,
+                );
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'named-class',
+                'key' => $key,
+                'php' => $this->context->backend->bytes($this->context->classHandles[$property]),
+            ];
+        }
+
         if (isset($this->context->unresolvedParameters[$property])) {
             throw new Refusal(
                 "\${$property} is wired to the container parameter %{$this->context->unresolvedParameters[$property]}%, "
@@ -10538,6 +10557,49 @@ final readonly class Translator
     }
 
     /**
+     * `$classReflection->isSubclassOfClass($otherReflection)` — the same question `isSubclassOf()` asks, with
+     * a reflection *handle* on both sides instead of a name on the right.
+     *
+     * `CombinedStaticCallRule` asks it of the class a static call names, against the `Facade` handle its
+     * constructor took, which is why the receiver is a named class rather than the scope's own reflection.
+     *
+     * Its own method so {@see methodPredicate()} keeps the complexity it had: that method is already
+     * baselined and adding a branch to it grows a figure the baseline pins.
+     */
+    private function namedClassSubclassTest(MethodCall $expr, Expr $argument): string
+    {
+        // `$classReflection->isSubclassOfClass($otherReflection)` — the same question `isSubclassOf()` asks,
+        // with a reflection *handle* on both sides instead of a name on the right. `CombinedStaticCallRule`
+        // asks it of the class a static call names against the `Facade` handle its constructor took, which
+        // is why the receiver here is a named class rather than the scope's own reflection.
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a named-class subclass test, which only the PHP target carries', $expr->getStartLine());
+        }
+
+        $subject = $this->resolve($expr->var, $expr->getStartLine());
+        if (! in_array($subject['kind'], ['named-class', 'class-name'], true)) {
+            throw new Refusal(
+                'isSubclassOfClass() on a ' . $subject['kind'] . ' rather than a class handle',
+                $expr->getStartLine(),
+            );
+        }
+
+        $ancestor = $this->resolve($argument, $expr->getStartLine());
+        if (! in_array($ancestor['kind'], ['named-class', 'class-name'], true)) {
+            throw new Refusal(
+                'isSubclassOfClass() against a ' . $ancestor['kind'] . ' rather than a class handle',
+                $expr->getStartLine(),
+            );
+        }
+
+        return $this->context->backend->call('named_class_is_subclass_of', [
+            '$context',
+            $this->operand($subject),
+            $this->operand($ancestor),
+        ]);
+    }
+
+    /**
      * Whether every node kind this plugin registers sits inside a class-like.
      *
      * `$this->context->nodeKind` alone is not the question. A rule declaring `FunctionLike` gets `Method` as its primary
@@ -10833,6 +10895,10 @@ final readonly class Translator
             $this->context->usesMetadata = true;
 
             throw new Refusal('getName() used as a predicate', $expr->getStartLine());
+        }
+
+        if ($method === 'isSubclassOfClass' && count($args) === 1) {
+            return $this->namedClassSubclassTest($expr, $args[0]->value);
         }
 
         if ($method === 'isSubclassOf' && count($args) === 1) {

@@ -13642,3 +13642,73 @@ one predicate, and widening it moves the count — but the *consequence* they pr
 "hypothesis confirmed" credited a prediction my own measurement killed, which is a count quoted a notch wider
 than what was run: the failure this entire thread is about, committed by me while crediting someone else.
 Narrowed in place.
+
+## Two rules emit: a constructor-derived class handle, and a name-to-name subclass test
+
+`CombinedStaticCallRule` and `StaticChainedNoDebugInNamespaceRule` emit. The census takes
+`hihaho/phpstan-rules` to 7 of 8, php 180 → 182, `--status` to 121 of 210.
+
+Found by reading the distribution measured one entry earlier rather than by picking a rule: seven rules run
+with `checkMode` on, and `CombinedStaticCallRule` was the only one of them refusing while its siblings
+`CombinedMethodCallRule` and `CombinedFuncCallRule` emit — a family whose shape is already proven portable,
+with one member held by one blocker.
+
+### Two pieces, the first of which the translator's own docblock had already named
+
+- **A class handle is not the service it came from.** `$this->facadeReflection =
+  $provider->hasClass(Facade::class) ? $provider->getClass(Facade::class) : null;` was recorded as the
+  *provider*, because `serviceBehind()` finds any injected service anywhere in the expression and the provider
+  is in it. Hence the refusal *ClassReflection test on a service*, whose message the translator already
+  attributed to "the facade reflection two debug rules take in their constructor".
+  `Transpiler::classHandleBehind()` recognises the shape first and records the class it names, and the
+  property then resolves as a `named-class` — which the existing `instanceof ClassReflection` path already
+  turns into a `classExists()` test.
+- **`isSubclassOfClass()`** is the same question `isSubclassOf()` maps, with a handle on both sides instead of
+  a name on the right. `Reflect::namedClassIsSubclassOf()` answers it by ancestry, case-insensitively because
+  `getClassAncestors()` returns lowercase — a fact this runtime has been bitten by before.
+
+The emitted condition is the shape intended: `classExists($context, 'Illuminate\Support\Facades\Facade')` for
+the null guard, and `namedClassIsSubclassOf($context, resolvedName(classPart($node)), '…\Facade')` for the
+test.
+
+### The fixtures had to reach a branch the prefix check hides
+
+Both rules ask first whether the called method's declaring class starts with `Illuminate\`, and only then
+whether the class descends from the facade base. A fixture using a real Laravel facade takes the *first*
+branch and says nothing about the second. So each pair uses a **project** facade declaring its own `dump()`:
+the declaring class is `App\…`, the prefix check is false, and the subclass test is what decides.
+
+Both gates pass — PHPStan reports the bad example, the plugin reports it, the good example is silent on both.
+
+### One mutation direction is unpinned, and the instrument cannot say why
+
+| mutation                                        | result |
+|:--|:--|
+| subclass test always **false**                  | 4 failures |
+| case-**sensitive** compare (ancestors are lowercased) | 4 failures |
+| subclass test always **true**                   | **passes** |
+
+So the helper is load-bearing for the reporting path, and the lowercase fact is load-bearing. The negative
+answer is not pinned: no fixture distinguishes a stub that always says "yes". Moving the non-facade control
+into its own file did not change that.
+
+**And I could not trace it.** A `fwrite(STDERR)` inside the helper produced no output during the gate, which
+I first read as "the helper is never called" — impossible, since removing its loop fails four tests. The
+plugin runs in a **mago worker subprocess**, so its stderr never reaches PHPUnit. That is an artefact of the
+instrument, not a fact about the code, and it is the same class of error this log has recorded repeatedly:
+the first reading of a null observation was wrong, and the control that caught it was an earlier measurement
+that contradicted it.
+
+Recorded as a named gap rather than left implicit: the true path is pinned, the false path is not, and the
+reason the usual probe cannot reach it is the worker boundary.
+
+Suite 1088/1088, PHPStan 0 errors on 13 baseline entries with no new one, Rector and Pint clean. Emit-all:
+only the two new plugins and the three registration files move.
+
+### And the tenth displaced docblock, mine, caught by its consequence
+
+Inserting `$classHandles` above `$refinements` in `TranslationContext` took that property's `@var` with it.
+PHPStan caught it — not as a misplaced comment, but as **four type errors** in the code that reads
+`$refinements`, which became untyped. One cause, two symptoms, and the symptoms are what made it visible.
+Nine of the previous instances were found by reading; this one announced itself, because the stolen docblock
+carried a type something depended on.

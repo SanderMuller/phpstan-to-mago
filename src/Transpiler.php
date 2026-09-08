@@ -17,6 +17,7 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -839,6 +840,13 @@ final class Transpiler
                 continue;
             }
 
+            $handled = $this->classHandleBehind($statement->expr->expr);
+            if ($handled !== null) {
+                $this->context->classHandles[$property] = $handled;
+
+                continue;
+            }
+
             $service = $this->serviceBehind($statement->expr->expr);
             if ($service !== null) {
                 $this->context->injected[$property] = $service;
@@ -1239,6 +1247,42 @@ final class Transpiler
     }
 
     /** The PHPStan service an expression reaches for, if any. */
+    /**
+     * The class a constructor property holds a reflection handle for, or null when it holds something else.
+     *
+     * `$provider->getClass(Foo::class)`, with or without the `$provider->hasClass(Foo::class) ? .. : null`
+     * around it. {@see serviceBehind()} answers before this could: it finds any injected service anywhere in
+     * the expression, and the provider is in the expression, so the property was recorded as the provider —
+     * which is why `CombinedStaticCallRule` refused with *ClassReflection test on a service*. The service is
+     * how the handle was obtained; the handle is a class name.
+     *
+     * Only a literal class constant. A computed name is not a name this can carry, and a second argument or
+     * a different method is a different question.
+     */
+    private function classHandleBehind(Expr $expr): ?string
+    {
+        if ($expr instanceof Ternary && $expr->if instanceof Expr) {
+            $expr = $expr->if;
+        }
+
+        if (! $expr instanceof MethodCall
+            || ! $expr->name instanceof Identifier
+            || $expr->name->toString() !== 'getClass'
+            || count($expr->getArgs()) !== 1
+        ) {
+            return null;
+        }
+
+        $argument = $expr->getArgs()[0]->value;
+
+        return $argument instanceof ClassConstFetch
+            && $argument->class instanceof Name
+            && $argument->name instanceof Identifier
+            && $argument->name->toString() === 'class'
+            ? $this->translator->resolveClassName($argument->class)
+            : null;
+    }
+
     private function serviceBehind(Expr $expr): ?string
     {
         foreach ((new NodeFinder())->findInstanceOf([$expr], Variable::class) as $variable) {

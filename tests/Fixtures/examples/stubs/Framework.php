@@ -281,6 +281,21 @@ class Collection
     }
 }
 
+namespace Illuminate\Support\Facades;
+
+/**
+ * Laravel's facade base, for `CombinedStaticCallRule`'s facade branch.
+ *
+ * That branch is the one reached when a static debug call's declaring class is *not* under `Illuminate\`:
+ * the rule then asks whether the called class descends from this one. A facade declared in the analysed
+ * project is exactly that case, which is why the example subclasses this rather than using a Laravel facade
+ * — a real one would declare its method under `Illuminate\` and take the earlier branch instead.
+ */
+class Facade
+{
+    public static function dump(): void {}
+}
+
 namespace Illuminate\Http;
 
 /** The receiver the unsafe-request-data check requires, for the same reason. */

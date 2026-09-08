@@ -76,6 +76,39 @@ final class Reflect
     }
 
     /**
+     * Whether a named class descends from another named class, which is `isSubclassOfClass()` in PHPStan.
+     *
+     * The sibling of {@see namedClassIsAbstract()} and asked the same way: both sides arrive as strings the
+     * plugin only holds while it runs — the class a static call names, and a class the rule's constructor
+     * took a reflection handle for — so the question goes to the codebase rather than to the tree.
+     *
+     * **Excludes the class itself**, which is what PHPStan's `isSubclassOf` family means: a class is not a
+     * subclass of itself. `getClassAncestors()` is the ancestry and does not include the subject, so the
+     * comparison needs no self-check — but it *does* fold in interfaces and traits, which is wider than
+     * "extends". That is correct for the question this ports: `isSubclassOfClass()` on a `ClassReflection`
+     * answers true for an implemented interface as well.
+     *
+     * Compared case-insensitively, because `getClassAncestors()` answers in lowercase — a fact this runtime
+     * has already been bitten by once, where an exclusion list compared against it silently matched nothing.
+     *
+     * An unknown class answers false, the same way the rules that ask this guard with `hasClass()` first.
+     */
+    public static function namedClassIsSubclassOf(NodeAnalysisContext $context, ?string $name, ?string $ancestor): bool
+    {
+        if ($name === null || $name === '' || $ancestor === null || $ancestor === '') {
+            return false;
+        }
+
+        foreach ($context->codebase->getClassAncestors($name) as $known) {
+            if (strcasecmp($known, $ancestor) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The class a named class extends, or null when it extends nothing the codebase knows.
      *
      * `ClassReflection::getParentClass()` in PHPStan, which answers the *direct* parent — so it reads

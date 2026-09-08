@@ -261,6 +261,16 @@ final readonly class FiresGate
      * @var array<string, array<string, string>>
      */
     private const array SERVICES = [
+        // `CombinedStaticCallRule` takes `ReflectionProvider` so it can resolve the class a static call
+        // names and ask whether that class descends from Laravel's facade base. Without it PHPStan cannot
+        // construct the rule at all, and the pair would read as a rule that reports nothing.
+        // The standalone form of the same check, wired the same way and for the same reason.
+        'StaticChainedNoDebugInNamespaceRule' => [
+            'reflectionProvider' => '@reflectionProvider',
+        ],
+        'CombinedStaticCallRule' => [
+            'reflectionProvider' => '@reflectionProvider',
+        ],
         'CombinedMethodCallRule' => [
             'parser' => '@defaultAnalysisParser',
         ],

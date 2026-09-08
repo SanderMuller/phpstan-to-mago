@@ -721,6 +721,19 @@ final class TranslationContext
      */
     public array $inlining = [];
 
+    /**
+     * Constructor properties holding a class *handle* rather than a service, by the class they name.
+     *
+     * `$this->facadeReflection = $provider->hasClass(Facade::class) ? $provider->getClass(Facade::class) :
+     * null;` — a `?ClassReflection` derived from an injected service, which {@see Transpiler::serviceBehind()}
+     * would otherwise record as the service itself, because the service appears in the expression. The handle
+     * is not the service: it is the class name, and every question the body asks of it is a question about
+     * that name.
+     *
+     * @var array<string, string>
+     */
+    public array $classHandles = [];
+
     /** @var array<string, array<string, array{0: string, 1: string, 2?: string}>> expression key -> refined fields */
     public array $refinements = [];
 
