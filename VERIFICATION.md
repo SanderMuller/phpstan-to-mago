@@ -13835,3 +13835,30 @@ section. The four remaining routes are all outside what I can do unilaterally or
 - **The `checkMode` threshold** — measured at thirteen rules' emitted bytes.
 - **A new corpus package**, which is a dependency this repository's own guidelines say not to add without
   approval, and which would change the denominator every figure here is quoted against.
+
+### Re-sizing `SlowMigrationDdlRule`: the aggregation may be zero pieces, not six
+
+I called this rule six pieces on the strength of its first blocker, a findings aggregation:
+
+    $found = [...$this->inspectSchemaCalls(..), ...$this->rawAlterFindings(..)];
+    usort($found, static fn (array $a, array $b): int => $a[0] <=> $b[0]);
+    return array_map(static fn (array $f): IdentifierRuleError => $f[1], $found);
+
+That was sized from the shape rather than from what the shape does. The tuples carry a line number for one
+purpose — the sort — and the `array_map` exists only to unwrap them again. A plugin reports each finding at
+its own span, so all three steps are about *ordering a list*, which a plugin does not have.
+
+**And ordering is not observable through the gate**, which is the part worth checking rather than assuming:
+`FiresGate::sorted()` sorts the findings of each file and `ksort`s the files before comparing, so both sides
+are order-normalised. A rule's own `usort` cannot show up as a disagreement.
+
+So the aggregation is plausibly zero pieces and the rule is its five reported shapes, a `NodeFinder` over the
+class, the `MigrationTableNameResolver`, and configuration it is inert without. Still substantial; not what I
+described.
+
+**One caveat, and it is the one that stops me acting on this now.** "My harness cannot detect it" is the exact
+reasoning I have been wrong with twice this week — the always-true mutation that passed because no fixture
+reached the axis, and the null result I explained instead of measuring. Whether PHPStan itself preserves the
+order a rule returns, and whether any consumer depends on it, is not a question my repository can answer. Put
+to the peer, with the standing instruction that if the honest answer is "someone would have to check", the
+sort stays load-bearing until they do.
