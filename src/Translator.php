@@ -6348,6 +6348,372 @@ final readonly class Translator
     }
 
     /**
+     * `return $this->helper($subject);` where the helper is a first-match walk over an ancestor table.
+     *
+     *     foreach ($this->parentClasses as $parentClass) {
+     *         if (! $subject->is($parentClass)) { continue; }
+     *         $suffix = $this->resolver->resolveFromClass($parentClass);
+     *         if (str_ends_with($subject->getName(), $suffix)) { return []; }
+     *         $message = sprintf(self::ERROR_MESSAGE, $suffix);
+     *         return [RuleErrorBuilder::message($message)->identifier(..)->build()];
+     *     }
+     *
+     *     return [];
+     *
+     * The whole walk is `Support::missingAncestorSuffix()` over a table derived here, because every input the
+     * walk needs is known at transpile time: the ancestor list is a class constant and the suffix column comes
+     * from calling the resolver itself ({@see Vocabulary::PURE_STRING_RESOLVERS} carries why running it is
+     * sounder than re-implementing it).
+     *
+     * Only the first three statements are replaced. The message and the report are translated normally, so the
+     * message template, the identifier and the anchor all come from the rule rather than from here — the
+     * difference between porting a rule and hand-writing one. `takeReportingPass()` was the other candidate
+     * and it would have been the second thing: this helper *is* the rule's whole decision, so standing a
+     * runtime pass in for it books an emit for a rule this transpiler never read.
+     */
+    private function takeAncestorSuffixFold(MethodCall $call): bool
+    {
+        $line = $call->getStartLine();
+        $method = $this->memberName($call->name, $line);
+        $declaring = $this->declaringOf($method);
+        if ($declaring === null || count($call->getArgs()) !== 1) {
+            return false;
+        }
+
+        $helper = null;
+        foreach ($declaring['class']->getMethods() as $candidate) {
+            if ((string) $candidate->name === $method) {
+                $helper = $candidate;
+            }
+        }
+
+        if (! $helper instanceof ClassMethod) {
+            return false;
+        }
+
+        $statements = $helper->stmts ?? [];
+        if (count($statements) !== 2
+            || ! $statements[0] instanceof Foreach_
+            || ! $this->isReturnEmptyArray([$statements[1]])
+        ) {
+            return false;
+        }
+
+        $loop = $statements[0];
+        $body = $loop->stmts;
+        if (count($body) !== 5 || ! $loop->valueVar instanceof Variable || ! is_string($loop->valueVar->name)) {
+            return false;
+        }
+
+        $entry = $loop->valueVar->name;
+        $ancestors = $this->foldedAncestorList($loop->expr, $line);
+        if ($ancestors === null) {
+            return false;
+        }
+
+        // `if (! $subject->is($entry)) { continue; }` — the ancestry test, which the table now carries.
+        if (! $this->skipsUnlessAncestorOf($body[0], $entry)) {
+            return false;
+        }
+
+        // `$suffix = $this->resolver->resolveFromClass($entry);`
+        $suffix = $this->boundSuffixName($body[1], $entry);
+        if ($suffix === null) {
+            return false;
+        }
+
+        // `if (str_ends_with($subject->getName(), $suffix)) { return []; }` — satisfied, so stop quietly.
+        if (! $this->stopsWhenSuffixAlreadyHeld($body[2], $suffix)) {
+            return false;
+        }
+
+        $resolver = $this->pureResolverBehind($body[1], $line);
+        if ($resolver === null) {
+            return false;
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal(
+                'an ancestor-suffix table, which only the PHP target carries',
+                $line,
+            );
+        }
+
+        $table = [];
+        foreach ($ancestors as $ancestor) {
+            $table[$ancestor] = $resolver($ancestor);
+        }
+
+        $this->context->lines[] = new Stm('assign', [
+            'target' => $suffix,
+            'value' => 'Support::missingAncestorSuffix($context, $node, ' . $this->renderedTable($table) . ')',
+        ], $this->context->indent);
+        // The name as written, not snaked: `PhpBackend::name()` renders an assign target verbatim, so a
+        // snaked guard reads a variable the assign never bound -- which is null, so the rule returns early
+        // every time and reports nothing. It emitted and did nothing, which is what the fires gate is for.
+        $this->context->lines[] = new Stm('guard', [
+            'condition' => '$' . $suffix . ' === null',
+            'exit' => $this->context->backend->bail(),
+        ], $this->context->indent);
+
+        $this->context->locals[$suffix] = [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'bytes',
+            'php' => '$' . $suffix,
+        ];
+
+        // The message and the report, from the rule.
+        $this->translateStatement($body[3]);
+        $this->translateStatement($body[4]);
+
+        return true;
+    }
+
+    /**
+     * The ancestor list a `$this->property` iterated by such a helper resolves to.
+     *
+     * `$this->parentClasses = array_merge($parentClasses, self::DEFAULT_PARENT_CLASSES);` in the constructor,
+     * where the first operand is a parameter defaulting to `[]`. That default is what makes the fold sound
+     * without reading a neon: the emitted table is the *unconfigured* configuration, and a parameter with no
+     * default, or one wired to something, is refused rather than assumed empty.
+     *
+     * @return list<string>|null
+     */
+    private function foldedAncestorList(Expr $iterable, int $line): ?array
+    {
+        if (! $iterable instanceof PropertyFetch
+            || ! $iterable->var instanceof Variable
+            || $iterable->var->name !== 'this'
+        ) {
+            return null;
+        }
+
+        $property = $this->identifierName($iterable->name);
+        $constructor = $this->context->ruleClass?->getMethod('__construct');
+        if ($property === null || ! $constructor instanceof ClassMethod) {
+            return null;
+        }
+
+        foreach ($constructor->stmts ?? [] as $statement) {
+            if (! $statement instanceof Expression
+                || ! $statement->expr instanceof Assign
+                || ! $statement->expr->var instanceof PropertyFetch
+                || $this->identifierName($statement->expr->var->name) !== $property
+            ) {
+                continue;
+            }
+
+            return $this->mergedWithAnEmptyParameter($statement->expr->expr, $constructor, $line);
+        }
+
+        return null;
+    }
+
+    /**
+     * `array_merge($emptyParameter, self::CONSTANT)` folded to the constant's own strings.
+     *
+     * @return list<string>|null
+     */
+    private function mergedWithAnEmptyParameter(Expr $value, ClassMethod $constructor, int $line): ?array
+    {
+        if (! $value instanceof FuncCall
+            || ! $value->name instanceof Name
+            || $value->name->toString() !== 'array_merge'
+            || count($value->getArgs()) !== 2
+        ) {
+            return null;
+        }
+
+        $configured = $value->getArgs()[0]->value;
+        if (! $configured instanceof Variable || ! is_string($configured->name)) {
+            return null;
+        }
+
+        $defaultsToEmpty = false;
+        foreach ($constructor->params as $parameter) {
+            if ($parameter->var instanceof Variable
+                && $parameter->var->name === $configured->name
+                && $parameter->default instanceof Array_
+                && $parameter->default->items === []
+            ) {
+                $defaultsToEmpty = true;
+            }
+        }
+
+        if (! $defaultsToEmpty) {
+            return null;
+        }
+
+        return $this->stringList($value->getArgs()[1]->value, $line);
+    }
+
+    /** `if (! $subject->is($entry)) { continue; }` */
+    private function skipsUnlessAncestorOf(Stmt $statement, string $entry): bool
+    {
+        if (! $statement instanceof If_
+            || count($statement->stmts) !== 1
+            || ! $statement->stmts[0] instanceof Continue_
+            || ! $statement->cond instanceof BooleanNot
+            || ! $statement->cond->expr instanceof MethodCall
+        ) {
+            return false;
+        }
+
+        $test = $statement->cond->expr;
+
+        return $this->identifierName($test->name) === 'is'
+            && count($test->getArgs()) === 1
+            && $test->getArgs()[0]->value instanceof Variable
+            && $test->getArgs()[0]->value->name === $entry;
+    }
+
+    /** `$suffix = $this->resolver->resolveFromClass($entry);` — the name it binds. */
+    private function boundSuffixName(Stmt $statement, string $entry): ?string
+    {
+        if (! $statement instanceof Expression
+            || ! $statement->expr instanceof Assign
+            || ! $statement->expr->var instanceof Variable
+            || ! is_string($statement->expr->var->name)
+            || ! $statement->expr->expr instanceof MethodCall
+        ) {
+            return null;
+        }
+
+        $call = $statement->expr->expr;
+        $argument = $call->getArgs()[0]->value ?? null;
+
+        return count($call->getArgs()) === 1
+            && $argument instanceof Variable
+            && $argument->name === $entry
+            ? $statement->expr->var->name
+            : null;
+    }
+
+    /** `if (str_ends_with($subject->getName(), $suffix)) { return []; }` */
+    private function stopsWhenSuffixAlreadyHeld(Stmt $statement, string $suffix): bool
+    {
+        if (! $statement instanceof If_
+            || ! $this->isReturnEmptyArray($statement->stmts)
+            || ! $statement->cond instanceof FuncCall
+            || ! $statement->cond->name instanceof Name
+            || $statement->cond->name->toString() !== 'str_ends_with'
+            || count($statement->cond->getArgs()) !== 2
+        ) {
+            return false;
+        }
+
+        $held = $statement->cond->getArgs()[1]->value;
+
+        return $held instanceof Variable && $held->name === $suffix;
+    }
+
+    /**
+     * The pure resolver a `$this->resolver->method($entry)` call names, as a callable over one string.
+     *
+     * Resolved through the constructor's declared type and the rule's own `use` map, so the entry in
+     * {@see Vocabulary::PURE_STRING_RESOLVERS} is matched on a fully qualified name rather than on a property
+     * name a rule chose.
+     *
+     * @return callable(string): string|null
+     */
+    private function pureResolverBehind(Stmt $statement, int $line): ?callable
+    {
+        if (! $statement instanceof Expression
+            || ! $statement->expr instanceof Assign
+            || ! $statement->expr->expr instanceof MethodCall
+        ) {
+            return null;
+        }
+
+        $call = $statement->expr->expr;
+        $method = $this->identifierName($call->name);
+        if (! $call->var instanceof PropertyFetch
+            || ! $call->var->var instanceof Variable
+            || $call->var->var->name !== 'this'
+            || $method === null
+        ) {
+            return null;
+        }
+
+        $property = $this->identifierName($call->var->name);
+        $class = $property === null ? null : $this->constructorParameterType($property);
+        if ($class === null || ! isset(Vocabulary::PURE_STRING_RESOLVERS[$class . '::' . $method])) {
+            return null;
+        }
+
+        if (! class_exists($class) || ! method_exists($class, $method)) {
+            throw new Refusal(
+                sprintf('%s::%s() is listed as a pure resolver but is not installed', $class, $method),
+                $line,
+            );
+        }
+
+        $instance = new $class();
+        $callable = [$instance, $method];
+        if (! is_callable($callable)) {
+            throw new Refusal(sprintf('%s::%s() is listed as a pure resolver but is not callable', $class, $method), $line);
+        }
+
+        return static function (string $ancestor) use ($callable, $class, $method, $line): string {
+            $suffix = $callable($ancestor);
+            if (! is_string($suffix)) {
+                throw new Refusal(sprintf(
+                    '%s::%s() is listed as a pure resolver but answered %s rather than a string',
+                    $class,
+                    $method,
+                    get_debug_type($suffix),
+                ), $line);
+            }
+
+            return $suffix;
+        };
+    }
+
+    /** The fully qualified type of the constructor parameter promoted to, or assigned to, a property. */
+    private function constructorParameterType(string $property): ?string
+    {
+        $constructor = $this->context->ruleClass instanceof ClassLike
+            ? $this->context->ruleClass->getMethod('__construct')
+            : null;
+
+        foreach ($constructor->params ?? [] as $parameter) {
+            if (! $parameter->var instanceof Variable
+                || $parameter->var->name !== $property
+                || ! $parameter->type instanceof Name
+            ) {
+                continue;
+            }
+
+            $written = $parameter->type->toString();
+
+            return $this->context->ruleUses[$written] ?? $written;
+        }
+
+        return null;
+    }
+
+    /**
+     * `['Ancestor\Name' => 'Suffix', ...]` as PHP source, order preserved.
+     *
+     * @param array<string, string> $table
+     */
+    private function renderedTable(array $table): string
+    {
+        $pairs = [];
+        foreach ($table as $ancestor => $suffix) {
+            $pairs[] = $this->quoted($ancestor) . ' => ' . $this->quoted($suffix);
+        }
+
+        return '[' . implode(', ', $pairs) . ']';
+    }
+
+    /** A single-quoted PHP string literal, with the backslashes a class name carries escaped. */
+    private function quoted(string $value): string
+    {
+        return "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], $value) . "'";
+    }
+
+    /**
      * `strrpos` then `substr` — a helper handing back the last segment of a qualified name.
      *
      * ```php
@@ -7173,6 +7539,15 @@ final readonly class Translator
             // a plugin missing whatever the helper decides, which is the silent-narrowing shape.
             // Unless a runtime pass stands in for that helper.
             if ($stmt->expr instanceof MethodCall && $this->takeReportingPass($stmt->expr)) {
+                return;
+            }
+
+            // Unless the helper is a first-match walk over a table this transpiler can derive, in which case
+            // the guards are in the table rather than in the body.
+            if ($stmt->expr instanceof MethodCall
+                && $this->isOwnMethodCall($stmt->expr)
+                && $this->takeAncestorSuffixFold($stmt->expr)
+            ) {
                 return;
             }
 

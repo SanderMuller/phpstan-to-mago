@@ -111,6 +111,46 @@ final class Inheritance
     }
 
     /**
+     * The suffix the enclosing class owes its nearest listed ancestor, or null when it owes none.
+     *
+     * The walk is generic and the table is derived at transpile time: for each `ancestor => suffix` pair in
+     * written order, the first pair whose ancestor the class descends from decides and stops. That pair is
+     * satisfied when the class name already ends with the suffix, and reported otherwise. A class matching no
+     * pair owes nothing. `ClassNameRespectsParentSuffixRule` is the shape.
+     *
+     * Order is the caller's and it is load-bearing: the rule merges configured ancestors ahead of its own
+     * defaults, so whichever matches first chooses the message. A PHP array preserves insertion order, which
+     * is why the table arrives as one rather than as two lists.
+     *
+     * `namedClassIsSubclassOf()` is exclusive where PHPStan's `ClassReflection::is()` is inclusive, and the
+     * difference cannot be reached here: a class that *is* a listed ancestor already ends with that ancestor's
+     * own suffix, so both answer silence. It also folds in traits where `is()` does not, which is exact for a
+     * table of classes and interfaces and would be wider than the rule for a configured trait ancestor.
+     *
+     * @param array<string, string> $table ancestor class or interface name => the suffix it requires
+     */
+    public static function missingAncestorSuffix(
+        NodeAnalysisContext $context,
+        Part|Node|null $node,
+        array $table,
+    ): ?string {
+        $class = Declares::enclosingClassName($context, $node);
+        if ($class === null || $class === '') {
+            return null;
+        }
+
+        foreach ($table as $ancestor => $suffix) {
+            if (! Reflect::namedClassIsSubclassOf($context, $class, $ancestor)) {
+                continue;
+            }
+
+            return str_ends_with($class, $suffix) ? null : $suffix;
+        }
+
+        return null;
+    }
+
+    /**
      * Every interface a named class implements, transitively  `ClassReflection::getInterfaces()`.
      *
      * `parentInterfaces`, not `directParentInterfaces`: PHPStan\'s `getInterfaces()` is the whole set, and a

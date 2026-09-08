@@ -111,7 +111,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 68 of 89 portable rules the package registers emit, 1 covered by the engine, 20 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 69 of 89 portable rules the package registers emit, 1 covered by the engine, 19 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -120,9 +120,7 @@ REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
 EMIT    AvoidAnyExpectsRule
 EMIT    AvoidFeatureSetAttributeInRectorRule
 EMIT    CheckRequiredInterfaceInContractNamespaceRule
-REFUSE  ClassNameRespectsParentSuffixRule
-        the rule returns whatever processClassNameAndShort() decides, and that helper builds the findings rather than answering a question — so there is nothing here to translate into guards
-        needs-at-least: the rule returns whatever processClassNameAndShort() decides, and that helper builds the findings rather than answering a question — so there is nothing here to translate into guards
+EMIT    ClassNameRespectsParentSuffixRule
 EMIT    ExplicitClassPrefixSuffixRule
 EMIT    ExplicitExpectsMockMethodRule
 EMIT    FileNameMatchesExtensionRule

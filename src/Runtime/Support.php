@@ -2042,6 +2042,22 @@ final class Support
         return Declares::enclosingClassName($context, $subject);
     }
 
+    /**
+     * The suffix the enclosing class owes its nearest listed ancestor, or null when it owes none.
+     *
+     * {@see Inheritance::missingAncestorSuffix()} carries why the walk stops at the first ancestry match and
+     * why the table's order is the caller's.
+     *
+     * @param array<string, string> $table ancestor class or interface name => the suffix it requires
+     */
+    public static function missingAncestorSuffix(
+        NodeAnalysisContext $context,
+        Part|Node|null $node,
+        array $table,
+    ): ?string {
+        return Inheritance::missingAncestorSuffix($context, $node, $table);
+    }
+
     /** Whether the nearest class-like around a node is a trait. {@see Reflect::isInTrait} */
     public static function isInTrait(NodeAnalysisContext $context, Part|Node|null $node): bool
     {

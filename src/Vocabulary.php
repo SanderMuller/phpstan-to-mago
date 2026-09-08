@@ -676,6 +676,29 @@ final class Vocabulary
      * @var array<string, array{helper: string, kind: string, takes: string, arguments: list<int>,
      *      types?: list<int>, flags?: list<string>, receiverType?: bool, expressionTypes?: bool}>
      */
+    /**
+     * Collaborator methods this transpiler may *call* at transpile time to fold a literal into a literal.
+     *
+     * Opt-in by fully qualified name, and deliberately not a predicate over "looks pure". The entry says
+     * three things have been checked: the class constructs without arguments, the method is a pure function
+     * of its string argument, and it reaches nothing outside itself. Executing installed vendor code is not
+     * something to infer, so nothing lands here without reading the body.
+     *
+     * Calling the real method rather than re-implementing it is what makes the fold *exact*: the table a rule
+     * is emitted with is by construction the table PHPStan computes, so upstream changing the resolver changes
+     * both together instead of leaving a re-implementation silently behind. That is the one case where running
+     * the code beats recognising it.
+     *
+     * @var array<string, true>
+     */
+    public const array PURE_STRING_RESOLVERS = [
+        // `ClassToSuffixResolver::resolveFromClass()` — 48 lines of string manipulation over a class name,
+        // no constructor, no PHPStan API, and it reads nothing but its argument. It maps an ancestor to the
+        // suffix a descendant owes it, which `ClassNameRespectsParentSuffixRule` asks once per table entry
+        // and always for a name known at transpile time.
+        'Symplify\PHPStanRules\Naming\ClassToSuffixResolver::resolveFromClass' => true,
+    ];
+
     public const array COLLABORATOR_CALLS = [
         // `kind: 'reports'` is the one entry that is not an answer. `AnnotationHelper::processDocComment()`
         // decides *and* builds the findings, and a rule returning that has nothing for this transpiler to

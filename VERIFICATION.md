@@ -14929,3 +14929,83 @@ fixture pair whose Bad example covers **both** a class ancestor and an interface
 ancestry bug would otherwise pass the gate green; `ClassToSuffixResolver` autowired on PHPStan's side, with
 `FiresGate::SERVICES` as the precedent; then the full gauntlet — emit-all byte diff across three targets,
 suite including the 660 engine tests, PHPStan, Rector, Pint, census regeneration, README re-derivation.
+
+### `ClassNameRespectsParentSuffixRule` emits, and what the build actually cost
+
+The census records 132 EMIT where it recorded 131, `symplify/phpstan-rules` 69 of 89 where it recorded 68, and
+`--status` 122 of 236 where it said 121. Nine turns of measurement, one rule.
+
+#### The design, and the one place running the code beat recognising it
+
+The rule walks a table of ancestors and asks a collaborator for the suffix each one requires.
+`Vocabulary::PURE_STRING_RESOLVERS` names `ClassToSuffixResolver::resolveFromClass` as a method this
+transpiler may **call** at transpile time, and the table is built by calling it once per ancestor.
+
+That is a deliberate reversal of the recognise-and-fold plan recorded above. Re-implementing the resolver's
+four string operations would have been a second copy of upstream's logic that could drift silently behind it;
+calling the installed method makes the emitted table **by construction** the table PHPStan computes. Executing
+vendor code is not something to infer, so the entry is opt-in by fully qualified name and says what was
+checked: no constructor, pure over its string argument, reaches nothing outside itself.
+
+The other candidate was `takeReportingPass()`, and rejecting it was the right call for a reason that has
+nothing to do with difficulty: `processClassNameAndShort()` **is** this rule's whole decision, so a pass
+standing in for it books an emit for a rule the transpiler never read. Only the first three statements of the
+helper are replaced. The message template, the identifier and the anchor are all translated from the rule.
+
+#### The bug reading caught, which every green check would have missed
+
+The first emit was well-formed PHP that could never report. The assign rendered `$expectedSuffix` while the
+guard and the message read `$expected_suffix`, because I snaked a name that `PhpBackend::name()` renders
+verbatim. The undefined variable is null, `=== null` is therefore always true, and the plugin returns before
+reporting **every time**.
+
+It parses. It loads. `php -l` passes. Only reading the emitted file, or running it, finds it — which is this
+log's *"it emitted is not a result"* with a fresh instance.
+
+#### The interface case is load-bearing, and the mutation proves it
+
+Four of the nine ancestors are interfaces, so the fixture's Bad example carries a class-ancestor violation and
+an interface-ancestor violation, varying only how the ancestor is reached. Mutating
+`missingAncestorSuffix()` to walk `parentClassNames()` — class-only ancestry, the plausible way to build it —
+gives:
+
+    'BadMissingSuffix.php' => [
+        0 => '13: Class should have suffix "Controller" to respect parent type',
+    -   1 => '25: Class should have suffix "EventSubscriber" to respect parent type',
+    ]
+
+The agreement test catches it. Without the interface case in the fixture, that bug ships green.
+
+The Good example carries three controls: the same two ancestries with their suffixes held, a class with no
+listed ancestor at all, and an abstract class deliberately named to violate the suffix so the guard is what
+keeps it quiet rather than the name.
+
+#### Three displaced docblocks, and my fix for them made it worse
+
+Inserting a method directly above an existing signature gives the new method the *anchor's* docblock and
+leaves the anchor bare. It happened in all three files, and surfaced as seven PHPStan errors about missing
+iterable value types on methods I had not touched — the trap this log already records ten instances of.
+
+The repair was worse than the fault. A regex for "two adjacent docblocks" run from the top of the file found,
+in `Translator.php`, an *earlier* pair and moved `inlineStaticProducer()`'s docblock onto
+`lastNameSegmentHelper()`; in `Support.php` it found a **pre-existing** displaced pair near `hasClass()` and
+moved half of it onto `enclosingClassName()`. Both fixes were silently wrong and both left the suite green.
+
+What caught them is worth keeping: **`git diff --numstat` on every changed file, insisting on `-0`.** An
+addition that deletes a line has moved something it did not mean to. All four source files are now purely
+additive, and the honest insertion point is *after* the anchor's closing brace, never before its signature.
+
+#### Verification
+
+- Emit-all across the four corpus packages plus `tests/Fixtures/Rules`, all three targets: php 145 → **146**
+  with the diff being exactly the new plugin plus its manifest and worker entries; analyzer and linter
+  **zero diff**. The only other difference is the `--out` path `mago.toml.snippet` embeds, which is the
+  documented exception.
+- Suite **1092/1092** (3473 assertions); `--group engine` **778/778**.
+- PHPStan **0 errors**, and the baseline still holds **13 entries** — no new entry. Two existing figures rose,
+  `complexity.classLike` 2647 → 2701 and `translateStatement()` 75 → 78, which is the cost of coverage this
+  log already names rather than a regression.
+- Rector 0 changed on a second pass, Pint clean.
+- The census drift alarm fired, its diff was read, and it named exactly one change: this rule REFUSE → EMIT.
+- All seven README package rows re-derived mechanically against the census, and the `--status` figure with
+  them.
