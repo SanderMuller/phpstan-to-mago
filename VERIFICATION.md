@@ -12458,3 +12458,84 @@ library function neither of us had reason to doubt.
 is cheaper than review and catches a different class of defect — the class this file is almost entirely made
 of. The countermeasure already recorded here is "budget for a second party rather than for a more careful
 self-review". This sharpens it: what the second party should be handed is not the diff. It is the sentence.
+
+## The arithmetic dispatch is not a design change, and the blocker moved
+
+`CLAUDE.md` says statement and expression translation cannot be separated by extraction and to not attempt it
+as a refactor. The `OperandsInArithmetic*` dispatch looked like a smaller cousin of that — a branch that
+*binds* rather than guards, which no `if` shape the translator recognises does. It is not. The shape
+dissolves, and what is left is one recognizer, one plumbing fix and two table rows.
+
+### The binding problem does not exist
+
+`internal/probe-binary-operands.php` was already in the tree, written for exactly this question. Re-run:
+
+    Binary      $a / $b     Expression $a │ BinaryOperator     /   │ Expression $b
+    Assignment  $a /= $b    Expression $a │ AssignmentOperator /=  │ Expression $b
+
+**Identical children, identical order.** So `$node->left` / `$node->var` are one navigation and
+`$node->right` / `$node->expr` are one navigation — `Support::nthExpression($context, $node, 0)` and `1`,
+which the increment rules already emit. Both arms of the dispatch bind the same two things, so there is
+nothing to rebind and no per-arm fork to build.
+
+This is the second time this collapse has been measured here. `internal/handoff-multi-kind-hook-is-not-a-redesign.md`
+found it for the three call kinds — identical children, so `Support::selector()` and `argumentList()` search
+by kind rather than walking a field path and already worked on all three. The census refusal named the shape
+both times; the shape was php-parser's field names, not Mago's tree.
+
+### What the dispatch actually is
+
+A target-set declaration, which is the same conclusion that handoff reached for the four `Assert*` rules from
+the negated-conjunction spelling. Here it is spelled as a positive chain with an `else { return []; }`, and it
+says: this rule acts on `Binary` and on `Assignment`, and on nothing else.
+
+That matters because `getNodeType()` is `Expr::class` — the catch-all. The census refusal *"no PHP navigation
+for node.var (kind expr) on a Expr node"* is that, seen from below: the hook is every expression, so nothing
+downstream knows which kinds the rule can actually see. The dispatch is the only place that says.
+
+### The blocker, now named exactly
+
+`Vocabulary::HOOK_KINDS[Expr::class] = ['Binary', 'Assignment']` would work today and is wrong: `HOOK_KINDS`
+maps a *node type* to kinds, rule-independently, and `Expr::class` is the catch-all other rules hook for other
+reasons. The mapping belongs to this rule's dispatch, not to `Expr`.
+
+Deriving it from the body needs one plumbing change, and it is the load-bearing fact:
+`TranslationContext::$hookKinds` is set at `Transpiler.php:278` **before** the body loop at `:287`, and it is
+read *during* translation at `Translator.php:9679` to turn `instanceof X` into `node_kind_is($context, $node,
+'X')`. So a first-statement dispatch could set it and every later statement would see it — the ordering is
+already right. But `Emitter.php:640` calls `targetKinds($hook)` **again** at emit time rather than reading the
+context, so a body-derived set would be silently ignored and the emitted `getTargets()` would disagree with
+the kind tests in the same file. Two sources of truth for one list.
+
+That is a plugin that compiles, loads and is wrong — the failure mode this repository designs against — and
+nothing in the current checks would catch it, because the corpus has no rule whose targets come from its body.
+
+### The step, sized
+
+1. **One plumbing fix.** One source of truth for the target list: `targetKinds()` consults the derived set, or
+   the hook carries it. Not a new mechanism, but it must land before anything reads a body-derived kind.
+2. **One recognizer.** A leading `if/elseif/else` whose arms bind the same locals to the same navigations and
+   whose `else` is `return []` — declare the union as targets, emit the arms' conditions as one guard, emit the
+   bindings once.
+3. **Two table rows.** `BinaryOp\Div` is `Binary` with operator text `/`; `AssignOp\Div` is `Assignment` with
+   `/=`. `EXPRESSION_KINDS` maps a class to a kind and cannot carry the operator, so this needs a predicate
+   that reads the operator child — which `DisallowedLooseComparisonRule` then reuses for `Equal`.
+
+### The gate can test it, which was not obvious
+
+These rules report nothing at level 0, and the gate runs level 0 — the point recorded above. Measured with
+`checkThisOnly: false` alone, the flag `FiresGate::PARAMETERS` already sets for this family:
+
+| row                | level 0 + `checkThisOnly: false` |
+|:--|:--|
+| `bool $b / 2`      | `div.leftNonNumeric`             |
+| `bool $b /= 2`     | `div.leftNonNumeric`             |
+| `array $a / 2`     | silent — `toNumber()` owns it     |
+| `int $n / 2`       | silent (control)                  |
+
+One flag, and **both arms of the dispatch report**, so the fixture pair can exercise the union rather than
+half of it. No second flag and no new gate mechanism.
+
+Division alone is the first target, because one emitting rule is what keeps new vocabulary from being
+unexercised — the condition three reverts in this log were made under. The other four follow as predicate
+rows; Addition last, since it reads `->getArrays()` as well.
