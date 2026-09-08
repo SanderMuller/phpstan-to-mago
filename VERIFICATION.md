@@ -14249,3 +14249,29 @@ So the build order is settled: the fold, then re-apply the six pieces the revert
 the configured allow-list that the gate already needs. And the fold has to emit the loop and the return
 *together* — the loop becomes the search, the return its result — rather than resolving the return as though
 the loop were not there, which is precisely what shipped a plugin reading an undefined variable.
+
+### The fold, located: a producer with no consumer
+
+The sharpest form of the gap, found by grepping the two kinds rather than by reading the loop:
+
+    'constant-strings'  produced at Translator.php:12127, consumed nowhere
+    'constant-string'   consumed at Translator.php:12106, produced nowhere
+
+`getConstantStrings()` yields the plural over `Support::constantStringsOf(<type>)`. The `getValue()` arm
+consumes the **singular** and calls it "an element of `getConstantStrings()`" — so someone built the consumer
+expecting a loop to bind one element of the plural to it, and that loop arm was never written.
+`translateForeach()` has no `constant-strings` case, which is why the loop emitted an empty body.
+
+And the value it needs already exists with matching semantics: `Types::constantStringOf($type)` is literally
+`constantStringsOf($type)[0] ?? null` — *the first constant string, or null* — which is exactly what
+`foreach (…getConstantStrings() as $s) { return …$s…; } return null;` computes.
+
+So the piece is a `constant-strings` arm in `translateForeach()` binding the item as a `constant-string`
+descriptor, and for a value-producing helper whose loop body is a single `return`, binding it to
+`constantStringOf(<type>)` and guarding the result on non-null. Two kinds, one existing helper, one loop arm.
+
+**Stopped here deliberately.** The previous attempt on this rule reached `EMIT` and shipped a plugin that read
+an undefined variable, and the difference between that and a correct one is precisely this arm — emitting the
+loop and the return *together*. Starting that at the end of a long session is how the last one went wrong; the
+design is now at code level, with file and line for every piece, so a fresh start begins by writing rather
+than by looking.
