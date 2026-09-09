@@ -16589,3 +16589,100 @@ entries ago — and unlike that one, I have not established that the boundary is
 Reverted; scaffold saved with eight obstacles' worth of work. What is banked and reusable regardless of this
 rule: the collecting-search lowering, the accumulator writes, the `Expression` searchable row, and
 `answersANameComparison()`. What is not: any of it, until a rule emits through it.
+
+### A branch dropped because the model cannot produce the state it tests, measured on both sides
+
+`IllegalConstructorStaticCallRule` emits. It is `phpstan-strict-rules`' 33rd, and the census's one-item needs
+list was honest for once: everything in the rule translated except `isInRenamedTraitConstructor()`, which
+blocks on `$scope->getClassReflection()->getNativeReflection()->getTraitAliases()`.
+
+There is no route to that. `ClassLikeMetadata` carries `usedTraits` and `methods` as `list<string>` — names
+only, no declaring class and no alias origin — and the `TraitUseAliasAdaptation` syntax node lives in the
+*using class's* file, not the trait's. So the question is whether the branch has to be answered at all.
+
+**It does not, and the reason is measured rather than argued.** PHPStan analyses a trait body once per using
+class. A probe rule reading the scope at a `parent::__construct()` inside `trait T { public function
+__construct() }`, with one using class writing `use T { __construct as initialise; }`, answered:
+
+    function=initialise class=UsesAliased inTrait=yes trait=AliasedConstructor
+                        aliases=[initialise=>AliasedConstructor::__construct]
+
+against a control in the same file using an *unaliased* trait, which answered `function=__construct`. One
+axis, two rows, and the findings arrive keyed `(in context of class ...)`, one per user. So
+`$scope->getFunction()->getName()` inside an aliased trait constructor is the **alias**, the outer guard
+`!== '__construct'` is true, and the branch exists to undo the renaming that per-using-class analysis
+introduces. A peer session reproduced all three of those independently.
+
+Mago fires once at the declaration, so the name a hook can read is the declared one. That was the one row
+still missing, and it is now measured rather than inferred — see the mutation check below.
+
+**Two rows agree, for different reasons**, and the pair is in the fixtures because they are not the same
+argument:
+
+| | PHPStan | the port | |
+|:--|:--|:--|:--|
+| aliased trait constructor | guard true, branch true, quiet | reads `__construct`, guard false, quiet | agree |
+| plain trait method holding `parent::__construct()` | guard true, branch false, **reports** | guard true, no branch, **reports** | agree |
+
+The second row agrees by the branch never mattering — `array_key_exists('initialise', $aliases)` fails for an
+ordinary method name. If mago ever answered an alias the first row would flip and the second would not, which
+is why both are fixtures rather than one.
+
+`Vocabulary::MODEL_UNSATISFIABLE_PREDICATES` carries the row, opt-in by fully qualified name like
+`PURE_STRING_RESOLVERS`, and carries what was measured on both sides. **A declaration in a config of your own
+reads exactly like a measurement of the system it describes**, which is the whole reason the row is written
+with its probe output rather than with its conclusion.
+
+#### The mutation check is what separates the silence from never looking
+
+Both tools are silent on the aliased trait constructor, and a shared zero is consistent with "the port agrees"
+and with "the port never fired there". The reporting row above proves the hook fires inside *a* trait; it does
+not prove it fires inside *that* one. So the fixture was mutated: the trait's `__construct` renamed to
+`renamedOnPurpose`, one axis, nothing else touched. Both tools then reported at that line. The hook fires in
+that trait, the enclosing function's name is read and compared, and the silence was the comparison passing.
+Restored from a copy taken first, per this repository's own rule about mutating a file on purpose.
+
+#### Three obstacles behind it, and one of them had a 15-rule blast radius
+
+- **`array_map(static fn (string $n) => strtolower($n), <a name list>)`** — a case fold before a membership
+  test. Rendered as `Support::loweredNames()` rather than dropped as redundant. It *is* redundant for a
+  comparison, because a `class-names` list already compares case-insensitively, but that is a fact about the
+  consumer and not about the fold: a list reaching a message would print differently.
+- **`strtolower()` of a `resolved-name`** — a string kind the case-fold branch did not list.
+- **`$scope->resolveName($node->class)` on `parent`** — `Names::resolvedName()` answered `self` and `static`
+  and returned null for `parent`, which `Support::methodExists()`'s own docblock had written down as expected.
+  Answering it is what made the good example pass, and 13 other emitted rules call `resolvedName` while 2 call
+  `parentClassNames`. **The whole engine group is the measurement, not the argument: 798 of 798**, up from 794
+  by this rule's four.
+
+#### The trait fold, and the caller that could not take it
+
+Inside a trait, `Inheritance::parentClassNames()` read the *trait's* metadata `parentClasses`, which is empty,
+so every parent test inside a trait was false — reporting where PHPStan is quiet. It now folds over the trait's
+users, the way `Declares::enclosingClassKindIs()` already does, with the same bound: exact for one user, a
+union for several, under-reporting rather than over-reporting.
+
+**The peer supplied the general form and it is the part worth carrying: a fold that widens an input is safe in
+a suppressing position and wrong in a reporting one.** Both callers can take it, for two different reasons:
+
+- `PreventParentMethodVisibilityOverrideRule` suppresses on a parent match, so a wider list can only silence.
+- `ClassConstantIsAStringRule` **reports** on a parent match, where a wider list would over-report — and it
+  cannot reach the fold at all, because its only target is `NodeKind::Class_`, so the node it is handed is a
+  class declaration and the enclosing class-like is never a trait.
+
+I had asked the peer to check the fold and named both callers. It could not read the second one — it is this
+repository's own fixture rather than a vendored rule — and said so rather than assessing it. That refusal is
+the reason the reporting-position caller got read at all.
+
+#### And one candidate killed by one grep
+
+`OverwriteVariablesWithForLoopInitRule` lists two needs and looked like the cheapest thing in the census. Its
+body asks `$scope->hasVariableType()`, which is the definedness gap (carthage-software/mago#2334) its
+`Foreach` sibling already terminates on. The census header names this rule as its own measured example of a
+needs list being a lower bound; I re-derived it rather than trusting the sentence, and it holds.
+
+Verified: emit-all across all three targets byte-identical apart from the new php plugin, its manifest entry
+and its worker line (analyzer and linter unchanged at 34 and 25); fires gate 4 of 4 on the rule and 798 of 798
+across the group; suite 315 of 315; PHPStan 0 with the baseline still 13 entries and its two complexity figures
+re-read rather than added to; Rector 0; Pint clean; census regenerated after reading its six-line diff; every
+README package row re-derived from the census by script rather than by eye.

@@ -703,6 +703,47 @@ final class Vocabulary
         'Symplify\PHPStanRules\Naming\ClassToSuffixResolver::resolveFromClass' => true,
     ];
 
+    /**
+     * Predicates on the rule itself that no analysis mago performs can satisfy, by fully qualified name.
+     *
+     * Not an approximation and not a shortcut: each row is a question about PHPStan's *analysis model* rather
+     * than about PHP, and the answer is fixed because the state the question asks about cannot arise. A row
+     * costs no agreement, which is what separates it from dropping a guard -- and it is also the easiest kind
+     * of row to write wrongly, because a declaration here reads exactly like a measurement of the engine it
+     * describes. So each carries what was measured, on both sides.
+     *
+     * Opt-in by fully qualified name, like {@see PURE_STRING_RESOLVERS}: a method with a plausible name is
+     * not enough, because the reasoning is about one body.
+     *
+     * @var array<string, false>
+     */
+    public const array MODEL_UNSATISFIABLE_PREDICATES = [
+        // `IllegalConstructorStaticCallRule::isInRenamedTraitConstructor()` is reached only when the enclosing
+        // function's name is not `__construct`, and returns true only when that name is an alias of *this
+        // trait's* `__construct` -- `$traitAliases[$fnName] === "{$trait}::__construct"` pins both halves.
+        //
+        // PHPStan side, measured twice, once here and once by a peer session: it analyses a trait body once
+        // per using class -- the findings arrive keyed `(in context of class ...)`, one per user -- and inside
+        // a trait whose constructor a using class aliases, `$scope->getFunction()->getName()` is the *alias*.
+        // A probe on `trait T { public function __construct() }` aliased by one class answered
+        // `function=initialise trait=T class=UsesAliased aliases=[initialise=>T::__construct]`, against a
+        // control in the same file using an unaliased trait, which answered `function=__construct`. One axis,
+        // two rows. So the branch exists to undo the renaming that per-using-class analysis introduces.
+        //
+        // Mago side: it fires once at the declaration, where the enclosing class-like is the trait itself
+        // ({@see Runtime\Declares::enclosingClassKindIs()} records that measurement), so the name a hook can
+        // read is the declared one. The alias lives in the using class's file and never reaches the trait's.
+        //
+        // Which leaves two rows rather than the one the story needs, and they agree for different reasons:
+        // on an aliased trait constructor PHPStan takes the branch and stays quiet while mago reads
+        // `__construct`, fails the outer guard and stays quiet; on a plain trait method holding
+        // `parent::__construct()` PHPStan reaches the branch, `array_key_exists()` fails, and it reports --
+        // where mago has no branch and reports too. The second row agrees by the branch never mattering. Both
+        // are fixtures, because if mago ever answered an alias the first row would flip and the second
+        // would not.
+        'PHPStan\Rules\Methods\IllegalConstructorStaticCallRule::isInRenamedTraitConstructor' => false,
+    ];
+
     public const array COLLABORATOR_CALLS = [
         // `kind: 'reports'` is the one entry that is not an answer. `AnnotationHelper::processDocComment()`
         // decides *and* builds the findings, and a rule returning that has nothing for this transpiler to

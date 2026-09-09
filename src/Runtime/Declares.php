@@ -227,6 +227,62 @@ final class Declares
         return null;
     }
 
+    /**
+     * The class-like names PHPStan's `$scope->getClassReflection()` would answer at this node.
+     *
+     * One name for a node inside a class, an interface or an enum. Inside a *trait* it is every class using
+     * the trait, because PHPStan analyses a trait body once per using class and hands each run that class --
+     * measured, on a trait whose constructor a using class aliases: the finding arrives keyed `(in context of
+     * class ...)` and `getParentClassesNames()` there is the *user's* parents, not the trait's (a trait has
+     * none). Mago fires once at the declaration instead, where the enclosing class-like is the trait, which
+     * is the same gap {@see enclosingClassKindIs()} documents and this answers the same way.
+     *
+     * The bound is the sibling's bound: exact for a trait used by one class, and a *union* for one used by
+     * several, so a question asked of the union under-reports rather than over-reports. That direction is
+     * deliberate -- {@see Inheritance::parentClassNames()} feeds `in_array()` tests, where a wider list can
+     * only silence a finding.
+     *
+     * @return list<string>
+     */
+    public static function enclosingReflectionClassNames(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        $name = self::enclosingClassName($context, $subject);
+        if ($name === null) {
+            return [];
+        }
+
+        if (! self::enclosingIsTrait($context, $subject)) {
+            return [$name];
+        }
+
+        return self::traitUsers($context, $name);
+    }
+
+    /** Whether the class-like *around* this node is the trait it is declared in. */
+    private static function enclosingIsTrait(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        $node = Tree::node($subject);
+        if (! $node instanceof Node) {
+            return false;
+        }
+
+        [$file, $located] = Tree::locate($context, $node);
+
+        foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
+            if ($ancestor->kind === NodeKind::Trait) {
+                return true;
+            }
+
+            if (in_array($ancestor->kind->value, Tree::CLASS_LIKE_KINDS, true)
+                || $ancestor->kind === NodeKind::AnonymousClass
+            ) {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
     public static function isInClass(NodeAnalysisContext $context, Part|Node|null $node): bool
     {
         return self::enclosingClassName($context, $node) !== null;

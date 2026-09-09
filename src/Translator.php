@@ -2822,8 +2822,16 @@ final readonly class Translator
                     return null;
                 }
 
+                // A nested guard whose own condition cannot fail adds nothing but `&& true` to the
+                // conjunction, which is correct and which nobody should have to read in a generated plugin --
+                // the same reason the guard-chain fold drops a constantly-false condition. It arises from a
+                // predicate the model cannot satisfy ({@see Vocabulary::MODEL_UNSATISFIABLE_PREDICATES}),
+                // negated by the guard that reads it.
+                $nested = $this->translateCondition($statement->cond);
                 $guards[] = [
-                    '(' . $condition . ' && ' . $this->translateCondition($statement->cond) . ')',
+                    $this->stripOuterParentheses($nested) === 'true'
+                        ? $condition
+                        : '(' . $condition . ' && ' . $nested . ')',
                     strtolower($returned->name->toString()) === 'true' ? 'true' : 'false',
                 ];
             }
@@ -5574,6 +5582,55 @@ final readonly class Translator
     }
 
     /**
+     * `array_map(<a case fold>, <a name list>)`, or null when it is some other map.
+     *
+     * Only a case fold, and only over a list of names. `array_map()` in general is a value this has no
+     * rendering for, and answering the general shape would mean carrying a closure into the plugin.
+     *
+     * @param array<Arg> $args
+     * @return Descriptor|null
+     */
+    private function caseFoldedNameList(array $args, int $line): ?array
+    {
+        $callback = $args[0]->value;
+        if (! $callback instanceof ArrowFunction || count($callback->params) !== 1) {
+            return null;
+        }
+
+        $parameter = $callback->params[0]->var;
+        $body = $callback->expr;
+        if (! $parameter instanceof Variable
+            || ! is_string($parameter->name)
+            || ! $body instanceof FuncCall
+            || ! $body->name instanceof Name
+            || $body->name->toString() !== 'strtolower'
+            || count($body->getArgs()) !== 1
+        ) {
+            return null;
+        }
+
+        $argument = $body->getArgs()[0]->value;
+        if (! $argument instanceof Variable || $argument->name !== $parameter->name) {
+            return null;
+        }
+
+        $of = $this->resolve($args[1]->value, $line);
+        if (! in_array($of['kind'], ['list', 'class-names'], true)) {
+            throw new Refusal("a case fold over a {$of['kind']}", $line);
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a case fold over a list, which only the PHP target carries', $line);
+        }
+
+        return [
+            'rust' => self::PHP_ONLY,
+            'kind' => $of['kind'],
+            'php' => $this->context->backend->call('lowered_names', [$this->operand($of)]),
+        ];
+    }
+
+    /**
      * The single identifier a class builds its findings under.
      *
      * Read rather than tabulated, so an upstream rename flows through instead of being carried in this
@@ -7245,6 +7302,15 @@ final readonly class Translator
 
         if ($declaring === null) {
             throw new Refusal("no method {$method}() on the rule, its traits or its parents", $line);
+        }
+
+        // A predicate about PHPStan's analysis model rather than about PHP, whose answer is fixed because the
+        // state it asks about cannot arise here. Asked before inlining, because the body is unportable by
+        // construction -- it reads reflection this engine has no equivalent of, and porting it would be
+        // answering a question nothing asks. {@see Vocabulary::MODEL_UNSATISFIABLE_PREDICATES} carries what
+        // was measured on both sides for every row.
+        if (isset(Vocabulary::MODEL_UNSATISFIABLE_PREDICATES[$this->fullyQualified($declaring) . '::' . $method])) {
+            return 'false';
         }
 
         return $this->inlineMethod($declaring['class'], $method, array_values($args), $line, $declaring['uses']);
@@ -14584,6 +14650,22 @@ final readonly class Translator
             }
         }
 
+        // `array_map(static fn (string $n) => strtolower($n), <a name list>)` -- a name list folded to lower
+        // case before a membership test. Rendered as a call rather than dropped as redundant: a
+        // `class-names` list already compares case-insensitively ({@see holdsMetadataNames()} says why), so
+        // the fold *is* an identity for a comparison, and that is a fact about the consumer rather than about
+        // the fold. A list that reached a message instead would print differently.
+        if ($expr instanceof FuncCall
+            && $expr->name instanceof Name
+            && $expr->name->toString() === 'array_map'
+            && count($expr->getArgs()) === 2
+        ) {
+            $folded = $this->caseFoldedNameList($expr->getArgs(), $line);
+            if ($folded !== null) {
+                return $folded;
+            }
+        }
+
         // `strtolower($x)` / `strtoupper($x)` as a *value*. Already in the pure set for a constructor
         // derivation; this is the same function reached at analysis time, where a rule folds a name's case
         // before looking it up in a table.
@@ -14593,7 +14675,9 @@ final readonly class Translator
             && count($expr->getArgs()) === 1
         ) {
             $of = $this->resolve($expr->getArgs()[0]->value, $line);
-            if (! in_array($of['kind'], ['bytes', 'class-name', 'name-selector', 'local-name', 'name-expr'], true)) {
+            // `resolved-name` is a string like the two beside it -- `$scope->resolveName()` answers the name a
+            // relative one denotes, which is what a rule folds before looking it up in a list of parents.
+            if (! in_array($of['kind'], ['bytes', 'class-name', 'resolved-name', 'name-selector', 'local-name', 'name-expr'], true)) {
                 throw new Refusal("{$expr->name->toString()}() of a {$of['kind']}", $line);
             }
 

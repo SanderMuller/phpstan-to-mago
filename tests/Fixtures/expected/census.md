@@ -389,7 +389,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 32 of 45 portable rules the package registers emit, 0 covered by the engine, 13 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 33 of 45 portable rules the package registers emit, 0 covered by the engine, 12 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
@@ -449,9 +449,7 @@ EMIT    DisallowedShortTernaryRule
 EMIT    DynamicCallOnStaticMethodsCallableRule
 EMIT    DynamicCallOnStaticMethodsRule
 EMIT    IllegalConstructorMethodCallRule
-REFUSE  IllegalConstructorStaticCallRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getTraitAliases()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getTraitAliases()
+EMIT    IllegalConstructorStaticCallRule
 REFUSE  MatchingTypeInSwitchCaseConditionRule
         no mapping for ->cases on a hook-node
         needs-at-least: no iteration mapped for ->cases, which resolved to a expr

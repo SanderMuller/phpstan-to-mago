@@ -180,17 +180,42 @@ final class Inheritance
      * interfaces and traits, and a rule walking parents to find an overridden method means parents. Names
      * arrive lowercased from metadata, which is fine for looking a class up again and wrong for printing.
      *
+     * Asked of {@see Declares::enclosingReflectionClassNames()} rather than of the enclosing class directly,
+     * so that a node inside a *trait* reads the parents of the classes using it. Measured: PHPStan analyses a
+     * trait body once per using class and `getClassReflection()->getParentClassesNames()` there answers that
+     * class's parents; the trait's own metadata carries none, so reading it left every parent test inside a
+     * trait false. That is the bad direction for a suppressing test -- it reports where PHPStan is quiet.
+     *
+     * The union under-reports for a trait used by several classes, and both callers can take it, for two
+     * different reasons rather than one:
+     *
+     * - `PreventParentMethodVisibilityOverrideRule` suppresses on a parent match, so a wider list can only
+     *   silence a finding -- the same bound {@see Declares::enclosingClassKindIs()} already states.
+     * - `ClassConstantIsAStringRule` *reports* on a parent match, where a wider list would over-report. It
+     *   cannot reach the fold: its only target is `NodeKind::Class_`, so the node it is handed is a class
+     *   declaration and the enclosing class-like is never a trait.
+     *
+     * A third caller has to be read the same way before it lands, and the question is which side of the guard
+     * the parent match sits on. A fold that widens an input is safe in a suppressing position and wrong in a
+     * reporting one.
+     *
      * @return list<string>
      */
     public static function parentClassNames(NodeAnalysisContext $context, Part|Node|null $node): array
     {
-        $className = Declares::enclosingClassName($context, $node);
-        if ($className === null) {
-            return [];
+        $names = [];
+
+        foreach (Declares::enclosingReflectionClassNames($context, $node) as $className) {
+            $metadata = $context->codebase->getClassLike($className);
+            if (! $metadata instanceof ClassLikeMetadata) {
+                continue;
+            }
+
+            foreach ($metadata->parentClasses as $parent) {
+                $names[strtolower($parent)] = $parent;
+            }
         }
 
-        $metadata = $context->codebase->getClassLike($className);
-
-        return $metadata instanceof ClassLikeMetadata ? array_values($metadata->parentClasses) : [];
+        return array_values($names);
     }
 }

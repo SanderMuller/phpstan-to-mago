@@ -394,6 +394,17 @@ final class Support
     }
 
     /**
+     * Every name in a list, folded to lower case.
+     *
+     * @param list<string> $names
+     * @return list<string>
+     */
+    public static function loweredNames(array $names): array
+    {
+        return Text::loweredNames($names);
+    }
+
+    /**
      * Whether the enclosing declaration has a method of this name, anywhere in its hierarchy.
      *
      * Answered through the same declaring-class lookup a rule reading that class uses, so the two cannot

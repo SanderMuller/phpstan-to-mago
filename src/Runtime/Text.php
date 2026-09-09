@@ -72,6 +72,22 @@ final class Text
     }
 
     /**
+     * Every name in a list, folded to lower case.
+     *
+     * A rule folds a name list before a membership test, which {@see namesContain()} would answer without the
+     * fold -- it compares with `strcasecmp()`. The fold is carried anyway rather than dropped as redundant:
+     * whether it is redundant depends on what the *consumer* does, and a list handed to a message rather than
+     * to a comparison would print differently. Two lines here cost less than a claim about every consumer.
+     *
+     * @param list<string> $names
+     * @return list<string>
+     */
+    public static function loweredNames(array $names): array
+    {
+        return array_map(strtolower(...), $names);
+    }
+
+    /**
      * The values a list holds more than once, each named once.
      *
      * Built on `array_count_values()` rather than around it, so the key coercion is the same: that function

@@ -71,9 +71,26 @@ final class Names
         if ($node->kind === NodeKind::Keyword) {
             $keyword = strtolower(trim($context->source->getText($node)));
 
-            return $keyword === 'self' || $keyword === 'static'
-                ? Declares::enclosingClassName($context, $node)
-                : null;
+            if ($keyword === 'self' || $keyword === 'static') {
+                return Declares::enclosingClassName($context, $node);
+            }
+
+            // `parent` denotes the nearest parent of the enclosing declaration, which is what
+            // `$scope->resolveName()` answers for it. Read from the same list a membership test against the
+            // parents reads, so the two cannot disagree: `IllegalConstructorStaticCallRule` asks whether the
+            // resolved name is among the parents, and `parent::` is that name whenever there is one.
+            //
+            // Inside a trait the list is the union over the using classes ({@see
+            // Inheritance::parentClassNames()} carries the measurement and the bound), so this answers one
+            // user's parent where PHPStan would answer each user's own. A membership test against the same
+            // union is then true whenever *any* user has a parent, which under-reports rather than
+            // over-reports -- the direction the fold is chosen for. It would print one user's name in a
+            // message, and no rule does that with it today.
+            if ($keyword === 'parent') {
+                return Inheritance::parentClassNames($context, $node)[0] ?? null;
+            }
+
+            return null;
         }
 
         $resolved = $context->source->getResolvedName($node);
