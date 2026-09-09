@@ -11,6 +11,15 @@ two rules and is here only because `composer/xdebug-handler` requires it; `laras
 was installed deliberately, to test whether it held rules in the shape that ports, and it does
 not — an emit run is 0 of 26 and so is a survey. None of the three adds a rule this target can
 carry: an emit run is 0 of 38, 0 of 2 and 0 of 26. A *survey* says 14 of 38, and this header
+
+**Two emit counts are derivable here and they do not agree.** Counting `EMIT` lines answers how
+many rules emit; summing the `of N ... emit` figures in the package headings answers how many
+emit *and* are registered by the package shipping them, which is what `--status` reports and what
+a run in a consumer project reproduces. The difference is exactly the rows annotated `(the package
+registers it nowhere)`. Both are right for their denominator, and quoting either without saying
+which makes the other look like a mistake. `CensusAccountsForEveryRowTest` asserts the two
+against each other, so a newly-registered rule cannot move one and leave the other behind.
+
 used to name
 the missing hooks as the gap — spaze's rules hook `Stmt\Echo_`, `Stmt\Break_`, `Stmt\Goto_`
 and the like, 16 of the 38 refuse on exactly that, and none of those kinds was mapped. Mapping

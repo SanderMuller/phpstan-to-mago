@@ -38,6 +38,59 @@ final class CensusAccountsForEveryRowTest extends TestCase
     /** The verdicts a rule row can carry. A new one added to `RuleOutcome` and not to this list fails below. */
     private const array VERDICTS = ['EMIT', 'REFUSE', 'NEVER', 'ENGINE'];
 
+    /**
+     * The two emit counts this project publishes reconcile, and the bridge is the annotation.
+     *
+     * `grep -c '^EMIT'` on the census answers **140** and `--status` answers **130**, and both are correct
+     * for their denominator: 140 rules emit, and 130 emit *and* are registered by the package that ships
+     * them. The difference is exactly the rows carrying `(the package registers it nowhere)` — a rule a
+     * consumer never runs, because nothing wires it.
+     *
+     * **Nothing stated that.** The larger figure is in this log and the census, the smaller in the README and
+     * `--status`, and a reader comparing them saw a ten-rule discrepancy with no way to tell which was
+     * wrong. A count with no independent total is unfalsifiable; a *pair* of published counts with no stated
+     * bridge is worse, because it looks like one of them is a mistake.
+     *
+     * Asserted rather than explained, for the reason the sum above is: prose stating the relationship would
+     * not fail when a new annotated rule starts emitting and only one of the two figures moves.
+     */
+    public function test_the_two_emit_counts_reconcile_through_the_annotation(): void
+    {
+        $census = (string) file_get_contents(self::CENSUS);
+
+        // Cast for the reason the method below states: `preg_match_all` answers `int|false`, and a false
+        // folded into this arithmetic would make the two sides agree by accident.
+        $emitting = (int) preg_match_all('/^EMIT /m', $census);
+        $unregistered = (int) preg_match_all('/^EMIT .*\(the package registers it nowhere\)/m', $census);
+
+        // Each package header states how many of the rules it *registers* emit. That is the figure `--status`
+        // reports and the one a consumer's own run reproduces.
+        preg_match_all('/^## \S+ — (\d+) of \d+ portable rules/m', $census, $perPackage);
+        $registered = array_sum(array_map(intval(...), $perPackage[1]));
+
+        $this->assertNotSame(0, $unregistered, 'No EMIT row carries the annotation, so this asserts nothing.');
+        $this->assertNotSame([], $perPackage[1], 'No package header was parsed, so this asserts nothing.');
+
+        $this->assertSame(
+            $emitting - $unregistered,
+            $registered,
+            sprintf(
+                "The census's two emit counts no longer reconcile.\n\n"
+                . "  EMIT rows                                     %d\n"
+                . "  of those, annotated 'registers it nowhere'    %d\n"
+                . "  difference                                    %d\n"
+                . "  summed from the per-package headers           %d\n\n"
+                . 'The second is what `--status` reports and what the README quotes. If they have parted, one '
+                . 'of the two is being computed over a population the other is not, and whichever figure '
+                . 'a reader compares against will look like the wrong one.',
+                $emitting,
+                $unregistered,
+                $emitting - $unregistered,
+                $registered,
+            ),
+        );
+    }
+
     public function test_the_verdicts_sum_to_the_total_the_header_states(): void
     {
         $census = (string) file_get_contents(self::CENSUS);

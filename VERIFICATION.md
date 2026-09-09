@@ -19482,3 +19482,38 @@ What has actually worked, every time, is an instrument that runs anyway, a secon
 something else, or — as with the driver — **a question from outside the frame both parties were reasoning
 in.** The last board item was unblocked by the one participant who had not been reasoning about it, which is
 the reject-side finding arriving one level above either session.
+
+### Two published emit counts with no bridge between them
+
+The README audit put `--status`'s **130 of 231** into a shipped document while this log and the census carry
+**140 EMIT**. Nothing anywhere stated why they differ, and a reader comparing them sees a ten-rule
+discrepancy with no way to tell which figure is wrong.
+
+They reconcile exactly. `140 = 130 + 10`, and the ten are precisely the `EMIT` rows annotated
+`(the package registers it nowhere)`:
+
+| count | question it answers |
+|:--|:--|
+| `grep -c '^EMIT'` → 140 | how many rules emit |
+| the package headings' `of N … emit`, summed → 130 | how many emit **and** are registered by the package shipping them |
+
+Both are right for their denominator, and 130 is the correct one for `--status` and the README, because a
+rule its package wires nowhere is one a consumer never runs.
+
+**A pair of published counts with no stated bridge is worse than a single count with no anchor.** The single
+count is merely unfalsifiable; the pair actively asserts that one of them is a mistake. Nothing in the census
+header, `VERIFICATION.md`, or the README said which population each covered.
+
+Asserted rather than explained. `CensusAccountsForEveryRowTest` now checks `EMIT − annotated` against the
+summed package headings, so a newly-registered rule cannot move one figure and leave the other behind, and
+the census header states the relationship for a reader who computes either. Mutation-checked by dropping the
+annotated term, whose diagnostic prints all four figures — the working, not the verdict.
+
+Two things went wrong writing it, both already in this file:
+
+- The header paragraph first said the counts *"differ by ten"*. A figure in generated prose that nothing
+  asserts is the carried-figure defect, and I was about to plant it in the same file whose own header warns
+  about reading a count without its configuration. Now it says they do not agree and the assertion owns the
+  arithmetic.
+- `preg_match_all` answers `int|false`, caught by PHPStan for the third time this session and the second in
+  this exact file — whose neighbouring method carries a comment saying so, four lines above where I wrote it.
