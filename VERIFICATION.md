@@ -16203,3 +16203,57 @@ census.
 
 Two debug probes were removed before committing, one of them carried in from the saved scaffold — worth noting
 because the scaffold is now a place instrumentation can survive a revert and reappear.
+
+### Two claims in this repository went stale because the transpiler got better
+
+`NoDuplicateArgAutowireByTypeRule` — the singular sibling of the rule just landed — now refuses on *an `if`
+whose body is an assignment then a nested `if`*, with `Expr_ArrayDimFetch` behind it. Its body is two
+independent report paths that carry **different message operands**, the first falling through to the second:
+
+    if (isset($map[$name])) { $t = $map[$name]; if (…) { … return [error(sprintf(MSG, $t))]; } }
+
+    if ($ref instanceof String_ && in_array($ref->value, NAMED_AUTOWIRED_TYPES, true)) {
+        return [error(sprintf(MSG, $ref->value))];
+    }
+
+    return [];
+
+That refusal is **deliberate**, and `tests/Fixtures/Rules/NonTerminalReportBranchRule.php` exists to pin it.
+Its docblock makes two claims, and today's work invalidated both.
+
+**1. "no corpus rule has this shape".** True when written — the docblock says so explicitly, as the reason the
+fixture exists at all: *"without it the precondition is a branch nothing takes"*. It is no longer true. A
+corpus rule reaches that shape now, because the four capabilities built for the duplicate-arg pair cleared
+everything in front of it. **The precondition is taken by a real rule, and the fixture is no longer the only
+case.**
+
+**2. "a plugin has no way to leave a block and carry on".** This is the *reason* the fold is refused rather
+than emitted as a block, and it is outdated. Measured over the 149 emitted plugins — an `if` whose body does
+not end in `return`/`continue`/`break` and which is followed by more code:
+
+    6 sites in 4 plugins: CombinedFuncCallRule, ExplicitClassPrefixSuffixRule (×3),
+                          NoInvadeInAppCode, PublicStaticDataProviderRule
+
+Each enters a block, reports, falls out, and carries on. The machinery ships.
+
+**My first measurement of that was wrong and I caught it by reading the number.** Counting *any* inner block
+that closes with code after it gave 144 of 149 — because a guard block closes and is followed by the next
+guard. That is not falling out of a block; a guard always exits. The right question is whether the body
+*fails* to exit, and that is 6, not 144.
+
+#### What this changes, and what it does not
+
+The safety argument survives in a narrower form. The docblock's worry is sound about the current *folding* —
+turning a branch's `return []` into the plugin's one exit does make anything after the branch unreachable, and
+it would look exactly like a correct guard chain. What is stale is the inference that therefore the shape
+cannot be emitted **at all**: the alternative is to emit a real `if-open` / `block-close` block, which four
+plugins already demonstrate.
+
+So the refusal is a *folding* limitation, not a target-capability one. Lifting it is a change to the statement
+translator's core rather than a vocabulary addition, and it would need the emit-all diff across three targets
+to prove nothing else moves — which is exactly what that apparatus is for.
+
+**Not attempted, and flagged rather than crossed.** A refusal with a fixture written to pin it is a design
+decision on the record; the evidence that its stated reason no longer holds is worth more than my unilaterally
+reversing it at the end of a long session. The stale claims are marked here rather than edited away in the
+fixture, per this log's own rule about superseded claims.
