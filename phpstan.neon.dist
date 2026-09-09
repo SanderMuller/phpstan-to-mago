@@ -140,6 +140,7 @@ parameters:
                 - tests/Support/TypeDescriptions.php
                 - tests/Support/run-render-census.php
                 - tests/Support/run-refusal-yield.php
+                - tests/Support/run-syntax-probe.php
                 - tests/Support/HierarchyKnowledge.php
                 - tests/Support/ReferenceKnowledge.php
                 - tests/Unit/AnnotationTagsAreNotInheritedTest.php

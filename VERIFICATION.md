@@ -20552,3 +20552,49 @@ the blocker — I had mis-attributed a refusal to a table row that was already t
 
 The pair is one lesson rather than two: **a table row that already exists does not announce itself**, and the
 symptom was a rule I was not looking at.
+
+## The probe that answers "how is X represented", because the name question was asked three times wrongly
+
+Three conclusions in this session were reached by grepping `NodeKind` for a name and reading absence as
+unportability. Each was wrong, and each was settled in one run once something was actually executed:
+
+| written down | what a run showed |
+|:--|:--|
+| `&` is not in mago's tree | a `UnaryPrefixOperator` under an assignment's right-hand side — though *not* on a parameter, where it is in the text only |
+| mago has no `Cast` node kind | a cast is a `UnaryPrefix` whose operator carries the parentheses |
+| a type renderer is what 27 rules wait on | 22 of the 26 already emit through one |
+
+The first two are the same question asked the wrong way. `tests/Support/run-syntax-probe.php` asks it the
+right way — it takes PHP snippets, runs mago over them, and prints the kinds, the text each spans and the
+inferred type of each:
+
+    $ php tests/Support/run-syntax-probe.php '$r = &$a;' '(int) $s'
+    === probe0
+      Assignment           $r = &$a      array
+      UnaryPrefix          &$a           array
+      UnaryPrefixOperator  &
+    === probe1
+      UnaryPrefix          (int) $s      int
+      UnaryPrefixOperator  (int)
+      Expression           $s            string
+
+Three choices in it, each from a specific failure rather than from taste:
+
+- **`getDescendants()` rather than `getChildren()`.** The first reading of the reference case stopped at an
+  `Expression` whose text was `&$a`, which reads as *no node for the ampersand*. The node was one level
+  further down, and the wrong conclusion was published before anything was run twice.
+- **Inferred types beside the tree.** A marker's absence from the tree does not mean the *answer* is
+  unavailable: a cast's own type is what `UselessCastRule` compares and it arrives through
+  `TargetExpressionTypes` rather than through a child. A tree-only probe would have confirmed one wrong
+  conclusion while hiding the route past it.
+- **Scoped to the method body.** The signature contributed two dozen rows about a parameter list nobody
+  probed for, so the answer was a line inside the noise — which is how a probe that ran gets read as a probe
+  that found nothing.
+
+The three ad-hoc probes written this session — the reference positions, the cast, the parent chain — are one
+committed tool now, which is this repository's own rule rather than tidiness: every figure has its instrument
+beside it, and a figure about mago's tree is no different.
+
+**What it does not do** is answer whether a representation is *reachable*. `&` on a parameter is in the text
+and `ReferenceKnowledge` pins that separately; the probe says where a thing is, and a span-gap read or a
+requirement is still a design question after it.
