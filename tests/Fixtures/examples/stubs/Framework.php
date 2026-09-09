@@ -469,6 +469,12 @@ final class ServicesConfigurator
         return $this;
     }
 
+    /** The call `PreferAutowireAttributeOverConfigParamRule` reads for a parameter reference. */
+    public function arg(string $key, mixed $value): self
+    {
+        return $this;
+    }
+
     /** The call `ServicesExcludedDirectoryMustExistRule` checks against the disk. */
     public function exclude(array $paths): self
     {
@@ -515,4 +521,20 @@ class EntityRepository
     {
         return new \stdClass();
     }
+}
+
+namespace Symfony\Component\DependencyInjection\Attribute;
+
+/** Its presence is what `PreferAutowireAttributeOverConfigParamRule` gates itself on. */
+final class Autowire
+{
+    public function __construct(?string $param = null) {}
+}
+
+namespace Symfony\Component\DependencyInjection\Loader\Configurator;
+
+/** The `param()` helper a config closure calls to reference a container parameter. */
+function param(string $name): string
+{
+    return '%' . $name . '%';
 }

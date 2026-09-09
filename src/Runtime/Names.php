@@ -209,6 +209,30 @@ final class Names
     }
 
     /**
+     * Whether a name resolves to the fully qualified one written, following the file's own imports.
+     *
+     * `nameEquals()` compares the text as written, which is right for a bare name and wrong for a namespaced
+     * literal: `use function Symfony\...\param;` then `param(..)` is written `param`, and PHPStan resolves the
+     * import before comparing. So a rule asking whether a call *is* a namespaced function was silent on every
+     * imported spelling -- the form anybody writes -- and matched only the fully qualified one.
+     *
+     * `getResolvedName()` is what mago answers that with, and it is the same call
+     * {@see ConfigClosures::calleeName()} already makes. Falls back to the written text when nothing resolves,
+     * so a name mago cannot place still compares the way it used to rather than answering false.
+     */
+    public static function resolvedNameEquals(NodeAnalysisContext $context, ?Part $part, string $literal): bool
+    {
+        if (! $part instanceof Part) {
+            return false;
+        }
+
+        $resolved = $context->source->getResolvedName($part->node);
+        $name = $resolved instanceof ResolvedName && $resolved->name !== '' ? $resolved->name : $part->text;
+
+        return strcasecmp(ltrim($name, '\\'), ltrim($literal, '\\')) === 0;
+    }
+
+    /**
      * Whether a class name is one of PHP's own — `self`, `parent` or `static`.
      *
      * Those three arrive as `Keyword` where a written class name is an `Identifier`, which is the

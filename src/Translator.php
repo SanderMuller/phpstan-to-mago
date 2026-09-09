@@ -77,6 +77,7 @@ use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Static_;
 use PhpParser\Node\Stmt\Trait_;
 use PhpParser\Node\Stmt\TryCatch;
+use PhpParser\Node\Stmt\While_;
 use PhpParser\Node\UnionType;
 use PhpParser\NodeFinder;
 use PHPStan\Reflection\ClassReflection;
@@ -2202,6 +2203,16 @@ final readonly class Translator
             }
 
             $bound[$param->var->name] = $descriptor;
+            if (getenv('DBG_BIND') !== false) {
+                fwrite(STDERR, sprintf(
+                    "DBG bind %s(\$%s) <- kind=%s php=%s as=%s\n",
+                    $methodName,
+                    $param->var->name,
+                    $descriptor['kind'] ?? '?',
+                    substr((string) ($descriptor['php'] ?? '?'), 0, 34),
+                    $descriptor['as'] ?? '-',
+                ));
+            }
         }
 
         return $bound;
@@ -5916,6 +5927,12 @@ final readonly class Translator
             return $segment;
         }
 
+        // A `while` walking a receiver chain for a named call, which a runtime primitive answers directly.
+        $chained = $this->receiverChainSearchHelper($helper, $args, $line);
+        if ($chained !== null) {
+            return $chained;
+        }
+
         // The values a list holds more than once, which rule packages count out by hand.
         $repeated = $this->repeatedValuesHelper($helper, $args, $line);
         if ($repeated !== null) {
@@ -8398,6 +8415,271 @@ final readonly class Translator
      *
      * @param array<Stmt> $statements
      */
+    /**
+     * `array_any(<a node list>, fn ($x) => <predicate>)`, or null when the first argument is not one.
+     *
+     * The same combinator the string form emits, with the parameter bound to the item kind
+     * {@see Vocabulary::ITERABLES} names for that list rather than to `bytes`. PHP target only: the Rust arm
+     * renders `.iter().copied()`, a byte-slice idiom rather than a node one.
+     *
+     * @param array<Arg> $args
+     */
+    private function nodeListCombinator(string $name, array $args, int $line): ?string
+    {
+        $closure = $args[1]->value;
+        if (! $closure instanceof ArrowFunction
+            || count($closure->params) !== 1
+            || ! $closure->params[0]->var instanceof Variable
+            || ! is_string($closure->params[0]->var->name)
+        ) {
+            return null;
+        }
+
+        try {
+            $list = $this->resolve($args[0]->value, $line);
+        } catch (Refusal) {
+            return null;
+        }
+
+        $iterable = Vocabulary::ITERABLES[$list['kind']] ?? null;
+        if ($iterable === null || ! isset($iterable['phpIter'])) {
+            return null;
+        }
+
+        $phpIter = $iterable['phpIter'];
+        $item = $iterable['item'];
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal("{$name}() over a node list, which only the PHP target carries", $line);
+        }
+
+        $parameter = $closure->params[0]->var->name;
+        $saved = $this->context->locals;
+        $savedLiterals = $this->context->literals;
+        unset($this->context->literals[$parameter]);
+
+        try {
+            // `$element`, not `$item`: {@see foreachAsAny()} names its own bound variable `item` at depth 0,
+            // and a nested combinator inside this one would shadow it. Its depth counter is a parameter it
+            // threads itself, so it cannot see a combinator that started here.
+            $this->context->locals[$parameter] = [
+                'rust' => self::PHP_ONLY,
+                'kind' => $item,
+                'key' => '$element',
+                'php' => '$element',
+            ];
+            $predicate = $this->translateCondition($closure->expr);
+        } finally {
+            $this->context->locals = $saved;
+            $this->context->literals = $savedLiterals;
+        }
+
+        return $this->context->backend->call($name === 'array_any' ? 'any_of' : 'all_of', [
+            str_replace('{rust}', $this->operand($list), $phpIter),
+            "static fn (\$element): bool => {$predicate}",
+        ]);
+    }
+
+    /**
+     * `?T helper($call, $scope)` that walks a receiver chain for a call named X, then reads that call.
+     *
+     *     $current = $call;
+     *     while ($current instanceof MethodCall) {
+     *         if (NamingHelper::isName($current->name, 'set')) { return $this->readIt($current, $scope); }
+     *         $current = $current->var;
+     *     }
+     *
+     *     return null;
+     *
+     * The walk is `Support::chainedCallNamed()`, so what remains is the *read* -- the `return` inside the
+     * loop, translated with the loop variable bound to the found call.
+     *
+     * The binding carries `as`, and that is the whole difference between this working and not. The `while`
+     * condition *is* a narrowing: every node the body sees is a method call. Bound without it the inner
+     * helper reads `->getArgs()` of a bare `expr`, the field lookup falls back to the hook node, and the
+     * refusal reads "no argument list on a Closure node" -- naming the hook rather than the loss. Found by
+     * probing `bindParameters()` on a rule that already works, which binds `as=MethodCall` for exactly this
+     * reason.
+     *
+     * @param array<Arg> $args
+     *
+     * @return RecordField|null
+     */
+    private function receiverChainSearchHelper(ClassMethod $helper, array $args, int $line): ?array
+    {
+        $statements = $helper->stmts ?? [];
+        if (count($statements) !== 3
+            || count($args) < 1
+            || ! $statements[0] instanceof Expression
+            || ! $statements[0]->expr instanceof Assign
+            || ! $statements[0]->expr->var instanceof Variable
+            || ! is_string($statements[0]->expr->var->name)
+            || ! $statements[1] instanceof While_
+            || ! $this->isReturnNull([$statements[2]])
+        ) {
+            return null;
+        }
+
+        $cursor = $statements[0]->expr->var->name;
+        $parameter = $this->parameterNameAt($helper, 0);
+        if ($parameter === null
+            || ! $statements[0]->expr->expr instanceof Variable
+            || $statements[0]->expr->expr->name !== $parameter
+        ) {
+            return null;
+        }
+
+        $loop = $statements[1];
+        if (! $this->walksWhileMethodCall($loop->cond, $cursor) || count($loop->stmts) !== 2) {
+            return null;
+        }
+
+        $sought = $this->chainSearchName($loop->stmts[0], $cursor);
+        if ($sought === null || ! $this->stepsToTheReceiver($loop->stmts[1], $cursor)) {
+            return null;
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a receiver-chain search, which only the PHP target carries', $line);
+        }
+
+        $subject = $this->resolve($args[0]->value, $line);
+        $found = 'chain_' . $this->context->searchDepth;
+        ++$this->context->searchDepth;
+
+        $this->context->lines[] = new Stm('assign', [
+            'target' => $found,
+            'value' => 'Support::chainedCallNamed($context, ' . $this->operand($subject) . ', '
+                . $this->context->backend->bytes($sought) . ')',
+        ], $this->context->indent);
+
+        $saved = $this->context->locals[$cursor] ?? null;
+        $this->context->locals[$cursor] = [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'expr',
+            'key' => '$' . $found,
+            'php' => '$' . $found,
+            'as' => 'MethodCall',
+        ];
+
+        $guard = $loop->stmts[0];
+        $returned = $guard instanceof If_ ? ($guard->stmts[0] ?? null) : null;
+        if (! $returned instanceof Return_ || ! $returned->expr instanceof Expr) {
+            return null;
+        }
+
+        try {
+            $descriptor = $this->resolve($returned->expr, $line);
+
+            // Narrowed to the keys this producer's return shape allows. `resolve()` answers the wider
+            // descriptor every reader uses, and `key` in particular is a caching handle rather than part of
+            // the value -- carrying it here makes the shape unsealed for no benefit.
+            return ['rust' => $descriptor['rust'], 'kind' => $descriptor['kind']]
+                + (isset($descriptor['php']) ? ['php' => $descriptor['php']] : [])
+                + (isset($descriptor['as']) ? ['as' => $descriptor['as']] : []);
+        } finally {
+            if ($saved === null) {
+                unset($this->context->locals[$cursor]);
+            } else {
+                $this->context->locals[$cursor] = $saved;
+            }
+        }
+    }
+
+    /** `while ($cursor instanceof MethodCall)` */
+    private function walksWhileMethodCall(Expr $condition, string $cursor): bool
+    {
+        return $condition instanceof Instanceof_
+            && $condition->expr instanceof Variable
+            && $condition->expr->name === $cursor
+            && $condition->class instanceof Name
+            && $this->resolveClassName($condition->class) === MethodCall::class;
+    }
+
+    /** `if (<isName>($cursor->name, 'x')) { return ..; }` — the name the walk is looking for. */
+    private function chainSearchName(Stmt $statement, string $cursor): ?string
+    {
+        if (! $statement instanceof If_
+            || count($statement->stmts) !== 1
+            || ! $statement->stmts[0] instanceof Return_
+            || ! $statement->stmts[0]->expr instanceof Expr
+        ) {
+            return null;
+        }
+
+        $test = $statement->cond;
+        $arguments = $test instanceof StaticCall || $test instanceof MethodCall ? $test->getArgs() : [];
+        if (count($arguments) !== 2
+            || ! $arguments[0]->value instanceof PropertyFetch
+            || ! $arguments[0]->value->var instanceof Variable
+            || $arguments[0]->value->var->name !== $cursor
+            || $this->identifierName($arguments[0]->value->name) !== 'name'
+        ) {
+            return null;
+        }
+
+        try {
+            return $this->rawStringLiteral($arguments[1]->value, $statement->getStartLine());
+        } catch (Refusal) {
+            return null;
+        }
+    }
+
+    /** `$cursor = $cursor->var;` — one step outwards along the chain. */
+    private function stepsToTheReceiver(Stmt $statement, string $cursor): bool
+    {
+        return $statement instanceof Expression
+            && $statement->expr instanceof Assign
+            && $statement->expr->var instanceof Variable
+            && $statement->expr->var->name === $cursor
+            && $statement->expr->expr instanceof PropertyFetch
+            && $statement->expr->expr->var instanceof Variable
+            && $statement->expr->expr->var->name === $cursor
+            && $this->identifierName($statement->expr->expr->name) === 'var';
+    }
+
+    /** The name of the helper's parameter at this position, or null when it has none there. */
+    private function parameterNameAt(ClassMethod $helper, int $index): ?string
+    {
+        $variable = $helper->params[$index]->var ?? null;
+
+        return $variable instanceof Variable && is_string($variable->name) ? $variable->name : null;
+    }
+
+    /**
+     * `->name` on a call or a name node, compared against a literal.
+     *
+     * A *namespaced* literal cannot match a name as written unless the file imported it, so that case follows
+     * the imports the way PHPStan's own name resolution does. `use function Symfony\...\param;` then
+     * `param(..)` is written `param`, and the port matched only the fully qualified spelling until this.
+     *
+     * A bare literal keeps comparing as written, which is what every other site does: of the 21 `nameEquals`
+     * calls in the emitted corpus, two compare against a namespaced literal — both `Livewire\invade` — and
+     * their pairs still agree with PHPStan after the change.
+     *
+     * @param Descriptor $subject
+     */
+    private function nameExprEquals(array $subject, string $literal): string
+    {
+        if (str_contains($literal, '\\') && Transpiler::$target === 'php') {
+            return $this->context->backend->call('resolved_name_equals', [
+                '$context',
+                $this->operand($subject),
+                $this->context->backend->bytes($literal),
+            ]);
+        }
+
+        return $this->context->backend->call('name_equals', [
+            $this->operand($subject),
+            $this->context->backend->bytes($literal),
+        ]);
+    }
+
+    /**
+     * Whether a branch's whole body is `return false;`, which is a search filter declining a node.
+     *
+     * @param array<Stmt> $statements
+     */
     private function returnsFalse(array $statements): bool
     {
         return count($statements) === 1
@@ -9463,13 +9745,58 @@ final readonly class Translator
             return;
         }
 
-        // $x = $node->getArgs()
+        // $x = <a call>->getArgs()
+        //
+        // The receiver is resolved rather than assumed to be the hook's own node, which is what the
+        // *expression* form at {@see resolveReflection()} has always done. Assumed here, a helper reading
+        // `$setMethodCall->getArgs()` asked the hook for its arguments instead, and the hook is a `Closure` in
+        // `PreferAutowireAttributeOverConfigParamRule` -- so the refusal read "no argument list on a Closure
+        // node", naming the hook rather than the receiver it never looked at. A latent defect for any rule
+        // that *assigns* the arguments of a node it found, which is why the expression form was right and this
+        // one was not.
         if ($value instanceof MethodCall && $this->identifierName($value->name) === 'getArgs') {
+            $of = $this->resolve($value->var, $line);
+            $path = $of['kind'] === 'hook-node' ? $this->argListPath($line) : $this->argListPath($line, $of);
+
             $this->context->locals[$name] = Transpiler::$target === 'php'
-                ? ['rust' => $this->argListPath($line), 'kind' => 'args', 'php' => $this->argListPath($line)]
-                : ['rust' => $this->argListPath($line), 'kind' => 'args'];
+                ? ['rust' => $path, 'kind' => 'args', 'php' => $path]
+                : ['rust' => $path, 'kind' => 'args'];
 
             return;
+        }
+
+        // $x = <args>[N] ?? <args>[M] — "the Nth argument, or the Mth when there is no Nth".
+        //
+        // `PreferAutowireAttributeOverConfigParamRule` writes `$args[1] ?? $args[0]`, whose own comment says
+        // why: `set(id, class)` names the class second and `set(class)` names it first. Both sides must index
+        // the *same* list, or the two reads are about different calls and `??` is not a fallback between them.
+        if ($value instanceof Coalesce) {
+            $preferred = $this->argIndexOf($value->left);
+            $fallback = $this->argIndexOf($value->right);
+
+            if ($preferred !== null
+                && $fallback !== null
+                && $preferred[1] === $fallback[1]
+                && $this->operand($preferred[2]) === $this->operand($fallback[2])
+            ) {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal(
+                        'an argument read with a positional fallback, which only the PHP target carries',
+                        $line,
+                    );
+                }
+
+                $list = $this->operand($preferred[2]);
+                $this->context->locals[$name] = [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => $preferred[1] ? 'expr' : 'arg',
+                    'key' => 'arg' . $preferred[0] . 'or' . $fallback[0],
+                    'php' => '(Support::positionalArgAt(' . $list . ', ' . $preferred[0] . ')'
+                        . ' ?? Support::positionalArgAt(' . $list . ', ' . $fallback[0] . '))',
+                ];
+
+                return;
+            }
         }
 
         // $x = <args>[N]  or  $x = <args>[N]->value  or  $x = $node->getArgs()[N]
@@ -11502,7 +11829,23 @@ final readonly class Translator
 
         // array_any(<list of strings>, fn ($x) => <predicate using $x>)
         if (in_array($name, ['array_any', 'array_all'], true) && count($args) === 2) {
-            $options = $this->stringList($args[0]->value, $expr->getStartLine());
+            // Or over a list of *nodes*: `PreferAutowireAttributeOverConfigParamRule` asks it of
+            // `$methodCall->getArgs()`. Tried *after* the string form, and the order is load-bearing rather
+            // than stylistic -- asked first it resolved a `config-list`, which is a string list *and* an
+            // `ITERABLES` row, reached its PHP-only guard and refused, taking the analyzer target from 34
+            // emitted to 29 and the linter from 25 to 22 while php stayed at 147.
+            try {
+                $options = $this->stringList($args[0]->value, $expr->getStartLine());
+            } catch (Refusal $stringForm) {
+                $overNodes = $this->nodeListCombinator($name, $args, $expr->getStartLine());
+
+                if ($overNodes === null) {
+                    throw $stringForm;
+                }
+
+                return $overNodes;
+            }
+
             $closure = $args[1]->value;
             if (! $closure instanceof ArrowFunction || count($closure->params) !== 1) {
                 throw new Refusal("{$name}() with something other than a one-parameter arrow function", $expr->getStartLine());
@@ -12175,7 +12518,7 @@ final readonly class Translator
                 ? $this->operand($subject) . ' === ' . $this->context->backend->bytes($literal)
                 : "support::local_name_is({$subject['rust']}, b\"{$literal}\")",
             'name-selector' => $this->context->backend->call('selector_is', [$this->operand($subject), $this->context->backend->bytes($literal)]),
-            'name-expr' => $this->context->backend->call('name_equals', [$this->operand($subject), $this->context->backend->bytes($literal)]),
+            'name-expr' => $this->nameExprEquals($subject, $literal),
             // Already a string — a loop's bound item, a helper's parameter, the enclosing namespace. Compared
             // directly, because there is no node left to ask.
             'bytes', 'class-name' => Transpiler::$target === 'php'
@@ -14344,6 +14687,15 @@ final readonly class Translator
         // names this transpiler's state rather than any obstacle, and a string literal answers with its node
         // kind. The deeper refusal is not automatically the better one, so the set it may come from is named
         // rather than trusted.
+        // `(string) <a path>` — the cast is the identity here, as it already is on the assignment path and
+        // inside `stringValue()`. `PreferAutowireAttributeOverConfigParamRule` writes
+        // `str_contains((string) $reflection->getFileName(), '/vendor/')`, where the cast only silences a
+        // nullable return: the helper answers false for null, which is what `(string) null` then
+        // `str_contains('', ..)` answers too, so the two agree without the cast being rendered.
+        if ($expr instanceof Expr\Cast\String_) {
+            return $this->resolve($expr->expr, $line);
+        }
+
         if ($expr instanceof MethodCall || $expr instanceof StaticCall) {
             foreach ($expr->getArgs() as $argument) {
                 if ($this->readsAnUnsuppliedProperty($argument->value)) {

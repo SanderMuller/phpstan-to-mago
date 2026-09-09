@@ -695,6 +695,12 @@ final class Support
         return Names::nameEquals($part, $literal);
     }
 
+    /** {@see Names::resolvedNameEquals()} */
+    public static function resolvedNameEquals(NodeAnalysisContext $context, ?Part $part, string $literal): bool
+    {
+        return Names::resolvedNameEquals($context, $part, $literal);
+    }
+
     /** The selector's own name, which is case sensitive in PHP as method names are compared. */
     public static function selectorIs(?Part $part, string $literal): bool
     {
@@ -743,6 +749,15 @@ final class Support
     public static function isMethodCall(?Part $part): bool
     {
         return Calls::isMethodCall($part);
+    }
+
+    /** {@see Chains::chainedCallNamed()} */
+    public static function chainedCallNamed(
+        NodeAnalysisContext $context,
+        Part|Node|null $subject,
+        string $method,
+    ): ?Part {
+        return Chains::chainedCallNamed($context, $subject, $method);
     }
 
     public static function isStaticCall(?Part $part): bool

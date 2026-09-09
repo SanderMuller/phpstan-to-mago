@@ -111,7 +111,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 70 of 89 portable rules the package registers emit, 1 covered by the engine, 18 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 71 of 89 portable rules the package registers emit, 1 covered by the engine, 17 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -250,9 +250,7 @@ REFUSE  PhpUpgradeDowngradeRegisteredInSetRule
         needs-at-least: if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Return
         needs-at-least: $errorMessage is not a message built in this rule
 EMIT    PhpUpgradeImplementsMinPhpVersionInterfaceRule
-REFUSE  PreferAutowireAttributeOverConfigParamRule
-        not a resolvable list of strings
-        needs-at-least: not a resolvable list of strings
+EMIT    PreferAutowireAttributeOverConfigParamRule
 EMIT    PreferDirectIsNameRule
 REFUSE  PreferredClassRule
         PhpParser\Node covers several node kinds, and this rule narrows to 5 of them with `instanceof`: New_, InClassNode, StaticCall, Instanceof_, Name. A plugin can register several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a body that reads the same child in every branch, because the field table is keyed by one kind per rule. Whether this body does has not been checked here
@@ -410,7 +408,6 @@ REFUSE  ArrayFilterStrictRule
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->toBoolean()
         needs-at-least: statement outside the vocabulary: Stmt_Break
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getNativeType()
-        needs-at-least: cannot read a type as a name
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_String
         needs-at-least: sprintf() format is not a literal or a class constant
         needs-at-least: guard body is neither `return []` nor `continue`, but Stmt_Expression

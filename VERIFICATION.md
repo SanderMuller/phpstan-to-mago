@@ -16017,3 +16017,60 @@ user's call, not mine to slip in at the end of a chain.
 
 Six obstacles cleared, one hazard closed and landed, one capability named, and the rule still refuses —
 correctly.
+
+### `PreferAutowireAttributeOverConfigParamRule` emits and fires — eight obstacles, and the fixture decided the last one
+
+Census 133 → **134**, `symplify/phpstan-rules` 70 → **71 of 89**, `--status` 123 → **124 of 236**.
+
+The last obstacle was the one the previous entry declined to ship around. The rule compares a called function
+against the fully qualified `SymfonyFunctionName::PARAM`; PHPStan resolves the file's `use function` import
+before comparing, and the port compared the name **as written**. So `\Symfony\…\param()` matched and the
+imported `param()` — the form anybody writes — did not.
+
+`getResolvedName()` answers it, and was already in use: `ConfigClosures::calleeName()` makes the same call.
+So the fix is one arm — a *namespaced* literal compares resolved, a bare one compares as written.
+
+**The blast-radius measurement was wrong and the emit-all caught it.** I counted the shipped `nameEquals`
+sites comparing against a namespaced literal and got **zero**, so I called the change byte-neutral. It is not:
+two plugins changed, `CombinedFuncCallRule` and `NoInvadeInAppCode`, both on `Livewire\invade`. My grep
+mishandled the escaped backslashes in the emitted files — the same pattern-narrower-than-its-target defect as
+the case-sensitive `BY_REFERENCE` search and `[A-Za-z]+` against `Function_`.
+
+Reading both diffs, the new output is *better*: they still match the qualified spelling and now also match
+`use function Livewire\invade;`, which PHPStan catches and they previously missed. Their gates are **8/8**.
+
+#### What the fixture decided
+
+    param('app.timeout')                          → plugin silent, PHPStan reports    3/4
+    \Symfony\…\Configurator\param('app.timeout')  → agree                             4/4
+
+The previous entry refused to ship on the strength of the second line. With the resolution arm, the **first**
+line passes, so the fixture kept is the imported one — the honest spelling — and the gate is 4/4 on it.
+
+#### Two new baseline entries avoided rather than accepted
+
+`Calls` crossed the class-complexity limit when the chain walk went there, and `nameEquals()` crossed the
+method limit when the arm went in. Both would have been **new** entries, which is the thing this repository
+watches. So `chainedCallNamed()` moved to a new `Runtime\Chains` — the split pattern `CLAUDE.md` records,
+rather than a baseline row — and the arm moved into `nameExprEquals()`. The baseline still holds **13
+entries**; four existing figures rose.
+
+#### Displaced docblocks, third and fourth time this session
+
+Inserting above a signature took the anchor's docblock again, and my regex repair then moved **my own**
+docblock onto `returnsFalse()`. Repaired by fetching the original from `git show HEAD:` rather than guessing.
+The same session also displaced a comment onto `repeatedValuesHelper()`'s line. `git diff --numstat` plus
+reading is what caught all of it. **Insert after the closing brace, never before the signature** — recorded
+for the third time, which is itself the finding: I keep rediscovering it because I keep reaching for the
+regex.
+
+#### Verification
+
+Emit-all across all three targets: php 147 → **148**, analyzer and linter **zero diff**; the php diff is the
+new plugin, the manifest, the worker, and the two `resolvedNameEquals` substitutions above. Suite
+**1101/1101**, `--group engine` **786/786**, PHPStan **0** with **13** baseline entries, Rector 0, Pint clean.
+All seven README rows re-derived mechanically against the census.
+
+One census change I did not intend: `ArrayFilterStrictRule` lost one deeper `needs-at-least` line, first
+obstacle unchanged and nothing replacing it. **INFERRED, not traced** — the survey walks further now, so that
+path is no longer reached. No correctness risk: the rule still refuses and emits nothing.
