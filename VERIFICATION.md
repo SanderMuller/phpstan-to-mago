@@ -19846,3 +19846,68 @@ with a refusal for any guard outside the recognised normal forms, not the occurr
 `ForbiddenNodeRule` is worth noting beside these: its guard is `! $node instanceof $forbiddenNode`, an
 `instanceof` against a *variable*. An occurrence scan would find a target named `$forbiddenNode`, which is the
 same failure wearing a name that at least looks wrong.
+
+### The question closed: two polarities and one refusal, and the scan half is already written
+
+The peer session checked all three constructs I said would decide the option, across all twelve bare-root
+rules in phpstan-src: **`match (true)` in none, `get_class` in one, helper narrowing in three — and neither
+of the latter is dispatch.**
+
+Re-derived the one that most looks like dispatch, from `vendor/phpstan/phpstan/phpstan.phar`,
+`src/Rules/Operators/InvalidIncDecOperationRule.php`:
+
+    phar:48   if (!$node instanceof PreInc && !$node instanceof PostInc
+                  && !$node instanceof PreDec && !$node instanceof PostDec) { return []; }
+    phar:51   switch (get_class($node)) {
+    phar:52       case PreInc::class:  ...
+
+The chain at :48 is the dispatch — single-negated, so the target set is those four. The switch at :51 maps an
+already-narrowed kind to an identifier string. Naming, not dispatch, as reported.
+
+The helper cases narrow *children*: `WrongVariableNameInVarTagRule::processExpression()` narrows
+`Assign | AssignOp | AssignRef` on the statement's inner expression, not on the hook variable. So a
+derivation reading `processNode` alone is correct, and one that followed helpers would over-derive — the
+opposite risk from the one I was guarding against.
+
+So the predicate is:
+
+| dispatch shape | of 12 | what a derivation does |
+|:--|--:|:--|
+| positive chain | 10 | derive the tested kinds |
+| negated or double-negated chain | 1 | derive them **only if polarity is read** |
+| no dispatch at all | 1 | refuse — `PhpdocCommentRule` wants every kind and means it |
+
+**And the scan half already exists here.** `Transpiler::multiKindRefusal()` at `src/Transpiler.php:575-588`
+already does the three things the peer's enumeration says a correct scan needs: it takes `processNode`'s body
+only, it filters `instanceof` tests to those whose subject is the hook variable by name, and it refuses a test
+against a non-`Name` — which is `ForbiddenNodeRule`'s `! $node instanceof $forbiddenNode`. Both narrowings are
+recorded there as having been forced by getting a count wrong, one of them by a helper naming its own
+parameter `$node`.
+
+The child-narrowing risk the peer names is the same one that code already handles: `InvalidIncDecOperationRule`
+phar:68 holds `!$node->var instanceof Variable | ArrayDimFetch | PropertyFetch | StaticPropertyFetch`, and an
+unfiltered scan would add four targets from it.
+
+So the missing piece is **polarity, plus a refusal for a body with no dispatch** — not a scan. That is the
+fifth thing this session already built here, after multi-kind registration, the override predicate's two
+calls, the span-gap read, and the `&`-is-not-a-child finding.
+
+### Where the decision stands
+
+Nothing in this or the last three sections changes the arithmetic, and it should not be softened:
+
+| option | buys | runtime price | build |
+|:--|:--|:--|:--|
+| leave it refused | nothing | none | none |
+| register every kind | 1 corpus rule | +84% engine CPU, imposed worker-wide | a `HOOK_KINDS` row |
+| derive from the dispatch | 1 corpus rule | ~0.10s CPU | polarity reading plus a no-dispatch refusal |
+
+The one corpus rule needs a report-and-return guard and an override predicate as well. The populated set — four
+`Node\Stmt` rules and one bare `Node` in phpstan-src — is in a package neither corpus installs, so **it is a
+corpus decision rather than a capability one**, and the precedent for that is *"larastan added and measured: 0
+of 26, and the estimate it was chosen on did not hold"* above.
+
+`PhpdocCommentRule` is the row worth carrying out of all this regardless of the choice: a rule that reads
+`getComments()` on every node genuinely wants all 227, so the `HOOK_KINDS` sentence about registering every
+kind a type covers is met by a real rule rather than asserted — and any derivation has to refuse it rather
+than hand it a narrow target set.
