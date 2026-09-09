@@ -58,7 +58,11 @@
         "tests/Fixtures/examples/NoMissnamedDocTagRule/BadDocTags.php",
         "tests/Fixtures/examples/NoMissnamedDocTagRule/GoodDocTags.php",
         "tests/Fixtures/examples/NoReturnSetterMethodRule/GoodPlainSetters.php",
-        "tests/Fixtures/examples/NoInstanceOfStaticReflectionRule/BadStaticReflection.php"
+        "tests/Fixtures/examples/NoInstanceOfStaticReflectionRule/BadStaticReflection.php",
+        "tests/Fixtures/examples/BooleanInBooleanAndRule/BadAnd.php",
+        "tests/Fixtures/examples/BooleanInBooleanAndRule/GoodAnd.php",
+        "tests/Fixtures/examples/BooleanInBooleanOrRule/BadOr.php",
+        "tests/Fixtures/examples/BooleanInBooleanOrRule/GoodOr.php"
     ],
     "exclude": [
         ".cache",

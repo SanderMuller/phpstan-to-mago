@@ -129,7 +129,7 @@ Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and r
 | `hihaho/phpstan-rules` | 8 | 7 | 1 | 0 |
 | `tomasvotruba/type-coverage` | 5 | 5 | 0 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
-| `phpstan/phpstan-strict-rules` | 45 | 33 | 12 | 0 |
+| `phpstan/phpstan-strict-rules` | 45 | 35 | 10 | 0 |
 | `phpstan/phpstan-phpunit` | 13 | 5 | 8 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 2 | 0 | 0 |
 

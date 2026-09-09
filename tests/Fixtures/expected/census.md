@@ -359,7 +359,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 33 of 45 portable rules the package registers emit, 0 covered by the engine, 12 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 35 of 45 portable rules the package registers emit, 0 covered by the engine, 10 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
@@ -376,25 +376,9 @@ REFUSE  ArrayFilterStrictRule
         needs-at-least: sprintf() format is not a literal or a class constant
         needs-at-least: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs-at-least: statement outside the vocabulary: Stmt_Expression
-REFUSE  BooleanInBooleanAndRule
-        no hook mapping for node type PHPStan\Node\BooleanAndNode
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getOperatorSigil()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
-        needs-at-least: no PHP navigation for node.left (kind expr) on a BooleanAndNode node
-        needs-at-least: expected a string literal
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $node->getRightScope()
-        needs-at-least: no PHP navigation for node.right (kind expr) on a BooleanAndNode node
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
+EMIT    BooleanInBooleanAndRule
 EMIT    BooleanInBooleanNotRule
-REFUSE  BooleanInBooleanOrRule
-        no hook mapping for node type PHPStan\Node\BooleanOrNode
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getOperatorSigil()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
-        needs-at-least: no PHP navigation for node.left (kind expr) on a BooleanOrNode node
-        needs-at-least: expected a string literal
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $node->getRightScope()
-        needs-at-least: no PHP navigation for node.right (kind expr) on a BooleanOrNode node
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getType()
+EMIT    BooleanInBooleanOrRule
 EMIT    BooleanInDoWhileConditionRule
 EMIT    BooleanInElseIfConditionRule
 EMIT    BooleanInIfConditionRule
@@ -479,7 +463,6 @@ REFUSE  AssertEqualsIsDiscouragedRule
         needs-at-least: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->generalize()
         needs-at-least: trinary tail on an unsupported query ->isScalar()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
 EMIT    AssertSameBooleanExpectedRule
 EMIT    AssertSameNullExpectedRule
 REFUSE  AssertSameWithCountRule
@@ -505,7 +488,6 @@ REFUSE  ClassMethodCoversExistsRule
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
         needs-at-least: assignment to something other than a simple local
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: array_map()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Ternary
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->fileTypeMapper->getResolvedPhpDoc()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: array_merge()
 NEVER   DataProviderDataRule

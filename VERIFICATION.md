@@ -17228,3 +17228,92 @@ Verified: emit-all byte-identical across all three targets (190/34/25, zero diff
 nothing before and emit nothing now); suite 316 of 316; PHPStan 0 after extracting the new check into its own
 method so `Transpiler` gained no baseline entry, with its existing class figure re-read from 210 to 211;
 Rector 0; Pint clean.
+
+### Two rules emit, and for once the needs list was telling the truth
+
+`BooleanInBooleanAndRule` and `BooleanInBooleanOrRule` emit. `phpstan-strict-rules` goes from 33 of 45 to
+**35 of 45**, php emissions 190 → 192, `--status` 127 → 129 of 231. Fires gate 12 of 12 on the two pairs, with
+findings identical to PHPStan's line for line.
+
+**The candidate came from the new selector, not the old one.** Body size ranked these at 59 own lines with six
+emitting siblings; the census needs list ranked them nowhere in particular. And this time **the list named
+seven of the eight obstacles I actually hit** — the first honest needs list of the session. The difference is
+structural rather than luck: every obstacle here is statement-level, so the pass stepped over each and saw the
+next. The lists that misled me were the ones whose first blocker was *inside* an expression, where the pass
+stops and never reaches the rest. That is the census header's own stated bias, confirmed from the other side.
+
+The eight, in the order they appeared:
+
+| # | obstacle | resolution |
+|--:|:--|:--|
+| 1 | no hook for `PHPStan\Node\BooleanAndNode` | `Binary` kind gated on the operator *set* |
+| 2 | `->getOperatorSigil()` | the operator child's text, as written |
+| 3 | `instanceof BooleanAnd ? 'booleanAnd' : 'logicalAnd'` | four operator predicates, plus a chosen-value ternary |
+| 4 | `node.left` / `node.right` | already in `FIELDS['Binary']` once the kind was right |
+| 5 | `identifier(sprintf('%s.leftNotBoolean', …))` | `sprintf` rewritten to the interpolation it equals |
+| 6 | `$node->getRightScope()` | bound to the ordinary scope, on a measured equivalence |
+| 7 | `$rightScope->getType(…)` | the receiver asked by *kind* rather than by the name `$scope` |
+| 8 | two findings, two computed identifiers | already worked — `reportTaken` permits a second after the first reports |
+
+Obstacle 8 is worth naming as a non-event: **multi-identifier multi-message, which I had called the operative
+blocker for the covers pair, was already supported.** Two `$errors[] = <builder>` appends in sequence each
+lower to a `report()`, and the second is allowed to differ because the first was reported. So the covers pair's
+real blocker is something else, and I had ranked the work off an assumption.
+
+**Obstacle 6 is the peer's measurement, and it is the one I could not have made here.** `BooleanAndNode` is
+constructed with the scope after the left operand is assumed truthy — so my reading of the semantics was right
+— but the port needs no scope object at all, because PHPStan stores every expression result *before* emitting
+the virtual node, so `getType()` on the right operand answers the type computed at its own position either
+way. Probed on both scopes over three right operands, including a method call on a nullable receiver where a
+pre-left scope has no business answering, and they agree on every one. The node set is closed by a type
+declaration, `BooleanAnd|LogicalAnd`, rather than by reading branches — which is what let me gate one hook on
+two operator spellings without guessing at a third.
+
+#### It emitted and would have fatalled, twice over
+
+**A four-rule regression, caught by emit-all rather than by reading.** Rewriting `sprintf` into an
+interpolation *pre-empted* a path that folded the whole identifier to a literal: the four
+`OperandInArithmetic*` increment rules build theirs as `sprintf(…, $this->getIdentifier())` where the helper
+returns `'preInc'`, and sending that through `resolve()` refuses on `Scalar_String`. php went 190 → **188**
+before it went to 192. The fix is an ordering — try the literal fold first — and it is the third time this
+session that a recogniser placed before an existing path broke rules that were already emitting. The other two
+were a `Refusal` allowed to escape and speculative state left behind after a decline.
+
+**And an arity bug the emitted file showed and no check would have.** The four new operator predicates need
+the source to read the operator's text, and they were not in `CONTEXT_PREDICATES` — so the plugin emitted
+`Support::isBooleanAndOperator($node)` against a two-parameter signature. It parses, it loads, and it fatals on
+the first `&&` in the file. Nothing before execution catches an arity mismatch: the helper *exists*, so the
+"every helper it calls exists" gate is satisfied. Reading the emitted plugin is what caught it, which is the
+rule this log states as "it emitted is not a result".
+
+#### A control of mine that was a shared zero, corrected in place
+
+The `and`/`or` keyword rows were written as the control that separates `booleanAnd` from `logicalAnd`. **Both
+tools report nothing on them** — measured by dumping each tool's findings per file rather than trusting the
+green pair. So with those rows present the identifier branch could be a constant and the gate would still
+pass. The rows stay, because a shared silence is still agreement and the gate checks that, but the comments now
+say what they are: an unexercised path, not a covered one. Why PHPStan is silent there under the gate's
+configuration is **untraced**, and recorded as untraced.
+
+That is the fourth measured instance this session of a control that passes for the wrong reason, and the only
+thing that found it was printing both sides' findings instead of reading the pass.
+
+Verified: emit-all 192 php, 34 analyzer, 25 linter, with the only diff against the previous tree being the two
+new plugins, their manifest entries and their worker lines; fires gate 12 of 12 on the two new pairs; suite
+316 of 316; PHPStan 0, baseline still 13 entries with three existing complexity figures re-read; Rector 0 after
+it dropped a parameter the reordering made unused; Pint clean; census regenerated after reading its diff; the
+README row and the `--status` figure re-derived.
+
+#### The timeout was the stale figure, not the suite
+
+Raised `run-tests` from `timeout-minutes: 10` to 20, on the user's decision rather than mine — it is their CI
+budget. The case for it is the trend rather than this commit: the `prefer-lowest` leg ran 7:33 at `ccdf8be`,
+9:33 at `f4076ce` after the wiring index was memoised, and **10:14 at both `7aacfa6` and `3e93fed`, which
+GitHub reports as `cancelled`**. Two `prefer-stable` legs sit at 8:14 and 9:10. The gate has grown because the
+corpus it runs has grown — every emitted rule adds a real mago run and a real PHPStan run — so the limit is
+what went stale.
+
+The alternative considered and rejected was sharding the `engine` group onto one matrix leg. It would bring
+every leg well under the limit and needs no budget decision, and it is the wrong trade here: `prefer-lowest`
+is precisely the leg where this session's two environment-shape failures surfaced, so it is the last one to
+stop running the plugins.

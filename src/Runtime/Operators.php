@@ -46,6 +46,38 @@ final class Operators
     }
 
     /**
+     * Whether a binary operator is one of several spellings, compared case-insensitively.
+     *
+     * PHPStan's `BooleanAndNode` is one virtual node over two php-parser classes -- `BooleanAnd` for `&&` and
+     * `LogicalAnd` for `and` -- which is why the rule behind it reads `getOperatorSigil()` and picks its
+     * identifier from which one it found. Mago has one `Binary` kind for every operator, so the hook gates on
+     * the operator set rather than on a node class.
+     *
+     * Case-insensitively because `and` and `or` are keywords PHP accepts in any case, and the sigil a rule
+     * prints is the source text.
+     *
+     * @param list<string> $operators
+     */
+    public static function binaryOperatorIsOneOf(
+        NodeAnalysisContext $context,
+        Part|Node|null $subject,
+        array $operators,
+    ): bool {
+        $written = self::operatorText($context, $subject, NodeKind::BinaryOperator);
+        if ($written === null) {
+            return false;
+        }
+
+        foreach ($operators as $operator) {
+            if (strcasecmp($written, $operator) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Whether a compound assignment's operator is the one written — `/=` rather than `/`.
      *
      * The fourth sibling, and it earns its place the same way the other three do: an `Assignment` keeps its
@@ -66,17 +98,31 @@ final class Operators
         NodeKind $kind,
         string $operator,
     ): bool {
+        return self::operatorText($context, $subject, $kind) === $operator;
+    }
+
+    /**
+     * The first operator child of the given kind, as written, or null when there is none.
+     *
+     * Read rather than compared, so a caller that needs the spelling — the sigil a `BooleanAndNode` rule
+     * prints, `&&` or `and` — gets the same text the comparisons use.
+     */
+    public static function operatorText(
+        NodeAnalysisContext $context,
+        Part|Node|null $subject,
+        NodeKind $kind = NodeKind::BinaryOperator,
+    ): ?string {
         $node = Tree::node($subject);
         if (! $node instanceof Node) {
-            return false;
+            return null;
         }
 
         foreach ($context->source->getChildren($node) as $child) {
             if ($child->kind === $kind) {
-                return trim($context->source->getText($child)) === $operator;
+                return trim($context->source->getText($child));
             }
         }
 
-        return false;
+        return null;
     }
 }

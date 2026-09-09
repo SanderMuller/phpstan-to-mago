@@ -9338,6 +9338,20 @@ final readonly class Translator
      */
     private function interpolatedIdentifier(Expr $expr, int $line): ?string
     {
+        // `sprintf('%s.leftNotBoolean', $type)` is the same identifier as `"{$type}.leftNotBoolean"`, and
+        // rules write both. Rewritten into the interpolated form rather than translated separately, so the
+        // kind check below and the rendering stay one implementation.
+        //
+        // Only when the whole thing does *not* fold to a literal, and the order is load-bearing rather than
+        // stylistic. The four `OperandInArithmetic*` increment rules build their identifier as
+        // `sprintf(..., $this->getIdentifier())` where the helper returns a literal, so `rawStringLiteral()`
+        // folds the lot at transpile time. Rewriting first pre-empted that, sent the helper call through
+        // `resolve()`, and refused on `Scalar_String` -- four rules that emitted stopped, and the emit-all
+        // count is what caught it. The same ordering the node-list combinator records for the same reason.
+        if (! $this->foldsToALiteral($expr, $line)) {
+            $expr = $this->sprintfAsInterpolation($expr) ?? $expr;
+        }
+
         if (! $expr instanceof InterpolatedString) {
             return null;
         }
@@ -10474,6 +10488,135 @@ final readonly class Translator
         }
 
         return $negated ? '!(' . $this->stripOuterParentheses($check) . ')' : $check;
+    }
+
+    /**
+     * `<cond> ? <a> : <b>` as one value, or null when it is not that shape.
+     *
+     * Both sides have to resolve to the same kind. Two kinds have no single descriptor -- whichever is
+     * chosen, the other is described wrongly to whatever reads the value next -- and that is not a
+     * theoretical objection: taking a mismatched pair in the two-way *binding* recogniser put a
+     * `resolved-name` in front of a message that cannot render one, and three rules that emitted stopped.
+     *
+     * @return Descriptor|null
+     */
+    private function chosenValue(Ternary $expr, int $line): ?array
+    {
+        if (! $expr->if instanceof Expr) {
+            return null;
+        }
+
+        $condition = $this->translateCondition($expr->cond);
+
+        try {
+            $left = $this->sideOfAChoice($expr->if, $line);
+            $right = $this->sideOfAChoice($expr->else, $line);
+        } catch (Refusal) {
+            return null;
+        }
+
+        if ($left['kind'] !== $right['kind']) {
+            return null;
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a value chosen by a condition, which only the PHP target carries', $line);
+        }
+
+        // `as` only when a side carries one: the descriptor shape has no null for it, and a literal null
+        // would describe the value as "of kind nothing" rather than as unqualified.
+        $as = $left['as'] ?? $right['as'] ?? null;
+
+        return ($as === null ? [] : ['as' => $as]) + [
+            'rust' => self::PHP_ONLY,
+            'kind' => $left['kind'],
+            'php' => '(' . $this->context->backend->conditional(
+                $condition,
+                $this->operand($left),
+                $this->operand($right),
+            ) . ')',
+        ];
+    }
+
+    /**
+     * One side of a chosen value, as a descriptor.
+     *
+     * A string literal is not a descriptor `resolve()` produces -- it refuses with `Scalar_String`, because
+     * a literal is normally read through `rawStringLiteral()` where a literal is what the position wants. Both
+     * sides of this ternary are literals in the rule that needs it, so the literal reading is tried first and
+     * anything else falls through to the ordinary resolution.
+     *
+     * @return Descriptor
+     */
+    private function sideOfAChoice(Expr $expr, int $line): array
+    {
+        try {
+            $literal = $this->rawStringLiteral($expr, $line);
+        } catch (Refusal) {
+            return $this->resolve($expr, $line);
+        }
+
+        return [
+            'rust' => $this->context->backend->bytes($literal),
+            'kind' => 'bytes',
+            'php' => $this->context->backend->bytes($literal),
+        ];
+    }
+
+    /** Whether an expression is known at transpile time as a string, so no interpolation is needed. */
+    private function foldsToALiteral(Expr $expr, int $line): bool
+    {
+        try {
+            $this->rawStringLiteral($expr, $line);
+        } catch (Refusal) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * `sprintf(<a literal format>, ...)` as the interpolated string it is equal to, or null.
+     *
+     * Only `%s` placeholders, and only as many as there are arguments. Anything else -- a width, a `%d`, a
+     * positional `%1$s` -- is a different rendering, and answering it here would be inventing one: the point
+     * of the rewrite is that the two spellings are the *same* string, not that one approximates the other.
+     */
+    private function sprintfAsInterpolation(Expr $expr): ?InterpolatedString
+    {
+        if (! $expr instanceof FuncCall
+            || ! $expr->name instanceof Name
+            || $expr->name->toString() !== 'sprintf'
+            || count($expr->getArgs()) < 2
+        ) {
+            return null;
+        }
+
+        $arguments = $expr->getArgs();
+        $format = array_shift($arguments);
+        if (! $format->value instanceof String_) {
+            return null;
+        }
+
+        $segments = explode('%s', $format->value->value);
+        if (count($segments) !== count($arguments) + 1 || str_contains($format->value->value, '%')
+            && substr_count($format->value->value, '%s') * 2 !== substr_count($format->value->value, '%') * 2
+        ) {
+            return null;
+        }
+
+        $parts = [];
+        foreach ($segments as $index => $segment) {
+            if ($segment !== '') {
+                $parts[] = new InterpolatedStringPart($segment);
+            }
+
+            if (isset($arguments[$index])) {
+                $parts[] = $arguments[$index]->value;
+            }
+        }
+
+        return $parts === [] ? null : new InterpolatedString($parts, $expr->getAttributes());
     }
 
     /** Returns a Rust expression that is true exactly when the PHP predicate is true. */
@@ -12891,10 +13034,16 @@ final readonly class Translator
         // A node hook is handed types only at the positions it asked for, and the receiver is one of them, so
         // the descriptor *is* `$context->receiverType`. Any other position is refused rather than answered
         // about the wrong expression, which is the same constraint {@see typeQuery()} enforces.
+        // The receiver may be `$scope` or a local holding one -- `$rightScope = $node->getRightScope()` binds
+        // the same scope under another name, and the two are measured equivalent where that matters. Asked of
+        // the local's *kind* rather than of its spelling, so the reading does not depend on what the rule
+        // called the variable.
         if ($expr instanceof MethodCall
             && $this->memberName($expr->name, $expr->getStartLine()) === 'getType'
             && $expr->var instanceof Variable
-            && $expr->var->name === 'scope'
+            && is_string($expr->var->name)
+            && ($expr->var->name === 'scope'
+                || ($this->context->locals[$expr->var->name]['kind'] ?? null) === 'scope')
             && count($expr->getArgs()) === 1
         ) {
             if (Transpiler::$target !== 'php') {
@@ -14587,6 +14736,50 @@ final readonly class Translator
             return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
         }
 
+        // `$node->getRightScope()` on a virtual boolean node — the scope after the left operand has been
+        // evaluated and assumed truthy, which is what `BooleanAndHandler` constructs it with. Bound to the
+        // *ordinary* scope, and that is a measured equivalence rather than a simplification: PHPStan stores
+        // every expression result before emitting the virtual node, so `getType()` on the right operand
+        // answers the type computed at its own position either way. Probed on both scopes in one rule over
+        // three right operands — including a method call on a nullable receiver, where a pre-left scope has no
+        // business answering — and the two agree on every one, with the handler's own comment saying why.
+        //
+        // Bound rather than mapped, because the whole use of the scope in this rule's path reduces to the type
+        // of that one expression: `passesAsBoolean()` asks `getType()` and `findTypeToCheck()`, and the second
+        // applies level flags held on the helper rather than on the scope.
+        //
+        // Bound: three shapes in one file. A right operand containing an assignment, a `yield`, or a side
+        // effect on the left-narrowed variable was not measured.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getRightScope'
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'node'
+        ) {
+            return ['rust' => 'context', 'kind' => 'scope', 'php' => '$context'];
+        }
+
+        // `getOperatorSigil()` on one of PHPStan's virtual boolean nodes — the operator as written, which the
+        // rule interpolates into its message. Read from the source rather than canonicalised, because
+        // `$a and $b` reports `and` and the message is compared character for character.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getOperatorSigil'
+        ) {
+            $of = $this->resolve($expr->var, $line);
+            if ($of['kind'] !== 'hook-node') {
+                throw new Refusal("getOperatorSigil() of a {$of['kind']}", $line);
+            }
+
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('an operator sigil, which only the PHP target carries', $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'bytes',
+                'php' => $this->context->backend->call('operator_sigil', ['$context', $this->operand($of)]),
+            ];
+        }
+
         // `$node->getName()`, `$node->getVar()` and `$node->getClass()` on one of PHPStan's virtual call
         // nodes. `MethodCallableNode` carries the same children an ordinary call does and exposes them
         // through getters where a `MethodCall` has properties, so the reading is the field table's under the
@@ -14924,6 +15117,17 @@ final readonly class Translator
                 if ($this->readsAnUnsuppliedProperty($argument->value)) {
                     $this->resolve($argument->value, $line);
                 }
+            }
+        }
+
+        // `<cond> ? 'a' : 'b'` — one value picked by a condition. Last, because a ternary is also how several
+        // narrower shapes are written and each of those has its own reading above; this is the general form.
+        // `BooleanInBooleanAndRule` writes it to choose between the identifiers `booleanAnd` and
+        // `logicalAnd`, which PHPStan tells apart by node class and mago by the operator written.
+        if ($expr instanceof Ternary) {
+            $chosen = $this->chosenValue($expr, $line);
+            if ($chosen !== null) {
+                return $chosen;
             }
         }
 
@@ -15311,7 +15515,14 @@ final readonly class Translator
     private const array EXITING_STATEMENTS = ['guard', 'bail', 'bind-arg', 'bind-adapter'];
 
     /** Node predicates that answer from the node's kind, and so have to look it up. */
-    private const array CONTEXT_PREDICATES = ['is_concatenation', 'is_literal_string', 'is_instanceof', 'is_expression_statement'];
+    private const array CONTEXT_PREDICATES = [
+        'is_concatenation', 'is_literal_string', 'is_instanceof', 'is_expression_statement',
+        // The four operator spellings. Each reads the operator child's text, which needs the source, and
+        // omitting them here emitted `Support::isBooleanAndOperator($node)` against a two-parameter
+        // signature -- a plugin that parses, loads, and fatals on the first `&&` it sees. Nothing before
+        // execution catches an arity mismatch, which is why the emitted file was read rather than counted.
+        'is_boolean_and_operator', 'is_logical_and_operator', 'is_boolean_or_operator', 'is_logical_or_operator',
+    ];
 
     /**
      * Descriptor kinds an `instanceof` test narrows, so later field reads navigate the tested kind.

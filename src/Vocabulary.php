@@ -18,9 +18,13 @@ use PhpParser\Node\Expr\AssignOp\Mul as AssignOpMul;
 use PhpParser\Node\Expr\AssignOp\Plus as AssignOpPlus;
 use PhpParser\Node\Expr\AssignOp\Pow as AssignOpPow;
 use PhpParser\Node\Expr\BinaryOp;
+use PhpParser\Node\Expr\BinaryOp\BooleanAnd as BinaryOpBooleanAnd;
+use PhpParser\Node\Expr\BinaryOp\BooleanOr as BinaryOpBooleanOr;
 use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BinaryOp\Div as BinaryOpDiv;
 use PhpParser\Node\Expr\BinaryOp\Equal;
+use PhpParser\Node\Expr\BinaryOp\LogicalAnd as BinaryOpLogicalAnd;
+use PhpParser\Node\Expr\BinaryOp\LogicalOr as BinaryOpLogicalOr;
 use PhpParser\Node\Expr\BinaryOp\Minus as BinaryOpMinus;
 use PhpParser\Node\Expr\BinaryOp\Mod as BinaryOpMod;
 use PhpParser\Node\Expr\BinaryOp\Mul as BinaryOpMul;
@@ -73,6 +77,8 @@ use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\Trait_;
 use PhpParser\Node\Stmt\While_;
+use PHPStan\Node\BooleanAndNode;
+use PHPStan\Node\BooleanOrNode;
 use PHPStan\Node\CollectedDataNode;
 use PHPStan\Node\FileNode;
 use PHPStan\Node\InClassMethodNode;
@@ -254,6 +260,18 @@ final class Vocabulary
         Concat::class => [
             'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
             'gate' => "Support::binaryOperatorIs(\$context, \$node, '.')", 'phpOnly' => true,
+        ],
+        // PHPStan's two *virtual* boolean nodes. Each wraps two php-parser classes -- `BooleanAnd` for `&&`
+        // and `LogicalAnd` for `and` -- which is why the rules behind them read `getOperatorSigil()` and pick
+        // `booleanAnd` or `logicalAnd` from what they find. Mago has one `Binary` kind, so the gate carries
+        // the operator *set* and the rule's own branch still picks the identifier.
+        BooleanAndNode::class => [
+            'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
+            'gate' => "Support::binaryOperatorIsOneOf(\$context, \$node, ['&&', 'and'])", 'phpOnly' => true,
+        ],
+        BooleanOrNode::class => [
+            'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
+            'gate' => "Support::binaryOperatorIsOneOf(\$context, \$node, ['||', 'or'])", 'phpOnly' => true,
         ],
     ];
 
@@ -1350,6 +1368,14 @@ final class Vocabulary
         FuncCall::class => 'is_function_call',
         ClassConstFetch::class => 'is_class_constant_access',
         Array_::class => 'is_array',
+        // The four boolean operator spellings. php-parser gives each its own class and PHPStan's virtual
+        // nodes are declared over pairs of them -- `BooleanAnd|LogicalAnd`, `BooleanOr|LogicalOr` -- so a
+        // rule asks `instanceof BooleanAnd` to tell `&&` from `and`. Mago has one `Binary` kind, so each
+        // predicate is an operator test rather than a kind test.
+        BinaryOpBooleanAnd::class => 'is_boolean_and_operator',
+        BinaryOpLogicalAnd::class => 'is_logical_and_operator',
+        BinaryOpBooleanOr::class => 'is_boolean_or_operator',
+        BinaryOpLogicalOr::class => 'is_logical_or_operator',
         Int_::class => 'is_int',
         // Declaration kinds a rule narrows a function-like hook to. Answered from the node's own kind, which
         // is what makes the same predicate serve every kind the hook registers.

@@ -595,6 +595,63 @@ final class Support
         return Operators::binaryOperatorIs($context, $subject, $operator);
     }
 
+    /**
+     * The four boolean-operator narrowings PHPStan's virtual nodes carry.
+     *
+     * `BooleanAndNode` is declared `BooleanAnd|LogicalAnd` and `BooleanOrNode` `BooleanOr|LogicalOr` -- a
+     * closed set by type declaration rather than by reading branches. php-parser gives each spelling its own
+     * class, so the rules ask `instanceof BooleanAnd` to tell `&&` from `and`; mago has one `Binary` kind, so
+     * the same question is which operator is written. Case-insensitive for the keyword spellings, which PHP
+     * accepts in any case.
+     */
+    public static function isBooleanAndOperator(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Operators::binaryOperatorIsOneOf($context, $subject, ['&&']);
+    }
+
+    /** {@see isBooleanAndOperator()} */
+    public static function isLogicalAndOperator(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Operators::binaryOperatorIsOneOf($context, $subject, ['and']);
+    }
+
+    /** {@see isBooleanAndOperator()} */
+    public static function isBooleanOrOperator(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Operators::binaryOperatorIsOneOf($context, $subject, ['||']);
+    }
+
+    /** {@see isBooleanAndOperator()} */
+    public static function isLogicalOrOperator(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Operators::binaryOperatorIsOneOf($context, $subject, ['or']);
+    }
+
+    /**
+     * A binary expression's operator as written — the sigil `BooleanAndNode::getOperatorSigil()` answers.
+     *
+     * The *source spelling* rather than a canonical one, which is what the original prints: a rule reporting
+     * on `$a and $b` says `and` and one reporting on `$a && $b` says `&&`, and the message is compared
+     * character for character against PHPStan's. {@see Operators::operatorText()}
+     */
+    public static function operatorSigil(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        return Operators::operatorText($context, $subject);
+    }
+
+    /**
+     * {@see Operators::binaryOperatorIsOneOf()}
+     *
+     * @param list<string> $operators
+     */
+    public static function binaryOperatorIsOneOf(
+        NodeAnalysisContext $context,
+        Part|Node|null $subject,
+        array $operators,
+    ): bool {
+        return Operators::binaryOperatorIsOneOf($context, $subject, $operators);
+    }
+
     /** {@see Operators::assignmentOperatorIs()} */
     public static function assignmentOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
     {

@@ -195,6 +195,8 @@ final readonly class FiresGate
         'BooleanInIfConditionRule' => ['checkThisOnly' => false],
         'BooleanInElseIfConditionRule' => ['checkThisOnly' => false],
         'BooleanInBooleanNotRule' => ['checkThisOnly' => false],
+        'BooleanInBooleanAndRule' => ['checkThisOnly' => false],
+        'BooleanInBooleanOrRule' => ['checkThisOnly' => false],
         'BooleanInWhileConditionRule' => ['checkThisOnly' => false],
         'BooleanInDoWhileConditionRule' => ['checkThisOnly' => false],
         'BooleanInTernaryOperatorRule' => ['checkThisOnly' => false],
