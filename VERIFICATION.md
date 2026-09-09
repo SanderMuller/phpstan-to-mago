@@ -17601,3 +17601,123 @@ lower bound on what a consumer enabling that scan would pay.
 Nothing in our layer, which is the point of measuring it. The consumer-facing lever is include *width*, and
 that advice is now in the emitted `mago.toml.snippet` with the two numbers behind it — the only mago
 configuration this tool writes.
+
+### Deriving the include set, and two narrower versions the fixtures rejected
+
+The include cost is not something to amortise, which is how I first framed it. At 270 files the run is
+**0.12s of analysis, 3.80s of indexing 14,805 include files, and 1.07s of our rules** — so 76% of it is
+indexing files nobody asked about, and "it amortises on a bigger corpus" was excusing a design rather than
+fixing one.
+
+**It is derivable.** An emitted plugin compares against a fixed set of class names — 52 of them across the 97
+plugins, in 13 third-party namespaces. `RecommendedIncludes::forEmitted()` reads those literals out of the
+emitted sources, reflects each name's full ancestry with `class_parents()`, `class_implements()` and
+`class_uses()`, takes `ReflectionClass::getFileName()` for each, and reduces to composer package roots. It
+costs 0.09s for 97 plugins and the snippet now carries the result.
+
+| includes | entries | files | wall | transpiled findings on the fixtures |
+|:--|--:|--:|--:|:--|
+| none | 0 | 0 | 0.11s | — |
+| exact files behind the names | 59 | 59 | 0.11s | **501 / 90 rules** |
+| package roots, nested `vendor/` excluded | 10 | ~4,700 | — | **501 / 90 rules** |
+| **package roots, both copies** | **12** | **6,614** | **1.00s** | **502 / 91 rules** |
+| `vendor`, `src`, `tests` | 3 | 14,805 | 4.42s | 502 / 91 rules |
+
+**Reflection rather than PSR-4 arithmetic is load-bearing.** A named class's ancestors routinely live in
+another package — `Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository` extends
+`Doctrine\ORM\EntityRepository` — so a prefix-to-directory map covers the name and misses what it inherits.
+
+#### The corpus that agreed could not test the change
+
+The php-parser benchmark corpus reported 2,686 transpiled findings across 16 rules for *every* include
+strategy, identical rule by rule. That looked like a pass and was not one: **only 16 of 97 rules fire there,
+and the vendored-ancestry rules — Doctrine, Symfony, Laravel — fire zero times.** The resolution path the
+change touches was never exercised. `tests/Fixtures/examples` is the corpus that exists to make each rule
+fire, and it is the one that discriminated.
+
+#### Both narrower versions lost the same finding, and the mechanism is autoload order
+
+`NoPropertyNodeAssignRule` went quiet under the exact-file set *and* under nested-vendor exclusion. Same rule
+both times, which is what makes it the discriminating case rather than noise.
+
+Its fixture implements `Rector\Contract\Rector\RectorInterface` and assigns `new
+PhpParser\Node\Expr\Variable('value')` to a `?PhpParser\Node` property, so the rule needs the *inferred
+type* of the `new` to resolve up to `PhpParser\Node`. And the derived roots contained
+`vendor/rector/rector/vendor/nikic/php-parser` and **no top-level `vendor/nikic/php-parser`** — both are
+installed, and rector's nested copy is simply the one PHP autoloaded first for those names. Exclude the nested
+tree and mago has no php-parser at all.
+
+**Which is a fragility in the deriver, not just in the pruning.** Which copy of a duplicated package gets
+resolved is an accident of the reflecting process's autoload order, and the consumer's code resolves against
+whichever copy *their* autoloader picks. So `canonicalCopyOf()` adds the top-level copy whenever a nested one
+is found: both cost little, and guessing wrong costs a silent rule.
+
+#### Stated bound: a match, not a proof
+
+No set derived from the rules can be proven sufficient, because which files are needed depends on what the
+*consumer's* code inherits from — the fixture above needed php-parser because of what the analysed class
+extended, not because of what any rule named. The snippet says that, and names the failure mode: an
+unreachable parent makes a rule report nothing rather than fail, so a missing entry is silent.
+
+One derivation detail worth keeping: `PHPStan\Rules\Rule` resolves to a `phar://` path, because it lives
+inside `phpstan.phar`. There is no directory to index, so it contributes no include — skipped rather than
+turned into a non-directory in a consumer's config.
+
+### The index cost tracks resolvability, not file count — and that couples speed to correctness
+
+Chasing the superlinearity found a mechanism that changes what the include advice means.
+
+The per-file cost is not a constant. Measured across include sets, each against the same 270-file corpus:
+
+| include set | files | declarations | ms/file | µs/declaration |
+|:--|--:|--:|--:|--:|
+| `nesbot/carbon` | 921 | 1,474 | **0.022** | 13.6 |
+| `symfony/*` (63 packages) | 1,187 | 7,506 | 0.042 | 6.7 |
+| `laravel/framework` | 1,711 | 16,236 | 0.164 | 17.3 |
+| the derived 12 roots | 6,614 | — | 0.135 | — |
+| `vendor` | 14,019 | 91,013 | **0.270** | **41.6** |
+
+A twelve-fold spread per file and a six-fold spread per declaration, and `vendor` is the outlier on every
+normalisation — including bytes, which a peer measured separately and found does not track cost at all (5,000
+files at 20 MB against 5,000 at 100 MB: 0.77s against 0.64s, the larger one *faster*).
+
+**The reconciling mechanism is one this log already recorded from the other side: mago skips the bodies of
+classes whose hierarchy it cannot resolve.** The entry about a control pair for unresolvable parents notes
+mago reporting 6,395 unresolvable classes on one corpus and being known to skip such bodies. So a package
+indexed *alone* is nearly free because its parents are absent, and the full tree is expensive because
+everything in it becomes resolvable.
+
+The interaction is measurable rather than inferred: `laravel` costs +0.28s and `carbon` +0.02s, and
+`laravel + carbon` costs **+0.43s** — superadditive by 0.13s, which is work that exists only when both are
+present.
+
+#### Which couples index speed to rule correctness, and that is the part to carry
+
+A narrower include set is partly faster **because mago gives up on more hierarchies**, and giving up on a
+hierarchy is precisely what makes a rule report nothing. So "narrowed until it is fast" and "narrowed until it
+is broken" are indistinguishable on a stopwatch — the finding count is the only thing that separates them.
+
+That is retroactively why the derived set had to be validated on 502 findings across 91 rules rather than on
+its timing, and why the two narrower variants were rejected despite being faster. A timing-only check would
+have shipped the fastest and quietest option.
+
+#### What a peer established, and where their model stops
+
+Their replication is close to exact — 1 thread 5.94s at cpu/wall 0.53, 14 threads 4.52s at 0.96, against my
+5.33/0.54 and 3.99/0.98 — and they **refuted my inferred index lock** with something better evidenced: the
+phase is per-file fixed cost of which roughly 0.10 ms is *system* time, and APFS metadata operations do not
+parallelise. Their proof that mago does parallelise when there is work per file is two synthetic trees at
+cpu/wall **1.20 and 1.60**, both above 1.0. No lock is needed to explain 0.96.
+
+They also refuted, with measurements, three appealing mechanisms — two of them their own: the per-root
+sequential walk (1 root 4.60s against 326 roots 4.51s), the composer shim (a PHP wrapper spending 2,598 of
+2,616 samples in `usleep` polling the child, which looks exactly like a throughput bug and costs nothing
+against the direct binary), and the serial merge moving contents (the bytes result above).
+
+**Where their model stops is the multiplier.** Their 0.11 ms/file is an average from a synthetic tree of
+uniform files; on real trees the rate spans 0.022 to 0.270, and the model under-predicts `vendor` by 2.5x
+(1.54s against 3.79s measured). Both halves are needed: **fixed per-file cost sets the floor, resolvability
+sets the multiplier.**
+
+Worth keeping regardless of mago: **profile the Rust binary, not `vendor/bin/mago`**, which is a PHP shim
+whose sample profile is almost entirely `usleep`.

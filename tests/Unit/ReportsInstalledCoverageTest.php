@@ -9,6 +9,7 @@ use Sandermuller\PhpstanToMago\Cli;
 use Sandermuller\PhpstanToMago\InstalledRulePackages;
 use Sandermuller\PhpstanToMago\Options;
 use Sandermuller\PhpstanToMago\PackageCoverage;
+use Sandermuller\PhpstanToMago\RecommendedIncludes;
 use Sandermuller\PhpstanToMago\Refusal;
 use Sandermuller\PhpstanToMago\RuleOutcome;
 use Sandermuller\PhpstanToMago\StatusPage;
@@ -178,7 +179,44 @@ final class ReportsInstalledCoverageTest extends TestCase
         // the advice is the load-bearing half -- *narrow*, never *remove*: without an include a rule cannot
         // reach a vendored parent and goes quiet rather than failing.
         $this->assertStringContainsString('includes', $snippet);
-        $this->assertStringContainsString('do not drop them', $snippet);
+        $this->assertStringContainsString('a missing entry is silent', $snippet);
+    }
+
+    public function test_the_snippet_carries_the_includes_the_rules_need(): void
+    {
+        // Derived by reflecting each named class's full ancestry, so the list is what mago has to index and
+        // no more. Measured: 14,805 files of `vendor`, `src` and `tests` index in 3.98s against 6,344 in
+        // 0.95s, while mago analyses the benchmark corpus in 0.12s -- so the index was most of a run.
+        //
+        // A stand-in for an emitted plugin rather than a committed snapshot: what the deriver reads is the
+        // namespaced string literals a plugin compares against, and no snapshot in the corpus happens to
+        // name an installed vendored class. Three literals, one per behaviour that matters.
+        $source = tempnam(sys_get_temp_dir(), 'emitted') . '.php';
+        file_put_contents($source, implode("\n", [
+            '<?php',
+            // Installed, so its package is what mago has to index.
+            "Support::extendsIs(\$context, \$node, 'PhpParser\\\\NodeVisitorAbstract');",
+            // Reachable only inside phpstan.phar, so there is no directory to index.
+            "Support::extendsIs(\$context, \$node, 'PHPStan\\\\Rules\\\\Rule');",
+            // Not installed here at all, so it needs no include.
+            "Support::extendsIs(\$context, \$node, 'Nothing\\\\Installed\\\\AtAll');",
+        ]));
+
+        $includes = RecommendedIncludes::forEmitted([$source]);
+        unlink($source);
+
+        // Package directories rather than the exact files: including only the files behind the names is
+        // faster still -- 0.11s against 0.95s -- and lost a finding, because mago resolves the *analysed*
+        // code's ancestry and that reaches files no rule names.
+        $this->assertSame(
+            [dirname(__DIR__, 2) . '/vendor/nikic/php-parser'],
+            $includes,
+            'One package for the installed name; the phar-internal and uninstalled names contribute nothing.',
+        );
+
+        $snippet = WorkerScaffold::configSnippet('/tmp/out/worker.php', 'transpiled', $includes);
+        $this->assertStringContainsString('[source]', $snippet);
+        $this->assertStringContainsString($includes[0], $snippet);
     }
 
     public function test_a_worker_with_no_rules_refuses_rather_than_writing_an_empty_one(): void

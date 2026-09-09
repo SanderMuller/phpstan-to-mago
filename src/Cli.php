@@ -359,9 +359,18 @@ final class Cli
         $directory = basename($options->outDir($outRoot));
         $worker = $outRoot . '/' . WorkerScaffold::WORKER;
         file_put_contents($worker, WorkerScaffold::worker($registered, $directory, 'transpiled', $autoload));
+        // The include set the emitted rules actually need, so a consumer does not have to point mago at all
+        // of `vendor` and pay for indexing it on every run. {@see RecommendedIncludes} carries the measurement
+        // and the bound.
+        $emitted = glob($outRoot . '/' . $directory . '/*.php');
+
         file_put_contents(
             $outRoot . '/' . WorkerScaffold::CONFIG_SNIPPET,
-            WorkerScaffold::configSnippet($worker, 'transpiled'),
+            WorkerScaffold::configSnippet(
+                $worker,
+                'transpiled',
+                RecommendedIncludes::forEmitted($emitted === false ? [] : $emitted),
+            ),
         );
 
         echo "\n  WORKER  ", $worker, "\n  CONFIG  ", $outRoot, '/', WorkerScaffold::CONFIG_SNIPPET, "\n";
