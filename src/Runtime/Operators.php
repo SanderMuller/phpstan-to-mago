@@ -34,6 +34,30 @@ final class Operators
     }
 
     /** Whether a postfix expression's operator is the one written — `$x++` rather than `++$x`. */
+    /**
+     * Whether this node's unary prefix operator is any of these, which is how a cast is recognised.
+     *
+     * **A cast is a `UnaryPrefix` in mago's tree**, with the operator carrying the written parentheses --
+     * `(int)`, `(bool)`, `(object)`. Probed, with `-$f` beside them as the control that proves the operator
+     * text discriminates: there is no `Cast` node kind, and concluding from that name's absence that a cast
+     * is unrepresentable was wrong twice in this repository, once here and once for `&`.
+     *
+     * A set rather than one operator because php-parser's `Cast` is abstract: a rule declaring it fires on
+     * every spelling, and PHP has two or three for most of them.
+     *
+     * @param list<string> $operators
+     */
+    public static function unaryOperatorIsOneOf(NodeAnalysisContext $context, Part|Node|null $subject, array $operators): bool
+    {
+        foreach ($operators as $operator) {
+            if (self::unaryOperatorIs($context, $subject, $operator)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static function postfixOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
     {
         return self::operatorIs($context, $subject, NodeKind::UnaryPostfixOperator, $operator);

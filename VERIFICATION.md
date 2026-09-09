@@ -20456,3 +20456,51 @@ The instrument's own headline moved, which is the closing figure rather than a c
 396 findings' worth of refused rules now emit. Of the 586 left: 231 want a value that is a fact about the
 consumer's installed extensions, 176 a node kind mago does not have, 88 an upstream definedness gap, 87 the
 model change above, and 4 a `Stmt_While`.
+
+## A cast *is* in mago's tree, and I published twice that it was not
+
+Two entries above say `UselessCastRule` is blocked because *"mago has no `Cast` node kind"* — in the yield
+table and in the sizing of multi-statement `if` bodies, where it discounts 176 findings on that basis. The
+name is absent and the representation is not.
+
+Probed, with a control:
+
+    (int) $s       UnaryPrefix   operator (int)
+    (bool) $f      UnaryPrefix   operator (bool)
+    (object) $a    UnaryPrefix   operator (object)
+    -$f            UnaryPrefix   operator -        <- the control: same kind, different operator
+
+A cast is a `UnaryPrefix` whose `UnaryPrefixOperator` carries the written parentheses. This repository already
+hooks `UnaryPlus` and `UnaryMinus` exactly that way — `'kind' => 'UnaryPrefix'` with a `gate` calling
+`Support::unaryOperatorIs()` — and both emit. So the hook was one table row, written now, with a set gate
+because php-parser's `Cast` is abstract and PHP spells most casts two or three ways.
+
+**This is the third time in this session that grepping a name and concluding absence was wrong**, after `&`
+(no `Cast`-like kind, but `UnaryPrefixOperator` under the assignment) and the type renderer (22 rules already
+emitting through one the log called a queue). The pattern is the same each time: the question was "is there a
+node kind called X" and the question that mattered was "how is X represented".
+
+### And the type of the hook node itself is obtainable
+
+Past the hook, the refusal became *"the inferred type of a hook-node"*, which reads as an SDK limit and is
+this repository's gap. `FileAnalysisRequirement::TargetExpressionTypes` — *"embed the inferred type of every
+node targeted by a node-analysis hook"* — exists and `Emitter` never requests it; it asks for
+`TargetSubtree`, `SourceText`, `ReceiverType` and `ExpressionTypes`.
+
+Measured with the requirement added:
+
+| the cast | its own type | its operand's |
+|:--|:--|:--|
+| `(int) $s` | `int` | `string` |
+| `(bool) $f` | `bool` | `float` |
+| `(object) $a` | `stdClass` | `array` |
+| `-$f` | `float` | `float` |
+
+Which is precisely what the rule compares. So 176 findings are reachable rather than gated on a node kind
+that does not exist, and what remains is `generalize(GeneralizePrecision::lessSpecific())`, the
+native-versus-phpdoc type pair, and a closure that decorates the builder.
+
+**No verdict moved and the refusal did**, from a sentence that was false about mago to the real next
+obstacle — which is the value the `SeeAnnotationToTestRule` commit rests on too. The yield table's
+`UselessCastRule` row should now be read as 176 findings behind three body-level pieces, not behind an
+impossibility.

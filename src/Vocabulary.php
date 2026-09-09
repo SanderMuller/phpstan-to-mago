@@ -33,6 +33,7 @@ use PhpParser\Node\Expr\BinaryOp\Plus as BinaryOpPlus;
 use PhpParser\Node\Expr\BinaryOp\Pow as BinaryOpPow;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\Cast;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\ConstFetch;
@@ -234,6 +235,10 @@ final class Vocabulary
         // The other two prefix operators a rule hooks by itself. Mago spells all of them `UnaryPrefix`, so the
         // operator is the gate rather than the node kind — the same shape `BooleanNot` above already takes.
         UnaryPlus::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '+')", 'phpOnly' => true],
+        // php-parser's `Cast` is abstract and mago has no kind of that name -- a cast is a `UnaryPrefix`
+        // whose operator carries the written parentheses, probed with a negation beside it as the control.
+        // Every spelling PHP accepts, because a rule declaring the abstract class fires on all of them.
+        Cast::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIsOneOf(\$context, \$node, ['(int)', '(integer)', '(bool)', '(boolean)', '(float)', '(double)', '(real)', '(string)', '(binary)', '(array)', '(object)', '(unset)'])", 'phpOnly' => true],
         UnaryMinus::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '-')", 'phpOnly' => true],
         // The increment and decrement spellings. Mago keeps the prefix and postfix forms as different node
         // kinds and the operator in a child of each, so the kind picks the side and the gate picks the

@@ -450,11 +450,10 @@ REFUSE  OverwriteVariablesWithForeachRule
 EMIT    RequireParentConstructCallRule
 EMIT    StrictFunctionCallsRule
 REFUSE  UselessCastRule
-        no hook mapping for node type PhpParser\Node\Expr\Cast
-        needs-at-least: no node predicate for instanceof PhpParser\Node\Expr\Cast\Void_ on a hook-node
+        the inferred type of a hook-node
         needs-at-least: the inferred type of a hook-node
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->generalize()
-        needs-at-least: no PHP navigation for node.expr (kind expr) on a Cast node
+        needs-at-least: cannot read a type as a name
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getNativeType()
         needs-at-least: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Closure

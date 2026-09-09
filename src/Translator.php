@@ -1716,6 +1716,34 @@ final readonly class Translator
     }
 
     /**
+     * A node predicate that can never hold, folded to `false`, or null where none applies.
+     *
+     * Split out to keep {@see instanceofPredicate()} under its complexity limit -- a new per-function
+     * baseline entry is the one thing the baseline discipline here forbids.
+     *
+     * `instanceof Cast\Void_` inside a cast hook. `(void)` is a token php-parser's lexer produces and
+     * PHP's parser rejects -- `$x = (void) 1;` is a parse error -- so no file mago can analyse holds
+     * one, and the guard cannot be true. Folded rather than refused, and the fold is about the
+     * language rather than about this transpiler: the gate on the hook lists every cast PHP accepts
+     * and `(void)` is not among them because it is not one.
+     */
+    private function impossibleNodePredicate(string $wanted, int $line): ?string
+    {
+        if ($wanted === 'PHPStan\\Node\\Printer\\Void_' || $wanted === 'PhpParser\\Node\\Expr\\Cast\\Void_') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a void-cast test, which only the PHP target carries', $line);
+            }
+
+            return $this->unreachable(
+                'a `(void)` cast is a parse error in PHP, so no analysable file holds one and the guard '
+                . 'reading for it cannot hold',
+            );
+        }
+
+        return null;
+    }
+
+    /**
      * `<handle> === null` for the two handles whose absent value the rule reads as null, or null for the rest.
      *
      * Both are cases where the original's absent value and the port's are the same fact spelled differently,
@@ -12246,6 +12274,11 @@ final readonly class Translator
         }
 
         if (! isset(Vocabulary::NODE_PREDICATES[$wanted])) {
+            $impossible = $this->impossibleNodePredicate($wanted, $expr->getStartLine());
+            if ($impossible !== null) {
+                return $impossible;
+            }
+
             throw new Refusal("no node predicate for instanceof {$wanted} on a {$subject['kind']}", $expr->getStartLine());
         }
 

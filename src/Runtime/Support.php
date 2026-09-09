@@ -2089,6 +2089,18 @@ final class Support
         return LiteralTypes::typeIsLiteralTrue($type);
     }
 
+    /**
+     * Whether this node's unary prefix operator is any of these.
+     *
+     * {@see Operators::unaryOperatorIsOneOf()} carries why a cast is recognised this way.
+     *
+     * @param list<string> $operators
+     */
+    public static function unaryOperatorIsOneOf(NodeAnalysisContext $context, Part|Node|null $subject, array $operators): bool
+    {
+        return Operators::unaryOperatorIsOneOf($context, $subject, $operators);
+    }
+
     public static function fileEndsWith(NodeAnalysisContext $context, string $suffix): bool
     {
         return str_ends_with($context->source->path, $suffix);
