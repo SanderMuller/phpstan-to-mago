@@ -248,6 +248,14 @@ final class TracksUpstreamDriftTest extends TestCase
             'like one customer, a five-rule family that looked like one missing navigation, a corpus that looked',
             'absent. Grep a capability to count what it is worth before building it.',
             '',
+            'A third label, `also-emitted-by:`, names rules in the same package that already report an',
+            'identifier the refused one reports — so the check behind the row is carried whatever this',
+            'refusal says. It appears where a package ships both a standalone rule and a merged one holding',
+            'the same check and registers only the merged one; the refusal above it is still accurate about',
+            'its own rule. **A row carrying this label is not work.** Read literal `->identifier(..)`',
+            'arguments only, so an interpolated or constant identifier contributes none and leaves a row',
+            'unmarked — the direction that leaves a covered row reading as a gap rather than the reverse.',
+            '',
             '**A needs list is a lower bound, and it is short in a direction rather than at random.** The pass',
             'steps over a refusing *statement* and translates on, so obstacles in different statements all',
             'appear — but a second obstacle inside one *expression* never does, because the expression stops',
@@ -373,8 +381,12 @@ final class TracksUpstreamDriftTest extends TestCase
                     continue;
                 }
 
+                // `also-emitted-by:` last, under the needs, because it does not change what stops *this*
+                // rule -- the refusal above it is accurate. It says the check behind the rule is already
+                // carried by a sibling that emits, which is the half that decides whether the row is work.
                 $lines[] = 'REFUSE  ' . $outcome->name . $where . "\n        " . $outcome->reason
-                    . ($outcome->needs === [] ? '' : "\n        needs-at-least: " . implode("\n        needs-at-least: ", $outcome->needs));
+                    . ($outcome->needs === [] ? '' : "\n        needs-at-least: " . implode("\n        needs-at-least: ", $outcome->needs))
+                    . ($outcome->alsoEmittedBy === [] ? '' : "\n        also-emitted-by: " . implode(', ', $outcome->alsoEmittedBy));
             }
         }
 

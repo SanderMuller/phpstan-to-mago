@@ -46,6 +46,14 @@ Sizing work from the first obstacle alone has been wrong three times here — a 
 like one customer, a five-rule family that looked like one missing navigation, a corpus that looked
 absent. Grep a capability to count what it is worth before building it.
 
+A third label, `also-emitted-by:`, names rules in the same package that already report an
+identifier the refused one reports — so the check behind the row is carried whatever this
+refusal says. It appears where a package ships both a standalone rule and a merged one holding
+the same check and registers only the merged one; the refusal above it is still accurate about
+its own rule. **A row carrying this label is not work.** Read literal `->identifier(..)`
+arguments only, so an interpolated or constant identifier contributes none and leaves a row
+unmarked — the direction that leaves a covered row reading as a gap rather than the reverse.
+
 **A needs list is a lower bound, and it is short in a direction rather than at random.** The pass
 steps over a refusing *statement* and translates on, so obstacles in different statements all
 appear — but a second obstacle inside one *expression* never does, because the expression stops
@@ -312,21 +320,26 @@ EMIT    NoInvadeInAppCode  (the package registers it nowhere)
 REFUSE  NoUnsafeRequestDataRule  (the package registers it nowhere)
         $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
         needs-at-least: $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
+        also-emitted-by: CombinedMethodCallRule
 REFUSE  NoUnsafeRequestFacadeRule  (the package registers it nowhere)
         $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
         needs-at-least: $unsafeMethodsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
+        also-emitted-by: CombinedStaticCallRule
 REFUSE  NoUnsafeRequestHelperRule  (the package registers it nowhere)
         $namespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Validation\NoUnsafeRequestHelperRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
         needs-at-least: $namespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Validation\NoUnsafeRequestHelperRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
+        also-emitted-by: CombinedFuncCallRule
 EMIT    OnlyAllowFacadeAliasInBlade  (the package registers it nowhere)
 EMIT    PositionalFlagArgumentConstructorRule
 REFUSE  PositionalFlagArgumentMethodCallRule  (the package registers it nowhere)
         $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
         needs-at-least: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
+        also-emitted-by: CombinedMethodCallRule, CombinedStaticCallRule, PositionalFlagArgumentConstructorRule, PositionalFlagArgumentNullsafeMethodCallRule
 EMIT    PositionalFlagArgumentNullsafeMethodCallRule
 REFUSE  PositionalFlagArgumentStaticCallRule  (the package registers it nowhere)
         $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
         needs-at-least: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
+        also-emitted-by: CombinedMethodCallRule, CombinedStaticCallRule, PositionalFlagArgumentConstructorRule, PositionalFlagArgumentNullsafeMethodCallRule
 REFUSE  SlowMigrationDdlRule
         assignment value outside the vocabulary: access path outside the vocabulary: Expr_Array
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Array
@@ -336,6 +349,7 @@ EMIT    TraitRequiresInterfaceRule
 REFUSE  UnvalidatedFormRequestFieldRule  (the package registers it nowhere)
         $fieldAccessorsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
         needs-at-least: $fieldAccessorsLookup is computed in the constructor and the package wires no configured values for this rule, so there is nothing to derive from
+        also-emitted-by: CombinedMethodCallRule
 NEVER   WriteNamedArgumentManifestRule
         this rule reports nothing: it writes a file and returns no findings, so there is nothing for a plugin to report. An analyzer plugin's only output is report(), and agreement has no meaning for a build artefact
 

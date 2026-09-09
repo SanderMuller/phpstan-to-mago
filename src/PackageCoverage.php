@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
+
 /**
  * What this transpiler does with every rule one package ships.
  *
@@ -64,7 +69,107 @@ final readonly class PackageCoverage
 
         ksort($outcomes);
 
-        return new self($package, $root, array_values($outcomes));
+        return new self($package, $root, array_values(self::withSubsumption($outcomes, $source)));
+    }
+
+    /**
+     * Marks each refused rule whose identifier a rule that emits already reports.
+     *
+     * A cross-rule pass, and it has to live here rather than in the refusal: the transpiler reads one rule at
+     * a time and cannot know that a sibling reports the same identifier. {@see Transpiler::refuseASubsumedCollector()}
+     * is the same idea for collectors and works from a static table, which this cannot be — the pairing is a
+     * property of whichever package is installed.
+     *
+     * Under-reports by construction. {@see ReportedIdentifiers} reads literal `->identifier('..')` arguments
+     * only, so a rule whose identifier is interpolated or held in a constant contributes none and stays
+     * unmarked. That is the safe direction: an unmarked refusal reads as a gap, which is what a refusal
+     * already reads as, where a wrongly marked one would say a check is covered when it is not.
+     *
+     * @param array<string, RuleOutcome> $outcomes keyed by rule name
+     * @param string                      $source   the package's source root
+     * @return array<string, RuleOutcome>
+     */
+    private static function withSubsumption(array $outcomes, string $source): array
+    {
+        // Every PHP file under the package, not the rules. The shared check lives in a trait and the debug
+        // rules share a base class, and `RulePaths::expand()` yields neither -- it answers which files are
+        // rules, which is a different question. Built from the outcomes first, this pass marked nothing and
+        // the census diff was empty, which a green snapshot test reads as "no change" rather than as "the
+        // pass never looked".
+        $siblings = self::classFilesUnder($source);
+
+        $identifiers = [];
+        foreach ($outcomes as $name => $outcome) {
+            $identifiers[$name] = ReportedIdentifiers::of($outcome->file, $siblings);
+        }
+
+        $emitting = [];
+        foreach ($outcomes as $name => $outcome) {
+            if (! $outcome->emitted()) {
+                continue;
+            }
+
+            foreach ($identifiers[$name] as $identifier) {
+                $emitting[$identifier][] = $name;
+            }
+        }
+
+        foreach ($outcomes as $name => $outcome) {
+            if ($outcome->verdict !== RuleOutcome::REFUSE) {
+                continue;
+            }
+
+            $covering = [];
+            foreach ($identifiers[$name] as $identifier) {
+                foreach ($emitting[$identifier] ?? [] as $rule) {
+                    $covering[$rule] = true;
+                }
+            }
+
+            if ($covering === []) {
+                continue;
+            }
+
+            $names = array_keys($covering);
+            sort($names);
+
+            $outcomes[$name] = new RuleOutcome(
+                name: $outcome->name,
+                file: $outcome->file,
+                verdict: $outcome->verdict,
+                reason: $outcome->reason,
+                registered: $outcome->registered,
+                needs: $outcome->needs,
+                alsoEmittedBy: $names,
+            );
+        }
+
+        return $outcomes;
+    }
+
+    /**
+     * Short class name to file for every PHP file under a root.
+     *
+     * @return array<string, string>
+     */
+    private static function classFilesUnder(string $source): array
+    {
+        if (! is_dir($source)) {
+            return [];
+        }
+
+        $files = [];
+        /** @var iterable<SplFileInfo> $entries */
+        $entries = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS),
+        );
+        foreach ($entries as $entry) {
+            if ($entry->isFile() && $entry->getExtension() === 'php') {
+                $files[$entry->getBasename('.php')] = $entry->getPathname();
+            }
+        }
+
+        return $files;
     }
 
     /** Every rule class the package ships, wired or not. */

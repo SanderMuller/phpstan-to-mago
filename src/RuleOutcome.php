@@ -13,6 +13,11 @@ namespace Sandermuller\PhpstanToMago;
  *
  * `$registered` is a fact about the *package*, not about the rule: a rule a package ships but wires in no
  * neon of its own cannot run for anybody, so it belongs outside every coverage denominator.
+ *
+ * `$alsoEmittedBy` is a fact about the *other* rules: one package ships standalone rules and merged ones
+ * carrying the same checks, registers only the merged ones, and the standalone ones then refuse on their
+ * unwired constructor parameter. Six refusals in the census are that shape, and a refusal that is accurate
+ * about its own rule can still read as a gap when the check behind it already emits next door.
  */
 final readonly class RuleOutcome
 {
@@ -32,6 +37,8 @@ final readonly class RuleOutcome
     /**
      * @param self::EMIT|self::REFUSE|self::NEVER $verdict
      * @param list<string>                        $needs
+     * @param list<string>                        $alsoEmittedBy rules in the same package that already
+     *                                                          report an identifier this one reports
      */
     public function __construct(
         public string $name,
@@ -40,6 +47,7 @@ final readonly class RuleOutcome
         public ?string $reason,
         public bool $registered,
         public array $needs,
+        public array $alsoEmittedBy = [],
     ) {}
 
     public function emitted(): bool
