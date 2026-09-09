@@ -1411,7 +1411,7 @@ final class Support
      * The `getMethod()` call left in {@see attributeNames} is correct for the opposite reason: a declaration
      * hook fires on a method this class-like writes, so its own attributes are what that reads.
      */
-    public static function typeHasMethod(NodeAnalysisContext $context, ?Type $type, string $method): bool
+    public static function typeHasMethod(NodeAnalysisContext $context, ?Type $type, ?string $method): bool
     {
         return Types::typeHasMethod($context, $type, $method);
     }

@@ -461,8 +461,18 @@ final class Types
      * The `getMethod()` call left in {@see attributeNames} is correct for the opposite reason: a declaration
      * hook fires on a method this class-like writes, so its own attributes are what that reads.
      */
-    public static function typeHasMethod(NodeAnalysisContext $context, ?Type $type, string $method): bool
+    public static function typeHasMethod(NodeAnalysisContext $context, ?Type $type, ?string $method): bool
     {
+        // Nullable because the emitted call sites hand it `Support::textOf(Support::selector(..))`, which is
+        // `?string`. On every one of them a `selectorIsIdentifier()` guard runs first and an identifier always
+        // has text, so null is unreachable — but the guard tests a *separate* `selector()` call, so nothing
+        // can narrow across the two and PHPStan reported the pair as a possible `TypeError`. Answering false
+        // is the same answer the unreachable path would have wanted, and it makes the signature true of the
+        // call sites rather than of the argument someone hoped for.
+        if ($method === null) {
+            return false;
+        }
+
         $className = self::namedObjectName($type, false);
 
         // Through `@mixin` as well, because `$type->hasMethod()` is answered by the same core extension that
