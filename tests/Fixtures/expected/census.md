@@ -377,17 +377,15 @@ REFUSE  ClassDependencyTreeRule
         method call outside the vocabulary ->hasConstructor()
         needs-at-least: method call outside the vocabulary ->hasConstructor()
         needs-at-least: assignment value outside the vocabulary: getClass() of a config-bytes rather than of a class name
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
+        needs-at-least: access path outside the vocabulary: ->getParameters()
         needs-at-least: statement outside the vocabulary: Stmt_Expression
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 36 of 45 portable rules the package registers emit, 0 covered by the engine, 9 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 37 of 45 portable rules the package registers emit, 0 covered by the engine, 8 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ArgumentsNormalizer::reorderFuncArguments()
+        if statement that is not a single-statement guard, but 4 statements: Stmt_Expression + Stmt_Expression + Stmt_If + Stmt_Return
         needs-at-least: if statement that is not a single-statement guard, but 4 statements: Stmt_Expression + Stmt_Expression + Stmt_If + Stmt_Return
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getIterableValueType()
         needs-at-least: if statement that is not a single-statement guard, but a chain of 2 elseif
@@ -395,6 +393,7 @@ REFUSE  ArrayFilterStrictRule
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->toBoolean()
         needs-at-least: statement outside the vocabulary: Stmt_Break
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getNativeType()
+        needs-at-least: cannot read a type as a name
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_String
         needs-at-least: sprintf() format is not a literal or a class constant
         needs-at-least: guard body is neither `return []` nor `continue`, but Stmt_Expression
@@ -449,13 +448,7 @@ REFUSE  OverwriteVariablesWithForeachRule
         a definedness test, which the PHP target has no way to answer: a plugin receives span-keyed types and no definedness (carthage-software/mago#2334)
         needs-at-least: a definedness test, which the PHP target has no way to answer: a plugin receives span-keyed types and no definedness (carthage-software/mago#2334)
 EMIT    RequireParentConstructCallRule
-REFUSE  StrictFunctionCallsRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ArgumentsNormalizer::reorderFuncArguments()
-        needs-at-least: null comparison against Expr_Variable, which resolved to a hook-node
-        needs-at-least: function call outside the vocabulary array_key_exists()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
+EMIT    StrictFunctionCallsRule
 REFUSE  UselessCastRule
         no hook mapping for node type PhpParser\Node\Expr\Cast
         needs-at-least: no node predicate for instanceof PhpParser\Node\Expr\Cast\Void_ on a hook-node

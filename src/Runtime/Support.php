@@ -1927,7 +1927,7 @@ final class Support
     /** Whether every part of a type is a literal string — PHPStan's `Type::isLiteralString()->yes()`. */
     public static function typeIsLiteralString(?Type $type): bool
     {
-        return Types::typeIsLiteralString($type);
+        return LiteralTypes::typeIsLiteralString($type);
     }
 
     /**
@@ -2066,6 +2066,27 @@ final class Support
     public static function classProperties(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
         return Bodies::classProperties($context, $subject);
+    }
+
+    /**
+     * Whether any argument of this call is written with a parameter name.
+     *
+     * {@see Arguments::hasNamedArgument()} carries the measured bound and why a named call is refused rather
+     * than reordered.
+     */
+    public static function hasNamedArgument(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Arguments::hasNamedArgument($context, $subject);
+    }
+
+    /**
+     * Whether the inferred type is exactly the literal `true`.
+     *
+     * {@see LiteralTypes::typeIsLiteralTrue()} carries why the refinement is read as well as the kind.
+     */
+    public static function typeIsLiteralTrue(?Type $type): bool
+    {
+        return LiteralTypes::typeIsLiteralTrue($type);
     }
 
     public static function fileEndsWith(NodeAnalysisContext $context, string $suffix): bool

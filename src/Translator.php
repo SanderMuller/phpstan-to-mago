@@ -687,6 +687,57 @@ final readonly class Translator
     }
 
     /**
+     * Whether an expression is `new ConstantBooleanType(true)`, written inline or bound to a local first.
+     *
+     * `StrictFunctionCallsRule` binds it -- `$trueType = new ConstantBooleanType(true);` -- so recognising
+     * only the inline spelling would refuse the one rule in the corpus that writes this.
+     */
+    private function isConstantTrueType(Expr $expr): bool
+    {
+        if ($expr instanceof Variable && is_string($expr->name)) {
+            $local = $this->context->locals[$expr->name] ?? null;
+
+            return ($local['kind'] ?? null) === 'constant-true-type';
+        }
+
+        return $this->isConstantTrueConstruction($expr);
+    }
+
+    /** `new ConstantBooleanType(true)` exactly, with the literal argument read rather than assumed. */
+    private function isConstantTrueConstruction(Expr $expr): bool
+    {
+        if (! $expr instanceof New_
+            || ! $expr->class instanceof Name
+            || $this->resolveClassName($expr->class) !== 'PHPStan\\Type\\Constant\\ConstantBooleanType'
+        ) {
+            return false;
+        }
+
+        $argument = $expr->getArgs()[0] ?? null;
+
+        return $argument instanceof Arg
+            && $argument->value instanceof ConstFetch
+            && strtolower($argument->value->name->toString()) === 'true';
+    }
+
+    /**
+     * An argument position the rule computed, as a PHP expression, or null where it is not a number.
+     *
+     * Speculative by design: the caller has two spellings to try and falls through to its own refusal where
+     * neither holds, so a refusal raised here would name the wrong obstacle.
+     */
+    private function positionOperand(Expr $expr, int $line): ?string
+    {
+        try {
+            $resolved = $this->resolve($expr, $line);
+        } catch (Refusal) {
+            return null;
+        }
+
+        return in_array($resolved['kind'], ['number', 'int'], true) ? $this->operand($resolved) : null;
+    }
+
+    /**
      * `self::NAME` where NAME is a constant map the rule declares, as the plugin's own `self::NAME`.
      *
      * The constant is carried onto the generated plugin rather than resolved into a list, because a rule
@@ -696,8 +747,20 @@ final readonly class Translator
      */
     private function constantMapName(Expr $expr): ?string
     {
-        if (Transpiler::$target !== 'php'
-            || ! $expr instanceof ClassConstFetch
+        if (Transpiler::$target !== 'php') {
+            return null;
+        }
+
+        // `$this->table` where the property is a literal nothing reassigns, which
+        // {@see collectFixedProperties()} records into the same table a `const` map goes to. The two are the
+        // same fact written two ways, and the rule reads them identically.
+        if ($expr instanceof PropertyFetch && $this->isThis($expr->var)) {
+            $property = $this->identifierName($expr->name);
+
+            return $property !== null && isset($this->context->constantMaps[$property]) ? $property : null;
+        }
+
+        if (! $expr instanceof ClassConstFetch
             || ! $expr->class instanceof Name
             || ! in_array($expr->class->toString(), ['self', 'static'], true)
         ) {
@@ -1263,16 +1326,12 @@ final readonly class Translator
             return $this->operand($subject) . ' === null';
         }
 
-        // `$tag === null` on the head of a tag list, which is absent rather than empty. The helper answers
-        // null for a tag nobody wrote and the empty string for one written with no value, and the original
-        // tells those apart too: `array_shift()` on an empty list is null, and `(string) $tag->value` on a
-        // bare tag is ''.
-        if ($subject['kind'] === 'doc-tag') {
-            if (Transpiler::$target !== 'php') {
-                throw new Refusal('a docblock tag null test, which only the PHP target carries', $line);
-            }
-
-            return $this->operand($subject) . ' === null';
+        // Two handles whose "nothing found" the rule spells as null, lifted out together so this method
+        // stays under its complexity limit -- a new per-function baseline entry is the one thing the
+        // baseline discipline here forbids.
+        $absence = $this->absenceTest($subject, $line);
+        if ($absence !== null) {
+            return $absence;
         }
 
         if (! in_array($subject['kind'], ['bytes', 'class-name'], true)) {
@@ -1650,6 +1709,118 @@ final readonly class Translator
         foreach ($class->getConstants() as $const) {
             foreach ($const->consts as $c) {
                 $this->collectOneConstant((string) $c->name, $c->value, $c->getStartLine());
+            }
+        }
+
+        $this->collectFixedProperties($class);
+    }
+
+    /**
+     * `<handle> === null` for the two handles whose absent value the rule reads as null, or null for the rest.
+     *
+     * Both are cases where the original's absent value and the port's are the same fact spelled differently,
+     * which is why they fold into the null test rather than comparing against something the helper never
+     * returns.
+     *
+     * @param Descriptor $subject
+     */
+    private function absenceTest(array $subject, int $line): ?string
+    {
+        // `$node === null` on a normalised call, which is the guard the argument normaliser's failure is
+        // read through. It fails only where an argument is named -- all three of its null paths sit after
+        // the `$hasNamedArgs` early return, phar `:213` -- so the test becomes the named-argument question
+        // directly. Wider than the original by construction: PHPStan reorders a named call successfully
+        // where it can and reports on the reordered positions, and this skips every named call.
+        // {@see Runtime\Arguments::hasNamedArgument()} carries what that costs on a real corpus, which is
+        // nothing on the one measured and not nothing in principle.
+        if ($subject['kind'] === 'normalised-call') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('an argument-normalisation guard, which only the PHP target carries', $line);
+            }
+
+            $this->context->runtimeHelpers['Support'] = true;
+
+            return 'Support::hasNamedArgument($context, $node)';
+        }
+
+        // `$tag === null` on the head of a tag list, which is absent rather than empty. The helper answers
+        // null for a tag nobody wrote and the empty string for one written with no value, and the original
+        // tells those apart too: `array_shift()` on an empty list is null, and `(string) $tag->value` on a
+        // bare tag is ''.
+        if ($subject['kind'] === 'doc-tag') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a docblock tag null test, which only the PHP target carries', $line);
+            }
+
+            return $this->operand($subject) . ' === null';
+        }
+
+        return null;
+    }
+
+    /**
+     * Every property the constructor writes, by name, whether by assignment or by promotion.
+     *
+     * The half of {@see collectFixedProperties()} that decides what is *not* fixed. Split out because that
+     * method crossed the per-function complexity limit with it inline, and a new baseline entry is the one
+     * thing this repository's baseline discipline forbids -- a rising number on an existing entry is the cost
+     * of coverage, a new entry is a class or method that has stopped being readable.
+     *
+     * @return array<string, true>
+     */
+    private function propertiesTheConstructorSets(ClassLike $class): array
+    {
+        $constructor = $class->getMethod('__construct');
+        if (! $constructor instanceof ClassMethod) {
+            return [];
+        }
+
+        $assigned = [];
+        foreach ((new NodeFinder())->findInstanceOf([$constructor], Assign::class) as $assign) {
+            if ($assign->var instanceof PropertyFetch && $this->isThis($assign->var->var)) {
+                $name = $this->identifierName($assign->var->name);
+                if ($name !== null) {
+                    $assigned[$name] = true;
+                }
+            }
+        }
+
+        // A promoted parameter is an assignment PHP writes for the rule, so it counts the same way.
+        foreach ($constructor->params as $parameter) {
+            if ($parameter->flags !== 0 && $parameter->var instanceof Variable && is_string($parameter->var->name)) {
+                $assigned[$parameter->var->name] = true;
+            }
+        }
+
+        return $assigned;
+    }
+
+    /**
+     * A property initialised to a literal and never assigned again, which is a constant wearing `$this->`.
+     *
+     * `StrictFunctionCallsRule` writes its function-to-position table as `private array $functionArguments =
+     * ['in_array' => 2, ..]` where another rule would write `private const`. Nothing wires it, nothing
+     * assigns it, and the rule reads it exactly as it reads a constant map -- `array_key_exists($name,
+     * $this->functionArguments)` and then the value.
+     *
+     * **Only where the constructor cannot have changed it**, which is the whole condition: a property the
+     * constructor assigns is a configured value and belongs to the tables that carry a package's wiring,
+     * where a *default* the constructor never touches is fixed at transpile time. Reading a reassigned one
+     * as fixed would emit a plugin carrying the declaration's value while the original carries the
+     * constructor's.
+     */
+    private function collectFixedProperties(ClassLike $class): void
+    {
+        $assigned = $this->propertiesTheConstructorSets($class);
+
+        foreach ($class->getProperties() as $declaration) {
+            foreach ($declaration->props as $property) {
+                $name = (string) $property->name;
+                if (isset($assigned[$name]) || ! $property->default instanceof Array_) {
+                    continue;
+                }
+
+                $this->collectConstantArray($name, $property->default, $property->getStartLine());
             }
         }
     }
@@ -10424,6 +10595,30 @@ final readonly class Translator
             return;
         }
 
+        // `$position = $this->table[$key];` where the table is fixed at transpile time. Before the property
+        // paths below, which resolve the receiver first and answer `unknown local $this` -- a message about
+        // this transpiler's state rather than about the rule, and the reason the read was invisible here.
+        // `$trueType = new ConstantBooleanType(true);` — a constructed type the rule only ever asks a
+        // question *with*, so it binds as the question rather than as a value. Nothing renders it: the
+        // predicate that reads it folds the construction away entirely.
+        if ($assign->var instanceof Variable
+            && is_string($assign->var->name)
+            && $this->isConstantTrueConstruction($assign->expr)
+        ) {
+            $this->context->locals[$assign->var->name] = ['rust' => self::PHP_ONLY, 'kind' => 'constant-true-type'];
+
+            return;
+        }
+
+        if ($assign->var instanceof Variable && is_string($assign->var->name)) {
+            $mapped = $this->constantMapValue($assign->expr, $line);
+            if ($mapped !== null) {
+                $this->context->locals[$assign->var->name] = $mapped;
+
+                return;
+            }
+        }
+
         if (! $assign->var instanceof Variable || ! is_string($assign->var->name)) {
             throw new Refusal('assignment to something other than a simple local', $line);
         }
@@ -10925,6 +11120,14 @@ final readonly class Translator
             // than reporting: `count(..) !== 1` holds and the producer returns null.
             if ($kind === null && $subject['kind'] === 'expr' && Transpiler::$target === 'php') {
                 return 'Support::argumentList($context, ' . $this->operand($subject) . ')';
+            }
+
+            // The normalised call is the hook's own node: PHPStan's normaliser hands back the same call with
+            // its arguments in positional order, and on a positional call it hands back the arguments
+            // untouched. So its argument list is the hook's, and the reordering the name implies is the case
+            // the guard above it has already declined.
+            if ($subject['kind'] === 'normalised-call' && Transpiler::$target === 'php') {
+                return $this->argListPath($line);
             }
 
             if ($kind === null || ! in_array($kind, self::ARGUMENT_LIST_KINDS, true)) {
@@ -12159,6 +12362,21 @@ final readonly class Translator
             }
         }
 
+        // `(new ConstantBooleanType(true))->isSuperTypeOf($argType)->yes()` — "is this argument's type
+        // exactly `true`". The rule constructs the container to ask a question about the *input*, so the
+        // constructed side folds away and what is left is a predicate on the inferred type.
+        // {@see Runtime\Types::typeIsLiteralTrue()} carries why the refinement is read and not only the kind.
+        if ($name === 'isSuperTypeOf' && count($args) === 1 && $this->isConstantTrueType($inner->var)) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a literal-true type test, which only the PHP target carries', $line);
+            }
+
+            return $this->negateUnless(
+                $tail === 'yes',
+                $this->context->backend->call('type_is_literal_true', [$this->operand($this->resolve($args[0]->value, $line))]),
+            );
+        }
+
         // `$type->isCallable()->yes()` — whether the type can be called. Mago carries a callable as one of a
         // type's atomic parts, and a closure as a named object, which is what the helper reads.
         if ($name === 'isCallable' && $args === []) {
@@ -13024,6 +13242,36 @@ final readonly class Translator
                 $key = $this->operand($this->resolve($args[0]->value, $expr->getStartLine()));
 
                 return 'array_key_exists(' . $key . ', ' . $this->carryConstantMap($map) . ')';
+            }
+        }
+
+        // `array_key_exists(<n>, $node->getArgs())` — whether the call has an argument at that position,
+        // which is a count question rather than a key one. The rules asking write it both to guard a later
+        // read and to report a missing argument, so the answer has to be the position and not the arity of
+        // the whole list.
+        if ($name === 'array_key_exists' && count($args) === 2) {
+            // Speculative: the map test above writes the same function name with its table as the second
+            // argument, and resolving that eagerly answered `unknown local $this` -- a regression this
+            // branch caused on a shape that already worked.
+            $subject = null;
+            try {
+                $subject = $this->resolve($args[1]->value, $expr->getStartLine());
+            } catch (Refusal) {
+            }
+
+            // The position is a literal in one of the two tests the rule writes and a local read out of its
+            // own table in the other -- `array_key_exists(1, ..)` beside
+            // `array_key_exists($argumentPosition, ..)` -- so both spellings resolve here rather than only
+            // the written one.
+            $position = $args[0]->value instanceof Int_
+                ? (string) $args[0]->value->value
+                : $this->positionOperand($args[0]->value, $expr->getStartLine());
+            if ($subject !== null && $subject['kind'] === 'args' && $position !== null) {
+                if (Transpiler::$target !== 'php') {
+                    throw new Refusal('an argument-position test, which only the PHP target carries', $expr->getStartLine());
+                }
+
+                return $this->context->backend->call('arg_count', [$this->operand($subject)]) . ' > ' . $position;
             }
         }
 
@@ -15089,7 +15337,10 @@ final readonly class Translator
         // a position or reports a total that includes the node it started from.
         if ($expr instanceof Minus || $expr instanceof Plus) {
             $counted = $this->resolve($expr->left, $line);
-            if ($counted['kind'] !== 'int') {
+            // `number` alongside `int`, because a position read out of a fixed table is one:
+            // `$argumentPosition + 1` turns a zero-based index into the parameter number the message names.
+            // Both kinds render as a PHP integer expression, so the arithmetic is the same either way.
+            if (! in_array($counted['kind'], ['int', 'number'], true)) {
                 throw new Refusal("arithmetic on a {$counted['kind']} rather than on a count", $line);
             }
 
@@ -15617,6 +15868,25 @@ final readonly class Translator
             return ['rust' => 'context', 'kind' => 'class-reflection'];
         }
 
+        // PHPStan's argument normalisation, which on a positional call does nothing at all.
+        // `ArgumentsNormalizer::reorderArgs()` returns `array_values($callArgs)` before it reads the
+        // parameter list — phar `:214`, against `getParameters()` first touched at `:218` — so the acceptor
+        // `selectFromArgs()` builds is never consulted unless an argument is named. The selector is a handle
+        // nothing renders and the normaliser answers the call itself; the one shape where the normaliser has
+        // work to do is refused at the guard the rule writes next.
+        // {@see Runtime\Arguments::hasNamedArgument()} carries the measured bound.
+        if ($expr instanceof StaticCall && $expr->class instanceof Name) {
+            $helperClass = $this->resolveClassName($expr->class);
+            $called = $this->memberName($expr->name, $line);
+            if ($helperClass === 'PHPStan\\Reflection\\ParametersAcceptorSelector' && $called === 'selectFromArgs') {
+                return ['rust' => self::PHP_ONLY, 'kind' => 'acceptor', 'php' => 'node'];
+            }
+
+            if ($helperClass === 'PHPStan\\Analyser\\ArgumentsNormalizer' && $called === 'reorderFuncArguments') {
+                return ['rust' => self::PHP_ONLY, 'kind' => 'normalised-call', 'php' => 'node'];
+            }
+        }
+
         // `$classReflection->getResolvedPhpDoc()` — a handle nothing renders, consumed only by a call that
         // asks it for a tag. PHPStan's version *resolves*, merging what a class inherits; the plugin reads
         // the declaration's own docblock through `Support::docblockText()`, and the two answer the same
@@ -15783,6 +16053,15 @@ final readonly class Translator
 
         // `$array->items[0]` — an element by position. Null when the literal has fewer, which is what the
         // rule's own `instanceof ArrayItem` guard then tests.
+        // `$this->table[$key]` or `self::TABLE[$key]` where the table is fixed at transpile time. Reached
+        // from the assignment path as well as from the arithmetic one, because a rule that reads a position
+        // out of such a table binds it to a local first: `$argumentPosition =
+        // $this->functionArguments[$functionName];`.
+        $mapped = $this->constantMapValue($expr, $line);
+        if ($mapped !== null) {
+            return $mapped;
+        }
+
         if ($expr instanceof ArrayDimFetch && $expr->dim instanceof Int_) {
             $list = $this->resolve($expr->var, $line);
             if ($list['kind'] === 'array-items') {
@@ -15821,7 +16100,10 @@ final readonly class Translator
         if ($expr instanceof ArrayDimFetch && $expr->dim instanceof Expr) {
             $list = $this->resolve($expr->var, $line);
             $index = $this->resolve($expr->dim, $line);
-            if ($list['kind'] === 'args' && $index['kind'] === 'int') {
+            // `number` alongside `int` for the same reason the arithmetic above accepts it: a position read
+            // out of a fixed table is an index, and `$node->getArgs()[$argumentPosition]` is how a rule
+            // reaches the argument it was told to check.
+            if ($list['kind'] === 'args' && in_array($index['kind'], ['int', 'number'], true)) {
                 if (Transpiler::$target !== 'php') {
                     throw new Refusal('an argument read at a computed index, which only the PHP target carries', $line);
                 }
