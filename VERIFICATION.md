@@ -19911,3 +19911,66 @@ of 26, and the estimate it was chosen on did not hold"* above.
 `getComments()` on every node genuinely wants all 227, so the `HOOK_KINDS` sentence about registering every
 kind a type covers is met by a real rule rather than asserted — and any derivation has to refuse it rather
 than hand it a narrow target set.
+
+## Six of the 34 refusals are already covered, by the rule the package actually registers
+
+Not a capability finding — a denominator one. `hihaho/phpstan-rules` ships standalone rules and merged
+`Combined*` rules that carry the same checks, registers only the merged ones, and the standalone ones refuse
+on their unwired constructor parameter. Every check they perform already emits.
+
+Derived mechanically rather than by reading: extract each rule's identifiers from its own source and one hop
+through its traits and parent, then intersect the refused rules' identifiers with the emitting rules'.
+
+| refused, registered nowhere | identifier | already emitted by |
+|:--|:--|:--|
+| `NoUnsafeRequestDataRule` | `hihaho.validation.noUnsafeRequestData` | `CombinedMethodCallRule` |
+| `NoUnsafeRequestFacadeRule` | `hihaho.validation.noUnsafeRequestFacade` | `CombinedStaticCallRule` |
+| `NoUnsafeRequestHelperRule` | `hihaho.validation.noUnsafeRequestHelper` | `CombinedFuncCallRule` |
+| `PositionalFlagArgumentMethodCallRule` | `hihaho.conventions.positionalFlagArgument` | `CombinedMethodCallRule` |
+| `PositionalFlagArgumentStaticCallRule` | `hihaho.conventions.positionalFlagArgument` | `CombinedStaticCallRule` |
+| `UnvalidatedFormRequestFieldRule` | `hihaho.validation.unvalidatedFormRequestField` | `CombinedMethodCallRule` |
+
+### A shared identifier is not equivalent coverage, so it was checked four levels down
+
+Each step found something the previous one could not have ruled out:
+
+1. **Same `getNodeType()`** for all six pairs — `MethodCall`, `StaticCall`, `FuncCall` respectively.
+2. **Same trait helper called.** Two pairs pass byte-identical arguments; four pass `$methodName` where the
+   standalone passes `$node->name->name`. Read rather than assumed: `CombinedMethodCallRule:86` and
+   `CombinedStaticCallRule:92` both bind `$methodName = $node->name->name;`.
+3. **An extra guard in the merged rule, which is where an overclaim would have lived.**
+   `CombinedMethodCallRule:88` rejects any method name outside `$quickRejectLookup` before three of its
+   checks. A narrowing the standalone rules do not have would mean the merged rule reports *less*.
+4. **The guard narrows nothing.** `quickRejectLookup` is `unsafeMethodsLookup + fieldAccessorsLookup +
+   METHOD_DEBUG_STATEMENTS` (`:57`), and each helper behind it opens with membership in the same lookup —
+   `ResolvesFormRequestRuleKeys:91` and `DetectsUnsafeRequestData:38`. So it can only reject a name the helper
+   would reject anyway. The positional-flag check runs *before* the guard (`:81`), with a comment saying it is
+   deliberately not name-gated.
+
+Step 3 is the one worth keeping: identifier plus node type plus the same helper name would have read as
+settled, and the guard was two lines further on.
+
+### One near-miss on the way, on a neon rather than on code
+
+`extension.neon` wires `firstPartyNamespaces` on exactly four services, and there are exactly four
+`PositionalFlagArgument*` rules. I read that as the package wiring all four and concluded the refusal was a
+defect in the wiring reader. Reading the `class:` lines instead: the four are
+`CombinedStaticCallRule`, `CombinedMethodCallRule`, `PositionalFlagArgumentConstructorRule` and
+`PositionalFlagArgumentNullsafeMethodCallRule`. Two of the four are not `PositionalFlagArgument*` at all, and
+the census was right.
+
+**A count that matches is not a mapping** — the same occurrence-versus-semantics error a peer session had
+described one message earlier for `instanceof` polarity, repeated immediately on a configuration file.
+
+### Where this belongs, which is not the refusal
+
+The refusal each of the six raises is accurate: the parameter really is unwired and the rule really is
+registered nowhere. What is missing is beside it, and the precedent is
+`Transpiler::refuseASubsumedCollector()` — added because five collectors were "refused on whichever construct
+their bodies tripped on first", each reading as a gap to close.
+
+But that one works from a static table, and this cannot: the transpiler reads one rule at a time and cannot
+know that a sibling reports the same identifier. `PackageCoverage` sees every rule in a package, so the note
+belongs in the census rather than in the refusal — which also leaves the refusal text alone.
+
+Emits no rule. It removes six false gaps from a list of 34, which is the list that decides where to look next.
