@@ -52,11 +52,17 @@ final class NoTwoRulesShareAnOutputNameTest extends TestCase
 
         /** @var array<string, list<string>> $declared */
         $declared = [];
+
+        /** @var array<string, int> $perPath rule classes found under each configured path */
+        $perPath = [];
+
         foreach (self::PATHS as $path) {
             $absolute = $root . '/' . $path;
             if (! is_dir($absolute)) {
                 continue;
             }
+
+            $perPath[$path] = 0;
 
             foreach ($this->phpFilesUnder($absolute) as $file) {
                 $source = (string) file_get_contents($file);
@@ -69,10 +75,33 @@ final class NoTwoRulesShareAnOutputNameTest extends TestCase
                 }
 
                 $declared[$name[1]][] = str_replace($root . '/', '', $file);
+                ++$perPath[$path];
             }
         }
 
         $this->assertNotSame([], $declared, 'No rule classes were found, so this is asserting nothing.');
+
+        // The reject side, asserted rather than printed. A filter's rejections produce no row, no count and
+        // no trace, so an instrument that silently narrows returns a clean, smaller, confident answer — which
+        // is what the first version of this test did: a `/[Tt]ests?/` exclusion meant for a vendor package's
+        // own test directory swallowed `tests/Fixtures/Rules` whole, and the test passed green having read
+        // one of the two colliding files.
+        //
+        // A path contributing zero rule classes is either misconfigured or excluded by a pattern that was
+        // not meant to reach it. Either way the scan is smaller than it claims and nothing else would say so.
+        $empty = array_keys(array_filter($perPath, static fn (int $found): bool => $found === 0));
+
+        $this->assertSame(
+            [],
+            $empty,
+            "These configured paths contributed no rule classes, so the scan is narrower than it claims:\n  "
+            . implode("\n  ", $empty)
+            . "\n\nEither the path is wrong or a filter in this test excluded it. The first version of this "
+            . 'test excluded `tests/Fixtures/Rules` for having "tests" in its path and passed green, which is '
+            . 'why this assertion exists: a rejection is the only outcome that leaves no evidence it '
+            . "happened.\n\nFound per path: "
+            . json_encode($perPath),
+        );
 
         $collisions = array_filter($declared, static fn (array $files): bool => count($files) > 1);
 

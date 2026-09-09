@@ -19182,3 +19182,50 @@ Excused in code so a *new* collision fails, which a vendor update can introduce 
 repository. Mutation-checked by removing the exclusion, which fails on the known pair. An accepted-collision
 *comment* would have had no expected value and could not have done either — the same reason the aggregate
 exemption became an assertion.
+
+### A filter's reject side is the part nobody tests
+
+The four instances above look like four different mistakes. A peer found the property they share, and it is
+more specific than *print more than the question needs*:
+
+| instrument | what went wrong | which side |
+|:--|:--|:--|
+| census-marker filter | matched one phrasing of five | four phrasings **rejected** |
+| anchored `^REFUSE` regex | dropped the annotated rows | **rejected** by the anchor |
+| `^[A-Z]+ ` enumeration | admitted the file's prose | three non-rows wrongly **kept** |
+| the collision guard | excluded a corpus for "tests" | **rejected** by a path pattern |
+
+Three of four are things a filter threw away, and in every case the instrument reported only what it
+retained. **A rejection produces no row, no count and no trace** — so a filter that drops the informative
+half returns a clean, confident, *smaller* answer, and nothing about the output is wrong.
+
+You assert that a check finds what it should find. You do not assert what it declined to look at.
+
+So the column to print is not scope in general but **the excluded set, counted and preferably named.** Their
+own honest bound, checked case by case: it catches three of the four. It does not reach the census-marker
+filter, because there a large reject set was legitimately expected — about thirty unmatched `REFUSE` rows —
+and the defect lived *inside* it. **The rule catches a filter that silently narrows, not one whose rejects
+are numerous by design.**
+
+#### Applied, and mutation-checked against the original bug
+
+`NoTwoRulesShareAnOutputNameTest` now counts the rule classes found under each configured path and fails when
+any contributes zero. Restoring its original over-broad `/[Tt]ests?/` exclusion — the actual historical
+defect, not an invented one — fails it with the excluded corpus named:
+
+    These configured paths contributed no rule classes, so the scan is narrower than it claims:
+      tests/Fixtures/Rules
+
+An assertion rather than a printed column, for the reason the census sum beat a `uniq -c` listing: a printed
+number still needs somebody to read it and notice.
+
+#### And the check that has worked every time does not scale
+
+What caught the fourth instance was a **known positive** — I knew the collision existed and the guard said
+otherwise. That is the same check behind a peer's trustworthy 1-of-213 survey and the reason their first zero
+was not, and on this class it is the only thing that has worked every single time either session applied it.
+
+Its limit is worth recording beside it: **it requires knowing an answer in advance**, so it works exactly
+when guarding something already found and not at all on a fresh survey. Which is why looking twice at a green
+result was available here and would not have been on a first scan — and why the reject-side assertion matters,
+being the one countermeasure that needs no answer in hand.
