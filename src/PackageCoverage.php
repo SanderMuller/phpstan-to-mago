@@ -54,6 +54,9 @@ final readonly class PackageCoverage
             $name = basename($file, '.php');
             [$verdict, $reason] = self::verdict($file);
 
+            // One pass, not one per field: `needs()` transpiles the rule to collect them.
+            $survey = $verdict === RuleOutcome::REFUSE ? self::needs($file) : ['needs' => [], 'suppressed' => 0];
+
             $outcomes[$name] = new RuleOutcome(
                 name: $name,
                 file: $file,
@@ -63,7 +66,8 @@ final readonly class PackageCoverage
                 // No `needs-at-least:` under an unportable one. That list is what a rule's body would take, and this
                 // rule's body is not the obstacle — collecting it would invite exactly the sizing the verdict
                 // exists to prevent.
-                needs: $verdict === RuleOutcome::REFUSE ? self::needs($file) : [],
+                needs: $survey['needs'],
+                suppressedNeeds: $survey['suppressed'],
             );
         }
 
@@ -150,6 +154,10 @@ final readonly class PackageCoverage
                 registered: $outcome->registered,
                 needs: $outcome->needs,
                 alsoEmittedBy: $names,
+                // Carried, not defaulted: this rebuild copies every field, and letting the count fall back
+                // to its default here would reset the shortfall to zero for every rule the subsumption pass
+                // touches -- silently, since zero is also the honest value for a rule that suppressed none.
+                suppressedNeeds: $outcome->suppressedNeeds,
             );
         }
 
@@ -284,7 +292,16 @@ final readonly class PackageCoverage
      * statements it encloses are read in its place, and the next one is translated. So obstacles in
      * different statements all appear, and a second obstacle inside one *expression* does not.
      *
-     * @return list<string>
+     * **The shortfall is reported, not only the floor.** Two labels are dropped above as artefacts, and
+     * where they are dropped they stand for work this pass cannot see: an unbound loop variable makes every
+     * statement in the body refuse with `unknown local $x`, so a rule whose whole body sits in one loop
+     * shows one visible need and hides the rest. Measured on
+     * `MatchingTypeInSwitchCaseConditionRule` -- three raw needs, two suppressed, one printed, and the one
+     * printed reads as "one thing away" when the rule in fact wants five capabilities. So `suppressed`
+     * travels beside the list and the census prints it, because three separate rankings of this backlog were
+     * built on the floor as though it were the total.
+     *
+     * @return array{needs: list<string>, suppressed: int}
      */
     private static function needs(string $file): array
     {
@@ -321,11 +338,13 @@ final readonly class PackageCoverage
             // error in PHP, so no rule holds one; the message means `inLoop` is false, which after a
             // `foreach` refuses at its iterable it always is. Measured: the phrase appears nowhere in the
             // census this descent was added to, and 28 times in the one it produced.
+            $before = count($needs);
             $needs = array_filter(
                 $needs,
                 static fn (string $need): bool => ! str_contains($need, 'unknown local $')
                     && ! str_contains($need, 'outside a loop'),
             );
+            $suppressed = $before - count($needs);
 
             // The refusal that *ended* the pass, and only where the pass stepped over nothing.
             //
@@ -348,10 +367,13 @@ final readonly class PackageCoverage
             // First sentence only. A needs entry is a *label* for sizing, and one refusal's full text runs to
             // a paragraph — repeated across the 27 rules that share it, a report would be mostly that
             // paragraph. The line above it still carries the whole reason for whichever rule it stops.
-            return array_values(array_map(
-                static fn (string $need): string => explode('. ', $need)[0],
-                $needs,
-            ));
+            return [
+                'needs' => array_values(array_map(
+                    static fn (string $need): string => explode('. ', $need)[0],
+                    $needs,
+                )),
+                'suppressed' => $suppressed,
+            ];
         } finally {
             Transpiler::$survey = $survey;
             Transpiler::$collectNeeds = false;

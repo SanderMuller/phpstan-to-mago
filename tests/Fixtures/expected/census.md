@@ -134,6 +134,7 @@ REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
         needs-at-least: assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
         needs-at-least: a report line that is not a node's own
+        floor: 5 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    AvoidAnyExpectsRule
 EMIT    AvoidFeatureSetAttributeInRectorRule
 EMIT    CheckRequiredInterfaceInContractNamespaceRule
@@ -147,6 +148,7 @@ REFUSE  ForbiddenFuncCallRule
         assignment value outside the vocabulary: $forbiddenFunctions is wired by 2 neons the package ships and they disagree — config/configurable-rules.neon and config/rector-rules.neon — so which value a consumer gets depends on which config file it includes, and there is no single one for a generated plugin to carry
         needs-at-least: assignment value outside the vocabulary: $forbiddenFunctions is wired by 2 neons the package ships and they disagree — config/configurable-rules.neon and config/rector-rules.neon — so which value a consumer gets depends on which config file it includes, and there is no single one for a generated plugin to carry
         needs-at-least: $errorMessage is not a message built in this rule
+        floor: 3 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    ForbiddenMultipleClassLikeInOneFileRule
 REFUSE  ForbiddenNewArgumentRule  (the package registers it nowhere)
         $forbiddenTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Complexity\ForbiddenNewArgumentRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
@@ -158,6 +160,7 @@ REFUSE  ForbiddenNodeRule
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->standard->prettyPrint()
         needs-at-least: $errorMessage is not a message built in this rule
+        floor: 2 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    ForbiddenStaticClassConstFetchRule
 EMIT    ForeachCeptionRule
 EMIT    FormTypeClassNameRule
@@ -175,6 +178,7 @@ REFUSE  NewWithFollowingSettersCollector
         needs-at-least: if statement that is not a single-statement guard, but 4 statements: Stmt_Expression + Stmt_If + Stmt_If + Stmt_Expression
         needs-at-least: assignment to something other than a simple local
         needs-at-least: empty-array comparison against a accumulator
+        floor: 5 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    NoAbstractControllerConstructorRule
 EMIT    NoArrayMapWithArrayCallableRule
 EMIT    NoAssertFuncCallInTestsRule
@@ -201,6 +205,7 @@ REFUSE  NoGetRepositoryOnServiceRepositoryEntityRule
         access path outside the vocabulary: $this->repositoryClassResolver->resolveFromEntityClass()
         needs-at-least: access path outside the vocabulary: $this->repositoryClassResolver->resolveFromEntityClass()
         needs-at-least: $errorMessage is not a message built in this rule
+        floor: 1 further refusal suppressed as an artefact of a stepped-over binding, so the list above is a floor
 EMIT    NoGetRepositoryOutsideServiceRule
 EMIT    NoGlobalConstRule
 EMIT    NoInstanceOfStaticReflectionRule
@@ -209,6 +214,7 @@ REFUSE  NoIntegerRefactorReturnRule
         needs-at-least: early return from a helper that is not a boolean literal
         needs-at-least: statement outside the vocabulary: Stmt_Expression
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: array_diff()
+        floor: 1 further refusal suppressed as an artefact of a stepped-over binding, so the list above is a floor
 REFUSE  NoJustPropertyAssignRule
         assignment value outside the vocabulary: access path outside the vocabulary: $this->phpDocResolver->resolve()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->phpDocResolver->resolve()
@@ -238,6 +244,7 @@ EMIT    NoRoutingPrefixRule
 REFUSE  NoServiceAutowireDuplicateRule
         assignment value outside the vocabulary: a search filter that needs a bind-arg statement, whose position decides the answer: it would run before the guards written above it
         needs-at-least: assignment value outside the vocabulary: a search filter that needs a bind-arg statement, whose position decides the answer: it would run before the guards written above it
+        floor: 4 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    NoServiceSameNameSetClassRule
 EMIT    NoSetClassServiceDuplicationRule
 EMIT    NoStringInGetSubscribedEventsRule
@@ -246,6 +253,7 @@ REFUSE  NoTestMocksRule  (the package registers it nowhere)
         needs-at-least: access path outside the vocabulary: Expr_New
         needs-at-least: access path outside the vocabulary: ->getClassName()
         needs-at-least: $errorMessage is not a message built in this rule
+        floor: 1 further refusal suppressed as an artefact of a stepped-over binding, so the list above is a floor
 EMIT    NoValueObjectInServiceConstructorRule  (the package registers it nowhere)
 EMIT    NoWithOnStubRule
 REFUSE  ParamNameToTypeConventionRule  (the package registers it nowhere)
@@ -256,10 +264,12 @@ REFUSE  ParamNameToTypeConventionRule  (the package registers it nowhere)
         needs-at-least: assignment value outside the vocabulary: no PHP navigation for node.var (kind expr) on a Param node
         needs-at-least: assignment value outside the vocabulary: $paramNamesToTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Convention\ParamNameToTypeConventionRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
         needs-at-least: $errorMessage is not a message built in this rule
+        floor: 2 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 REFUSE  PhpUpgradeDowngradeRegisteredInSetRule
         if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Return
         needs-at-least: if statement that is not a single-statement guard, but 3 statements: Stmt_Expression + Stmt_If + Stmt_Return
         needs-at-least: $errorMessage is not a message built in this rule
+        floor: 3 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    PhpUpgradeImplementsMinPhpVersionInterfaceRule
 EMIT    PreferAutowireAttributeOverConfigParamRule
 EMIT    PreferDirectIsNameRule
@@ -279,6 +289,7 @@ REFUSE  RectorCheaperGuardsFirstRule
         needs-at-least: statement outside the vocabulary: Stmt_For
         needs-at-least: if statement that is not a single-statement guard, but 2 statements: Stmt_If + Stmt_Continue
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Array
+        floor: 5 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    RequireAtLeastOneRule
 EMIT    RequireAttributeNameRule
 EMIT    RequireAttributeNamespaceRule
@@ -290,6 +301,7 @@ REFUSE  RequireRouteNameToGenerateControllerRouteRule
         assignment value outside the vocabulary: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
         needs-at-least: assignment value outside the vocabulary: assignment value outside the vocabulary: access path outside the vocabulary: ->getNativeReflection()
         needs-at-least: guard body is neither `return []` nor `continue`, but Stmt_Return
+        floor: 2 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    RequireServiceRepositoryParentRule  (the package registers it nowhere)
 EMIT    RequireUniqueEnumConstantRule
 EMIT    RequiredOnlyInAbstractRule
@@ -299,6 +311,7 @@ REFUSE  SeeAnnotationToTestRule
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->phpDocResolver->resolve()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getDeprecatedTag()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->seePhpDocTagNodesFinder->find()
+        floor: 2 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    ServicesExcludedDirectoryMustExistRule
 EMIT    SingleArgEventDispatchRule
 EMIT    SingleRequiredMethodRule
@@ -379,6 +392,7 @@ REFUSE  ClassDependencyTreeRule
         needs-at-least: assignment value outside the vocabulary: getClass() of a config-bytes rather than of a class name
         needs-at-least: access path outside the vocabulary: ->getParameters()
         needs-at-least: statement outside the vocabulary: Stmt_Expression
+        floor: 3 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
@@ -398,6 +412,7 @@ REFUSE  ArrayFilterStrictRule
         needs-at-least: sprintf() format is not a literal or a class constant
         needs-at-least: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs-at-least: statement outside the vocabulary: Stmt_Expression
+        floor: 3 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    BooleanInBooleanAndRule
 EMIT    BooleanInBooleanNotRule
 EMIT    BooleanInBooleanOrRule
@@ -411,6 +426,7 @@ REFUSE  ClosureUsesThisRule
         needs-at-least: condition outside the vocabulary: ->static
         needs-at-least: method call outside the vocabulary ->isInClosureBind()
         needs-at-least: no iteration mapped for ->uses, which resolved to a expr
+        floor: 2 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    DisallowedBacktickRule
 EMIT    DisallowedEmptyRule
 REFUSE  DisallowedImplicitArrayCreationRule
@@ -429,6 +445,7 @@ EMIT    IllegalConstructorStaticCallRule
 REFUSE  MatchingTypeInSwitchCaseConditionRule
         no mapping for ->cases on a hook-node
         needs-at-least: no iteration mapped for ->cases, which resolved to a expr
+        floor: 2 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    OperandInArithmeticPostDecrementRule
 EMIT    OperandInArithmeticPostIncrementRule
 EMIT    OperandInArithmeticPreDecrementRule
@@ -444,9 +461,11 @@ EMIT    OperandsInArithmeticSubtractionRule
 REFUSE  OverwriteVariablesWithForLoopInitRule
         no mapping for ->init on a hook-node
         needs-at-least: no iteration mapped for ->init, which resolved to a expr
+        floor: 3 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 REFUSE  OverwriteVariablesWithForeachRule
         a definedness test, which the PHP target has no way to answer: a plugin receives span-keyed types and no definedness (carthage-software/mago#2334)
         needs-at-least: a definedness test, which the PHP target has no way to answer: a plugin receives span-keyed types and no definedness (carthage-software/mago#2334)
+        floor: 1 further refusal suppressed as an artefact of a stepped-over binding, so the list above is a floor
 EMIT    RequireParentConstructCallRule
 EMIT    StrictFunctionCallsRule
 REFUSE  UselessCastRule
@@ -460,6 +479,7 @@ EMIT    VariableMethodCallableRule
 REFUSE  VariablePropertyFetchRule
         $universalObjectCratesClasses is wired to the container parameter %universalObjectCratesClasses%, which the package's own neon does not declare — so there is no value to carry, and the name of the parameter is not one. Its value is a function of which PHPStan extensions the analysed project installs, each contributing to it, so there is nothing a plugin could read and nothing correct to carry (see Vocabulary::CORE_PARAMETER_DEFAULTS for the measurement)
         needs-at-least: $universalObjectCratesClasses is wired to the container parameter %universalObjectCratesClasses%, which the package's own neon does not declare — so there is no value to carry, and the name of the parameter is not one
+        floor: 3 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 EMIT    VariableStaticMethodCallRule
 EMIT    VariableStaticMethodCallableRule
 EMIT    VariableStaticPropertyFetchRule
@@ -483,6 +503,7 @@ REFUSE  AssertSameWithCountRule
 REFUSE  AttributeRequiresPhpVersionRule
         assignment value outside the vocabulary: access path outside the vocabulary: $this->testMethodsHelper->getTestMethodReflection()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->testMethodsHelper->getTestMethodReflection()
+        floor: 1 further refusal suppressed as an artefact of a stepped-over binding, so the list above is a floor
 REFUSE  ClassAttributeRequiresPhpVersionRule
         could not find the reported message
         needs-at-least: could not find the reported message
@@ -494,6 +515,7 @@ REFUSE  ClassMethodCoversExistsRule
         needs-at-least: assignment value outside the vocabulary: $fileTypeMapper is a constructor parameter the package's neon does not wire for PHPStan\Rules\PHPUnit\ClassMethodCoversExistsRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
         needs-at-least: no iteration mapped for Expr_Variable, which resolved to a doc-tags
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: array_merge()
+        floor: 2 further refusals suppressed as artefacts of a stepped-over binding, so the list above is a floor
 NEVER   DataProviderDataRule
         this rule reports nothing: its whole output is $scope->invokeNodeCallback(), which synthesises a node with inferred argument types and hands it back to PHPStan's own analysis so that *other* rules fire on it. An analyzer plugin's only output is report(), and there is no equivalent of feeding a node back into Mago, so no node hook and no vocabulary entry can make this one portable
 REFUSE  DataProviderDeclarationRule

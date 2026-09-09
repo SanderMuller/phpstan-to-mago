@@ -39,6 +39,9 @@ final readonly class RuleOutcome
      * @param list<string>                        $needs
      * @param list<string>                        $alsoEmittedBy rules in the same package that already
      *                                                          report an identifier this one reports
+     * @param int                                 $suppressedNeeds refusals dropped as artefacts of a
+     *                                                             stepped-over binding, which is how far
+     *                                                             `$needs` falls short of the rule's work
      */
     public function __construct(
         public string $name,
@@ -48,6 +51,7 @@ final readonly class RuleOutcome
         public bool $registered,
         public array $needs,
         public array $alsoEmittedBy = [],
+        public int $suppressedNeeds = 0,
     ) {}
 
     public function emitted(): bool
