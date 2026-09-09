@@ -20668,3 +20668,47 @@ to this checkout can tell whether it reports correctly on a covers annotation no
 The same fact explains its absence from the yield table. A rule that fires zero times across 3630 files
 because the corpus holds nothing it looks at is not a rule worth nothing — it is a rule this corpus cannot
 measure, and those two readings need telling apart wherever a zero is quoted.
+
+## 70 message divergences on 270 files, in a category the differential's total does not count
+
+The differential's summary reads `agree 238, only-original 9, only-port 0`. It also prints, and does not
+count, a fourth category: **`same site, different message` — 70 of them.** Both engines report at the same
+line and the text differs, so neither side is missing a finding and the total says nothing is wrong.
+
+That is this log's own aggregate rule turned around. *"Ask what an aggregate does not print before reading a
+zero off it"* was written about a category the report omitted; here the report prints the category and the
+*total* omits it, which is harder to notice because the detail is on screen.
+
+Classified mechanically rather than by eye:
+
+| count | mechanism | example |
+|--:|:--|:--|
+| ~49 | a refinement dropped | `int<0, 16>` renders as `int`; `array<PhpParser\Comment>` as `array` |
+| ~18 | union member order | `int\|false` against `false\|int` |
+| 3 | a `$this` type flattened | `$this(PhpParser\PrettyPrinterAbstract)` against the bare class name |
+| 1 | a genuine inference difference | `list<array<Node>\|int\|string>\|null` against `list<never>\|null` |
+
+**So 66 of 70 are rendering rather than reasoning**, in `Runtime\Describe`, and they land on every rule that
+interpolates a described type — 22 of which emit. One is an engine disagreement and belongs to a different
+investigation.
+
+### Why this outranks another rule emitting
+
+*The emitted output is the contract.* A message divergence is not cosmetic: `ignoreErrors` matches on message
+text, so a consumer suppressing `Only booleans are allowed in &&, int<0, 16> given on the left side.` is not
+suppressing what the port emits. And the message is one of the two things a reader checks a port against —
+which is the reason `reportedIdentifierIn()` reads identifiers out of the source rather than a table.
+
+**The fires gate cannot see this.** It compares line and message over one example pair per rule, so it catches
+a rendering defect only where a hand-written pair happens to produce a refined type, an ordered union or a
+`$this`. None of the 22 rules' pairs does. That is the same structural blindness that let
+`RequireParentConstructCallRule` ship an over-report earlier today, and it is the second finding in one
+session that the gate passed and the differential caught.
+
+### What is not yet established
+
+The direction of each fix. PHPStan's union order is *a* defined order and I have not derived which — the 18
+rows show `int|false` and `list<..>|null`, so it is not alphabetical and not source order. Rendering
+`int<0, 16>` needs mago's integer-range refinement read from the structure rather than from `__toString()`,
+which is the lossy rendering this log already records for scalars. Both are readable from the SDK; neither is
+measured yet, and quoting a fix as available would be the mistake this entry is about.
