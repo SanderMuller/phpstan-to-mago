@@ -1268,8 +1268,25 @@ final class Vocabulary
      * A `%parameter%` the rule's own package does not declare normally has no value this transpiler can read,
      * and the fallback would take the parameter's *name* as the default — the comment at the refusal in
      * `Transpiler` records `universalObjectCratesClasses` nearly producing a rule that iterated the
-     * characters of its own parameter name. That case stays refused: PHPStan builds the list at analysis time
-     * and there is no default to carry.
+     * characters of its own parameter name.
+     *
+     * **That case stays refused, and not because the parameter has no written default.** It has one:
+     * `conf/config.neon` inside the installed phar declares `universalObjectCratesClasses: [stdClass]`, and
+     * `UniversalObjectCratesClassReflectionExtension` consumes it verbatim through an autowired parameter. So
+     * a reader checking the declaration alone concludes the default is carryable — this docblock said
+     * "PHPStan builds the list at analysis time", which is loose enough to invite exactly that check, and one
+     * session spent an hour on it.
+     *
+     * What settles it is the *injected* value beside the declared one. A probe rule taking the parameter and
+     * printing it, run in this repository, answers
+     * `[stdClass, Pest\Support\HigherOrderTapProxy, Pest\Expectation]` — the extra two come from pest's
+     * own PHPStan extension, auto-included here. PHPStan assembles the list from every installed extension's
+     * neon when it builds the container, so it is a fact about the analysed *project* and not a default.
+     *
+     * And the direction matters: `VariablePropertyFetchRule` *suppresses* on a crate, so a plugin carrying
+     * `[stdClass]` would suppress less than PHPStan and report where PHPStan is quiet. Reading the
+     * declaration was a correct instrument answering a narrower question than the one being decided — the
+     * `PHPVersion::$id` shape, and only a probe puts the two numbers side by side.
      *
      * A feature toggle is different, and only because its default is written down. Read out of the phar
      * rather than assumed: `conf/config.neon` declares `featureToggles: bleedingEdge: false` and

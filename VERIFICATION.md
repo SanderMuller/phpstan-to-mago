@@ -16770,3 +16770,71 @@ suite 315 of 315; PHPStan 0 with the baseline still 13 entries and `collectConfi
 than baselined when it crossed the method limit; Rector 0; Pint clean; census regenerated after reading its
 three-line diff. The engine group was not re-run and does not need to be: the emitted trees are byte-identical
 and `src/Runtime/` is untouched, so its inputs did not change.
+
+### The declared default was right and the answer was still no, and a probe is what said so
+
+Still no emit, and this one is worth the entry because I nearly overturned a correct decision on the strength
+of a correct reading.
+
+`VariablePropertyFetchRule` is the *only* line in the census refused for an undeclared container parameter —
+re-derived, not assumed: every `%parameter%` referenced by any corpus neon, checked against what each package
+declares, gives exactly one. Its refusal says `%universalObjectCratesClasses%` is one "the package's own neon
+does not declare — so there is no value to carry", and `Vocabulary::CORE_PARAMETER_DEFAULTS`, which exists for
+precisely this shape, said the case "stays refused: PHPStan builds the list at analysis time and there is no
+default to carry."
+
+**There is a default, written down, in the same file the table's one existing row was read from.**
+`conf/config.neon` inside the installed phar declares `universalObjectCratesClasses: [stdClass]`, and
+`UniversalObjectCratesClassReflectionExtension` consumes it verbatim through
+`#[AutowiredParameter('%universalObjectCratesClasses%')]` — no augmentation in the extension. By the table's
+own stated standard ("only because its default is written down. Read out of the phar rather than assumed")
+this row qualified, and I was one edit from adding it.
+
+#### What settled it was the injected value beside the declared one
+
+A probe rule taking the parameter and printing it, run in this repository:
+
+    PROBE crates=[stdClass, Pest\Support\HigherOrderTapProxy, Pest\Expectation]
+
+The extra two come from **pest's own PHPStan extension**, auto-included here. PHPStan assembles the list when
+it builds the container, from every installed extension that contributes to it. So it is a fact about the
+analysed *project*, not a default — and a different project has a different list.
+
+And the direction is the bad one. The rule *suppresses* on a crate, so a plugin carrying `[stdClass]` would
+suppress less than PHPStan and report where PHPStan is quiet.
+
+**This is the `PHPVersion::$id` shape exactly.** Reading the declaration was a correct instrument answering a
+narrower question than the one being decided — "does this parameter have a written default?" rather than "is
+the written default the value PHPStan uses?" — and nothing about `[stdClass]` looks wrong until the injected
+list sits next to it. The previous session's *conclusion* was right; its stated *reason* was loose enough to
+invite the check that appears to refute it, which is why the docblock now carries the probe output rather than
+the phrase. The refusal message carries the cause too.
+
+#### Two more rules dead, and the category query returns two rather than many
+
+The peer measured both, and both are the same shape for the third consecutive time: **the listed need is the
+survivable one and the unlisted need is fatal.**
+
+- **`AssertSameWithCountRule`** — listed need `->yes()`, which is survivable, since a single `->yes()` collapses
+  to a bool and mago gives booleans. The unlisted need is `isSuperTypeOf($mode)->result->or($countedType->
+  getIterableValueType()->isArray()->negate())`, and mago's `Type` has *no predicates at all* — its whole
+  public surface is `$atomicTypes`, `$flags`, `withFlags()`, four literal accessors, `encode()`,
+  `isRequestReference()` and `__toString()`, while `TypeComparator` returns plain `bool`. Three-valued logic,
+  its composition, `getIterableValueType()` and `isArray()` are four absences, not one.
+- **`MatchingTypeInSwitchCaseConditionRule`** — I had this filed as a possible message-fidelity problem. It is
+  a capability absence. `Type` has no verbosity concept: `__toString()` is the only render, and it is lossier
+  than *both* PHPStan levels. Measured over eight shapes, `value()` and `typeOnly()` differ on four, so one
+  render cannot serve a message that uses both; and on `class-string<Obj>`, `list<int>` and
+  `array{a: int, b?: string}` mago drops the parameters entirely and matches neither level, so no verbosity
+  choice rescues them.
+
+The peer suggested partitioning the pool by the TrinaryLogic idiom, on the expectation that PHPStan rules use
+it constantly. **Measured over all 51 refused rules: two.** `AssertSameWithCountRule` and
+`DisallowedImplicitArrayCreationRule`, and the second was already dead on the definedness gap. Stated bound:
+the query reads the rule's *own* file for `->or(`, `->and(`, `->negate(`, `->maybe(` and `->result`, and does
+not follow into the collaborators a rule calls — so it is a lower bound, in the same direction as every other
+one here.
+
+Verified: emit-all byte-identical across all three targets (190/34/25); suite 315 of 315; PHPStan 0, baseline
+13 entries; Rector 0; Pint clean; census regenerated after reading its two-line diff, which is one refusal
+gaining its measured cause and nothing else.

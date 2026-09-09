@@ -1502,7 +1502,10 @@ final readonly class Translator
             throw new Refusal(
                 "\${$property} is wired to the container parameter %{$this->context->unresolvedParameters[$property]}%, "
                 . "which the package's own neon does not declare — so there is no value to carry, and the "
-                . 'name of the parameter is not one',
+                . 'name of the parameter is not one. PHPStan assembles such a parameter when it builds the '
+                . 'container, from every installed extension that contributes to it, so the value is a fact '
+                . 'about the analysed project rather than a default '
+                . '(see Vocabulary::CORE_PARAMETER_DEFAULTS for the measurement)',
                 $line,
             );
         }
