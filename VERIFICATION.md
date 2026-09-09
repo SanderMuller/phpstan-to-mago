@@ -18217,3 +18217,40 @@ So "cannot agree" was wrong twice over: wrong about which obstacle decides the r
 one I named. The honest form is that the printer half is a stated bound of about one percent on one
 construct, which this project's discipline handles by porting and naming it — and that it does not matter
 here, because `value()` closes the rule first.
+### Twelve rules the census shows as stuck are closed, and the census cannot say so
+
+The correction above — *read the refusal the code writes, not only the one the census prints* — is worth an
+instrument rather than a habit. The first attempt was not one: scanning the census's own obstacle lines for
+deliberate-refusal markers found **one** closed rule out of 43, because those lists are truncated by the
+first refusal. **A filter built on the census inherits the census's blindness**, which is the same shape as
+the sizing-instrument rule one entry up: it encoded the census's idea of a rule's obstacles rather than the
+rule's.
+
+The working version scans each refused rule's *own source* for constructs this repository deliberately
+refuses, with the reason attached:
+
+| construct | why it is closed | rules |
+|:--|:--|--:|
+| `$scope->hasVariableType(..)` | definedness — mago#2334, a plugin gets span-keyed types and no definedness | 3 |
+| `ParametersAcceptorSelector::selectFromArgs` | PHPStan signature selection | 3 |
+| `->getNativeReflection()` | native reflection with no equivalent | 2 |
+| `->getResolvedPhpDoc()` | PHPStan docblock resolution | 2 |
+| `describe(VerbosityLevel::value())` | only `typeOnly()` is rendered, deliberately | 1 |
+| `->prettyPrintExpr(..)` | php-parser printer in the message | 2 |
+| `$scope->isInClosureBind()` | a PHPStan analysis-model question | 1 |
+
+**13 of the 43 refused rules, and the census names the reason for exactly one of them.** So a third of the
+refusal list is closed rather than stuck, and reading it as a backlog overstates the remaining work by that
+much. The 30 that survive are the real pool, and seven of those are the unwired-config rows, which are
+closed for a different reason the census *does* print.
+
+Verified at the granularity it is published: **all 13 checked individually**, each at a live call site rather
+than an import or a comment. That mattered — two rows initially showed only a `use` statement and needed the
+call site found, and a third needed a pattern I had left out of the check.
+
+And the locator failed once more, in the direction this log has recorded before. Verifying
+`ClassDependencyTreeRule` with `grep -rl "class ClassDependencyTreeRule"` matched
+`class ClassDependencyTreeRuleTest` — a prefix, in a test file — and returned no live hit, which read exactly
+like a false positive in the list. The rule's real source has the call at line 72. **A name match is a prefix
+match unless you anchor the end of it**, and the failure mode is a confident negative rather than a noisy
+one: nothing about an empty result announces that the locator landed on the wrong file.
