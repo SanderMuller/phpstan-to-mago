@@ -19229,3 +19229,42 @@ Its limit is worth recording beside it: **it requires knowing an answer in advan
 when guarding something already found and not at all on a fresh survey. Which is why looking twice at a green
 result was available here and would not have been on a first scan — and why the reject-side assertion matters,
 being the one countermeasure that needs no answer in hand.
+
+### Withdrawing "the only countermeasure that needs no answer in hand"
+
+The entry above ends by calling the reject-side assertion the one countermeasure in this log for the
+filter class that needs no answer in advance. A peer mapped all four instances against every answer-free
+countermeasure the log holds instead of taking that, and it is false. Each cell re-derived here:
+
+| instance | reject-side | run the instrument | external anchor | known positive |
+|:--|:--|:--|:--|:--|
+| census-marker, 1 phrasing of 5 | no | no | **no anchor existed** | — |
+| anchored `^REFUSE`, dropped rows | yes | yes (34 against 43) | **yes** | — |
+| `^[A-Z]+ `, admitted prose | **no** | **yes** (prints `3 A`) | yes (196 against 193) | — |
+| the collision guard, excluded a corpus | **yes** | **no** — it passed green | yes (per-path) | **yes** |
+
+Verified rather than accepted: the enumeration prints `3 A` in its first four lines; the anchored regex
+finds 34 where the loose one and the file both say 43; and the configuration cause has **no** independent
+total — its markers occur 39 times across 12 rules, so a marker count was never a rule count and nothing
+could have contradicted the 4 I published.
+
+**Three answer-free countermeasures and none covers all four.** The structure is not one instrument plus a
+fallback:
+
+- **Reject-side catches the two exclusion defects and misses the over-match**, necessarily — printing what a
+  filter refused cannot show you something it wrongly kept.
+- **Running the instrument catches the over-match and missed the guard entirely**, because the guard passed
+  green: executing a check proves it runs, not that it looked at everything.
+- **The external anchor catches three and is the widest**, which neither of us credited. It was doing more
+  work than the two instruments we each proposed.
+
+So **exclusion defects and over-match defects need different answer-free instruments**, because one leaves no
+trace in the accepts and the other none in the rejects. My assertion is necessary and not sufficient.
+
+And the honest first row: **nothing mechanical caught the census-marker filter.** What caught it was reading
+`ForbiddenNewArgumentRule` — a body of one `in_array` and a `sprintf` — and finding its census line said
+"closed by configuration" in words my pattern did not contain. Reading, prompted by a peer pointing at the
+`(registers it nowhere)` annotation. That member is on the record as **unguarded**, not covered by three.
+
+Which makes the summary two of four rather than three of four: one instance reached only by an
+answer-in-hand check, one reached by nothing mechanical at all. A less comfortable figure and the right one.
