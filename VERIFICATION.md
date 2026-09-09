@@ -20126,3 +20126,45 @@ calls is what this log has reverted nine times:
    failure mode is reporting once where the original reports per tag.
 
 Not started, deliberately. Everything above is read or measured; nothing of the build is in the tree.
+
+### The build has a fifth piece, and it contradicts a stated reason — found before writing any of it
+
+The four pieces above were enumerated from the `kind: 'reports'` precedent. Reading how that mechanism gets
+its identifier, before building, finds a fifth that the precedent cannot supply.
+
+`Translator::reportedIdentifierIn()` collects every literal `->identifier('..')` in the collaborator and
+**refuses** when there is not exactly one: *"the class behind this check reports under %d identifiers, so
+which one it uses is not readable"*. The `COLLABORATOR_CALLS` docblock gives the reason it is read from source
+rather than held in the table: *"the message and the identifier are the two things a reader checks a port
+against, and a table holding either would drift from the package silently."*
+
+`CoversHelper` reports under four, at these lines of the installed
+`vendor/phpstan/phpstan-phpunit/src/Rules/PHPUnit/CoversHelper.php`:
+
+    :76    ->identifier('phpunit.covers')
+    :103   ->identifier('phpunit.coversInterface')
+    :110   ->identifier('phpunit.coversMethod')
+    :121   ->identifier(sprintf('phpunit.covers%s', $isMethod ? 'Method' : ''))
+
+Two consequences, and the second is the hard one:
+
+- **The mechanism refuses on the count alone.** A `reports` helper carries one identifier; this collaborator
+  needs the identifier chosen per finding, which means the mechanism has to pass a set rather than a value.
+- **`:121` is not readable at all.** It is built by `sprintf`, so no reader of the source can extract it —
+  and it is the one that decides between `phpunit.covers` and `phpunit.coversMethod` on the most common
+  finding, the invalid target. The example fixture written for this rule reports exactly that:
+  `Bad.php:14  phpunit.covers  @covers value \…\NothingDeclaresThis references an invalid class or function.`
+
+So the stated principle — never hold an identifier in a table, because a table drifts silently — **cannot be
+honoured for this rule.** Either the identifiers go into `Vocabulary` against that reason, with whatever
+guards the census can put on drift, or the `reports` mechanism grows a way to read a computed identifier,
+which is a different and larger thing than passing a set.
+
+That is a decision about a design reason this repository wrote down, which is the second one this session, so
+it is recorded rather than taken. The estimate it corrects is my own: four pieces, read off the precedent, and
+the precedent's own guard was the piece I had not read.
+
+The example pair is written and the target is pinned, so whichever way the decision goes the pass condition
+exists: `tests/Fixtures/examples/ClassCoversExistsRule/{Bad,Good}.php`, with real PHPStan reporting
+`phpunit.covers` on `Bad.php:14` and nothing on `Good.php`. The finding lands on the class declaration rather
+than on the annotation, which is the fact `Runtime\PhpUnitAnnotations` already records for its sibling.
