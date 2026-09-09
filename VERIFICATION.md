@@ -16484,3 +16484,43 @@ make the port **over-report** where PHPStan is silent.
 
 That last check is the one worth keeping: I asked my own log's *is there another route* question, and the
 answer was no in the direction that matters. A skipped filter under-reports sometimes and over-reports here.
+
+### Stopped sizing, built instead — and the build found four obstacles no reading had named
+
+Three entries of sizing this target, wrong low then wrong high. This entry builds it, which is what my own
+record says is the only thing that settles the question.
+
+**The lowering works.** `collectingSearchResolver()` recognises the four-statement shape — declare list, `new
+NodeFinder`, `find()` **as a statement**, return the list — and `emitCollectingSearch()` lowers it to a
+`declare-list` plus a `foreach` over `Support::findKind()` with the closure's body translated inside. The
+filter's vestigial boolean is rewritten in the AST before translation: `return false` → `continue`, `return
+true` dropped, since `find()`'s result is discarded and falling out of the body ends the iteration either way.
+
+Four obstacles, none of which any reading had predicted:
+
+| obstacle | what it was |
+|:--|:--|
+| the recogniser never fired | `Vocabulary::SEARCHABLE[MethodCall]` missed, because the searched class resolved to the **short** name |
+| `continue outside a loop` | I emitted `foreach-open` without setting `inLoop`/`loopDepth`, so the translator correctly disbelieved me |
+| `no node predicate for instanceof MethodCall on a expr` | the same short-name failure one level out, in the **body** |
+| `instanceof Name on a member selector` | the resolvers' own private `isName()` helpers, inlined |
+
+**Two of the four are one root**: names in the closure resolve against the *rule's* `use` map, and the closure
+lives in the resolver's file. `inlineMethod()` is handed `$declaring['uses']` for exactly this reason and I had
+not threaded it — once around the searched kind, then again around the whole body. A cross-file lowering has to
+carry the file's own resolution context, and it fails *twice* if you fix only the level you noticed.
+
+Reverted: the rule still refuses, on the resolvers' private `isName()` helpers, and unexercised vocabulary goes
+out. Scaffold saved outside the repository.
+
+#### What this settles about sizing
+
+I estimated two, then at least three, then three-with-the-emission-already-shipping. The build says the count
+was never the interesting number: **not one of the four obstacles it found appears in any of the three
+estimates**, because all three reasoned about the *rule's* source and every obstacle was in the interaction —
+a vocabulary table missing a key, two emitter flags, a use map, an inlined helper.
+
+That is the same lesson as the entry titled *a claim about a relationship between two things and I measured one
+of them*, arriving for the third time, and it is now cheap to state: **sizing from the rule side cannot see
+obstacles that live on the transpiler side, and most of them do.** The only estimate worth making is "build it
+and count what happens", and the honest report of a build that did not finish is the four things it found.
