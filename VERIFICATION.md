@@ -18337,11 +18337,38 @@ Verified here rather than taken from the peer's report: 1.47.6 ships six require
 `ExpressionTypes`, `TargetExpressionTypes`, `ReceiverType`, `ArgumentTypes`, `TargetSubtree`, `SourceText` —
 and no `getVariableDefinedness` anywhere in the SDK.
 
-#### The API, marked as unverified here
+#### The API, read at a ref rather than taken on report
 
-The peer filed the issue and read the merged commit; **none of this is checkable against a release yet**, so
-it is recorded as their reading rather than as measurement, and the test's message says so where the next
-reader will see it.
+First recorded as the peer's reading of the merged commit. Their objection to that framing was better than
+the framing: they had read whole files at a named ref through the API rather than interpreting a diff, so it
+was measurement of the repository — and, more to the point, **something I could reproduce without them.**
+Three commands, and I did:
+
+    gh api "repos/carthage-software/mago/contents/composer/src/Sdk/Analyzer/<file>.php?ref=90d64baf9" \
+      -q .content | base64 -d
+
+`VariableDefinedness` has three cases (`Undefined`, `PossiblyDefined`, `Defined`);
+`getVariableDefinedness(string $variable): ?VariableDefinedness` is nullable; `FileAnalysisRequirement` at
+that ref carries a seventh case. All confirmed here.
+
+**And the alarm's own premise, which no installed release can answer:** the commit is an ancestor of `main`
+rather than a branch, so it is merged and the next release cut from main carries it.
+`compare/90d64baf9...main` answers `behind_by=0`, eight commits past the 1.47.6 tag. Reproduced here too.
+
+The reason this mattered enough to redo is that **the alarm's message will be read by someone who was not in
+this exchange, possibly long after it.** "A peer reported" cannot be re-checked and ages badly; a ref can be,
+and does not. So the test cites the ref, the three commands, and the source line — not the conversation.
+
+The `null`-versus-`Undefined` bound is now confirmed at the source rather than relayed:
+`NodeAnalysisContext.php:75` reads `return $definedness[$variable] ?? VariableDefinedness::Undefined`, so an
+absent name in a *present* map is `Undefined` and `null` is the whole map being absent — the requirement
+unrequested, or the target skipped or unanalysed. Treating `null` as `Undefined` would report on targets mago
+never looked at. Both `Overwrite*` rules guard on `->yes()` and so suppress unless `Defined`, which makes
+null-as-not-Defined safe for them **by their polarity rather than by design**; a rule guarding on `->no()`
+would invert.
+
+Also flagged and not measured: the requirement touched `performance.md` upstream, so requesting it has a
+stated cost.
 
 Their mapping is 1:1 — `hasVariableType($n)->yes()` becomes
 `getVariableDefinedness($n) === VariableDefinedness::Defined` — which means this does *not* enter the trinary
@@ -18353,9 +18380,6 @@ report on targets mago never looked at. Both `Overwrite*` rules guard on `->yes(
 `Defined`, which makes null-as-not-Defined safe for them **by their polarity rather than by design** — a rule
 guarding on `->no()` would invert. That is a distinction to state, not to inherit, and it is exactly the shape
 of *a value can be right and still be the answer to a question nobody asked*.
-
-Also flagged and not measured: the requirement touched `performance.md` upstream, so requesting it has a
-stated cost.
 
 ### The same construct-scan failure, three times in one session
 
