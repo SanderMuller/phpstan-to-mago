@@ -18295,3 +18295,57 @@ site says what it needs it for.**
 Which also bounds the closed-versus-stuck table generally: it is a list of *candidate* closures, each needing
 its call site read before the row is load-bearing. Nine were confirmed that way; these two were not, and they
 were the two that moved.
+
+### Three rules sit on a version boundary that closed upstream two days ago
+
+The most actionable thing this search found is not a capability to build. `superTypeQuery()`'s neighbour in
+`Translator` carries it:
+
+> **That issue is now closed as completed, and the refusal is a version boundary rather than a ceiling.**
+> Closed 2026-09-07; the newest release is 1.47.6 of 2026-09-04, which this package requires and which
+> therefore does not carry it.
+
+`carthage-software/mago#2334` — a plugin receiving span-keyed types and no definedness — is closed upstream.
+Checked today: `composer show carthage-software/mago --all` still lists **1.47.6 as the newest**, so the
+boundary has not moved and the refusal is still true of every mago a consumer can install. The analyzer-side
+helper already exists (`support::variable_is_undefined`); only the PHP target refuses.
+
+**Three rules unblock on the next mago release**: `OverwriteVariablesWithForeachRule`,
+`DisallowedImplicitArrayCreationRule` and `OverwriteVariablesWithForLoopInitRule`. That is a larger movement
+than any single build in this session's shortlist, and it costs a version bump rather than a capability.
+
+It also corrects the closed-versus-stuck table one more way: it lists definedness as a construct closure, and
+a construct closure reads as permanent. **A version boundary is a closure with an expiry date, and a table
+that cannot express one will quietly keep three rules out of the pool after they become portable.**
+
+### The same construct-scan failure, three times in one session
+
+`isSuperTypeOf(..)->yes()` is already built. `superTypeQuery()` renders it through the SDK's
+`TypeComparator::isContainedBy`, and only the `no` and `maybe` tails refuse — because the SDK answers a bool
+where PHPStan answers a trinary, so reading `!isContainedBy()` as `no` would claim a proof never given.
+`isInstanceOf(..)->yes()` is built too.
+
+So the reading three paragraphs earlier — *five of seven open rules share an `isSuperTypeOf(..)->yes()`
+blocker* — was wrong. I grepped for `->yes()` in each rule's source and never checked its receiver. The one
+rule whose census line actually names it, `AssertSameWithCountRule`, calls `->yes()` on
+`self::isNormalCount(..)`: **its own static helper returning a trinary**, which is a different capability
+from any type relation.
+
+**Three instances, one session, same shape:**
+
+| what I counted | what it turned out to be |
+|:--|:--|
+| `ParametersAcceptorSelector::` in 3 rules | a throwaway parameter list for a reordering helper in 2 of them |
+| `->yes()` in 7 rules | already-supported type relations in 5, a rule-local trinary in 1 |
+| census obstacle markers | truncated at the first refusal, so 1 hit where 13 were true |
+
+The third was caught by building a better instrument. The first was caught by a peer reading the call sites.
+The second I caught myself — *after* adopting the peer's sentence for the first, writing it into the log, and
+quoting it in a message. **Holding a rule in mind while doing the thing the rule is about did not prevent
+the thing.** That is `CLAUDE.md`'s own *a rule you have to remember while writing is the instrument that
+already failed*, arriving three times in one sitting, and the countermeasure it names is the one that worked:
+the two I caught came from an instrument and a second party, not from remembering.
+
+So the operational form, for a construct scan specifically: **the grep is the shortlist, and every row is
+unread until its call site is read.** Nine of eleven closed rows were confirmed that way and held; the two
+that were not are the two that moved.
