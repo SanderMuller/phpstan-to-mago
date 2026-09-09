@@ -16113,3 +16113,40 @@ collaborator, not from grouping refusal text.
 
 Stated as a lower bound, because that is all any assessment establishes here: **at least two**. Every rule this
 session has moved that bound upward at least once after a build began.
+
+### Four obstacles cleared on the duplicate-arg pair, and the fifth is the same hazard as last time
+
+The lead from the previous entry, built. `COLLABORATOR_CALLS` was the right route and cheaper than the two
+recognisers I had priced: the resolver *answers a question*, which is what that table is for — its own
+docblock says the question maps rather than the collaborator.
+
+| # | obstacle | what it took |
+|--:|:--|:--|
+| 1 | `ClassConstructorTypesResolver::resolveClassConstructorNamesToTypes()` | one `COLLABORATOR_CALLS` row, kind `lookup`, plus `ConfigClosures::constructorParameterTypes()` — chain walk, class name from the `set()` call's arguments, then `getMethod($class, '__construct')->parameters` |
+| 2 | `$map[$k]` value read | `Text::lookupValue()`, beside the `lookupHas()` that already existed for `isset()` |
+| 3 | `$map === []` | `lookup` joins `list` and `param-decls` as an emptiable kind |
+| 4 | `in_array($x, $map)` | `Text::lookupHasValue()` — the *values*, since `isset()` is the key question |
+
+`NoDuplicateArgsAutowireByTypeRule` then **emitted**. And reading it stopped it shipping:
+
+    Support::bytesIsOneOf(Support::textOf(Support::nthExpression(…)), ['…\\Configurator\\ref', '…\\Configurator\\service'])
+
+That compares the **written text** against fully qualified names — so an imported `ref()`, which is how the
+call is written, is silently missed. **The same hazard as the previous entry**, in the plural. What makes it
+worse is that the cure already exists: `resolved_name_is_one_of` and `nameExprIsOneOf()` are both in the tree
+from that fix. They are not reached because the subject arrives as `bytes` rather than `name-expr` — the
+`isFunctionCall` narrowing is not carrying to the `->name` read, so the field falls through to a generic text
+read.
+
+**Not shipped.** A rule blind to the common spelling is the partial port this repository refuses, and I have
+now declined the same shape three times in three entries — twice caught by reading the emitted plugin, once by
+a control fixture. That the plural path has a working singular twin is what makes it worth writing down: the
+gap is a *narrowing that does not travel*, not a missing comparison.
+
+**Reverted**, `git diff` against HEAD empty; the scaffold with all four obstacles is saved outside the
+repository. Obstacle 5 is one question — why `->name` on an `expr` narrowed by `instanceof FuncCall` resolves
+as text rather than through `FIELDS['FunctionCall']['name']` — and it is answerable by the same
+`narrowedKinds` route the previous entry used, which I did not have budget to probe.
+
+The pair's bound: **at least five**, moved upward once again after the build began, which is now true of every
+rule this session.
