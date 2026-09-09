@@ -19100,3 +19100,45 @@ Three things to carry:
 - The unreferenced-helper measurement is the one that found it, which is the argument for running the cheap
   screen even when the good instrument is unavailable: it did not answer the question it was built for and
   found something else.
+
+### The last board item is blocked on the machine, confirmed from both sides
+
+Line coverage over `src/Runtime` during the fires gate is the right instrument for turning *3 of 5 on one
+helper* into a per-helper figure for all 478. It needs a coverage driver. Reproduced here across every PHP on
+this machine, with a positive control:
+
+| binary | version | xdebug/pcov | control (`json`, `pcre`) |
+|:--|:--|--:|--:|
+| Herd `php` | 8.5.8 | 0 | 2 |
+| Herd `php84` | 8.4.23 | 0 | 2 |
+| Herd `php85` | 8.5.8 | 0 | 2 |
+| Homebrew `php` | 8.5.8 | 0 | 2 |
+
+The control matters twice over: it shows the pattern finds a module that *is* present, and **every version
+column is populated**, which is what says each check executed against a real interpreter rather than against
+nothing.
+
+So the instrument stays on the board as right and unavailable. Installing an extension is a machine change
+and the user's call.
+
+#### And the last check either session ran failed this exchange's own failure mode
+
+The peer's first attempt at that table iterated an unquoted list of paths, so
+`~/Library/Application Support/Herd/bin/php` split on its spaces. The `-m` check ran against two nonexistent
+fragments and printed nothing for every Herd row — **a broken command producing exactly the answer the
+correct command produces.**
+
+It happens to be true. Had one of those binaries carried pcov, a machine-wide zero would have been reported
+off a check that never executed against them, and nothing in the output would have looked different. They
+caught it because the *version* column came back empty for those rows and populated for the Homebrew one —
+which is the scope-column-as-accidental-control shape from earlier in this exchange, working by luck a second
+time rather than by design.
+
+Worth stating plainly as the closing row: **the last thing either session ran hit the failure mode the whole
+exchange was about, and was caught by a column nobody added for that purpose.** Every countermeasure this log
+records was derived from an instance like that one; none of them fired here either. What fired was a
+side-effect of printing more than the question needed — which is the cheapest habit in the log and the only
+one that has now worked twice without being invoked.
+
+That is also why the table above prints versions and a control it does not strictly need. Not thoroughness:
+the columns are there because a check that cannot show it ran is indistinguishable from one that did not.
