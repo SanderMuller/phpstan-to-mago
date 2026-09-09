@@ -20416,3 +20416,43 @@ single vocabulary unit left.
 | 4 | `DisallowedImplicitArrayCreationRule` | `Stmt_While` |
 
 396 emit. 319 are unreachable by any plugin. 176 want a node kind that does not exist. 91 are vocabulary.
+
+## Multi-statement `if` bodies, sized before building: 87 reachable findings behind three more blockers
+
+`ArrayFilterStrictRule` refuses at `if (count($args) === 1) {` with four statements in the body, one of them a
+nested `if`/`elseif`/`elseif` containing a loop that carries two flags to a `break`. The transpiler is built
+around single-statement guards, so this is a translation-model change rather than a table row — adjacent to
+the boundary `CLAUDE.md` marks *"a design change, not a refactor"*.
+
+Six refused rules name the shape. Cross-referenced against yield, re-run rather than quoted:
+
+| findings | rule | why the capability would not deliver them |
+|--:|:--|:--|
+| 176 | `UselessCastRule` | mago has no `Cast` node kind, so the rule cannot be hooked at all |
+| 87 | `ArrayFilterStrictRule` | reachable, and behind three further blockers |
+| 0 | `NoReferenceRule` | |
+| 0 | `NewOverSettersRule` | |
+| 0 | `PhpUpgradeDowngradeRegisteredInSetRule` | |
+| 0 | `RectorCheaperGuardsFirstRule` | |
+
+So the reachable value of multi-statement `if` bodies is **87 findings in one rule**, and that rule also needs
+a two-`elseif` chain, `getIterableValueType()`, and a union walk carrying flags across iterations. The 176
+that would otherwise dominate the case are gated behind a node kind that does not exist, which is the
+difference between a capability's *constituency* and its *reach* — the same distinction the census header's
+type-renderer figure got wrong in the other direction.
+
+**Recorded rather than started.** Three rules were ported today for vocabulary-sized changes and 396 findings;
+this is a model change for 87 behind three more. The comparison is the argument, and it is only available
+because the yield instrument exists — ranked by blocker shape, a six-rule capability cluster is the largest
+thing on the list.
+
+### The session's measured delta
+
+The instrument's own headline moved, which is the closing figure rather than a claim:
+
+    before   7 of 38 refused rules fire, for 982 findings
+    after    5 of 36 refused rules fire, for 586 findings
+
+396 findings' worth of refused rules now emit. Of the 586 left: 231 want a value that is a fact about the
+consumer's installed extensions, 176 a node kind mago does not have, 88 an upstream definedness gap, 87 the
+model change above, and 4 a `Stmt_While`.
