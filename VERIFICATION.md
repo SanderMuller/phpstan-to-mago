@@ -18786,3 +18786,42 @@ would change that and neither is a search:
 - **A new corpus package**, which is a dependency addition and therefore not the agent's call. The three
   packages already installed outside the seven-package census are measured at zero — 0 of 38, 0 of 2, 0 of 26
   — so extending the corpus means a package nobody here has read yet.
+
+### The NEVER rows, which the triage never covered
+
+The triage that closed at "43 of 43" covered the REFUSE rows only. The census has five row kinds, and one of
+them — eight rules marked `NEVER`, meaning unportable in principle — had never been read. **An
+asserted-permanent row is exactly the kind the definedness boundary proved can go stale**, so leaving it
+unexamined while calling the audit complete was the same gap one row kind over.
+
+Read, and all eight are sound. `RuleOutcome::NEVER` comes from `$refusal->permanent`, so each is a
+code-level assertion rather than an inference, and they fall into three shapes:
+
+- **Five type-declaration collectors** — `Constant`, `Declare`, `Param`, `Property`, `Return`. Each is
+  unnecessary because the `*CoverageRule` that consumes it emits as a single after-analysis hook that counts
+  in the runtime. Checked mechanically rather than read off the prose: **all five collectors are `NEVER` and
+  all five consumers are `EMIT`.** That is the strongest form a permanent refusal can take — not "this cannot
+  be ported" but "the thing that would have needed it already works without it".
+- **Two manifest writers** — `FlagArgumentManifestCollector` and `WriteNamedArgumentManifestRule`. Both
+  report nothing and write a file instead. An analyzer plugin's only output is a report, so there is nothing
+  for one to produce.
+- **`DataProviderDataRule`** — its whole output is `$scope->invokeNodeCallback()`, synthesising a node with
+  inferred argument types and handing it back for other rules to visit. Not a finding at any level.
+
+None is a version boundary and none is waiting on a capability. The two manifest rules and
+`DataProviderDataRule` are permanent for a reason about what a plugin *is*, and the five collectors for a
+reason that is already discharged.
+
+#### So every census row is now accounted for
+
+    140  EMIT
+     43  REFUSE     triaged 43 of 43, each with a read body or a named cause
+      8  NEVER      read, all sound; five because their consumer already emits
+      1  ENGINE     NoMissingVariableDimFetchRule — mago reports undefined-variable natively
+      1  GENERATED  the header
+
+**The emit search is complete in the sense that no row is unexamined**, which is a stronger claim than the
+one the REFUSE triage supported and it took reading a population I had asserted was closed without opening
+it. Recorded because the shape recurs: *the audit is complete* meant *the audit is complete over the subset
+I was attending to*, which is the attention-not-access finding arriving inside my own bookkeeping one entry
+after writing it down.
