@@ -18454,3 +18454,64 @@ two obstacles deeper every time — a printer behind a verbosity refusal, a defi
 iteration, a third-party parser behind a collaborator, a filesystem read behind a guard chain. The census
 names first obstacles and a scan names mentioned constructs; **neither names what a rule needs, and only
 reading the body does.**
+
+### The configuration cause is written five ways, and my scan knew one
+
+The tally one entry up put configuration at 4 of 43 — three "unwired" plus one container. The census
+expresses that one cause in **five distinct sentences**:
+
+    ... wires no configured values for this rule
+    $x is a constructor parameter the package's neon does not wire for <FQCN>
+    $x is wired by 2 neons the package ships and they disagree
+    $x is wired to the container parameter %x%, which the package's own neon does not set
+    REFUSE  <Rule>  (the package registers it nowhere)          <- on the REFUSE line, not in the block
+
+Matching all five: **12 rules, not 4.** And the fifth is not in the obstacle block at all — it is an
+annotation on the `REFUSE` line, which is the field a peer pointed out is the only informative one the census
+carries, because it records a cause rather than a stopping point.
+
+Found by reading `ForbiddenNewArgumentRule`, whose whole body is `in_array($className, $this->forbiddenTypes)`
+and a `sprintf` — trivially portable except that nothing wires `$forbiddenTypes`. Its census line says so in
+words my pattern did not contain.
+
+**Same family as the anchored-regex row above, and the third instance of it.** An instrument that matches one
+surface form of something the artefact expresses several ways reports a confident undercount, and the rows it
+drops are the ones phrased unusually — never a random sample.
+
+#### The corrected tally, reconciled against the census's own count
+
+| why it refuses | rules |
+|:--|--:|
+| configuration the package does not resolve to one value | 12 |
+| a construct the code deliberately refuses | 10 |
+| a version boundary already closed upstream | 3 |
+| reads the filesystem at analysis time | 3 |
+| **cause not yet identified** | **15** |
+| | **43** |
+
+28 of 43 attributed. Each rule counted once, at its first identified cause, and the total is asserted against
+`grep -c '^REFUSE'` — which is what caught the previous run at 34.
+
+And the frontier is much smaller than *"about thirteen"*: of the 15 unattributed, eleven have now had their
+bodies read across this session, none of them a job. **Four rules in the corpus have never been read** —
+`AlreadyRegisteredAutodiscoveryServiceRule`, `NoReferenceRule`, `PreferredClassRule`, `SlowMigrationDdlRule`.
+
+#### Obstacle count is not a ranking, measured
+
+A peer tested the one metric that looked like it discriminated — `ArrayFilterStrictRule` at 13
+needs-at-least lines reading as hard against `StrictFunctionCallsRule` at 6 reading as tractable — across all
+43. Reproduced here: 16 rules at one line, 8 at two, 5 at three, 2 at four, 7 at five, 2 at six, and one each
+at seven, nine and thirteen.
+
+The high end behaves. The low end does not, and one line is the *modal* value at 16 of 43. Those sixteen
+include both rules that unblock on a version bump, both PharIo-constraint rules, and
+`MatchingTypeInSwitchCaseConditionRule` with three stacked obstacles. **A count of one is the truncation
+expressed as a number**: a rule that refuses at its first obstacle gets one line, and the count then says
+nothing about what stands behind it.
+
+So the earlier conclusion — *the ranking is worth exactly one thing, an order to read in* — was generous to
+its own machinery. An order derived from a variable uncorrelated with the answer is not a reading order, it is
+an arbitrary one that looks principled. What survives is the five-kinds sort, and the reason it survives is
+the distinction the peer drew: **a cause that is a property of configuration or of upstream can be recorded
+once and stays true; a cause that is a property of a body cannot be known without reading the body.** Every
+census-derived metric measures the first, and the frontier is entirely the second.
