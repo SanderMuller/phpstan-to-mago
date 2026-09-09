@@ -18571,3 +18571,56 @@ more phrasing matches. Neither instrument here is exhaustive; a sixth phrasing a
 would be invisible to both, and neither of us has a control that would say so. What is established is that
 two differently-shaped instruments agree modulo an accounting rule, which is more than either says alone —
 and it is the same reason a control pair beats a control.
+
+### The census's own open question, answered — and it has two different answers
+
+The multi-kind refusal ends with a sentence that is unusual for a generated file: *"A plugin can register
+several targets, so the shape is reachable — what it needs is a hook and a field mapping for each kind, and a
+body that reads the same child in every branch, because the field table is keyed by one kind per rule.
+**Whether this body does has not been checked here.**"*
+
+Two rules carry it, and the answer differs:
+
+- **`NoReferenceRule`: yes.** After its `AssignRef` branch it narrows to seven kinds — `Closure`,
+  `ArrowFunction`, `Function_`, `ClassMethod`, `Arg`, `Foreach_`, `ArrayItem` — and then reads `$node->byRef`
+  on all of them. One child, the same name, every branch. It passes the test the refusal poses.
+- **`PreferredClassRule`: no.** Three of its four branches converge on `processClassName()` reading a class
+  name from `->class` or from the node itself, but `processClass()` asks a different question entirely: the
+  *enclosing* class's parent, through `getClassReflection()->getParentClass()`, with its own comparison and a
+  special case. No single field serves that alongside the others.
+
+So the hedge was right to be there, and the rule it protects against is real — but for `NoReferenceRule` the
+multi-kind narrowing is **not** the operative blocker. A peer measured that mago's
+`MetadataFlags::BY_REFERENCE` reaches named functions and methods and not closures, arrow functions,
+`foreach`, array items or `AssignRef`, so a port would be silent on five of the eight kinds the rule handles
+— partial by construction, which is the direction this project refuses. That is the blocker, and the census
+names neither it nor the field question's answer.
+
+**A generated refusal that states an open question is better than one that guesses**, and this is the first
+time one has been closed by answering it rather than by the rule changing. Worth keeping as a form: the
+sentence told a reader exactly what to check, and checking it took two greps.
+
+### The residual shape is two invariants, and the narrower one binds more
+
+A peer split the fifteen residual rules by which assumption actually binds them, and the split is sharper
+than the single "guards then one report" I had named:
+
+| invariant | what it is about | rules |
+|:--|:--|--:|
+| one report site, in the rule body | *where* a finding is constructed — a collaborator's return value, a per-kind helper, a tuple-wrapped list sorted and mapped out | 6 |
+| state carried across a traversal | a flag or accumulator surviving iterations | 4 |
+| neither — plain capability gaps | several capabilities at once, or a one-off | 5 |
+
+They bounded their own version at six of fifteen because they could not classify my multi-capability and
+one-off rows from a summary, and would not read the corpus to guess. Completing it from this side:
+`NoIntegerRefactorReturnRule` belongs with the traversal-state group — its
+`findUsedNodeVisitorConstantNames()` is a `NodeFinder` scan of the whole class — which moves it from
+"one-off" and makes that group four. The remaining five — `ArrayFilterStrictRule`,
+`StrictFunctionCallsRule`, `UselessCastRule`, `AssertSameWithCountRule`,
+`AssertEqualsIsDiscouragedRule` — report once at a tail and carry no traversal state; they are ordinary
+capability gaps that happen to be several deep.
+
+Which is a materially different design question from the one I posed. **The binding assumption for six rules
+is one report site in the rule body, not the whole "guards then one report" shape** — and relaxing where a
+finding may be constructed is a narrower change than relaxing the guard chain. Whether either is worth its
+cost is a pricing question about the emitter rather than a search, and it is not mine to open.
