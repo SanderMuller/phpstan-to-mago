@@ -61,7 +61,7 @@ final class TwoChecksRule implements Plugin, NodeAnalysisHook
         $this->checkInvadeError($context, $node, $namespace);
     }
 
-    private function checkDebugError(NodeAnalysisContext $context, mixed $node, mixed $namespace): void
+    private function checkDebugError(NodeAnalysisContext $context, \Mago\Sdk\Syntax\Node $node, mixed $namespace): void
     {
         if (!(Support::isName(Support::nthExpression($context, $node, 0))) || !(Support::nameEquals(Support::nthExpression($context, $node, 0), 'dump'))) {
             return;
@@ -75,7 +75,7 @@ final class TwoChecksRule implements Plugin, NodeAnalysisHook
 
     }
 
-    private function checkInvadeError(NodeAnalysisContext $context, mixed $node, mixed $namespace): void
+    private function checkInvadeError(NodeAnalysisContext $context, \Mago\Sdk\Syntax\Node $node, mixed $namespace): void
     {
         if (!(Support::isName(Support::nthExpression($context, $node, 0))) || !(Support::nameEquals(Support::nthExpression($context, $node, 0), 'invade'))) {
             return;

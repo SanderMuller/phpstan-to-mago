@@ -52,7 +52,7 @@ final class EveryExpressionRule implements Plugin, NodeAnalysisHook
         $this->checkMethodCall($context, $node);
     }
 
-    private function checkStaticPropertyAccess(NodeAnalysisContext $context, mixed $node): void
+    private function checkStaticPropertyAccess(NodeAnalysisContext $context, \Mago\Sdk\Syntax\Node $node): void
     {
         if (!(Support::nodeKindIs($context, $node, 'StaticPropertyAccess'))) {
             return;
@@ -70,7 +70,7 @@ final class EveryExpressionRule implements Plugin, NodeAnalysisHook
 
     }
 
-    private function checkMethodCall(NodeAnalysisContext $context, mixed $node): void
+    private function checkMethodCall(NodeAnalysisContext $context, \Mago\Sdk\Syntax\Node $node): void
     {
         if (!(Support::nodeKindIs($context, $node, 'MethodCall') || Support::nodeKindIs($context, $node, 'FunctionCall'))) {
             return;

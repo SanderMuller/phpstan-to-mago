@@ -5385,7 +5385,18 @@ final readonly class Translator
                 continue;
             }
 
-            $parameters[] = 'mixed ' . $variable;
+            // The hook node is the one parameter whose type is known without inference: the SDK declares
+            // `NodeAnalysisContext::$node` as `readonly Node`, so `$node = $context->node` is a `Node` and
+            // the check that receives it can say so. Everything else here is a rule's own local, whose
+            // descriptor kind does not map to one PHP type, and `mixed` is the honest declaration for it.
+            //
+            // Fully qualified rather than imported. The plugin's `use` block is fixed for every target file,
+            // so adding a line to it would rewrite all 192 emitted plugins to serve the seven that have a
+            // check method.
+            //
+            // Not cosmetic: `mixed $node` was 162 of the 174 `mixed-argument` rows `mago analyze` reports
+            // over the emitted tree, because every `Support::` call in a check takes the node as argument #2.
+            $parameters[] = ($variable === '$node' ? '\\Mago\\Sdk\\Syntax\\Node ' : 'mixed ') . $variable;
             $arguments[] = $variable;
         }
 

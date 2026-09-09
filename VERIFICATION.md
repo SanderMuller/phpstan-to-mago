@@ -17964,10 +17964,8 @@ Over the 192 plugins the corpus and fixtures emit, with both includes:
 | **`warning[possibly-undefined-variable]`** | **0** |
 | **`help[unevaluated-code]`** | **0** |
 
-233 issues, so the gate is an identifier set after all — but for a different reason than the one I gave, and
-that distinction is the whole point of re-measuring. The bulk is `Support`'s own return types arriving as
-`mixed` at a `sprintf` argument or a property access, which is a real property of this repository's runtime
-typing rather than an artefact of where mago was pointed.
+233 issues, so the gate is an identifier set after all — but the cause I gave for it in the same breath was
+another untraced attribution, and it is corrected in the entry below.
 
 **The two rows that would have caught the loop escape are zero across all 192**, from an instrument that
 demonstrably reports both on the fixture. That is what makes this zero evidence rather than a shared silence
@@ -17994,3 +17992,60 @@ body never runs. Dead code, not an inverted rule, and nothing to fix in either p
 Worth keeping as the shape to watch for, though: **`impossible-condition` on a generated guard is one bit
 away from a rule that emits and never reports**, which is a failure the emit count cannot see and only the
 fires gate or this instrument can.
+
+
+### 197 of the 233 rows were one word this generator emits
+
+The entry above blamed the bulk of them on "`Support`'s own return types arriving as `mixed` at a `sprintf`
+argument or a property access". That was never traced. A peer killed three hypotheses trying to confirm it —
+mago honours `@return list<string>` on a bare `array` signature, `Support` has no `mixed` in its API at all,
+and the SDK's metadata is annotated — then declined to guess a fourth time and said to read one of the rows.
+
+One row was enough:
+
+    NoDynamicNameRule.php:57:45  error[mixed-argument]: argument #2 of Support::nodeKindIs:
+      expected Mago\Sdk\Syntax\Node|Sandermuller\...\Part|null, but found mixed
+
+The `mixed` is the argument going *in*, not a return coming out, and it enters here:
+
+    private function checkClassConstantAccess(NodeAnalysisContext $context, mixed $node): void
+
+which is **this generator's own emitted signature**, from one hardcoded line in `Translator`:
+
+    $parameters[] = 'mixed ' . $variable;
+
+Every `Support::` call inside a check takes the node as argument #2, so one word multiplied by the calls in
+seven plugins: **162 of the 174 `mixed-argument` rows**, and the same cause behind the 23
+`mixed-property-access`. The SDK declares `NodeAnalysisContext::$node` as `public readonly Node`, so the
+type was knowable all along.
+
+Typing that one parameter takes the tree from **233 issues to 50**. Everything else about the measurement
+stands; only the sentence explaining it was wrong.
+
+**And the framing was wrong in a second way the count hid.** All 233 rows live in **10 files out of 192**.
+"A real property of this repository's runtime typing" describes something spread across generated code, and
+182 plugins have never had a single row. A total invites that reading and a per-file distribution refutes it
+— which is the derived-column error once more, in its plainest form: I had the total and never asked how it
+was distributed.
+
+Correct is guaranteed rather than inferred: all 186 `$node =` assignments across all 192 emitted plugins are
+the identical `$node = $context->node;`, and every check call passes that local as argument #2. A wrong
+declaration here would be a runtime `TypeError`, which is worse than `mixed`, so the enumeration is the
+evidence and reading two plugins would not have been.
+
+The remaining 50 are not yet attributed, and this time that is stated rather than filled in: 14
+`possibly-invalid-argument`, 14 `mixed-argument`, 8 `possibly-null-operand`, 6 `possibly-null-argument`, the
+4 traced vacuous-guard rows, and 4 others. **Whether a clean exit can become the gate is now an open
+question rather than a closed one**, which is the peer's point and the reason it was worth chasing: an
+allowlist only catches shapes someone thought to list.
+
+#### Three refutations were worth more than a confirmation
+
+The peer's three dead hypotheses are the reason the fourth guess did not happen, and one of them died to a
+broken checker of their own — a scanner for unannotated array properties whose regex required a
+property-level `@var` to repeat the property name, which such an annotation never does. They caught it
+because the ten properties it correctly passed made the shape of the failure visible.
+
+That is the same lesson as the positive control two entries up, arriving from the other side: **the rows an
+instrument gets right are what let you recognise the one it gets wrong.** A checker that reports a single hit
+and nothing else offers no shape to read.
