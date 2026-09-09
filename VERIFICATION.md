@@ -16524,3 +16524,36 @@ That is the same lesson as the entry titled *a claim about a relationship betwee
 of them*, arriving for the third time, and it is now cheap to state: **sizing from the rule side cannot see
 obstacles that live on the transpiler side, and most of them do.** The only estimate worth making is "build it
 and count what happens", and the honest report of a build that did not finish is the four things it found.
+
+### Five obstacles cleared on the collecting-search lowering, and the remaining two are named
+
+Continuing the build rather than sizing it. Each obstacle below was cleared and verified by the refusal
+advancing; none of them appears in any of my three earlier estimates.
+
+| # | obstacle | fix |
+|--:|:--|:--|
+| 1 | recogniser never fired | the searched class resolved short, missing `SEARCHABLE` — thread the resolver's `use` map |
+| 2 | `continue outside a loop` | set `inLoop` / `loopDepth` around a `foreach` the emitter opened itself |
+| 3 | `instanceof MethodCall on a expr` | the same short-name failure in the **body** — thread the `use` map and `currentClass` there too |
+| 4 | `instanceof Name on a member selector` | the resolvers' private `isName()`, answered by a **shape** recogniser |
+| 5 | — | now refuses at obstacle 6, so 1–5 are cleared |
+
+**Obstacle 4 is worth keeping as a pattern.** Three resolvers each carry a private `isName()`, two or three
+statements comparing a `Name`/`Identifier`'s text against a literal. Three `COLLABORATOR_CALLS` rows would have
+answered them and would have silently outlived a changed body; `answersANameComparison()` matches the shape
+instead — the last statement is `$n->toString() === $param`, every earlier one a guard that returns. Same
+choice `lastNameSegmentHelper()` records for the other locally-spelled helpers.
+
+**Remaining, both named:**
+
+- **Keyed accumulator writes.** `$map[$class] = $node->getStartLine()` in the SetClasses resolver refuses with
+  *assignment to something other than a simple local*. My lowering binds the accumulator as a `list`, so
+  appends work and keyed writes do not.
+- **The Exclude resolver's nested loop with `realpath`.** Its emission ships (three nested loops in
+  `ServicesExcludedDirectoryMustExistRule`) and `realpath` is `pathExistsPredicate()`'s sibling; what is
+  missing is the recogniser accepting it, and the accumulator write inside it.
+
+Reverted — unexercised vocabulary — with the scaffold saved outside the repository, now carrying five cleared
+obstacles rather than four. **The rule's bound has moved from two to at least seven across five entries, and
+every move came from a build.** I am no longer estimating it; the number in the log is a count of what has been
+observed, and the two remaining items are named because a refusal named them, not because I read ahead.
