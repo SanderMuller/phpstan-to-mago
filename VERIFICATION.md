@@ -18118,3 +18118,62 @@ unnecessary is that check mode gives the check a method to return from, so the r
 becomes a guard over an answer instead of over a duplicated predicate — no purity precondition, and no
 negating of rendered condition strings, which is the class that produced the prose-as-code false positive two
 entries up.
+
+### Four missing navigations, four rules, none of them a job
+
+With `MockMethodCallRule` emitting, the next candidates were picked by joining the hard-shape classifier
+against each rule's *terminal* refusal and dropping the rows whose blocker is configuration the package never
+wires. Four rules then share a family: their first refusal is a missing hook-node navigation.
+
+    NoIntegerRefactorReturnRule             no mapping for ->returnType on a maybe-method-decl
+    ClosureUsesThisRule                     no mapping for ->static on a hook-node
+    MatchingTypeInSwitchCaseConditionRule   no mapping for ->cases on a hook-node
+    OverwriteVariablesWithForLoopInitRule   no mapping for ->init on a hook-node
+
+Four different properties, so it is four mappings rather than one shared one — at most one rule each. And
+reading the four rules, **every one is blocked past the navigation**:
+
+| rule | the operative blocker |
+|:--|:--|
+| `MatchingTypeInSwitchCaseConditionRule` | `$this->printer->prettyPrintExpr($case->cond)` inside the message |
+| `OverwriteVariablesWithForLoopInitRule` | `$scope->hasVariableType($name)->yes()` |
+| `ClosureUsesThisRule` | `$scope->isInClosureBind()`, and a `ThisType` test on a `use` capture |
+| `NoIntegerRefactorReturnRule` | a `NodeFinder` scan of the whole class for visitor constants |
+
+The `ForLoopInit` row is the one to keep, because the census names the wrong blocker for it. Its sibling
+`OverwriteVariablesWithForeachRule` refuses on *"a definedness test, which the PHP target has no way to
+answer"*, with an upstream issue behind it. `ForLoopInit` reaches the identical `hasVariableType()->yes()`,
+and the needs-at-least list does not say so — the `->init` refusal steps over the whole loop, so nothing
+below it is ever read. **The two siblings share a correct-forever blocker and the census shows them refusing
+for unrelated reasons.**
+
+`MatchingTypeInSwitchCase` is the second worth keeping, for a different reason: an injected php-parser
+printer renders part of the message. Mago has the source text and could slice the case's span, which is
+arguably *better* than pretty-printing — and the fires gate compares messages exactly, so "better" is
+"different" and the rule cannot agree. A capability that improves on the original is still a divergence.
+
+This is the census header's own warning — *"the hook was the first obstacle and never the operative one"* —
+with four fresh instances, and it is why the join above is worth keeping over the classifier alone. The
+classifier ranks by syntax and cannot see a service in a message or a model question in a guard; the terminal
+refusal cannot see past the first obstacle. **Neither column is a shortlist, and their join is a reading
+order rather than an answer.**
+
+### A survey's zero is only evidence if the survey shares the predicate of the thing it surveys
+
+Two instances in one exchange, one each side, and they failed identically.
+
+Mine: a blast-radius script sized the `independentChecks` change, cleared `DynamicCallOnStaticMethodsRule`,
+and the rule moved anyway — because the script matched top-level `Expression`+`Assign` statements while the
+implementation had become a `NodeFinder` walk over every `Assign` anywhere. A peer's: a scanner for a
+collection-append-then-`continue` shape returned zero across 213 rule classes, with a regex whose brace
+alternation could not span a loop body holding nested braces. The zero was structurally guaranteed.
+
+Neither is a careless instrument. Both encode *the author's* idea of the shape rather than the
+implementation's, and a re-run reproduces the wrong answer perfectly. **Reproducibility and relevance are
+different properties, and only the first is testable by running something again.**
+
+What caught them differed, and that is the transferable part. Mine surfaced as other rules moving in the
+emit-all diff — an instrument that runs anyway, on every change. Theirs surfaced because they asserted the
+known positive appeared in the scanner's own output, a check that had to be remembered. **The enforced one
+found a bug its author was not looking for; the remembered one found only the bug its author thought to look
+for.** Which is *enforced beat careful* arriving from the survey side rather than the artefact side.
