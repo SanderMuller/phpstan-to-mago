@@ -17520,3 +17520,84 @@ What is available is their *width*, and the precedent is in this repository's ow
 the whole tree took the suite from 115s to 346s." **Three times, from narrowing this one setting.** The
 `mago.toml.snippet` this tool emits says nothing about `includes` at all, and that is the place the advice
 belongs — it is the only mago configuration this tool writes.
+
+### "Serial" was the wrong word, and the right one took two A/Bs and a peer
+
+The entry above says 96% of mago's floor is "serially indexing the include tree". The 96% holds. **"Serially" does
+not**, and it was the third time this session that every figure in a sentence was right and the sentence was
+wrong anyway.
+
+What I had was one measurement — remove the includes, the time goes — and three mechanisms that all fit it: I/O
+bound, single-threaded CPU, or lock contention. I named the second without separating them. The tell was in the
+number I had already published: **CPU/wall of 0.87**, less CPU consumed than wall elapsed, which is a process
+waiting rather than one computing on a thread.
+
+#### The per-file shape
+
+| includes | files | wall | CPU | CPU/wall | ms CPU/file |
+|:--|--:|--:|--:|--:|--:|
+| none | 0 | 0.12s | 0.24s | 2.00 | — |
+| `vendor/nikic` | 270 | 0.12s | 0.24s | 2.00 | 0.000 |
+| `vendor` | 14,019 | 3.90s | 3.84s | 0.98 | 0.257 |
+| `vendor`, `src`, `tests` | 14,805 | 3.99s | 3.97s | 0.99 | 0.252 |
+
+Adding 270 include files costs nothing measurable. Adding 14,019 costs 3.7s, at a flat **0.25 ms of CPU per
+file**. The tree is 14,805 files and 60.6 MB, to analyse 270.
+
+#### The diagnostic that ruled out I/O, and it came from the peer
+
+The peer's suggestion was better than the linearity test I was about to run: **split user from sys, because the
+collapsed CPU figure hides which mechanism is producing it.** Their decision table — sys dominant means I/O
+bound; user dominant with wall above CPU means blocked on one thread; user near wall means the time is
+elsewhere — with their own cold PHPStan run as calibration at 31% sys.
+
+Our include phase comes back **58% user, 42% sys**, and on a quiet machine **CPU/wall is 0.99, not 0.87**. So
+it is not I/O bound, and it is not blocked either: the earlier 0.87 was contention from benchmarks I was
+running concurrently, which is exactly what this file says wall clock does under load.
+
+#### The thread A/B that ruled out single-threaded
+
+| threads | wall | CPU | CPU/wall |
+|--:|--:|--:|--:|
+| 1 | 5.33s | 2.89s | 0.54 |
+| 14 | 3.99s | 3.92s | 0.98 |
+
+Fourteen threads do **more** CPU in **less** wall than one. So the phase is parallelised and "serial" is simply
+false. But CPU/wall never exceeds about 1.0 at any thread count, while the single-threaded run idles 46% of its
+wall waiting for reads.
+
+**Best-fitting explanation, and marked as not established:** the threads overlap the I/O — which is why one
+thread waits and fourteen do not — while CPU throughput stays capped near one core, which is what a lock
+serialising the index insert would look like. Mago is a Rust binary and this repository has no phase
+instrumentation for it, so the cap is measured and its cause is inferred. What *is* established is that the
+first two candidates are out.
+
+#### The comparison that makes the 4.7s mean something
+
+Measured by the peer on their own machine, so the transferable figure is the per-file rate rather than any
+wall clock:
+
+**PHPStan does not walk `vendor` at all.** `ComposerJsonAndInstalledJsonSourceLocatorMaker` builds a PSR-4
+`Psr4Mapping` from `composer.json` and `installed.json` and hands it to `OptimizedPsrAutoloaderLocator`, which
+resolves a class name to a candidate path *arithmetically* and reads that one file. No directory traversal on
+that route. Their A/B: adding 3,003 vendor files to `scanDirectories` — the true analogue of our `includes`,
+and eager because a file's symbols cannot be known from its name — costs **+1.6s wall and +2.4s CPU, about 0.8
+ms per file**. If vendor were already being walked that delta would be zero.
+
+So the two rates are **0.25 ms/file for mago against 0.8 ms/file for PHPStan's eager scan**: mago's indexer is
+roughly three times *cheaper* per file. **The 4.7s is not inefficiency. It is that PHPStan indexes almost no
+files and mago indexes 14,805**, and that is a design difference — arithmetic name-to-path resolution against
+eager whole-tree symbol indexing — rather than something either engine is doing badly.
+
+It also corrects my own phrasing to the peer: I called PHPStan's route "lazy resolution through the
+autoloader", which is right in effect and wrong in mechanism. The primary route is a mapping built from
+composer metadata; the autoloader locator is a separate link in the same chain.
+
+Stated bound, theirs: phpstan-src's vendor is 3,003 files, small for an application tree, so their +1.6s is a
+lower bound on what a consumer enabling that scan would pay.
+
+#### What follows for this repository
+
+Nothing in our layer, which is the point of measuring it. The consumer-facing lever is include *width*, and
+that advice is now in the emitted `mago.toml.snippet` with the two numbers behind it — the only mago
+configuration this tool writes.

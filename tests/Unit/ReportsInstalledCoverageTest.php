@@ -171,6 +171,14 @@ final class ReportsInstalledCoverageTest extends TestCase
         // paste from, and it says so.
         $this->assertStringContainsString('does not edit that file', $snippet);
         $this->assertStringContainsString('[extension-hosts.transpiled]', $snippet);
+
+        // And it says where a consumer's run time goes, because this snippet is the only mago configuration
+        // this tool writes. Measured: the engine alone is 3.92s with `vendor`, `src` and `tests` included and
+        // 0.17s with nothing included, so most of a run is the index rather than the rules. Pinned because
+        // the advice is the load-bearing half -- *narrow*, never *remove*: without an include a rule cannot
+        // reach a vendored parent and goes quiet rather than failing.
+        $this->assertStringContainsString('includes', $snippet);
+        $this->assertStringContainsString('do not drop them', $snippet);
     }
 
     public function test_a_worker_with_no_rules_refuses_rather_than_writing_an_empty_one(): void

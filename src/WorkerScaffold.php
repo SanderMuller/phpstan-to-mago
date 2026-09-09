@@ -103,6 +103,17 @@ final class WorkerScaffold
      *
      * Written to its own file rather than into `mago.toml`. See the class docblock: this tool does not edit
      * a config it does not own.
+     *
+     * It carries a note about `[source] includes` because that is where a consumer's run time goes, and this
+     * snippet is the only mago configuration this tool writes. Measured on a 270-file corpus: the engine with
+     * no plugins takes 3.92s with `includes` covering `vendor`, `src` and `tests`, and **0.17s with
+     * `includes = []`** -- about 96% of the floor is indexing that tree, before any rule runs. The transpiled
+     * rules themselves add 1.07s wall on top.
+     *
+     * The note says *narrow*, not *remove*, and the distinction is load-bearing: without the includes mago
+     * cannot walk into a vendored parent, so a rule asking about one goes silently narrow rather than
+     * failing. This repository's own test configuration names packages instead of the whole tree for exactly
+     * that reason, and records the suite going from 346s to 115s on the change.
      */
     public static function configSnippet(string $workerPath, string $identifier): string
     {
@@ -111,6 +122,12 @@ final class WorkerScaffold
             #
             # A generated plugin lives in the `Transpiled` namespace and is enabled by default, so
             # `analyzer.plugins` needs no entry. Findings report under `{$identifier}/<rule>/<phpstan-identifier>`.
+            #
+            # Keep `[source] includes` as narrow as these rules need. Measured on a 270-file corpus, the engine
+            # alone takes 3.92s with `vendor`, `src` and `tests` included and 0.17s with nothing included, so
+            # most of a run is spent indexing that tree before a rule sees anything. Name the packages whose
+            # classes your rules ask about rather than all of `vendor` -- but do not drop them: without an
+            # include a rule cannot reach a vendored parent, and it goes quiet instead of failing.
 
             [extension-hosts.transpiled]
             command = ["php", "{$workerPath}"]
