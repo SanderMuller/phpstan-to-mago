@@ -25,38 +25,15 @@ vendor/bin/phpstan-to-mago --survey vendor/hihaho/phpstan-rules/src
 `--help` lists the rest. Each target writes its own subdirectory of `--out`, with a
 `generated/manifest.json` naming each rule's identifier, messages and defaults.
 
-**Only the `php` target installs.** It emits a worker plus the `mago.toml` snippet registering it, against
-Mago's supported plugin API. The two Rust targets emit source for Mago's own bundled-plugin registry, which
-has no registration path from outside Mago's tree. Every count here is the `php` target — a rule can render
-as Rust and be refused as PHP.
-
-A plugin depends on this package and on `carthage-software/mago`:
-
-```php
-final class ForbiddenStaticConstFetchRule implements Plugin, NodeAnalysisHook
-{
-    public function getTargets(): array
-    {
-        return [NodeKind::ClassConstantAccess];
-    }
-
-    public function analyze(NodeAnalysisContext $context): void
-    {
-        $node = $context->node;
-
-        if (!(Support::isName(Support::classPart($context, $node)))) {
-            return;
-        }
-        // ...
-    }
-}
-```
+**Only the `php` target installs**, emitting a worker plus the `mago.toml` snippet that registers it. The two
+Rust targets emit source for Mago's bundled-plugin registry, which has no registration path from outside
+Mago's own tree. Every count here is the `php` target — a rule can render as Rust and be refused as PHP.
 
 ## What this is for
 
-- **Rules are the unit; a package is not.** `phpstan/phpstan-deprecation-rules` is the first with both its
-  rules emitting, and is still not droppable: its neon also registers five `Restricted*UsageExtension`
-  services, where "call to deprecated method" comes from, and none of those is a rule.
+- **Rules are the unit; a package is not.** Every rule in
+  `phpstan/phpstan-deprecation-rules` emits and the package still is not droppable — its neon registers
+  extensions too, and those are not rules.
 - As a pre-filter: transpiled rules on save and push, full PHPStan on merge or nightly.
 
 It does not make an existing PHPStan run cheaper: dropping rules does not drop the parsing and type
@@ -130,12 +107,11 @@ Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and r
 | `tomasvotruba/type-coverage` | 5 | 5 | 0 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
 | `phpstan/phpstan-strict-rules` | 45 | 35 | 10 | 0 |
-| `phpstan/phpstan-phpunit` | 13 | 5 | 8 | 0 |
+| `phpstan/phpstan-phpunit` | 13 | 6 | 7 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 2 | 0 | 0 |
 
-`--status` counts 127 of 231 here and writes a page under `--out`; `spaze/phpstan-disallowed-calls` (38),
-`composer/pcre` (2) and `larastan/larastan` (26) are in that denominator and emit nothing. Run it on your
-own project.
+`--status` counts 130 of 231 here and writes a page under `--out`. The denominator includes three more
+installed packages that emit nothing. Run it on your own project.
 
 <details>
 <summary>What the vocabulary covers</summary>
@@ -149,8 +125,8 @@ with its count. Larger pieces:
 - Reflection at the use site, from Mago's codebase metadata.
 - A producer handing a `{...}` record to a consumer, including one produced inside a loop.
 - A collaborator that decides *and* builds the findings; only the reporting becomes a runtime pass.
-- A collector-and-consumer pair, which becomes one whole-project pass with the *measurement* reimplemented —
-  Mago has no collector. Five of `type-coverage`'s metrics are mapped this way.
+- A collector-and-consumer pair, which becomes one whole-project pass with the *measurement* reimplemented,
+  because Mago has no collector.
 
 </details>
 
@@ -167,40 +143,40 @@ Three things run, and each records rather than asserts:
 | **per divergence** | each one found is pinned as a minimal case, so it survives the corpus moving on. [The record](tests/Fixtures/expected/divergences.md) goes red in either direction. |
 | **per corpus** | `run-corpus-sweep.php` reads seven trees this package installs, so `composer install` reproduces it: **11327 agreeing against 31 divergences**, [each listed](tests/Fixtures/expected/corpus-sweep.md). |
 
-Size is not what buys agreement: the two smallest trees carry most of the divergences and 1003 files of
-PHPUnit carry none. [VERIFICATION.md](VERIFICATION.md) has every run, including the defects in this port the
-differential caught first.
+Size does not predict agreement: 1003 files of PHPUnit carry no divergence, while 367 files of Laravel's
+support and database trees carry 22 of the 31. [VERIFICATION.md](VERIFICATION.md) has every run, including
+the defects in this port the differential caught first.
 
 ## Performance
 
 `php tests/Support/run-benchmark.php <project>` runs both engines over your own code. Here, on
-`vendor/nikic/php-parser/lib` — 270 files, 97 emitted rules, best of three on an idle machine:
+`vendor/nikic/php-parser/lib` — 270 files, 97 emitted rules, n=3 on a machine that was not otherwise idle.
+Wall spreads ran 0.01–0.33s, so prefer the CPU column:
 
 | | wall | CPU |
 |:--|--:|--:|
-| mago, engine only | 4.77s | 4.10s |
-| mago + a host with no plugins | 3.92s | 3.93s |
-| mago + the 97 transpiled rules | 4.99s | 6.37s |
-| PHPStan, cold result cache | 2.74s | 8.70s |
-| PHPStan, warm result cache | 1.10s | 0.97s |
+| mago, engine only | 3.88s | 3.80s |
+| mago + a host with no plugins | 3.91s | 3.88s |
+| mago + the 97 transpiled rules | 5.01s | 6.31s |
+| PHPStan, cold result cache | 2.75s | 8.73s |
+| PHPStan, warm result cache | 1.03s | 0.92s |
 
 **The rules cost row three against row two**, not against row one: a host that starts and speaks the protocol
-while registering nothing is what separates the host's own cost from the rules'. So the rules add **1.07s wall
-and 2.44s CPU**, and the host itself is free — rows one and two are equal within their spreads, and their
-ordering is noise rather than a result. The rules row has a 1.32s wall spread, so prefer its CPU figure.
+while registering nothing is what separates the host's own cost from the rules'. So the rules add **1.10s wall
+and 2.43s CPU**, and the host itself is free — rows one and two agree to 0.03s.
 
 **Not a wall-clock win on this corpus, and the reason is not the rules.** With `includes = []` the engine
-alone runs in **0.17s** rather than 3.92s, so about 96% of the floor is mago indexing the include tree before
-it analyses anything. Those includes are what let a rule reach a vendored parent — without them rules go
-silently narrow — so the lever is their width: name the packages your rules need rather than all of `vendor`.
-This project's own test suite went from 346s to 115s on exactly that change.
+alone runs in **0.11s** rather than 3.91s, so about 97% of the floor is mago indexing the include tree before
+it analyses anything. Those includes are what let a rule reach a vendored parent — **without them rules go
+silently narrow** — so the lever is their width: name the packages your rules need rather than all of
+`vendor`. This project's own suite went from 346s to 115s on that change.
 
-On CPU the port is already cheaper than a cold PHPStan and dearer than a warm one, because `mago analyze` has
-no result cache. Measure your own.
+`mago analyze` has no result cache, which is why the warm PHPStan row is the one to beat. Measure your own.
 
 ## Requirements
 
-PHP 8.4 for the transpiler, the floor the rule packages set. Generated plugins need Mago 1.47.6 or later:
+PHP 8.4 for the transpiler, the floor the rule packages set. A generated plugin depends on this package and
+on `carthage-software/mago`, and needs Mago 1.47.6 or later:
 that is where a compound assignment's operands started reporting their own type, and a plugin reading one is
 silently wrong on anything earlier.
 
