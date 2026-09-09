@@ -15861,3 +15861,63 @@ rule has now moved the bound twice, from "one" to "at least three" to "at least 
 The strategy change did not pay off either. Clearing a whole chain in one turn was the right idea against
 throwing work away, but it does not shorten the chain: I cleared two obstacles instead of one and still
 reverted everything, because the survival condition is the rule emitting and nothing else.
+
+### Six obstacles cleared, the rule emitted, the gate went green — and it was green for the wrong reason
+
+The strongest instance in this log of *a green run over material you wrote is the weakest evidence available*,
+because this time the green run was mine and it took a control pair to break it.
+
+**The chain, cleared one obstacle at a time with the scaffold saved between attempts** (a peer's point: the
+instrument was being destroyed between observations, so each question cost a rebuild rather than a run):
+
+| # | obstacle | what it was |
+|--:|:--|:--|
+| 1 | `array_any` over a node list | ~60 lines; string form must be tried first or two targets regress |
+| 2 | receiver-chain `while` | `Calls::chainedCallNamed()` + a three-statement recogniser |
+| 3 | binding lost into the inner helper | **my** bug: the chain local needed `as => 'MethodCall'`, since the `while` condition *is* a narrowing |
+| 4 | `getArgs()` on an assignment | the assignment path never resolved its receiver, assuming the hook node |
+| 5 | `$args[1] ?? $args[0]` | a coalesce over two indexed reads of the same list |
+| 6 | `(string) $x` on an access path | the identity, as it already is on two other paths |
+
+Obstacle 3 was found by probing `bindParameters()` on a rule that **already works** — it binds
+`as=MethodCall` — which cost nothing, against three earlier hypotheses about my own internals that cost a turn
+each. **Obstacle 4 is a latent defect beyond this rule**: any rule that *assigns* `->getArgs()` of a node it
+found asked the hook for its arguments instead. The expression form had always resolved its receiver; the
+assignment form never did.
+
+**It emitted**: php 147 → 148, `diff -rq` naming only the manifest, the worker and the new plugin, so no
+existing plugin's bytes moved. And the fires gate passed **4/4**, agreeing with PHPStan on both examples.
+
+#### Why the green was wrong
+
+Reading the emitted plugin — not running it — showed the nested combinator's predicate referencing `$node`:
+
+    Support::anyOf(Support::findKind($context, Support::argumentValue($item), ['FunctionCall']),
+        static fn ($item): bool => Support::nameEquals(Support::nthExpression($context, $node, 0), '…\\param'))
+
+Both closures bind `$item`, shadowing, and the inner predicate reads the **hook node** rather than its own
+item. The rule's predicate has two branches — a `param()` call and a `%…%` literal — and **my Bad example used
+the literal**, which is the branch that renders correctly. So the plugin was right on the half I tested and
+blind on the half I did not.
+
+Added the control that varies only that axis, `param('app.timeout')` instead of `'%app.timeout%'`:
+
+    PHPStan   BadParamFunctionCall.php:23  reports
+    plugin    reports nothing              → 3/4, the gate now red
+
+**Without that file this ships green**, as a rule that silently misses every `param()` reference — the
+plausible-but-wrong plugin this repository is built to refuse. The gate did its job on the second axis and
+could not have done it on the first, because the fixture is the part I wrote.
+
+Worth recording that the gate also caught an earlier version *before* the stubs existed, with the right
+message: *"PHPStan reported nothing on its own bad example, so the example does not exercise the rule and any
+agreement measured against it would be agreement on zero."*
+
+#### Reverted, and what is banked
+
+All six, `git diff` against HEAD empty. Obstacle 7 is the nested-combinator binding: unique item names per
+nesting depth, and the inner predicate bound to its own item. Not attempted.
+
+The scaffold with all six obstacles is saved outside the repository this time, so the next attempt costs a run
+rather than a rebuild. That is the one process change that clearly paid: obstacles 3 through 6 took one cycle
+each, against four fruitless fixture edits for a single obstacle two entries ago.
