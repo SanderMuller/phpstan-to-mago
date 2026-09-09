@@ -1155,7 +1155,10 @@ final class Vocabulary
                 . 'its methods; a promoted property is not counted at all; a property is typed when it is '
                 . 'written with a type, when a parent class declares it, or when its docblock mentions '
                 . '`callable` or `resource`; and a declaration is taken where it is written, which '
-                . '`nameLocation` says and `location` does not. Reproduce with '
+                . '`nameLocation` says and `location` does not. Both consumers are PSR-4, one class-like '
+                . 'per file, so neither corpus held a trait beside the class using it — the cell those '
+                . 'figures do not cover, and the one where taking a declaration by file rather than by '
+                . "span counted a trait's property against its user. Reproduce with "
                 . '`php tests/Support/run-coverage-corpus.php <consumer-root> --metric=properties`.',
         ],
         'declares' => [

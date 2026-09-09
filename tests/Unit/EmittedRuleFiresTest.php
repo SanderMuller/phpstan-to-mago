@@ -59,10 +59,16 @@ final class EmittedRuleFiresTest extends TestCase
         // emits is an aggregate: PHPStan reduces a *collection* rather than deciding per node, so registering
         // one here would need a collector service this gate cannot add and a threshold, and the per-file
         // Bad/Good comparison is the wrong instrument for one project-wide percentage.
-        // {@see AggregatesTypeCoverageTest}, {@see AggregatesDeclareCoverageTest} and
-        // {@see AggregatesConstantCoverageTest} are the right instrument and already run it — the real rule
-        // under real PHPStan against the transpiler's own emission under real mago, compared by file, line and
+        // The `Aggregates*CoverageTest` classes are the right instrument and run it — the real rule under
+        // real PHPStan against the transpiler's own emission under real mago, compared by file, line and
         // message, plus the counts. Naming the exclusion rather than leaving the corpus list looking complete.
+        //
+        // **Which test covers which rule is asserted, not listed here.** This comment named three of the
+        // five rules the package emits, and the two it did not name were an existing test nobody added and
+        // `PropertyTypeCoverageRule`, which had no test at all — emitted, counted by the census, outside
+        // these corpora and outside every aggregate test. It shipped an over-reporting defect.
+        // {@see EveryAggregateRuleHasItsOwnTest} now fails when a rule here has no named instrument, because
+        // a prose exemption has no expected value and cannot fail.
     ];
 
     private const string FIXTURES = __DIR__ . '/../Fixtures/Rules';

@@ -328,8 +328,22 @@ final readonly class TypeCoverage
 
                 // Written here, or arriving from a trait or a parent. Only the first is this class-like's
                 // declaration; the rest are counted where they are written, if that file is analysed at all.
+                //
+                // The file alone does not say that. A trait declared **in the same file** as the class using
+                // it satisfies `$at->file === $file`, so its property was counted against the class and
+                // reported at the trait's own line — over-reporting the shape the trait skip above exists to
+                // prevent. The span settles it, through the SDK's own predicate: a class-like's declaration
+                // is inside its span and a sibling's is not.
+                //
+                // The measurement behind `ACCEPTED_DIVERGENCE['properties']` did not catch this because both
+                // consumers it was taken on are PSR-4 — one class-like per file — so the two tests agree on
+                // every file either corpus holds. 866 of 866 and 1443 of 1443 stay true; the cell nobody ran
+                // is a trait beside its user.
                 $at = $property->nameLocation;
-                if (! $at instanceof SourceLocation || $at->file !== $file) {
+                if (! $at instanceof SourceLocation
+                    || $at->file !== $file
+                    || ! $metadata->location->span->contains($at->span)
+                ) {
                     continue;
                 }
 

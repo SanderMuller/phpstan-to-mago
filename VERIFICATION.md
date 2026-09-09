@@ -18890,3 +18890,56 @@ Applied: `CensusAccountsForEveryRowTest`'s diagnostic now labels which side of t
 the rows and which is the hand-written literal, because "193 against 192" is otherwise ambiguous between a
 missing verdict and a stale figure, and the two want different actions. The peer asked for that after reading
 the message as a future reader would rather than as its author.
+
+### An emitted rule that over-reported, found by enumerating a population nobody had
+
+Asked for a next step after the refusal list closed at 43 of 43, the honest move was to look at a population
+the audits had never counted: **emitted rules with no example pair.** Five, all of them
+`tomasvotruba/type-coverage`'s `*CoverageRule`s. And the fires gate's corpus list excludes that package
+*deliberately*, with a comment naming the `Aggregates*Test` classes that cover it instead.
+
+**The comment named three tests for five rules.** `AggregatesReturnCoverageTest` had been written and never
+added to it, and `PropertyTypeCoverageRule` had no test at all — emitted, counted by the census, outside the
+gate's corpora and outside every aggregate test. Nothing ran it.
+
+#### It was wrong, and the fixture found it on first run
+
+A fixture where each file earns its place against one of the four behaviours
+`ACCEPTED_DIVERGENCE['properties']` records as measured, run against the real rule:
+
+    PHPStan   Untyped.php    Out of 3 possible property types, only 2 - 66.6 %
+    port      Untyped.php    Out of 4 possible property types, only 2 - 50.0 %
+              WithTrait.php  Out of 4 possible property types, only 2 - 50.0 %
+
+The port counted a trait's property against the class using it and reported at the trait's own line —
+over-reporting exactly the shape the trait skip four lines above exists to prevent.
+
+**The discriminating experiment was one file move.** Put the trait in its own file and the divergence
+disappears, both tools reporting 3-of-which-2-typed. So the exclusion works and had a **same-file hole**:
+`TypeCoverage::properties()` decided whether a declaration belonged to a class-like by comparing
+`$property->nameLocation->file` against the class's file, which is only equivalent while a trait lives
+elsewhere. Fixed by asking the span instead, through the SDK's own `Span::contains()` — a class-like's
+declaration is inside its span and a sibling's is not.
+
+Every measured cell stayed correct. 866 of 866 and 1443 of 1443 hold because **both consumers the figures
+came from are PSR-4, one class-like per file**, so neither corpus could reach the cell. That is
+`CLAUDE.md`'s measured-cells-plus-an-unmeasured-one, and the note now carries the condition its figures held
+under rather than the figures alone — which changes one emitted plugin's bytes, deliberately, because the
+measurement travels with the plugin and a figure without its condition is the carried-claim defect.
+
+#### Two instrument findings, and one is about the instrument this project trusts most
+
+- **The emit-all byte diff cannot see a runtime change.** It compares generated plugins; `TypeCoverage` is
+  called *by* them. The fix moved zero bytes, and so would have a regression. Every runtime change this
+  session — `6fe1c99` touched `Support`, `Reflect` and `Text` — passed a diff that was structurally unable
+  to look at it. The aggregate tests and the fires gate are the only instruments that execute the runtime.
+- **A prose exemption has no expected value and cannot fail**, which is the `uniq -c` finding one artefact
+  over. The corpus list's comment was right about *why* the package is excluded and stale about *what*
+  covers it, and nothing compared the exemption against the population it exempted.
+  `EveryAggregateRuleHasItsOwnTest` now asserts that every rule in the excluded corpus is named by an
+  aggregate test, that the named test exists, and that it mentions the rule it is credited with — existing
+  is not covering. Mutation-checked by dropping `PropertyTypeCoverageRule` from the map, which reproduces
+  the exact state that shipped the defect.
+
+The defect itself is mutation-checked from the other side: re-breaking the span test fails three of the five
+new tests, including the row asserted against the original rather than against a remembered number.

@@ -144,6 +144,7 @@ parameters:
                 - tests/Support/run-benchmark.php
                 - tests/Unit/AggregatesConstantCoverageTest.php
                 - tests/Unit/AggregatesDeclareCoverageTest.php
+                - tests/Unit/AggregatesPropertyCoverageTest.php
                 - tests/Unit/AggregatesReturnCoverageTest.php
                 - tests/Unit/AggregatesTypeCoverageTest.php
                 - tests/Unit/AnalysesTheEmittedPluginsTest.php
