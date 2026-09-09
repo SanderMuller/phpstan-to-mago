@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago;
 
 use FilesystemIterator;
+use Nette\Neon\Exception as NeonException;
 use Nette\Neon\Neon;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -131,7 +132,18 @@ final readonly class PackageConfiguration
         $byFile = [];
 
         foreach ($this->neonFiles() as $path) {
-            $decoded = Neon::decode((string) file_get_contents($path));
+            // Guarded, unlike {@see readNeon()}, and the difference is the input set rather than caution.
+            // That one reads the files a package's own manifest points at, which have always parsed; this one
+            // reads *every* neon under the root, including files nobody promised were valid standalone neon.
+            // Shipped once without the guard: it threw out of nine tests on the `prefer-lowest` leg, where
+            // the pinned `nette/neon` rejects a file the newer one accepts, so it passed locally and on two
+            // of the three legs. A file that does not decode carries no wiring.
+            try {
+                $decoded = Neon::decode((string) file_get_contents($path));
+            } catch (NeonException) {
+                continue;
+            }
+
             if (! is_array($decoded) || ! is_array($decoded['services'] ?? null)) {
                 continue;
             }

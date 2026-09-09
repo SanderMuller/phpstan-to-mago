@@ -16899,3 +16899,131 @@ built; nothing here counts until one of them emits through it.
 Verified: emit-all byte-identical across all three targets (190/34/25, zero diff); suite 315 of 315; PHPStan 0,
 baseline 13; Rector 0; Pint clean; census regenerated after reading its two-line diff, which is the one
 refusal's reason and nothing else.
+
+### I called the covers helper inseparable, and a peer read the same file and separated it
+
+Retracting a retraction, in the same session that wrote it. I read `CoversHelper::processCovers()` and
+concluded it "is not separable into a question plus a message", because it builds four findings under four
+identifiers in branches and attaches a conditional tip. **That is a description of how the helper is written,
+not of what it computes**, and I stated the second while having only established the first.
+
+The peer read the same file and produced the split. It holds, and I have checked it against the source rather
+than accepted it: nothing from reflection reaches any message. Two derived values do all the work —
+
+- `$fullName`, the tag value, or `defaultClass . tagValue` when the class part is empty and the node is a
+  `ClassMethod`;
+- `$isMethod`, `strpos($covers, '::') !== false`;
+
+— and every message is a `sprintf` over those two. Underneath sit exactly four existence questions, each a
+`Codebase` call this runtime already reaches: does a class of this name exist, is it an interface, does it have
+this method, does a function of this name exist. Five outcomes, one of them silent.
+
+So the question-plus-message split exists. **My sentence was wrong and the error is one this file already
+names: asserting a property of the code from its shape rather than from tracing it.** The clause I could not
+have licensed is "is not separable" — I had a row for "builds findings in branches" and none for the claim I
+wrote.
+
+#### What actually blocks it, priced
+
+- **Multi-message with per-finding identifiers.** The `INTERFACE` and `INVALID_METHOD` branches are
+  non-exclusive inside the class-exists arm, so one `@covers` tag can produce two findings under two
+  identifiers. That is inherent to the helper rather than an artefact of its style, and it is exactly what the
+  census records for this rule: *a second identifier before the first was reported*. A classifier returning one
+  outcome will not do; it has to return a set.
+- **A conditional `->tip()`** on the `INVALID_TARGET` branch, when the class name carries no backslash. A
+  fidelity divergence on one branch if the emitted plugins have no tip channel, and cheap to state as a bound.
+- **A quirk to reproduce rather than normalise.** When the class does not resolve and a method *was* named, the
+  helper asks whether a global **function** of the *method's* name exists — `hasFunction(new Name($method))`,
+  not the class part. So `@covers \Gone\Klass::sprintf` reports nothing, because `sprintf()` exists. Almost
+  certainly unintended and it is what PHPStan ships; the gate compares against PHPStan, so a port asking the
+  sensible question instead would disagree. It needs a fixture pinning it, because it is the exact shape that
+  reads as a bug in the port when it is fidelity.
+- **Tag parsing, and `getPhpDocNodes()` being plural.** `getCoverAnnotations()` wants the docblock's *tags*,
+  not its text, and iterates several doc nodes. The trivia route gives text, so extracting `@covers` values is
+  string work — simpler than the `@var` type resolution that kills `NoJustPropertyAssignRule`, because the
+  value is a raw name rather than a type to resolve, but not free. The plurality is the part to probe rather
+  than assume.
+
+So the live reach of the docblock route is the two covers rules, and the docblock read is one of four things
+they need rather than the operative one. The operative one is multi-identifier multi-message. Neither is built.
+
+#### The plurality question, measured, and it closes in the port's favour
+
+The peer flagged `getPhpDocNodes()` being plural as the thing to probe rather than assume, and it is the right
+flag: if PHPStan merged an inherited docblock into a declaration's tags, a trivia read at the declaration would
+be blind to it and the port would under-report. Probed on both rules' actual inputs, with a control row in each
+file that would have shown the merge if it happened.
+
+Class docblocks, via `getResolvedPhpDoc()` — what `ClassCoversExistsRule` calls:
+
+    ParentWithCovers    resolvedPhpDoc=present  docNodes=1  covers=[\DocNodes\FromParent]
+    ChildWithOwn        resolvedPhpDoc=present  docNodes=1  covers=[\DocNodes\OwnTarget]
+    ChildWithNone       resolvedPhpDoc=NULL     docNodes=0  covers=[]
+    Standalone          resolvedPhpDoc=present  docNodes=1  covers=[]
+
+`ChildWithNone` is the discriminating row: it extends a class carrying `@covers` and answers **NULL**. So
+class docblocks are not inherited, and the plural accessor returns one node for these inputs.
+
+Method docblocks — and here the first probe I ran answered the wrong question, which is worth recording because
+it is the third time in this session. I probed `getNativeMethod()->getDocComment()` and got "not inherited",
+with `MethodChildBare::overridden` answering NULL while overriding a documented parent method. True, and not
+what the rule calls. `ClassMethodCoversExistsRule` reads `$node->getDocComment()` — php-parser's own attachment
+to the method node — and returns early when it is null, then resolves *that* comment through
+`FileTypeMapper::getResolvedPhpDoc()`. So there is no inherited lookup by construction, and the probe's answer
+happened to coincide with the rule's behaviour for a different reason than the one it measured. Reading the
+rule is what settled it; the probe only agreed.
+
+Both rules therefore read a docblock written at the declaration, which is what a nearest-preceding trivia scan
+under the measured guard answers. That closes the association half of the route for these two consumers.
+
+**The count that nearly sent me building first was wrong in both directions on the same day.** "Four rules name
+a docblock need in the census" is a count off need labels, which the census header warns is not a count of
+capabilities — two of the four are closed for unrelated reasons. And then, having corrected that, I wrote off
+the remaining two on a property of the helper I had not traced. A tally overstated the lever and a shape
+understated it.
+
+### The loop cancelled its own test job three times, and the job it was hiding was red
+
+Process, not translation, and it hid a real break for three commits.
+
+This repository's `run-tests` workflow uses a cancel-in-progress concurrency group, and this session has been
+pushing roughly every fifteen minutes — shorter than the matrix job takes. So:
+
+| commit | phpstan | run-tests |
+|:--|:--|:--|
+| `ccdf8be` | success | success |
+| `5a4ba11` | success | **cancelled** |
+| `effb5af` | success | **cancelled** |
+| `7999b5a` | success | **failure** |
+
+**A push cadence shorter than the job it is supposed to gate means the gate never runs.** Three commits
+shipped with only the fast `phpstan` job completing, and the fourth is where the accumulated break finally got
+to report. I also stated `5a4ba11` green in a summary before its own watch returned, and the watch then said
+`cancelled` — the watch's pass criterion is `success` or `skipped`, so it would have caught it. Stating a
+result ahead of the instrument already running to answer it is the plainest form of the error this file is
+about. Corrected in the next summary.
+
+So: a tick that pushes waits for `run-tests` on that push before the next one, and a tick with nothing that
+needs pushing does not push.
+
+#### What was actually broken, and it was mine
+
+Nine errors, all `Nette\Neon\Exception: Unexpected '<new line>' on line 4, column 3` out of
+`PackageConfiguration.php:134` — inside `conflictingWirings()`, the method added two commits earlier. **Only
+the `prefer-lowest` leg**: `composer.json` allows `nette/neon: ^3.4`, the pinned lowest rejects a neon file the
+newer one accepts, so it passed locally and on both `prefer-stable` legs.
+
+The defect is one line and the reason is exact. My own audit script — the one that produced the 55/50/0/5
+distribution — wrapped its decode in `try { … } catch (Throwable) { continue; }`. **Porting the scan into
+`PackageConfiguration` dropped the guard.** `readNeon()` beside it decodes unguarded and always has, safely,
+because it reads only the files a package's own manifest points at. My scan reads *every* neon under the root,
+including files nobody promised were valid standalone neon. **I widened the input set without widening the
+guard**, and that is the whole of it.
+
+Fixed with the test first, per this repository's rule for a PHPStan-or-runtime error a test can catch: a `.neon`
+that does not parse now sits under the fixture package, outside its manifest includes, and
+`conflictingWirings()` is asserted to answer `[]`. It reproduced the CI error locally on the first run — *Bad
+indentation on line 3 at column 2*, thrown from the same place — and passes with the guard. The local parser
+accepts every neon in `vendor`, measured, which is exactly why the test had to bring its own broken file
+rather than rely on one being installed.
+

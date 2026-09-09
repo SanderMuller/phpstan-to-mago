@@ -112,6 +112,24 @@ final class ReadsPackageConfigurationTest extends TestCase
         );
     }
 
+    public function test_a_neon_under_the_root_that_does_not_parse_is_not_wiring(): void
+    {
+        $configuration = PackageConfiguration::forRuleFile(self::CONFIGURED);
+        $this->assertInstanceOf(PackageConfiguration::class, $configuration);
+
+        // `conflictingWirings()` scans *every* neon under the package root, not only the ones the manifest
+        // auto-includes, and a file nobody promised was valid standalone neon is among them. This shipped
+        // without the guard and turned nine tests red on the `prefer-lowest` leg alone -- the pinned
+        // `nette/neon` there rejects a file the newer one accepts, so it passed locally and in two of three
+        // CI legs. A file that does not decode carries no wiring, which is the honest answer rather than an
+        // exception out of a reader.
+        $this->assertSame(
+            [],
+            $configuration->conflictingWirings('Fixture\\ConfiguredPackage\\Rules\\ConfiguredRule'),
+            'A neon under the package root that does not parse has to be skipped, not thrown from.',
+        );
+    }
+
     public function test_a_rule_the_package_does_not_wire_has_no_arguments(): void
     {
         $configuration = PackageConfiguration::forRuleFile(self::CONFIGURED);
