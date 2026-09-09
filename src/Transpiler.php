@@ -631,6 +631,8 @@ final class Transpiler
             );
         }
 
+        $this->refuseASubsumedCollector($class);
+
         if ($this->feedsBackIntoPhpstan($class)) {
             throw new Refusal(
                 'this rule reports nothing: its whole output is $scope->invokeNodeCallback(), which synthesises '
@@ -641,6 +643,42 @@ final class Transpiler
                 permanent: true,
             );
         }
+    }
+
+    /**
+     * Refuses a collector whose paired rule this transpiler already emits whole.
+     *
+     * The opposite collector case to the writer one above: the pair *does* port, and porting it leaves the
+     * collector with nothing to be. A `CollectedDataNode` consumer this transpiler recognises emits as a
+     * single after-analysis hook that counts in the runtime -- all five type-coverage rules emit as
+     * `AfterAnalysisHook` calling `Runtime\TypeCoverage::*`, verified against the emitted files, and not one
+     * emitted plugin references a collector. So the collector has no output a plugin could carry: an analyzer
+     * plugin's only output is `report()`, and a collector reports nothing.
+     *
+     * The five were refused on whichever construct their bodies tripped on first -- a missing hook for
+     * `ClassConstantsNode`, an unmapped iteration over `getNodes()`. Each reads as a gap to close, and closing
+     * any of them would emit a plugin that collects into nothing. Four of the five are also the smallest live
+     * bodies in the corpus by line count, so the wrong reason was pointing at the cheapest work available.
+     *
+     * Derived rather than tabulated, like the writer mark: the condition is that the collector's name is one
+     * {@see Vocabulary::AGGREGATES} maps, which is the same table the aggregate emission reads. Drop the
+     * aggregate and the mark goes with it.
+     */
+    private function refuseASubsumedCollector(Class_ $class): void
+    {
+        if (self::$target !== 'php'
+            || ! $this->implementsCollector($class)
+            || ! isset(Vocabulary::AGGREGATES[basename($this->file, '.php')])
+        ) {
+            return;
+        }
+
+        throw new Refusal(
+            'this collector has nothing to emit as: the rule that consumes it emits as a single '
+            . 'after-analysis hook that counts in the runtime, so no collected data passes between them. '
+            . "An analyzer plugin's only output is report(), and a collector reports nothing",
+            permanent: true,
+        );
     }
 
     /**

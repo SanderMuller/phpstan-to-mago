@@ -17160,3 +17160,71 @@ emitting or a line moving.
 10`. The memoisation bought 41 seconds on the leg that matters (10:14 → 9:33) and prefer-lowest now has 27
 seconds of margin. That is a fact about the next addition rather than about this one, and raising the limit is
 a change to someone else's CI budget rather than mine to make.
+
+### The five collectors had nothing to emit as, and their refusals said otherwise
+
+`tomasvotruba/type-coverage` now reads **5 of 5 portable rules emit, 0 refuse, 5 unportable in principle**,
+where it read 5 of 10 with 5 refusing. Nothing was built to make that happen; five wrong reasons were replaced
+with the right one.
+
+The previous entry ranked the refused rules by body size and found the four smallest live bodies were all
+type-coverage collectors — a candidate set I had dismissed earlier in the session as "census lines without
+capability", on no measurement. Checking the dismissal rather than repeating it is what produced this.
+
+**Measured, off the emitted files rather than off the design.** All five coverage rules emit as a self-contained
+`AfterAnalysisHook`:
+
+    ConstantTypeCoverageRule   AfterAnalysisHook   TypeCoverage::constants
+    DeclareCoverageRule        AfterAnalysisHook   TypeCoverage::declares
+    ParamTypeCoverageRule      AfterAnalysisHook   TypeCoverage::parameters
+    PropertyTypeCoverageRule   AfterAnalysisHook   TypeCoverage::properties
+    ReturnTypeCoverageRule     AfterAnalysisHook   TypeCoverage::returns
+
+and **not one emitted plugin references a collector**. So the port replaced the collector-and-consumer pair
+with a single hook that counts in the runtime, and the collector has no output a plugin could carry: an
+analyzer plugin's only output is `report()`, and a collector reports nothing. Same argument the writer pair
+already carries, arrived at from the opposite direction — that one is unportable because its consumer can never
+report, this one because its consumer already emits whole.
+
+**And the wrong reasons were pointing at the cheapest-looking work in the corpus.** The five refused on
+whichever construct their bodies tripped on first — a missing hook for `ClassConstantsNode`, an unmapped
+iteration over `getNodes()`, `->props` on a property. Each reads as a gap to close, four of the five are the
+smallest live bodies by line count, and closing any of them would emit a plugin that collects into nothing.
+
+Derived rather than tabulated, like the writer mark beside it: the condition is that the collector's name is one
+`Vocabulary::AGGREGATES` maps, which is *the same table the aggregate emission reads*. Drop the aggregate and
+the mark goes with it, so it cannot go stale in the direction that matters.
+
+#### A test that shared a substring with its own opposite
+
+`RefusesAWriterTest::test_a_collector_feeding_a_reporting_rule_is_not_refused_for_writing` went red, and it was
+right to. It asserted the refusal does not contain `reports nothing` — a proxy for "does not say it feeds a
+writer" — and the new subsumption refusal ends "and a collector reports nothing", which is true and is a
+different reason. Tightened to the writer-specific phrase, and given a positive assertion for the reason that
+*should* be there, so it now pins what it means rather than a string two opposite reasons share.
+
+#### Figures re-derived rather than carried
+
+`--status` drops from 236 to **231** portable rules, because `NEVER` is excluded from the denominator. That
+figure appears in the census header (generated from `TracksUpstreamDriftTest`) and in the README, and both were
+updated. Every README package row was then re-derived from the census by script — seven of seven match — rather
+than checked by eye, and the census header's own "this file's 192" still re-derives, because the five moved
+verdict without ceasing to be lines.
+
+#### Two things about CI, one of them a correction
+
+I said last tick that `run-tests` has no `paths` filter and would run on a docs-only push. **Wrong**: both
+workflows filter on `**.php` plus a few named files, so `989d5b5` — `VERIFICATION.md` alone — produced no
+`run-tests` run at all, and the watch reported an HTTP 404 for an empty run id. That is the documented and
+correct behaviour for a push whose change set matches nothing.
+
+It also confirms a hole this repository had already noted: `tests/Fixtures/expected/**` is not in either
+filter, and `census.md` and `corpus-sweep.md` are the two files under it that are not `.php`. A commit touching
+only those would not be gated by the alarm that exists to compare them. Narrow, real, and a change to someone
+else's CI configuration rather than mine to make — flagged here beside the `timeout-minutes: 10` margin, which
+after `f4076ce` stands at 27 seconds on the `prefer-lowest` leg.
+
+Verified: emit-all byte-identical across all three targets (190/34/25, zero diff — the five collectors emitted
+nothing before and emit nothing now); suite 316 of 316; PHPStan 0 after extracting the new check into its own
+method so `Transpiler` gained no baseline entry, with its existing class figure re-read from 210 to 211;
+Rector 0; Pint clean.
