@@ -15769,3 +15769,50 @@ in mago's tree, and the emitted code looked correct at every step.
 
 Census 132 → **133**, symplify 69 → **70 of 89**, `--status` 122 → **123 of 236**, and all seven README rows
 re-derived mechanically against the census.
+
+### An `array_any` over a node list, and the regression that ordering caused
+
+`PreferAutowireAttributeOverConfigParamRule` refuses with *"not a resolvable list of strings (line 109)"* at
+`array_any($methodCall->getArgs(), fn (Arg $arg) => …)`. The entry above called that message misleading; it is
+narrower than that. The handler literally requires `stringList()` and binds the closure parameter as `bytes`,
+so an argument list fails on the *list*, not on the closure — `Support::anyOf` already ships 44 times and
+takes any array at runtime.
+
+Extended it: resolve the first argument as a descriptor, and when its kind has an `ITERABLES` row, bind the
+parameter to that row's `item` kind and emit the same `any_of` over the row's `phpIter`. About sixty lines.
+It works — the rule's refusal advances to `Stmt_While` at line 172.
+
+#### The ordering was a regression, and only the three-target count caught it
+
+I tried the node form **first**, reasoning that a string list "resolves to no descriptor kind at all". Wrong:
+a `config-list` is a string list *and* an `ITERABLES` row, so it reached the node path, hit its PHP-only guard
+and refused —
+
+    analyzer  34 emitted → 29        linter  25 emitted → 22
+
+with the **php target unchanged at 147**, which is exactly why this repository emits all three targets on every
+change even though the snapshots only cover some. Reading php alone would have called this clean. Reversing
+the order — string form first, node form only when it raises — restores 147 / 34 / 25.
+
+This is the first regression I have caused in this log rather than found, and the instrument that caught it was
+a count I was running for a different reason.
+
+#### The next obstacle, priced
+
+`resolveRegisteredServiceClassName()` is a **receiver-chain walk**:
+
+    $current = $methodCall;
+    while ($current instanceof MethodCall) {
+        if (NamingHelper::isName($current->name, 'set')) { return $this->resolveClassNameFromServiceSetMethodCall($current, $scope); }
+        $current = $current->var;
+    }
+
+That is a new primitive — "the first call in the receiver chain named X" — plus a `while` recogniser, and
+`resolveClassNameFromServiceSetMethodCall()` and `isVendorClass()` sit behind it. **At least three more
+obstacles**, stated as a lower bound because that is all a single build ever establishes.
+
+#### Reverted
+
+Unexercised vocabulary: no rule emits from the combinator, so it goes out under the condition the earlier
+reverts share. `git diff` against HEAD is empty. Recorded precisely enough to rebuild — sixty lines, and the
+ordering constraint is the part that would otherwise be rediscovered by breaking two targets again.
