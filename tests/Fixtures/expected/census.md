@@ -334,12 +334,12 @@ EMIT    PositionalFlagArgumentConstructorRule
 REFUSE  PositionalFlagArgumentMethodCallRule  (the package registers it nowhere)
         $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
         needs-at-least: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentMethodCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
-        also-emitted-by: CombinedMethodCallRule, CombinedStaticCallRule, PositionalFlagArgumentConstructorRule, PositionalFlagArgumentNullsafeMethodCallRule
+        also-emitted-by: CombinedMethodCallRule
 EMIT    PositionalFlagArgumentNullsafeMethodCallRule
 REFUSE  PositionalFlagArgumentStaticCallRule  (the package registers it nowhere)
         $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
         needs-at-least: $firstPartyNamespaces is a constructor parameter the package's neon does not wire for Hihaho\PhpstanRules\Rules\Conventions\PositionalFlagArgumentStaticCallRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
-        also-emitted-by: CombinedMethodCallRule, CombinedStaticCallRule, PositionalFlagArgumentConstructorRule, PositionalFlagArgumentNullsafeMethodCallRule
+        also-emitted-by: CombinedStaticCallRule
 REFUSE  SlowMigrationDdlRule
         assignment value outside the vocabulary: access path outside the vocabulary: Expr_Array
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Array
@@ -479,7 +479,7 @@ EMIT    VariableStaticPropertyFetchRule
 EMIT    VariableVariablesRule
 EMIT    WrongCaseOfInheritedMethodRule
 
-## phpstan/phpstan-phpunit — 6 of 13 portable rules the package registers emit, 0 covered by the engine, 7 refuse, 1 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-phpunit — 7 of 13 portable rules the package registers emit, 0 covered by the engine, 6 refuse, 1 unportable in principle, 0 it registers nowhere
 
 REFUSE  AssertEqualsIsDiscouragedRule
         guard body is neither `return []` nor `continue`, but Stmt_Expression
@@ -499,19 +499,13 @@ REFUSE  AttributeRequiresPhpVersionRule
 REFUSE  ClassAttributeRequiresPhpVersionRule
         could not find the reported message
         needs-at-least: could not find the reported message
-REFUSE  ClassCoversExistsRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
-        needs-at-least: assignment to something other than a simple local
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: array_shift()
-        needs-at-least: a second identifier before the first was reported
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: array_merge()
+EMIT    ClassCoversExistsRule
 REFUSE  ClassMethodCoversExistsRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
-        needs-at-least: assignment to something other than a simple local
+        assignment value outside the vocabulary: access path outside the vocabulary: array_map()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: array_map()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->fileTypeMapper->getResolvedPhpDoc()
+        needs-at-least: assignment value outside the vocabulary: count() of something other than an argument list
+        needs-at-least: assignment value outside the vocabulary: $fileTypeMapper is a constructor parameter the package's neon does not wire for PHPStan\Rules\PHPUnit\ClassMethodCoversExistsRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        needs-at-least: no iteration mapped for Expr_Variable, which resolved to a doc-tags
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: array_merge()
 NEVER   DataProviderDataRule
         this rule reports nothing: its whole output is $scope->invokeNodeCallback(), which synthesises a node with inferred argument types and hands it back to PHPStan's own analysis so that *other* rules fire on it. An analyzer plugin's only output is report(), and there is no equivalent of feeding a node back into Mago, so no node hook and no vocabulary entry can make this one portable

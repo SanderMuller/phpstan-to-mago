@@ -1263,6 +1263,18 @@ final readonly class Translator
             return $this->operand($subject) . ' === null';
         }
 
+        // `$tag === null` on the head of a tag list, which is absent rather than empty. The helper answers
+        // null for a tag nobody wrote and the empty string for one written with no value, and the original
+        // tells those apart too: `array_shift()` on an empty list is null, and `(string) $tag->value` on a
+        // bare tag is ''.
+        if ($subject['kind'] === 'doc-tag') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a docblock tag null test, which only the PHP target carries', $line);
+            }
+
+            return $this->operand($subject) . ' === null';
+        }
+
         if (! in_array($subject['kind'], ['bytes', 'class-name'], true)) {
             // Names what was written as well as what it resolved to. `null comparison against a subtree` told a
             // reader nothing: the one rule refusing that way asks `$node->stmts === null`, which is *whether the
@@ -3195,9 +3207,19 @@ final readonly class Translator
         // out of the collaborator rather than named here: the message and the identifier are the two things a
         // reader checks a port against, and a table holding either would drift from the package silently.
         if ($entry['kind'] === 'reports') {
-            $identifier = $this->reportedIdentifierIn($declaring['class'], $line);
-            $arguments[] = $this->context->backend->bytes($identifier);
-            $this->context->identifiers[] = $identifier;
+            // A collaborator reporting under one identifier has it passed in; one reporting under several
+            // chooses per finding, so the runtime class declares the set and this asserts its own reading
+            // against that. The assertion is the reason the identifier is not tabulated: an upstream rename
+            // fails here rather than emitting a plugin reporting under a name the package has dropped.
+            if (($entry['identifiers'] ?? null) === 'declared') {
+                foreach ($this->declaredIdentifiersMatching($entry['helper'], $declaring['class'], $line) as $identifier) {
+                    $this->context->identifiers[] = $identifier;
+                }
+            } else {
+                $identifier = $this->reportedIdentifierIn($declaring['class'], $line);
+                $arguments[] = $this->context->backend->bytes($identifier);
+                $this->context->identifiers[] = $identifier;
+            }
         }
 
         $call = $entry['helper'] . '(' . implode(', ', $arguments) . ')';
@@ -3215,7 +3237,7 @@ final readonly class Translator
      * true of the only entry it had and would have silently dropped the arguments of the next one.
      *
      * @param array{helper: string, kind: string, takes: string, arguments: list<int>, types?: list<int>,
-     *     flags?: list<string>, receiverType?: bool, expressionTypes?: bool} $entry
+     *     flags?: list<string>, receiverType?: bool, expressionTypes?: bool, identifiers?: string} $entry
      * @param array<Arg> $args
      *
      * @return list<string>
@@ -5907,19 +5929,7 @@ final readonly class Translator
      */
     private function reportedIdentifierIn(ClassLike $class, int $line): string
     {
-        $found = [];
-        foreach ((new NodeFinder())->findInstanceOf([$class], MethodCall::class) as $call) {
-            if ($this->memberName($call->name, $call->getStartLine()) !== 'identifier') {
-                continue;
-            }
-
-            $argument = $call->getArgs()[0] ?? null;
-            if ($argument instanceof Arg && $argument->value instanceof String_) {
-                $found[] = $argument->value->value;
-            }
-        }
-
-        $found = array_values(array_unique($found));
+        $found = $this->reportedIdentifiersIn($class);
         if (count($found) !== 1) {
             throw new Refusal(sprintf(
                 'the class behind this check reports under %d identifiers, so which one it uses is not readable',
@@ -5928,6 +5938,324 @@ final readonly class Translator
         }
 
         return $found[0];
+    }
+
+    /**
+     * A loop over a tag list whose whole body hands each tag to a pass, which the pass does for itself.
+     *
+     * The third way a `reports` collaborator is reached, after a bare `return` and an assignment. Here the
+     * rule accumulates: `$errors = array_merge($errors, $this->helper->m($node, $tag, ..));` once per tag.
+     * The pass reproduces the collaborator over *every* tag on the declaration, so the loop has nothing left
+     * to iterate and collapses to one call — the same collapse
+     * {@see translateForeach()} already performs for a collected-data outer loop.
+     *
+     * **Guarded to exactly that shape, because collapsing a loop is not translating one.** The body must be
+     * one statement, that statement must be the accumulator merge, and the merge's second argument must be
+     * the pass. Anything else in the body would be dropped silently, which is the failure this refuses
+     * instead: a loop that also guarded, or counted, or reported something else would come out as a plugin
+     * doing less than the rule with nothing to show it.
+     *
+     * The equivalence it rests on is that the pass sees the same tags the loop would. That cannot be read
+     * off either source, so the example pair and the fires gate are what establish it.
+     *
+     * @return bool whether the loop was taken, so the caller stops
+     */
+    private function collapsesATagLoop(Foreach_ $stmt): bool
+    {
+        if (count($stmt->stmts) !== 1) {
+            return false;
+        }
+
+        $only = $stmt->stmts[0];
+        if (! $only instanceof Expression || ! $only->expr instanceof Assign) {
+            return false;
+        }
+
+        $assign = $only->expr;
+        $merge = $assign->expr;
+        if (! $assign->var instanceof Variable
+            || ! is_string($assign->var->name)
+            || ! $merge instanceof FuncCall
+            || ! $merge->name instanceof Name
+            || $merge->name->toString() !== 'array_merge'
+        ) {
+            return false;
+        }
+
+        $into = $assign->var->name;
+        $merged = $merge->getArgs();
+        $accumulator = $merged[0]->value ?? null;
+        $addition = $merged[1]->value ?? null;
+        if (count($merged) !== 2
+            || ! $accumulator instanceof Variable
+            || $accumulator->name !== $into
+            || ! $addition instanceof MethodCall
+        ) {
+            return false;
+        }
+
+        $pass = $this->resolveCollaboratorCall($addition, $stmt->getStartLine());
+        if (($pass['kind'] ?? null) !== 'reports' || ! is_string($pass['php'] ?? null)) {
+            return false;
+        }
+
+        // The loop variable has to be what the pass is handed, or the pass is reporting about something the
+        // loop was not iterating.
+        $iterated = $stmt->valueVar;
+        if (! $iterated instanceof Variable || ! is_string($iterated->name)) {
+            return false;
+        }
+
+        $handed = false;
+        foreach ($addition->getArgs() as $argument) {
+            if ($argument->value instanceof Variable && $argument->value->name === $iterated->name) {
+                $handed = true;
+            }
+        }
+
+        if (! $handed) {
+            return false;
+        }
+
+        $this->context->lines[] = new Stm('pass-call', ['call' => $pass['php']], $this->context->indent);
+        $this->context->passReported[$into] = true;
+        $this->context->reportedInline = true;
+        $this->context->reportsThroughPass = true;
+
+        return true;
+    }
+
+    /**
+     * `[$a, $b] = $this->helper->m($docblock);` where the helper answers one tag list per position.
+     *
+     * The tuple never materialises, and that is the point: modelled as a value it would need list locals,
+     * `array_shift` and `count()` over them, none of which the vocabulary has. Each position binds to the
+     * *question* instead — this declaration's values for one named tag — and every consumer of it then maps
+     * to a runtime call. {@see Vocabulary::COLLABORATOR_CALLS} records mapping the question rather than the
+     * collaborator as the choice to prefer, for the reason a table of collaborators drifts.
+     *
+     * The tag names come from {@see Vocabulary::TAG_PAIRS} and are asserted against the collaborator's own
+     * source, in order: a helper that stopped reading `@coversDefaultClass`, or read a third tag, refuses
+     * here rather than binding a position to a tag it no longer answers.
+     *
+     * @return bool whether the pair was bound, so the caller stops
+     */
+    private function bindsATagPair(Assign $assign, int $line): bool
+    {
+        $targets = $assign->var instanceof List_ ? $assign->var->items : null;
+        if ($targets === null || ! $assign->expr instanceof MethodCall) {
+            return false;
+        }
+
+        $method = $this->memberName($assign->expr->name, $line);
+        $declaring = $this->collaboratorClass($assign->expr->var, $line)
+            ?? ($this->isThis($assign->expr->var) ? $this->declaringOf($method) : null);
+        if ($declaring === null) {
+            return false;
+        }
+
+        $tags = Vocabulary::TAG_PAIRS[$this->fullyQualified($declaring) . '::' . $method] ?? null;
+        if ($tags === null) {
+            return false;
+        }
+
+        if (count($targets) !== count($tags)) {
+            throw new Refusal(sprintf(
+                '%s() answers %d tag lists and this destructures %d positions',
+                $method,
+                count($tags),
+                count($targets),
+            ), $line);
+        }
+
+        $this->assertTagsRead($declaring['class'], $tags, $method, $line);
+
+        foreach ($tags as $position => $tag) {
+            $target = $targets[$position];
+            // A skipped position is legitimate -- `[, $second] = ..` -- and binds nothing.
+            if ($target === null) {
+                continue;
+            }
+
+            if (! $target->value instanceof Variable || ! is_string($target->value->name)) {
+                throw new Refusal('a destructured position that is not a simple local', $line);
+            }
+
+            $this->context->locals[$target->value->name] = [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'doc-tags',
+                'tag' => $tag,
+            ];
+        }
+
+        return true;
+    }
+
+    /**
+     * That the collaborator really does read these tags, in this order.
+     *
+     * The drift guard the tag names need, in the same spirit as the identifier assertion below: a name in a
+     * table is a claim about a package, and a claim about a package has to be checked on every run or it is
+     * a figure that goes stale silently. Read from the source rather than trusted.
+     *
+     * @param list<string> $tags
+     */
+    private function assertTagsRead(ClassLike $class, array $tags, string $method, int $line): void
+    {
+        $read = [];
+        foreach ((new NodeFinder())->findInstanceOf([$class], MethodCall::class) as $call) {
+            if ($this->memberName($call->name, $call->getStartLine()) !== 'getTagsByName') {
+                continue;
+            }
+
+            $argument = $call->getArgs()[0] ?? null;
+            if ($argument instanceof Arg && $argument->value instanceof String_) {
+                $read[] = ltrim($argument->value->value, '@');
+            }
+        }
+
+        if ($read !== $tags) {
+            throw new Refusal(sprintf(
+                '%s() reads the tags [%s] and this expects [%s], so a destructured position would bind to a '
+                . 'tag the collaborator does not answer',
+                $method,
+                implode(', ', $read),
+                implode(', ', $tags),
+            ), $line);
+        }
+    }
+
+    /**
+     * The identifiers a runtime class declares, asserted against what the collaborator's source says.
+     *
+     * The whole point of the `declared` form. A runtime reproduction chooses its identifier per finding, so
+     * it has to hold the set — and holding it is exactly what {@see Vocabulary::COLLABORATOR_CALLS} says
+     * drifts silently. So it is checked against the source on every run, and a mismatch refuses rather than
+     * emitting: an identifier renamed upstream shows up as this refusal, not as a plugin nobody can
+     * `ignoreErrors` by name.
+     *
+     * @return list<string>
+     */
+    private function declaredIdentifiersMatching(string $helper, ClassLike $class, int $line): array
+    {
+        $runtimeClass = 'Sandermuller\\PhpstanToMago\\Runtime\\' . explode('::', $helper)[0];
+        /** @var list<string> $declared */
+        $declared = defined($runtimeClass . '::IDENTIFIERS') ? constant($runtimeClass . '::IDENTIFIERS') : [];
+        sort($declared);
+
+        $read = $this->reportedIdentifiersIn($class);
+        if ($declared !== $read) {
+            throw new Refusal(sprintf(
+                '%s declares [%s] and the collaborator reports under [%s], so the pass would report under a '
+                . 'name the package does not use',
+                $runtimeClass,
+                implode(', ', $declared),
+                implode(', ', $read),
+            ), $line);
+        }
+
+        return $declared;
+    }
+
+    /**
+     * Every identifier a class can build a finding under, derived from its source.
+     *
+     * Reading rather than tabulating is the point, and the reason is beside {@see Vocabulary::COLLABORATOR_CALLS}:
+     * the message and the identifier are the two things a reader checks a port against, so a table holding
+     * either drifts from the package silently.
+     *
+     * **A `sprintf` wrapper is not a provenance.** `sprintf('phpunit.covers%s', $isMethod ? 'Method' : '')`
+     * has a literal format and two literal arms, so both identifiers it can produce are in the source and
+     * this expands them. Reading the call and stopping at the wrapper is the mistake this method exists to
+     * avoid, and it was made here first: a whole port was written up as blocked on that one line.
+     *
+     * A peer session's census of phpstan-src puts the shape's constituency at 88% of 844 `->identifier()`
+     * sites literal and 10.2% computed from source-visible material, of which a format string plus a ternary
+     * on a local boolean is the plurality — `ContinueBreakInLoopRule`, `ConstantLooseComparisonRule` and the
+     * six `*ConstantConditionRule`s among them. So this is a mechanism with a measured ceiling rather than a
+     * principle with one exception, and 1.3% of those sites take the identifier from a third-party extension
+     * at analysis time, which no reading and no table could reach.
+     *
+     * @return list<string> sorted, unique
+     */
+    private function reportedIdentifiersIn(ClassLike $class): array
+    {
+        $found = [];
+        foreach ((new NodeFinder())->findInstanceOf([$class], MethodCall::class) as $call) {
+            if ($this->memberName($call->name, $call->getStartLine()) !== 'identifier') {
+                continue;
+            }
+
+            $argument = $call->getArgs()[0] ?? null;
+            if (! $argument instanceof Arg) {
+                continue;
+            }
+
+            $found = [...$found, ...$this->literalIdentifiersOf($argument->value)];
+        }
+
+        $found = array_values(array_unique($found));
+        sort($found);
+
+        return $found;
+    }
+
+    /**
+     * The identifiers one `->identifier(..)` argument can evaluate to, where every part of it is a literal.
+     *
+     * A bare string is itself. A `sprintf` is expanded across its arguments, and a ternary contributes both
+     * arms — so a format with two ternaries yields four. Anything whose material is not in the source
+     * contributes nothing, which leaves the caller's count wrong rather than guessing: a site reading
+     * `$restrictedUsage->identifier` takes its value from an extension the corpus does not contain.
+     *
+     * @return list<string>
+     */
+    private function literalIdentifiersOf(Expr $value): array
+    {
+        if ($value instanceof String_) {
+            return [$value->value];
+        }
+
+        if ($value instanceof Ternary) {
+            return [
+                ...($value->if instanceof Expr ? $this->literalIdentifiersOf($value->if) : []),
+                ...$this->literalIdentifiersOf($value->else),
+            ];
+        }
+
+        if (! $value instanceof FuncCall
+            || ! $value->name instanceof Name
+            || $value->name->toString() !== 'sprintf'
+        ) {
+            return [];
+        }
+
+        $arguments = $value->getArgs();
+        $format = $arguments[0]->value ?? null;
+        if (! $format instanceof String_) {
+            return [];
+        }
+
+        $expanded = [$format->value];
+        foreach (array_slice($arguments, 1) as $argument) {
+            $candidates = $this->literalIdentifiersOf($argument->value);
+            if ($candidates === []) {
+                return [];
+            }
+
+            $next = [];
+            foreach ($expanded as $partial) {
+                foreach ($candidates as $candidate) {
+                    // One placeholder at a time, so a format with two of them consumes its arguments in
+                    // order rather than filling both from the first.
+                    $next[] = preg_replace('/%s/', str_replace('$', '\\$', $candidate), $partial, 1) ?? $partial;
+                }
+            }
+
+            $expanded = $next;
+        }
+
+        return $expanded;
     }
 
     /**
@@ -7828,6 +8156,14 @@ final readonly class Translator
             return $this->context->backend->call('arg_count', [$this->operand($subject)]);
         }
 
+        // A tag list is a question rather than a value, so its length is a question too: the helper counts
+        // the tag's occurrences on the declaration without a list ever existing for `count()` to take.
+        if ($subject['kind'] === 'doc-tags' && is_string($subject['tag'] ?? null)) {
+            $this->context->runtimeHelpers['DocblockTags'] = true;
+
+            return 'DocblockTags::count($context, $node, ' . var_export($subject['tag'], true) . ')';
+        }
+
         if (! in_array($subject['kind'], ['found-nodes', 'method-members', 'param-decls', 'property-members', 'config-list', 'list', 'constant-strings'], true)) {
             throw new Refusal("count() of a {$subject['kind']} compared numerically", $line);
         }
@@ -9365,6 +9701,10 @@ final readonly class Translator
             return;
         }
 
+        if ($subject['kind'] === 'doc-tags' && $this->collapsesATagLoop($stmt)) {
+            return;
+        }
+
         // A rule looping the classes a type names iterates the list, not the single-class reduction.
         if ($subject['kind'] === 'sole-class' && Transpiler::$target === 'php') {
             $subject = [
@@ -10073,6 +10413,10 @@ final readonly class Translator
 
     private function bindLocal(Assign $assign, int $line): void
     {
+        if ($this->bindsATagPair($assign, $line)) {
+            return;
+        }
+
         if (! $assign->var instanceof Variable || ! is_string($assign->var->name)) {
             throw new Refusal('assignment to something other than a simple local', $line);
         }
@@ -14873,6 +15217,15 @@ final readonly class Translator
                 return $base + ['key' => $key];
             }
 
+            // `$tag->value` on a PHPDoc tag node. The port already holds the value as a string, so the
+            // navigation is the identity — and the cast the rules write around it, `(string) $tag->value`,
+            // is the identity too, the same way it is on every other path here. `bytes` rather than a kind
+            // of its own, because from here on it is a string like any other: compared, split on `::`, and
+            // asked of the codebase.
+            if ($base['kind'] === 'doc-tag' && $property === 'value') {
+                return ['rust' => self::PHP_ONLY, 'kind' => 'bytes', 'key' => $key, 'php' => $this->operand($base)];
+            }
+
             if (Transpiler::$survey) {
                 $this->assume("a mapping for ->{$property} on a {$base['kind']}");
 
@@ -15241,6 +15594,19 @@ final readonly class Translator
             return ['rust' => 'context', 'kind' => 'class-reflection'];
         }
 
+        // `$classReflection->getResolvedPhpDoc()` — a handle nothing renders, consumed only by a call that
+        // asks it for a tag. PHPStan's version *resolves*, merging what a class inherits; the plugin reads
+        // the declaration's own docblock through `Support::docblockText()`, and the two answer the same
+        // question for an arbitrary tag because such a tag is reported only where it is written. Measured,
+        // not assumed — {@see \Sandermuller\PhpstanToMago\Tests\Unit\AnnotationTagsAreNotInheritedTest}
+        // holds the rows and fails if an upstream release starts resolving them.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getResolvedPhpDoc'
+            && $this->resolve($expr->var, $line)['kind'] === 'class-reflection'
+        ) {
+            return ['rust' => self::PHP_ONLY, 'kind' => 'docblock', 'php' => 'node'];
+        }
+
         $native = $this->nativeReflectionHop($expr, $line);
         if ($native !== null) {
             return $native;
@@ -15553,6 +15919,37 @@ final readonly class Translator
                     $this->resolve($argument->value, $line);
                 }
             }
+        }
+
+        // `array_shift(<a tag list>)` — the first value written for that tag, or null. The original takes the
+        // head of a list it has; the port asks the question directly, so no list is built for a shift to
+        // mutate. Only a tag list: shifting anything else would be shifting something nobody has established
+        // is a list.
+        if ($expr instanceof FuncCall
+            && $expr->name instanceof Name
+            && $expr->name->toString() === 'array_shift'
+        ) {
+            $shifted = $expr->getArgs()[0] ?? null;
+            $subject = $shifted instanceof Arg ? $this->resolve($shifted->value, $line) : ['kind' => ''];
+            if ($subject['kind'] === 'doc-tags' && is_string($subject['tag'] ?? null)) {
+                $this->context->runtimeHelpers['DocblockTags'] = true;
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'doc-tag',
+                    'php' => 'DocblockTags::first($context, $node, ' . var_export($subject['tag'], true) . ')',
+                ];
+            }
+        }
+
+        // `$tag->value` — a PHPDoc tag node's value, which is the string the port already holds. The cast the
+        // rules write around it, `(string) $tag->value`, is the identity on this path the same way it is on
+        // the assignment one.
+        if ($expr instanceof PropertyFetch
+            && $this->memberName($expr->name, $line) === 'value'
+            && ($subject = $this->resolve($expr->var, $line))['kind'] === 'doc-tag'
+        ) {
+            return $subject;
         }
 
         // `<cond> ? 'a' : 'b'` — one value picked by a condition. Last, because a ternary is also how several

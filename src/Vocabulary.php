@@ -762,6 +762,20 @@ final class Vocabulary
         'PHPStan\Rules\Methods\IllegalConstructorStaticCallRule::isInRenamedTraitConstructor' => false,
     ];
 
+    /**
+     * A collaborator method answering one tag list per tuple position, and which tag each position holds.
+     *
+     * Apart from {@see COLLABORATOR_CALLS} because these bind rather than call: the tuple is never a value,
+     * each position becomes a question about the declaration, and there is no runtime helper standing in for
+     * the method itself. The order is the collaborator's and is asserted against its source on every run --
+     * {@see Translator::assertTagsRead()} -- because a tag name in a table is a claim about a package.
+     *
+     * @var array<class-string|string, list<string>>
+     */
+    public const array TAG_PAIRS = [
+        'PHPStan\Rules\PHPUnit\CoversHelper::getCoverAnnotations' => ['covers', 'coversDefaultClass'],
+    ];
+
     public const array COLLABORATOR_CALLS = [
         // `kind: 'reports'` is the one entry that is not an answer. `AnnotationHelper::processDocComment()`
         // decides *and* builds the findings, and a rule returning that has nothing for this transpiler to
@@ -820,6 +834,18 @@ final class Vocabulary
             'kind' => 'reports',
             'takes' => 'context-node',
             'arguments' => [],
+        ],
+        // The second `reports` entry, and the first that reports under more than one identifier: the original
+        // picks between four, one of them assembled as `sprintf('phpunit.covers%s', $isMethod ? 'Method' : '')`.
+        // Both arms are literals, so the whole set is readable from the collaborator, and `identifiers:
+        // declared` makes the runtime class hold it and the transpiler check it — see
+        // {@see Runtime\CoversTargets::IDENTIFIERS}.
+        'PHPStan\Rules\PHPUnit\CoversHelper::processCovers' => [
+            'helper' => 'CoversTargets::report',
+            'kind' => 'reports',
+            'takes' => 'context-node',
+            'arguments' => [],
+            'identifiers' => 'declared',
         ],
 
         'TomasVotruba\CognitiveComplexity\AstCognitiveComplexityAnalyzer::analyzeFunctionLike' => [

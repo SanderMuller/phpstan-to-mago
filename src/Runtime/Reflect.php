@@ -52,11 +52,62 @@ final class Reflect
      */
     public static function classExists(NodeAnalysisContext $context, ?string $name): bool
     {
-        if ($name === null || $name === '') {
+        $name = self::codebaseName($name);
+        if ($name === null) {
             return false;
         }
 
         return $context->codebase->classLikeExists($name);
+    }
+
+    /** Whether the codebase knows a function of this name, with the same normalisation. */
+    public static function functionExists(NodeAnalysisContext $context, ?string $name): bool
+    {
+        $name = self::codebaseName($name);
+
+        return $name !== null && $context->codebase->functionExists($name);
+    }
+
+    /** The metadata for a class-like named by a value, with the same normalisation. */
+    public static function classLike(NodeAnalysisContext $context, ?string $name): ?ClassLikeMetadata
+    {
+        $name = self::codebaseName($name);
+
+        return $name === null ? null : $context->codebase->getClassLike($name);
+    }
+
+    /** Whether a class-like named by a value declares or inherits a method, with the same normalisation. */
+    public static function classHasMethod(NodeAnalysisContext $context, ?string $class, ?string $method): bool
+    {
+        $class = self::codebaseName($class);
+
+        return $class !== null && $method !== null && $method !== '' && $context->codebase->methodExists($class, $method);
+    }
+
+    /**
+     * A name as mago's codebase spells it, or null where there is nothing to ask about.
+     *
+     * **A leading backslash makes the codebase answer false**, measured with a control on a fixture:
+     * `SlashProbe\Target` is known, `\SlashProbe\Target` is not, and `slashprobe\target` is — so the lookup
+     * is case-insensitive and root-qualification-sensitive. PHPStan's `ReflectionProvider::hasClass()`
+     * normalises the leading separator, so a rule handed a name in the documented fully-qualified form asks
+     * the two engines the same question and gets different answers.
+     *
+     * Found by the fires gate rather than by reading: a `@covers \Examples\…\Good` annotation naming a class
+     * that exists reported "references an invalid class or function", because the port asked about a name the
+     * codebase does not hold. A rule reading a name out of source text is the case that reaches this — an
+     * annotation, a string literal, a docblock — where a name resolved from the tree arrives already
+     * normalised, which is why no emitted rule had hit it before.
+     */
+    private static function codebaseName(?string $name): ?string
+    {
+        if ($name === null) {
+            return null;
+        }
+
+        $name = ltrim($name, '\\');
+
+        return $name === '' ? null : $name;
     }
 
     /**

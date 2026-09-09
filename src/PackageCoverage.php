@@ -98,9 +98,18 @@ final readonly class PackageCoverage
         // pass never looked".
         $siblings = self::classFilesUnder($source);
 
+        // Keyed by the node type as well as the identifier, and that is the correction rather than a
+        // refinement. Comparing identifiers alone marked `ClassMethodCoversExistsRule` as covered by
+        // `ClassCoversExistsRule` the moment the latter emitted: both report `phpunit.covers`, one on a
+        // method's docblock and one on a class's, so the *name* is shared and the check is not. The six pairs
+        // this pass was built for were verified by hand down to their node type, and the pass did not encode
+        // that -- so it produced a plausible row the first time a new rule emitted.
         $identifiers = [];
         foreach ($outcomes as $name => $outcome) {
-            $identifiers[$name] = ReportedIdentifiers::of($outcome->file, $siblings);
+            $type = self::declaredNodeType($outcome->file);
+            foreach (ReportedIdentifiers::of($outcome->file, $siblings) as $identifier) {
+                $identifiers[$name][] = $type . ' ' . $identifier;
+            }
         }
 
         $emitting = [];
@@ -109,7 +118,7 @@ final readonly class PackageCoverage
                 continue;
             }
 
-            foreach ($identifiers[$name] as $identifier) {
+            foreach ($identifiers[$name] ?? [] as $identifier) {
                 $emitting[$identifier][] = $name;
             }
         }
@@ -120,7 +129,7 @@ final readonly class PackageCoverage
             }
 
             $covering = [];
-            foreach ($identifiers[$name] as $identifier) {
+            foreach ($identifiers[$name] ?? [] as $identifier) {
                 foreach ($emitting[$identifier] ?? [] as $rule) {
                     $covering[$rule] = true;
                 }
@@ -145,6 +154,23 @@ final readonly class PackageCoverage
         }
 
         return $outcomes;
+    }
+
+    /**
+     * The php-parser class a rule declares in `getNodeType()`, or an empty string where it declares none.
+     *
+     * Read from the source rather than from the transpiler, because a refused rule may refuse before the
+     * node type is ever resolved and a marker that only works for emitting rules would compare one side of
+     * every pair.
+     */
+    private static function declaredNodeType(string $file): string
+    {
+        $source = (string) file_get_contents($file);
+        if (preg_match('/function getNodeType\(\)[^{]*\{\s*return ([^;]+);/', $source, $matches) !== 1) {
+            return '';
+        }
+
+        return trim(str_replace(['::class', '\\'], ['', '\\'], $matches[1]));
     }
 
     /**

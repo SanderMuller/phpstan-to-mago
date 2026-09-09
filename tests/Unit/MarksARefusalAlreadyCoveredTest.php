@@ -27,6 +27,13 @@ use Sandermuller\PhpstanToMago\Transpiler;
  * that yields rules, not the traits the shared checks live in. So the second provider below names refusals
  * that must stay unmarked, and a version of this pass that marks everything fails on them.
  *
+ * **The target is pinned, because a verdict here depends on ambient static state.**
+ * `PackageCoverage` transpiles each rule to decide its verdict, and `Transpiler::$target` and `$survey` are
+ * static — so a test running earlier in the suite decides what this one measures. Left unpinned, all seven
+ * rows above passed in isolation and returned an empty marking in the full suite, with
+ * `ClassCoversExistsRule` reading as refused. `TracksUpstreamDriftTest` pins them for the same reason and is
+ * the convention followed here.
+ *
  * @see ReadsAReferenceMarkerTest for the same by-position control discipline on a probe
  */
 #[CoversClass(ReportedIdentifiers::class)]
@@ -45,20 +52,44 @@ final class MarksARefusalAlreadyCoveredTest extends TestCase
         yield 'the unsafe facade check' => ['NoUnsafeRequestFacadeRule', ['CombinedStaticCallRule']];
         yield 'the unsafe helper check' => ['NoUnsafeRequestHelperRule', ['CombinedFuncCallRule']];
         yield 'the form-request field check' => ['UnvalidatedFormRequestFieldRule', ['CombinedMethodCallRule']];
-        // Four, because the identifier is shared by every rule using the trait — two that the package
-        // registers and two more standalone ones that emit anyway.
-        yield 'the positional flag on a method call' => ['PositionalFlagArgumentMethodCallRule', [
-            'CombinedMethodCallRule',
-            'CombinedStaticCallRule',
-            'PositionalFlagArgumentConstructorRule',
-            'PositionalFlagArgumentNullsafeMethodCallRule',
-        ]];
-        yield 'the positional flag on a static call' => ['PositionalFlagArgumentStaticCallRule', [
-            'CombinedMethodCallRule',
-            'CombinedStaticCallRule',
-            'PositionalFlagArgumentConstructorRule',
-            'PositionalFlagArgumentNullsafeMethodCallRule',
-        ]];
+        // One each, not the four rules that share the identifier. `hihaho.conventions.positionalFlagArgument`
+        // is reported by every rule using the trait, on four different node types, and only the sibling
+        // hooking the *same* type carries this rule's check: a positional flag on a method call is not
+        // covered by a rule that looks at `new` or at a nullsafe call. The first version of this test
+        // expected all four, because the pass it was written against compared identifiers alone.
+        yield 'the positional flag on a method call' => ['PositionalFlagArgumentMethodCallRule', ['CombinedMethodCallRule']];
+        yield 'the positional flag on a static call' => ['PositionalFlagArgumentStaticCallRule', ['CombinedStaticCallRule']];
+    }
+
+    /**
+     * A pair sharing an identifier on *different* node types, which must not be marked.
+     *
+     * The row that caught the pass comparing identifiers alone. `ClassMethodCoversExistsRule` reports
+     * `phpunit.covers` on a method's docblock and `ClassCoversExistsRule` reports it on a class's, so the
+     * moment the class rule emitted the method rule was marked as covered by it — a plausible row saying a
+     * check is carried when only the name is shared. Different package, so it is asserted through its own
+     * coverage rather than the hihaho one.
+     */
+    public function test_a_shared_identifier_on_another_node_type_is_not_coverage(): void
+    {
+        $this->pinTheTarget();
+
+        $keyed = [];
+        foreach (PackageCoverage::forPackage(
+            'phpstan/phpstan-phpunit',
+            dirname(__DIR__, 2) . '/vendor/phpstan/phpstan-phpunit',
+        )->outcomes as $outcome) {
+            $keyed[$outcome->name] = $outcome;
+        }
+
+        $this->assertSame(RuleOutcome::EMIT, $keyed['ClassCoversExistsRule']->verdict);
+        $this->assertSame(RuleOutcome::REFUSE, $keyed['ClassMethodCoversExistsRule']->verdict);
+        $this->assertSame(
+            [],
+            $keyed['ClassMethodCoversExistsRule']->alsoEmittedBy,
+            'The class rule reports the same identifiers on a class-like and the method rule reports them on '
+            . 'a method, so neither carries the other`s check.',
+        );
     }
 
     /**
@@ -116,6 +147,13 @@ final class MarksARefusalAlreadyCoveredTest extends TestCase
         );
     }
 
+    /** The census's own target, so a verdict does not depend on which test ran before this one. */
+    private function pinTheTarget(): void
+    {
+        Transpiler::$target = 'php';
+        Transpiler::$survey = false;
+    }
+
     private function outcome(string $rule): RuleOutcome
     {
         $outcomes = $this->outcomes();
@@ -132,6 +170,8 @@ final class MarksARefusalAlreadyCoveredTest extends TestCase
         if (self::$hihaho !== null) {
             return self::$hihaho;
         }
+
+        $this->pinTheTarget();
 
         $keyed = [];
         foreach (PackageCoverage::forPackage(
