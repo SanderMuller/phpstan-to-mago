@@ -51,7 +51,15 @@ final class Describe
     private const array SCALARS = [
         'Scalar' => 'scalar',
         'Numeric' => 'numeric',
-        'ArrayKey' => 'array-key',
+        // **`(int|string)`, parenthesised.** PHPStan has no `array-key` atomic: a key-shaped `int|string`
+        // is a `BenevolentUnionType`, whose `describe()` is `'(' . parent::describe($level) . ')'` --
+        // phar `src/Type/BenevolentUnionType.php:38`. Five rows on `vendor/symfony/console` printed
+        // `array-key` against `(int|string)`, in the whole-type and array-value positions.
+        //
+        // Measured for a benevolent union only. A non-benevolent `int|string` that mago also spells
+        // `ArrayKey` would be over-parenthesised here, and no row says whether one exists -- the fires gate
+        // is what would catch it, having caught the last over-render in this class.
+        'ArrayKey' => '(int|string)',
         'Boolean' => 'bool',
         'Integer' => 'int',
         'Float' => 'float',
@@ -135,17 +143,30 @@ final class Describe
      */
     private static function compareMembers(array $a, array $b): int
     {
-        foreach ([[$a, $b, 1], [$b, $a, -1]] as [$first, $second, $sign]) {
-            if ($first[1] === 'null' && $second[1] !== 'null') {
-                return $sign;
-            }
+        // **Each rule is asked in both directions before the next rule is asked at all**, because the
+        // original's comparator is a chain of early returns and its order is the precedence. Nesting these
+        // the other way round -- every rule for `($a, $b)`, then every rule for `($b, $a)` -- builds a
+        // comparator that is not antisymmetric, and this did: for `null` against `true` the null rule fired
+        // and put null last, while for `true` against `null` the null rule did not apply and the *boolean*
+        // rule fired and put true last. Two contradictory answers for one pair, so the result depended on
+        // which side `usort()` happened to pass first, and `(callable)|true|null` came out
+        // `(callable)|null|true`.
+        $rules = [
+            // `null` last, checked before everything else: `sortTypes()` returns on a `NullType` at its
+            // first two lines, above the accessory and boolean rules -- phar `UnionTypeHelper.php:29`.
+            [static fn (array $m): bool => $m[1] === 'null', 1],
+            // A boolean carrying a literal after everything but null, which is `ConstantBooleanType` and is
+            // why the original writes `int|false` where mago's own order gives `false|int`.
+            [static fn (array $m): bool => self::isLiteralBoolean($m[0]), 1],
+            // A literal scalar *before* a non-literal one, and after the boolean rule: a literal `false` is
+            // both, and the boolean rule wins because it is asked first.
+            [static fn (array $m): bool => self::isLiteralScalar($m[0]), -1],
+        ];
 
-            if (self::isLiteralBoolean($first[0]) && ! self::isLiteralBoolean($second[0])) {
-                return $sign;
-            }
-
-            if (self::isLiteralScalar($first[0]) && ! self::isLiteralScalar($second[0])) {
-                return -$sign;
+        foreach ($rules as [$holds, $sign]) {
+            $left = $holds($a);
+            if ($left !== $holds($b)) {
+                return $left ? $sign : -$sign;
             }
         }
 
@@ -254,10 +275,37 @@ final class Describe
             $atomic instanceof KeyedArrayType => self::keyedArray($atomic),
             // The two generics `typeOnly()` still parameterises. `list<Thing>` is the shape a rule quotes;
             // `Type::__toString()` prints `list` and drops the element, which is 14003 of the 22868 sites.
-            $atomic instanceof ListType => 'list<' . self::type($atomic->elementType) . '>',
+            $atomic instanceof ListType => self::list($atomic),
             $atomic instanceof IterableType => 'iterable<' . self::type($atomic->keyType) . ', ' . self::type($atomic->valueType) . '>',
             default => (string) $atomic,
         };
+    }
+
+    /**
+     * A list, parameterised only where its element carries something.
+     *
+     * `IntersectionType::describe()` writes `('list') . $valueTypeDescription` and leaves the parameter off
+     * when `$isMixedValueType` -- a `MixedType` that is not an *explicit* mixed -- phar
+     * `src/Type/IntersectionType.php:423`. Three rows on `vendor/symfony/console` printed `list<mixed>`
+     * against the original's bare `list`.
+     *
+     * `never` is deliberately not in that condition, so `list<never>` keeps its parameter. This class had
+     * `never` in the equivalent array condition on a guess; the line above is what licenses removing it.
+     *
+     * **The mechanism cannot be closed in both directions, because the field it turns on is not in mago's
+     * model.** PHPStan's condition is an *implicit* mixed -- `!$valueType->isExplicitMixed()` on the same
+     * line -- so a `list<mixed>` someone wrote keeps its parameter where an inferred one drops it.
+     * `MixedType` carries `issetFromLoop`, `nonNull`, `empty` and `truthiness`, and nothing that separates
+     * the two, so both arrive here identical. Dropping the parameter is the majority direction and it is a
+     * trade rather than a fix: three rows moved to agreement and one moved away, an explicit `list<mixed>`
+     * the port now prints as `list`. The same limitation already stood on the array side above, where
+     * `array<string, mixed>` and `array<mixed, mixed>` print as bare `array`.
+     */
+    private static function list(ListType $atomic): string
+    {
+        $element = self::type($atomic->elementType);
+
+        return in_array($element, [null, 'mixed'], true) ? 'list' : 'list<' . $element . '>';
     }
 
     /**
@@ -277,19 +325,40 @@ final class Describe
         // `array<mixed>` and broke five fires-gate pairs that had been agreeing. The gate caught it in the
         // opposite direction from the differential, which had wanted *more* detail here.
         $value = $atomic->valueType instanceof Type ? self::type($atomic->valueType) : null;
-        if (in_array($value, [null, 'mixed', 'never'], true)) {
+        if (in_array($value, [null, 'mixed'], true)) {
             return 'array';
         }
 
-        // `array-key` is how mago spells a key that carries nothing, where PHPStan spells it an implicit
-        // `mixed` and drops it — so this is the one-parameter form's real condition, and reading null for it
-        // was a guess the differential corrected: it printed `array<array-key, PhpParser\Comment>` against
-        // the original's `array<PhpParser\Comment>` on thirteen rows.
+        // An `ArrayKey` key is how mago spells a key that carries nothing, where PHPStan spells it an
+        // implicit `mixed` and drops it — so this is the one-parameter form's real condition, and reading
+        // null for it was a guess the differential corrected: it printed `array<array-key, PhpParser\Comment>`
+        // against the original's `array<PhpParser\Comment>` on thirteen rows.
+        //
+        // **Read as the atomic rather than as its rendering.** This compared `self::type()` against the
+        // string `'array-key'` until that rendering became `(int|string)` below, at which point a comparison
+        // against a rendered name would have silently stopped matching and put the key back into every
+        // array. A branch on a rendering breaks when the rendering changes and says nothing about it.
+        if (self::isArrayKey($atomic->keyType)) {
+            return 'array<' . $value . '>';
+        }
+
         $key = $atomic->keyType instanceof Type ? self::type($atomic->keyType) : null;
 
-        return $key === null || $key === 'array-key'
+        return $key === null
             ? 'array<' . $value . '>'
             : 'array<' . $key . ', ' . $value . '>';
+    }
+
+    /** Whether a type is exactly mago's `array-key`, read off the atomic rather than off its rendering. */
+    private static function isArrayKey(?Type $type): bool
+    {
+        if (! $type instanceof Type || count($type->atomicTypes) !== 1) {
+            return false;
+        }
+
+        $atomic = $type->atomicTypes[array_key_first($type->atomicTypes)];
+
+        return $atomic instanceof ScalarType && $atomic->kind === ScalarTypeKind::ArrayKey;
     }
 
     /**
