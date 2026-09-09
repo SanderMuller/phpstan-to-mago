@@ -18825,3 +18825,32 @@ one the REFUSE triage supported and it took reading a population I had asserted 
 it. Recorded because the shape recurs: *the audit is complete* meant *the audit is complete over the subset
 I was attending to*, which is the attention-not-access finding arriving inside my own bookkeeping one entry
 after writing it down.
+
+#### The countermeasure I proposed had the defect it was for
+
+I wrote that the check would have been `grep -oE '^[A-Z]+ ' | sort | uniq -c` — enumerate the row kinds and
+assert the audit covers each. A peer ran it. It reports **six** kinds against four real ones, because the
+census's own prose satisfies the pattern: *"A refused rule also lists…"* is a single uppercase letter
+followed by a space. 196 matches against 193 rows, and nothing in the output separates `A` from `NEVER`.
+
+So the pattern is loose in the direction that admits noise, and a pattern loose enough to admit `A` is
+equally able to miss a kind spelled some other way. Phrasing-match failure, a third time, **inside the
+instrument built to stop the subset-of-a-file failure.** I had even read those three `A` lines earlier in the
+same session and identified them as prose before proposing the pattern.
+
+**The real defect is that a listing has no expected value, and an instrument with no expected value cannot
+fail** — which is precisely the property that let "43 of 43" read as complete. A `uniq -c` output is a
+description; it agrees with whatever it finds.
+
+The anchor was already in the file. `140 EMIT + 43 REFUSE + 8 NEVER + 1 ENGINE = 192`, and the header
+states *"`--status` counts 231 portable rules here against this file's 192"*. So the sum is the check and the
+kind listing is the diagnostic, which fails in both directions: a verdict nobody counted leaves a residual, a
+false kind produces an excess. `CensusAccountsForEveryRowTest` asserts it, mutation-checked both ways —
+dropping `NEVER` from the verdict list gives 184 against 192 and prints `NEVER=8` in its own diagnostic;
+admitting `A` gives 195.
+
+And the anchor is load-bearing for a second reason worth separating: **that 192 is a hand-written literal in
+the header prose, not a figure derived from the rows.** So it could go stale silently the moment the corpus
+gains or loses a rule — the carried-figure hazard this log already records, sitting in a generated file's
+header where nothing could catch it, because a generator cannot check its own prose against its own output
+unless something asserts the two together.
