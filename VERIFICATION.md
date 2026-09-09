@@ -19320,3 +19320,58 @@ By the only measure that held up across the whole exchange: **the useful thing w
 see its own reject side.** Six figures wrong between two parties, every one caught by the other, none by its
 author and none by care — and the four filter defects were each an instrument reporting confidently on the
 half it had kept.
+
+### The coverage driver was installed all along, and I checked the wrong state
+
+The board's last item was recorded as blocked: *"neither xdebug nor pcov is loaded"*, measured across four
+PHP binaries with a control, and concluded as **no coverage driver on this machine**. The user said Herd
+ships xdebug. It does:
+
+    /Applications/Herd.app/Contents/Resources/xdebug/xdebug-85-arm64.so     matches this PHP exactly
+    php -d zend_extension=<that> -d xdebug.mode=coverage                    xdebug 3.5.0, coverage available
+
+**`php -m` reports what is loaded. I asked it what is installed.** Which is the unavailable-versus-unused
+distinction from the entry immediately above this one, made *one message after recording it* — and the
+control I was so pleased with only ever proved that the pattern finds a *loaded* module. A control confirms
+the instrument answers the question it was given; it says nothing about whether that was the question.
+
+No install was needed. `-d zend_extension=…` is a per-invocation flag: nothing configured, nothing installed,
+no machine change. **The item was never the user's to unblock.**
+
+#### The real blocker was one layer down, and it is not PHP_INI_SCAN_DIR either
+
+The runtime does not execute in the PHPUnit process. `Support::` and its neighbours run inside the **worker
+subprocess mago spawns**, so PHPUnit-driven coverage would have seen none of it — the peer's instrument as
+described could not have worked even with a driver loaded.
+
+`PHP_INI_SCAN_DIR` is the standard way to instrument a child, and Herd's binary ignores it: the scan dir
+stays pinned to Herd's own config directory under every form, including the leading-colon append. Writing
+there *would* be a machine change, affecting every PHP invocation on it.
+
+What works is that **the worker's command line is ours**. `mago.toml` names it, so the sandbox can spawn
+`php -d zend_extension=… -d xdebug.mode=coverage -d auto_prepend_file=… worker.php`, with the prepended file
+starting coverage and a shutdown hook dumping it per process.
+
+#### One rule, measured
+
+`MockMethodCallRule` against its own `Bad.php`: mago reported 6 issues, seven worker processes each wrote a
+dump.
+
+| | |
+|:--|--:|
+| executed lines in `src/Runtime` | 112 |
+| executable lines **in the files that loaded** | 1,237 → **9.1%** |
+| `src/Runtime` files that loaded | 8 of 47 |
+| statements in the 39 files that never loaded (floor) | 2,515 |
+| coverage over the whole runtime | **at most 3.0%** |
+
+**And the first version of that table was the accepts-only view.** xdebug emits no row for a file it never
+loaded, so "files with zero executed lines: 0" was true and meaningless — the 39 files that never loaded do
+not appear in the data at all. Correcting for the reject side moves the figure by 3x. That is the
+reject-side rule applied to the instrument that measures the reject-side rule, one turn after writing it
+down, and it is the fifth instance of the class in this session.
+
+What this establishes is the method, not the answer. One rule touches only what it needs, so 3% is expected
+and says nothing about the gate as a whole; the figure the peer asked for needs the instrumented sandbox
+across all 140 emitting rules, which is a harness pass rather than a command. **The board item is unblocked
+and unfinished**, which is a better state than blocked and was one question away the whole time.
