@@ -2095,6 +2095,13 @@ final readonly class Translator
             return $values;
         }
 
+        // A property the *package* supplies no single value for, where the deeper answer is the operative
+        // one: which of the four ways it is unsupplied. Resolving it raises that refusal instead of this
+        // one, which describes the expression and says nothing about why no list exists.
+        if ($this->readsAnUnsuppliedProperty($expr)) {
+            $this->resolve($expr, $line);
+        }
+
         throw new Refusal('not a resolvable list of strings', $line);
     }
 
@@ -16157,6 +16164,12 @@ final readonly class Translator
      * declare, computed in the constructor from something outside the pure set, or not wired at all. Each is
      * a fact about the package rather than a gap in this transpiler, which is what makes it worth surfacing
      * over the accessor that was reaching for it.
+     *
+     * `conflicting` is deliberately not a fourth, and that was measured rather than reasoned. Adding it
+     * changed no refusal in the corpus, because a property two neons disagree about is in `unwired` as well:
+     * `SeeAnnotationToTestRule`'s `requiredSeeTypes` is in both, so the test was dead the moment it was
+     * written. {@see resolveOwnProperty()} then reads `conflicting` before `unwired`, which is what makes the
+     * message name the disagreement rather than the absence.
      *
      * Asked of the property sets rather than of the refusal's text, so a reworded message cannot silently
      * stop matching.

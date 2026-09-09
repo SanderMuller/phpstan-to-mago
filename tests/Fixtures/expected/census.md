@@ -294,8 +294,8 @@ EMIT    RequireServiceRepositoryParentRule  (the package registers it nowhere)
 EMIT    RequireUniqueEnumConstantRule
 EMIT    RequiredOnlyInAbstractRule
 REFUSE  SeeAnnotationToTestRule
-        not a resolvable list of strings
-        needs-at-least: not a resolvable list of strings
+        $requiredSeeTypes is wired by 2 neons the package ships and they disagree — config/configurable-rules.neon and config/rector-rules.neon — so which value a consumer gets depends on which config file it includes, and there is no single one for a generated plugin to carry
+        needs-at-least: $requiredSeeTypes is wired by 2 neons the package ships and they disagree — config/configurable-rules.neon and config/rector-rules.neon — so which value a consumer gets depends on which config file it includes, and there is no single one for a generated plugin to carry
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->phpDocResolver->resolve()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getDeprecatedTag()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->seePhpDocTagNodesFinder->find()
