@@ -19974,3 +19974,50 @@ know that a sibling reports the same identifier. `PackageCoverage` sees every ru
 belongs in the census rather than in the refusal — which also leaves the refusal text alone.
 
 Emits no rule. It removes six false gaps from a list of 34, which is the list that decides where to look next.
+
+## An annotation-tag family: two rules directly, five in reach, and the primitive already emits
+
+The first candidate this session that is neither a decision handed upstream nor a capability the SDK lacks.
+
+**Docblock *text* already works and two rules emit on it.** `Support::docblockText()` finds a declaration's
+own `DocBlockComment` trivia, memoised per declaration because it was one of the four most-repeated calls in
+the emitted corpus, and `NoMissingSpaceInClassAnnotationRule` and `NoMissingSpaceInMethodAnnotationRule` both
+emit through it. So the family has a proven member, which the log records as the shape that actually produced
+rules rather than the shortest needs list.
+
+**What is missing is tag extraction.** Five refusals turn on reading annotations rather than on reading a
+docblock:
+
+| rule | blocker | tags it wants |
+|:--|:--|:--|
+| `ClassCoversExistsRule` | `->getResolvedPhpDoc()` | `@covers`, `@coversDefaultClass` |
+| `ClassMethodCoversExistsRule` | `->getResolvedPhpDoc()` | the same |
+| `SeeAnnotationToTestRule` | `$this->seePhpDocTagNodesFinder->find()` | `@see` |
+| `NoJustPropertyAssignRule` | `$this->phpDocResolver->resolve()` | not yet read |
+| `DataProviderDeclarationRule` | `$this->dataProviderHelper->getDataProviderMethods()` | `@dataProvider` |
+
+Read `CoversHelper` rather than assumed: `getCoverAnnotations()` is `getTagsByName('@covers')` over the
+docblock nodes, and `processCovers()` is 60 lines of primitives this tool has — `strpos`, `explode`,
+`hasClass`, `getClass`, `isInterface`, `hasMethod`, `hasFunction`, four identifiers, `sprintf` messages and a
+conditional `tip()`. Rich, but nothing in it is a new kind of thing. The new kind of thing is one function:
+tags by name, each with its value text.
+
+### The gap that decides whether the family is portable, and it is not the parsing
+
+`getResolvedPhpDoc()` **resolves**: it merges the docblocks a class inherits from its parents and interfaces,
+which is why `getCoverAnnotations()` loops over `getPhpDocNodes()` — plural — rather than one node.
+`Support::docblockText()` returns *one* declaration's own docblock, by design: its comment records that
+adjacency is php-parser's own rule so "a member without one cannot inherit its neighbour's".
+
+So a tag reader built on `docblockText()` answers a narrower question than `getResolvedPhpDoc()` does. On a
+test case whose `@covers` sits on an abstract parent, the port would report nothing and the original would
+report. **That is the silent-narrowing shape**, and it is the same asymmetry the corpus differential found
+first for vendored ancestors: a rule going quiet rather than failing.
+
+Which makes the sizing question not "can a tag be parsed" — it can — but "how often does a resolved docblock
+differ from the declaration's own one, and can the difference be reconstructed from `getClassAncestors()` plus
+each ancestor's own docblock". Both halves of that are available here; whether they compose to PHPStan's
+resolution is not established and is the thing to measure before building.
+
+Recorded rather than started, because a five-part port whose first primitive under-reports in the quiet
+direction is exactly the shape this log has reverted nine times.
