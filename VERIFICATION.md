@@ -18147,10 +18147,11 @@ and the needs-at-least list does not say so — the `->init` refusal steps over 
 below it is ever read. **The two siblings share a correct-forever blocker and the census shows them refusing
 for unrelated reasons.**
 
-`MatchingTypeInSwitchCase` is the second worth keeping, for a different reason: an injected php-parser
-printer renders part of the message. Mago has the source text and could slice the case's span, which is
-arguably *better* than pretty-printing — and the fires gate compares messages exactly, so "better" is
-"different" and the rule cannot agree. A capability that improves on the original is still a divergence.
+`MatchingTypeInSwitchCase` is the second worth keeping, and **the blocker I named for it was wrong** — see
+*"I named the wrong blocker one commit after writing up the census doing it"* below. The row that survives
+is the shape: an injected php-parser printer renders part of its message, mago has the source text and could
+slice the case's span, and a slice that is arguably *better* than pretty-printing is still not the same
+string. **A capability that improves on the original is a divergence, not a fix.**
 
 This is the census header's own warning — *"the hook was the first obstacle and never the operative one"* —
 with four fresh instances, and it is why the join above is worth keeping over the classifier alone. The
@@ -18177,3 +18178,42 @@ emit-all diff — an instrument that runs anyway, on every change. Theirs surfac
 known positive appeared in the scanner's own output, a check that had to be remembered. **The enforced one
 found a bug its author was not looking for; the remembered one found only the bug its author thought to look
 for.** Which is *enforced beat careful* arriving from the survey side rather than the artefact side.
+
+
+### I named the wrong blocker one commit after writing up the census doing it
+
+The entry above says `MatchingTypeInSwitchCaseConditionRule` is blocked by the printer in its message. It is
+not, and this repository's own source already said so, in a comment written weeks before I looked:
+
+    // Only `typeOnly()`. `value()` prints literals the shorter form collapses, and one rule asks for it;
+    // refused by the verbosity it named rather than translated into the wrong one.
+
+Its message interpolates `describe(VerbosityLevel::value())` *and* `describe(VerbosityLevel::typeOnly())`,
+and `resolveDescriptor()` refuses any verbosity but `typeOnly` — deliberately, with a measured reason. One
+rule in the seven packages asks for `value()`, and it is this one, so "one rule asks for it" names this rule.
+Three obstacles stacked and I reported the middle one.
+
+**The shape is the same one I had just finished documenting.** The `ForLoopInit` row two paragraphs up is
+about the census naming a first obstacle where a sibling's correct-forever blocker was the operative one. I
+wrote that, committed it, and in the same survey named a first-obstacle-plus-one for a rule whose real
+blocker was a documented deliberate refusal a `grep` away. *A rule you have to remember while writing is the
+instrument that already failed* — recorded in `CLAUDE.md`, about this exact failure, and remembering it while
+writing the paragraph next to it did not fire.
+
+Two things follow that the earlier entry did not carry:
+
+- **Read the refusal the code writes, not only the one the census prints.** The census prints the *first*
+  refusal. `Vocabulary` and the resolver carry deliberate ones with their reasons attached, and those are the
+  ones that say a rule is closed rather than merely stuck.
+- **A peer measured the printer half and it is not an impossibility.** Over 6,717 real `case` labels in a
+  27k-file tree, a source slice differs from `prettyPrintExpr()` on 72 of them — **1.07%**, and every
+  instance is one construct: zero-padded numeric literals (`0000000` printing as `00`, `0x00` as `0x0`).
+  Their controlled probe of hand-written shapes diverged far more often, on non-canonical spacing and literal
+  normalisation, and none of those shapes occurs in a real case label. **Case labels are canonical by
+  convention, which is why the corpus figure is a tenth of the probe figure** — and it is the reason a probe
+  over invented shapes could not have sized this.
+
+So "cannot agree" was wrong twice over: wrong about which obstacle decides the rule, and overstated about the
+one I named. The honest form is that the printer half is a stated bound of about one percent on one
+construct, which this project's discipline handles by porting and naming it — and that it does not matter
+here, because `value()` closes the rule first.
