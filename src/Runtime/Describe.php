@@ -69,9 +69,20 @@ final class Describe
     /**
      * A type as text, or null when there is no type.
      *
-     * Union members keep Mago's order with one exception: `null` goes last. That is the whole of the
-     * nullable-scalar divergence — `int|null` against `null|int` — and a nullable *class* already agrees,
-     * which is what says the rule is about `null` rather than about sorting names.
+     * **Union members are ordered the way PHPStan orders them, and that order is derived rather than
+     * guessed.** `UnionTypeHelper::sortTypes()` in `phpstan.phar` is the authority; the reachable part of its
+     * comparator is reproduced in {@see compareMembers()}. Keeping Mago's own order with `null` moved last
+     * was what this did before, and the docblock claimed that placement was *the whole* of the divergence —
+     * the corpus differential then printed 18 union-order mismatches beyond it, `int|false` against
+     * `false|int` among them.
+     *
+     * This reorders and renders nothing differently, so it changes no emitted byte: a plugin calls
+     * `Support::describeType()` and the ordering happens inside the runtime.
+     *
+     * No empty-union fallback, because there is no empty union: the SDK declares `$atomicTypes` as
+     * `non-empty-list<AtomicType>`, so the loop below always yields a member. The `(string) $type` fallback
+     * this replaced was unreachable for the same reason and only looked live because it tested an array
+     * built from two halves.
      */
     public static function type(?Type $type): ?string
     {
@@ -80,21 +91,75 @@ final class Describe
         }
 
         $members = [];
-        $nulls = [];
         foreach ($type->atomicTypes as $atomic) {
-            $rendered = self::atomic($atomic);
-            if ($rendered === 'null') {
-                $nulls[] = $rendered;
-
-                continue;
-            }
-
-            $members[] = $rendered;
+            $members[] = [$atomic, self::atomic($atomic)];
         }
 
-        $all = [...$members, ...$nulls];
+        usort($members, self::compareMembers(...));
 
-        return $all === [] ? (string) $type : implode('|', array_values(array_unique($all)));
+        return implode('|', array_values(array_unique(array_map(
+            static fn (array $member): string => $member[1],
+            $members,
+        ))));
+    }
+
+    /**
+     * One step of PHPStan's union ordering, for the members this renderer can produce.
+     *
+     * Read off `UnionTypeHelper::sortTypes()` and reduced to the cases reachable here. Its full comparator
+     * also orders accessory types, constant arrays by emptiness, enum cases by `Class::CASE` and integer
+     * ranges by their minimum; none of those is a member this renderer emits distinctly, so reproducing them
+     * would be writing against a shape nothing produces.
+     *
+     * The three that are reachable, in the original's order of precedence:
+     *
+     * - **`null` last.** The one rule this already had.
+     * - **A boolean carrying a literal after everything else.** `ConstantBooleanType` sorts last but for
+     *   null, which is why the original writes `int|false` where Mago's own order gives `false|int`.
+     * - **A literal scalar before a non-literal one**, which is `ConstantScalarType` against the rest — and
+     *   it comes *after* the boolean rule, because a literal `false` is both and the boolean rule wins.
+     *
+     * Everything else falls to the original's own tail: compare the rendered text case-insensitively, then
+     * binary as the tie-break. That is what puts a union of class names in alphabetical order.
+     *
+     * @param array{0: mixed, 1: string} $a
+     * @param array{0: mixed, 1: string} $b
+     */
+    private static function compareMembers(array $a, array $b): int
+    {
+        foreach ([[$a, $b, 1], [$b, $a, -1]] as [$first, $second, $sign]) {
+            if ($first[1] === 'null' && $second[1] !== 'null') {
+                return $sign;
+            }
+
+            if (self::isLiteralBoolean($first[0]) && ! self::isLiteralBoolean($second[0])) {
+                return $sign;
+            }
+
+            if (self::isLiteralScalar($first[0]) && ! self::isLiteralScalar($second[0])) {
+                return -$sign;
+            }
+        }
+
+        // The original's tail: `strcasecmp` on the rendering, tie-broken by a binary compare so the order is
+        // total rather than merely consistent.
+        $insensitive = strcasecmp($a[1], $b[1]);
+
+        return $insensitive !== 0 ? $insensitive : $a[1] <=> $b[1];
+    }
+
+    /** Whether an atomic is a boolean narrowed to `true` or `false`, which sorts last but for `null`. */
+    private static function isLiteralBoolean(mixed $atomic): bool
+    {
+        return $atomic instanceof ScalarType
+            && $atomic->kind === ScalarTypeKind::Boolean
+            && is_bool($atomic->refinement);
+    }
+
+    /** Whether an atomic is a scalar narrowed to one written value, which sorts before one that is not. */
+    private static function isLiteralScalar(mixed $atomic): bool
+    {
+        return $atomic instanceof ScalarType && $atomic->refinement !== null;
     }
 
     /** One atomic, with any intersection it carries joined onto it. */

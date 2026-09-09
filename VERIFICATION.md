@@ -20712,3 +20712,40 @@ rows show `int|false` and `list<..>|null`, so it is not alphabetical and not sou
 `int<0, 16>` needs mago's integer-range refinement read from the structure rather than from `__toString()`,
 which is the lossy rendering this log already records for scalars. Both are readable from the SDK; neither is
 measured yet, and quoting a fix as available would be the mistake this entry is about.
+
+### One of the four mechanisms fixed, from PHPStan's own comparator
+
+Union member order, 18 of the 70, now zero — and the order was **derived rather than guessed**, which the
+previous entry explicitly refused to do.
+
+`UnionTypeHelper::sortTypes()` in `phpstan.phar` is the authority. Its comparator handles accessory types,
+constant arrays by emptiness, enum cases by `Class::CASE` and integer ranges by minimum; none of those is a
+member this renderer emits distinctly, so reproducing them would be writing against a shape nothing produces.
+Three rules are reachable, in the original's own order of precedence:
+
+| rule | why it matters here |
+|:--|:--|
+| `null` last | the one rule this already had |
+| a boolean carrying a literal after everything else | `ConstantBooleanType` sorts last but for null, which is the whole of `int\|false` against `false\|int` |
+| a literal scalar before a non-literal one | `ConstantScalarType` against the rest — checked *after* the boolean rule, because a literal `false` is both and the boolean rule wins |
+
+Everything else falls to the original's tail: `strcasecmp` on the rendered text, tie-broken binary. That is
+what puts a union of class names in alphabetical order, which is the second shape the differential printed.
+
+Measured on the corpus that found it: message pairs 70 to 52, the union-order category gone, and
+`agree 238, only-original 9, only-port 0` unchanged — so no finding was gained or lost and only the text
+moved. **No emitted byte changed**, because the ordering happens inside the runtime: a plugin calls
+`Support::describeType()` either way, which is the facade property the first `Support` split was measured on.
+
+**The docblock this replaced was wrong and said so confidently.** It read: union members keep Mago's order
+with `null` last, and *"that is the whole of the nullable-scalar divergence … which is what says the rule is
+about `null` rather than about sorting names"*. It was about sorting names. Nothing in the repository could
+have contradicted it, because the only instrument that sees message text is the differential and its total
+does not count the category.
+
+One type error worth keeping from the fix: PHPStan proved my empty-union guard dead, because the SDK declares
+`$atomicTypes` as `non-empty-list<AtomicType>`. The `(string) $type` fallback it replaced was unreachable for
+the same reason and only *looked* live because it tested an array assembled from two halves.
+
+Still open: 46 refinement-dropped (`int<0, 16>`, `array<PhpParser\Comment>`), five other shapes including
+PHPStan's `$this(Foo)` rendering, and one genuine inference difference.
