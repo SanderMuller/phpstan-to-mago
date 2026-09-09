@@ -19617,3 +19617,101 @@ The probe was not wasted, and the part that was new is the part with controls in
 `Assignment` with a plain `=` whose right-hand `Expression` text begins `&`. So `byRef` is a span-gap read
 between the last `Hint` and the `DirectVariable`, which is exactly what `Declarations::isVariadic()` already
 does for `...`.
+
+## Where mago's tree holds a `&`, and where it does not — five positions, committed as a test
+
+A rule reading php-parser's `->byRef` needs a predicate per position, and this settles which predicate. It
+was wrong here twice before it was right, both times because the instrument answered a narrower question
+than the one being decided.
+
+**First reading, wrong: "no `&` anywhere, so every position is a text read."** The probe dumped
+`getChildren()`. On `$r = &$a` the immediate children stop at an `Expression` whose text is `&$a`, which
+reads as no node for the ampersand. A peer session hooking the same kind with `getDescendants()` found
+`UnaryPrefix` → `UnaryPrefixOperator` one level further down, with the plain assignment as a clean negative.
+
+**Second reading, also incomplete: "structural for the assignment, span-gap for the parameter."** That is two
+of five positions. Extending the probe to descendants across all five found the array element and the
+`foreach` value are structural too, and that returning by reference — `function &f()`, which is what
+`->byRef` means on `Closure`, `ArrowFunction`, `Function_` and `ClassMethod` — is a gap read like the
+parameter.
+
+| `&` position | in the tree? | route |
+|:--|:--|:--|
+| `$r = &$a` | yes | `UnaryPrefixOperator` under the right-hand `Expression` |
+| `[&$item]` | yes | the same |
+| `foreach (.. as &$v)` | yes | the same |
+| `function (&$x)` | **no** | the span between the last `Hint` and the `DirectVariable` |
+| `function &f()` | **no** | the span between the `function` keyword and the name |
+
+`ReadsAReferenceMarkerTest` holds all sixteen rows, each with a by-value control in the same file. The
+fixture is `tests/Fixtures/reference`, the probe beside it, and the support class is `ReferenceKnowledge` —
+the shape `ObservesAnUnknownAncestryTest` already uses.
+
+### What the controls caught, including the one that had to be added
+
+Three defects in the instrument, none of which would have shown up in a passing run:
+
+- **A first-of-either-kind key collapsed rows silently.** Keying a site on its first `DirectVariable` *or*
+  `LocalIdentifier` keyed `int &...$rest` on the hint's `int`, so every hinted parameter landed on one row.
+  Keying on the variable alone then keyed a method on the first variable in its body, `$this`. A wrong key
+  does not fail — the site simply never appears, which is why both assertions check the key exists first.
+- **A fixture reusing a variable name collapsed two rows into one.** `[&$itemTarget]` and `[$itemTarget]`
+  shared a name, so the by-value row overwrote the by-reference one and the array element read `node=no`.
+- **The mutation check failed to fail, and that was the finding.** Replacing `getText($operator) === '&'`
+  with `true` broke nothing: every `UnaryPrefixOperator` in the fixture was an ampersand, so the predicate
+  answered yes for any unary prefix. Adding `$negatedAssign = -$assignTarget;` and `[-$negatedItem]` made
+  the comparison load-bearing. Re-run after: dropping the text check fails 2 of 16, and matching
+  `UnaryPrefix` instead of its operator fails 3.
+
+The third is the rule about mutation-checking a filter, and it earned its place: a control set where every
+row exercises the same branch is a control set that certifies a predicate reading one term of two.
+
+### What this does not do
+
+It emits no rule. `NoReferenceRule` is the only corpus consumer, and it needs two more things — multi-kind
+registration over its eight kinds, and a guard body that reports and returns — plus an override predicate for
+`ParentClassMethodNodeResolver`, whose two calls `Runtime\DeclaredParameters` already makes. So this is a
+measurement with its instrument committed, in the position the log has said for several sections is where
+leverage would be if there were any. It is not a claim that the leverage is there.
+
+### And multi-kind registration is already built — the blocker is a stated design rule, not a capability
+
+Read after the section above, because it changes what the `&` measurement is for. `Vocabulary::HOOK_KINDS`
+already maps an abstract php-parser class to a list of Mago kinds, and `Emitter` registers each:
+
+| declared node type | kinds registered |
+|:--|--:|
+| `PhpParser\Node\Expr` | 8 |
+| `PhpParser\Node\FunctionLike` | 4 |
+| `PhpParser\Node\Stmt\ClassLike` | 4 |
+| `PhpParser\Node\Expr\CallLike` | 4 |
+| `PhpParser\Node\Expr\Variable` | 3 |
+| `PhpParser\Node\Expr\Array_` | 2 |
+| `PhpParser\Node\Expr\BinaryOp` | 1 |
+
+So the census refusal saying a multi-kind rule "needs a hook and a field mapping for each kind" describes
+machinery that exists and is proven on seven node types. `MULTI_KIND_NODE_TYPES` holds three entries and
+`Expr` is one of them, but the refusal is reached only when `HOOKS[$nodeType]` is unset — and `Expr` has a
+row, so it never gets there. The refusal fires for exactly two types: the bare `PhpParser\Node` and
+`PhpParser\Node\Stmt`.
+
+**What blocks a row for the bare root is the rule `HOOK_KINDS` states about itself:** *"Every expression kind
+is registered, not only the ones a rule's branches name — PHPStan really does visit them all, and a branch
+declining a kind is the rule's own business."* For `Expr` that is 8 kinds. For `Node` it is all 227, which is
+every node in every file crossing the extension-host protocol.
+
+Three ways out, and the third is a change to that rule rather than a build:
+
+- **Register all 227.** Faithful to the stated rule and to what PHPStan visits. The cost is the whole point of
+  the `includes` measurement above, in a worse place: per node rather than per file.
+- **Leave it refused.** `NoReferenceRule` is the only corpus consumer of a `Node` row, and it needs two more
+  things besides.
+- **Derive the targets from the rule's own `instanceof` dispatch, and refuse where a branch does not open with
+  a kind test.** The stated rule exists to stop a guard failing to decline a registered kind — the `Binary`
+  widening was checked against exactly that. A rule whose every branch tests the kind first cannot have that
+  defect, so the targets stay a fact about the declared dispatch rather than about what the body happens to do
+  with a node. That is a narrower principle than the current one, not an abandonment of it.
+
+This is recorded rather than decided. It is the fourth thing this session that was already built here, and
+the count is the point: multi-kind registration, the override predicate's two calls, the span-gap read, and
+the `&`-is-not-a-child finding were all in the repository before being looked for.

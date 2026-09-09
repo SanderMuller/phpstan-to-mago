@@ -34,6 +34,7 @@ final class SplitsTheSuiteByEngineBootTest extends TestCase
         'CoverageControl',
         'CoverageSetDiff',
         'HierarchyKnowledge',
+        'ReferenceKnowledge',
         'TypeDescriptions',
         'RegisteredRules',
         'DivergenceCases',
