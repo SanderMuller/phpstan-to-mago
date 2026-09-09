@@ -18943,3 +18943,55 @@ measurement travels with the plugin and a figure without its condition is the ca
 
 The defect itself is mutation-checked from the other side: re-breaking the span test fails three of the five
 new tests, including the row asserted against the original rather than against a remembered number.
+
+
+### "Nothing reads the emitted code semantically" was false, and the truth is a coverage figure
+
+Recorded twice in this log and sent twice to a peer: the emitted output is checked three ways — it parses,
+its `Support::` helpers exist, no Rust leaked — and *"nothing reads it semantically"*, which framed a mago
+run over the emitted tree as filling an absence.
+
+**`AnalysesTheEmittedPluginsTest` exists and runs PHPStan at level 8 over generated plugins**, and its own
+docblock records that its first run found four real type defects — *"a `string` where `Support::` declares a
+`Part` and a `list<Part>` where it declares a `list<string>`"* — traced to one wrong annotation on
+`Support::anyOf()`, plus a repeated guard, a redundant conjunct, an untyped property and a lookup keyed by a
+possibly-null name, *"all now fixed at the emitter rather than suppressed"*.
+
+So there is a fourth check and it is semantic. I had read that file's name in `phpstan.neon.dist` while
+looking for something else, twice, and asserted the absence anyway.
+
+**What is true is a scope figure, and it is worth more than the claim it replaces.** Its config analyses
+`tests/Fixtures/expected` — **31 committed snapshot files**, against the **193** the corpus emits. Run over
+all 193 with the same config:
+
+| identifier | count |
+|:--|--:|
+| `argument.type` | 12 |
+| `missingType.iterableValue` | 11 |
+| `nullCoalesce.offset` | 4 |
+| `notIdentical.alwaysTrue` | 2 |
+| `ternary.alwaysTrue` | 1 |
+| | **47** |
+
+The 31 snapshots are clean; the other 162 plugins carry 47 findings. **The semantic check exists and covers
+16% of the emitted corpus**, which is a different sentence from the one I published and a more useful one.
+
+Four distinct `argument.type` findings behind the twelve, and they are not noise:
+
+- `Support::anyOf()` expects `list`, given `array` — six times across the three `Combined*` rules. The same
+  helper whose annotation caused that test's original four findings.
+- `FormRequestFields::report()` parameters 3 and 4 expect `list<string>`, given `array`.
+- **`Support::typeHasMethod()` parameter 3 expects `string`, given `string|null`** — the shape that reads as
+  a runtime `TypeError`.
+
+The last one is traced and fixed. It is *not* a live hazard: every emitted call site guards on
+`selectorIsIdentifier(selector(..))` first and an identifier always has text, so null is unreachable. But
+the guard tests a **separate** `selector()` call, so nothing can narrow across the two — the safety is real
+and structurally invisible to the analyser. Widened to `?string` answering false, which is the same answer
+the unreachable path would want and makes the signature true of the call sites rather than of the argument
+someone hoped for. 47 to 45, zero emitted bytes moved, fires gate green for both affected rules.
+
+The remaining 45 are recorded and not fixed: the `list`-versus-`array` variance is constructor-injected
+configuration and deserves its own pass, and `missingType.iterableValue` is annotation-only on generated
+code. **Whether the 31-file config should become a 193-file one is a real decision** — it would turn 45
+findings into a red suite — and it is not the agent's to take.
