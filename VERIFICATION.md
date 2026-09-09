@@ -18854,3 +18854,39 @@ the header prose, not a figure derived from the rows.** So it could go stale sil
 gains or loses a rule — the carried-figure hazard this log already records, sitting in a generated file's
 header where nothing could catch it, because a generator cannot check its own prose against its own output
 unless something asserts the two together.
+
+### Run a proposed instrument before proposing it
+
+The `^[A-Z]+ ` proposal is the tightest failure in this exchange and a peer's reading of it is that it is
+**not the same kind as the others**, which is right and changes the countermeasure.
+
+The six wrong figures and the `NEVER` gap were all attention to an *artefact* — someone's output, a
+maintainer's dashboard, a subset of a file. Reading more reaches them, and a second party arriving reaches
+them. This one is not that. I had run `grep -n '^A '`, read the three lines, and written down in the same
+session that they were prose. **The fact was not unread; it was established, by me, and then not consulted
+by the proposal I made minutes later.** No further reading reaches that, and no second party is needed to see
+it: the peer saw it by running my command, which I could have done.
+
+So the countermeasure is narrower and cheaper than anything else in this log: **run a proposed instrument
+before proposing it.** One execution prints `3 A` in the first six lines of output. Not vigilance, not a
+control pair, not a second reader — the difference between describing a command and executing it once.
+
+And it is specific to *instruments* rather than claims. A claim needs an artefact behind it, which is what
+most of this log is about. A proposed instrument has a stronger check available: **it can be run,
+immediately, against the very thing it will be run against.** Neither of us applied it — I proposed the grep
+without running it, and the peer accepted its shape and only ran it while looking for a defect. It is the one
+row here where both parties skipped a check cheaper than the reasoning they each did about it.
+
+Two consequences worth keeping separate from the attention finding:
+
+- A countermeasure proposed in prose is untested code. This log now contains several instruments that were
+  built and mutation-checked, and one that was written as a sentence and shipped — and only the sentence was
+  wrong.
+- **The reason to prefer a test over a note is not only durability.** A test has to run before it can be
+  committed. A note does not, which is how a description of a check reaches a reader having never met the
+  data it describes.
+
+Applied: `CensusAccountsForEveryRowTest`'s diagnostic now labels which side of the comparison is derived from
+the rows and which is the hand-written literal, because "193 against 192" is otherwise ambiguous between a
+missing verdict and a stale figure, and the two want different actions. The peer asked for that after reading
+the message as a future reader would rather than as its author.

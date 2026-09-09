@@ -68,14 +68,16 @@ final class CensusAccountsForEveryRowTest extends TestCase
             array_sum($counts),
             sprintf(
                 "The census's verdict rows no longer sum to the total its header states.\n\n"
-                . "counted:  %s  = %d\n"
-                . "stated:   %d\n\n"
-                . "every leading uppercase run in the file, as a diagnostic (GENERATED is the header and\n"
-                . "a bare letter is prose, so neither belongs in the sum):\n  %s\n\n"
-                . "A residual means a verdict nobody counted — add it to VERDICTS and re-read whatever\n"
-                . "audit called itself complete. An excess means one of these is not a rule row. And a\n"
-                . "corpus that gained or lost a rule needs the header literal in TracksUpstreamDriftTest\n"
-                . 'updated, since it is hand-written and nothing else checks it.',
+                . "  derived from the rows:   %s  = %d\n"
+                . "  hand-written in the header prose (TracksUpstreamDriftTest): %d\n\n"
+                . "Which side moved decides what to do, and the two are not symmetric — one is generated\n"
+                . "from this file's own rows and the other is a literal somebody typed.\n\n"
+                . "  a residual  the rows carry a verdict nobody counted. Add it to VERDICTS, then re-read\n"
+                . "              whatever audit called itself complete without it.\n"
+                . "  an excess   one of the counted kinds is not a rule row.\n"
+                . "  either      the corpus gained or lost a rule, and the hand-written literal is stale.\n\n"
+                . "every leading uppercase run in the file, as a diagnostic rather than a check (GENERATED\n"
+                . "is the header and a bare letter is prose, so neither belongs in the sum):\n  %s\n",
                 implode(' + ', array_map(
                     static fn (string $k, int $n): string => "{$k} {$n}",
                     array_keys($counts),
