@@ -19769,3 +19769,28 @@ It strengthens the third and weakens the first, on the numbers rather than on th
 
 Still not decided, and the decision is still about the sentence `HOOK_KINDS` writes about itself rather than
 about these figures.
+
+### What the row would actually buy: one rule, and `Node\Stmt` is empty
+
+Priced above; here is the denominator, enumerated rather than estimated. Every file in the installed corpus
+returning the bare `PhpParser\Node` from `getNodeType()`:
+
+| file | what it is |
+|:--|:--|
+| `symplify` `NoReferenceRule` | the only candidate |
+| `symplify` `PreferredClassRule` | four distinct bodies, one per kind — not one body over five targets |
+| `symplify` `ForbiddenNodeRule` | target set is a configured list of class names, known at analysis time |
+| `symplify` `NewWithFollowingSettersCollector` | a collector, so it needs an aggregate before its kinds matter |
+| `phpstan-phpunit` `DataProviderDataRule` | already `NEVER` — its whole output is `invokeNodeCallback()` |
+| `symplify` `NodeGetAttributeTypeExtension` | a return-type extension, not a rule |
+
+And **no rule in the corpus declares `PhpParser\Node\Stmt`.** The refusal path covers it, so "it fires for two
+types" is true of the code and misleading about the corpus: one of the two is unreached. I had already put that
+sentence in a message to a peer session before checking, which is the leaving-the-repository case this log has a
+section about.
+
+So the bare-`Node` row buys **one** rule, and that rule needs a report-and-return guard and an override
+predicate as well. Against that: registering every kind costs +84% engine CPU on 1694 files and imposes it on
+every rule sharing the worker; deriving the targets from the rule's own dispatch costs about 0.10s. The third
+option is the only one whose price matches what it buys, and it is a change to a stated design rule rather than
+a build — which is why it is recorded here and not implemented.
