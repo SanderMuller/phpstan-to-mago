@@ -17317,3 +17317,41 @@ The alternative considered and rejected was sharding the `engine` group onto one
 every leg well under the limit and needs no budget decision, and it is the wrong trade here: `prefer-lowest`
 is precisely the leg where this session's two environment-shape failures surfaced, so it is the last one to
 stop running the plugins.
+
+### Three more candidates closed by one closed-set query, and a fourth build reverted at obstacle four
+
+No emit this tick. Two results, one of them worth more than the build.
+
+**The type-algebra sweep.** The peer's suggestion of partitioning the refused pool by a closed set of tokens
+returned two rules when I ran it for `TrinaryLogic`. Run again over the tokens naming things mago's `Type`
+surface has *nowhere* — its whole public surface is `$atomicTypes`, `$flags`, `withFlags()`, four literal
+accessors, `encode()`, `isRequestReference()` and `__toString()`, with `TypeComparator` returning plain
+booleans:
+
+| rule | own lines | needs |
+|:--|--:|:--|
+| `UselessCastRule` | 86 | `generalize()`, `GeneralizePrecision`, `isSuperTypeOf()` |
+| `AssertEqualsIsDiscouragedRule` | 87 | `generalize()`, `GeneralizePrecision`, `isSuperTypeOf()` |
+| `StrictFunctionCallsRule` | 96 | `ParametersAcceptorSelector`, `isSuperTypeOf()` |
+
+`generalize(GeneralizePrecision::lessSpecific())` drops literal precision from a type, and there is no
+`generalize` anywhere in the SDK. **It also matters for the message rather than only the decision**, which is
+what makes it fatal rather than approximable: `UselessCastRule` prints
+`describe(VerbosityLevel::typeOnly())` of the *generalized* type, so a port that skipped the generalization
+would agree on when to report and disagree on what it says, and the gate compares messages character for
+character. Those were the three smallest live bodies left after the two that emitted, so the query retired the
+top of the queue.
+
+**And the build: `MockMethodCallRule`, four obstacles in and reverted.** Cleared: `count()` of a
+`constant-strings` list in both the numeric and the equality path, and `$scope->getMethodReflection(<type>,
+<name>)` — reduced to the only thing the rule reads of it, whether the answer is null, with the helper handing
+back the *name* so the `!== null` at the call site stays the test the original wrote rather than a negation
+this had to invent. The fourth is a conditional report with a **bail in the middle** — `if (…) { $classes =
+…; if (count($classes) === 0) { return null; } return <finding>; }` — inside an error helper, where the last
+statement is a bare error return rather than a list holding one. Accepting the bail was not enough; the shape
+needs the bare-return form too, and that is new machinery rather than a row.
+
+Census unchanged at 139 EMIT before and after, so the four cleared obstacles are unexercised vocabulary and
+went out. Scaffold saved. Fourth revert of this shape, and the ratio is now the thing worth stating plainly:
+**two emits landed this session against six rules abandoned mid-build**, and every abandonment was at an
+obstacle no list named.
