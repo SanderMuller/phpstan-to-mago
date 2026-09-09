@@ -19142,3 +19142,43 @@ one that has now worked twice without being invoked.
 
 That is also why the table above prints versions and a control it does not strictly need. Not thoroughness:
 the columns are there because a check that cannot show it ran is indistinguishable from one that did not.
+
+### The collision blind spot, enumerated and discharged
+
+The previous entry recorded that passing colliding paths on one command line kept a rule out of every byte
+diff. Two things followed from it and both are now measured.
+
+**How many collisions are there?** Four class names are declared twice across the eight emit-all paths, and
+**only one is a rule**: `Configuration`, `RuleIdentifier` and `ShouldNotHappenException` are support classes
+that emit nothing and cannot collide in output. So the blind spot is exactly one rule wide.
+
+**What did it cost?** Nothing, and that is a measurement rather than a hope. Emitting
+`vendor/symplify/phpstan-rules/src` on its own — no collision, so the rule emits — at the session's first
+and last commit gives 78 files each and `UppercaseConstantRule.php` is **not** in the diff. The two files
+that did move are `ExplicitClassPrefixSuffixRule` and `NoDynamicNameRule`, and their only change is the
+reviewed `mixed $node` → `\Mago\Sdk\Syntax\Node $node` from the check-parameter commit. So nothing this
+session touched that rule, and only a measurement could say so.
+
+#### The guard I wrote for it passed by never looking
+
+`NoTwoRulesShareAnOutputNameTest`'s first version excluded any path matching `/[Tt]ests?/` — meant to skip a
+vendor package's own test directory, and it excludes `tests/Fixtures/Rules`, which is half the input and the
+half where the known collision lives. **It passed, green, having read one of the two colliding files.**
+
+That is the fourth instance this session of a filter dropping exactly the rows that matter, and the first
+inside an instrument written *about* that failure. The census-marker filter matched one phrasing of five,
+the anchored `^REFUSE` regex dropped the annotated rows, the `^[A-Z]+ ` enumeration admitted prose — and this
+one excluded a corpus because its path contains the word tests. Scoped now to `/vendor/` only.
+
+#### And it is scoped to unknown collisions rather than forcing a rename
+
+The known pair is excused in code, not in prose. Renaming the fixture would move three reviewed snapshots,
+an examples directory and five test references — real cost to protect a harness that **does not exist in
+this repository**: the emit-all comparison is an ad-hoc invocation, and its fix is to pass the colliding
+paths separately. With the cost measured at zero, forcing a rename would be paying for a guarantee already
+in hand.
+
+Excused in code so a *new* collision fails, which a vendor update can introduce without anyone touching this
+repository. Mutation-checked by removing the exclusion, which fails on the known pair. An accepted-collision
+*comment* would have had no expected value and could not have done either — the same reason the aggregate
+exemption became an assertion.
