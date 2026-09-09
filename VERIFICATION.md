@@ -16838,3 +16838,64 @@ one here.
 Verified: emit-all byte-identical across all three targets (190/34/25); suite 315 of 315; PHPStan 0, baseline
 13 entries; Rector 0; Pint clean; census regenerated after reading its two-line diff, which is one refusal
 gaining its measured cause and nothing else.
+
+### The reason I shipped one commit ago was refutable in one grep, and a peer ran it
+
+`effb5af` replaced a loose reason with a wrong one. It said `%universalObjectCratesClasses%` cannot be carried
+because "PHPStan assembles such a parameter when it builds the container, so the value is a fact about the
+analysed project rather than a default". The timing half is false, and the peer refuted it the way this log
+says to: with a grep rather than an argument.
+
+`PHPStan\DependencyInjection\Container` declares `getParameter(string)` and `getParameters()`, and a
+`Container` is injectable into a rule — `src/Rules/Playground/PromoteParameterRule.php` takes one. **Verified
+here, in the installed phar, rather than taken on report**, because a citation that arrives already looking
+specific is the kind this log has been wrong about before. So a PHPStan rule *can* read an assembled container
+parameter during analysis, and "only at build time" is not the obstacle.
+
+**The reason is provenance, not timing**, and my own probe was already the evidence for it: the value came back
+`[stdClass, Pest\Support\HigherOrderTapProxy, Pest\Expectation]` and the last two exist because pest's PHPStan
+extension contributes them. The value is a function of which PHPStan extensions the analysed project installs.
+A mago plugin has no PHPStan container to query and no installed-extension set to assemble from, so there is
+nothing to read at any time and nothing correct to bake in.
+
+Two commits, two reasons, one refusal that was right throughout. **The failure is not that either reason was
+careless — it is that "assembled at container-build time" reads as a mechanism while being a claim about
+timing that one grep settles, and provenance reads as vaguer while being the thing that cannot be refuted.**
+The check that separates them is asking which sentence a hostile reader could kill in a minute.
+
+### The docblock association rule, measured on both sides and re-derived here
+
+Groundwork rather than an emit. `SourceFile::getTrivia()` returns `DocBlockComment` trivia carrying spans and
+`getText()` accepts a `Span`, so a plugin can read a docblock's text under `SourceText`, which the emitted
+plugins already request — read off the SDK, not assumed. What was not established is **association**: trivia is
+a flat list of spans, so attaching one to a declaration means position, and position is not what php-parser
+does.
+
+Measured against php-parser on a file carrying every shape I could name, run here after the peer ran its own:
+
+| shape | php-parser | nearest-preceding-trivia | |
+|:--|:--|:--|:--|
+| attribute between docblock and declaration | attaches *through* the attribute | same | agree |
+| two docblocks in a row | takes the **last**; the first attaches to nothing | takes the closest, which is the last | agree |
+| docblock on the namespace | attaches to `Namespace_`; the next class gets `NULL` | would take it for the class | **disagree** |
+| a declaration between a docblock and the next one | `NULL` | would take the earlier docblock | **disagree** |
+
+**One guard covers all four rather than three special cases:** accept the nearest preceding docblock only if
+nothing but whitespace and attributes lies between it and the declaration. An attribute is a *node*, not
+trivia, so a trivia scan skips it without being told to; a `namespace` statement, a `use`, an intervening
+declaration or a second docblock all fail the guard, and php-parser answers `NULL` or attaches elsewhere in
+exactly those rows.
+
+**And the loop direction is load-bearing.** The first of two consecutive docblocks attaches to *nothing*, so
+iterating declarations and searching backward is safe while iterating docblocks and searching forward is not —
+the forward version gives one declaration two conflicting docblocks. Same information, two directions, one
+wrong.
+
+Bound, stated because the guard is not proved: verified on the five rows above. Not measured — attributes
+spanning several lines, docblocks inside attribute argument lists, docblocks before a class-level `use` for a
+trait. The consumers this is for are `ClassCoversExistsRule` and `ClassMethodCoversExistsRule`, and neither is
+built; nothing here counts until one of them emits through it.
+
+Verified: emit-all byte-identical across all three targets (190/34/25, zero diff); suite 315 of 315; PHPStan 0,
+baseline 13; Rector 0; Pint clean; census regenerated after reading its two-line diff, which is the one
+refusal's reason and nothing else.

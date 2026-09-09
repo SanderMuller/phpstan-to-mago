@@ -1280,8 +1280,16 @@ final class Vocabulary
      * What settles it is the *injected* value beside the declared one. A probe rule taking the parameter and
      * printing it, run in this repository, answers
      * `[stdClass, Pest\Support\HigherOrderTapProxy, Pest\Expectation]` — the extra two come from pest's
-     * own PHPStan extension, auto-included here. PHPStan assembles the list from every installed extension's
-     * neon when it builds the container, so it is a fact about the analysed *project* and not a default.
+     * own PHPStan extension, auto-included here.
+     *
+     * So the reason is **provenance, not timing**. This first said PHPStan assembles the list when it builds
+     * the container, which sounds like the answer and is refutable in one grep: `Container::getParameter()`
+     * exists and a `Container` is injectable into a rule — `src/Rules/Playground/PromoteParameterRule.php`
+     * takes one — so a PHPStan rule *can* read an assembled parameter during analysis. Verified here in the
+     * installed phar rather than taken on report. What holds instead is that the value is a function of which
+     * PHPStan extensions the analysed project installs. A mago plugin has no PHPStan container to query and
+     * no installed-extension set to assemble from, so there is nothing to read at any time and nothing
+     * correct to bake in. Timing was refutable; provenance is not.
      *
      * And the direction matters: `VariablePropertyFetchRule` *suppresses* on a crate, so a plugin carrying
      * `[stdClass]` would suppress less than PHPStan and report where PHPStan is quiet. Reading the
