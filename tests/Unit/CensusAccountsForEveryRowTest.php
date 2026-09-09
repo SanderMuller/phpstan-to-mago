@@ -50,7 +50,9 @@ final class CensusAccountsForEveryRowTest extends TestCase
 
         $counts = [];
         foreach (self::VERDICTS as $verdict) {
-            $counts[$verdict] = preg_match_all('/^' . $verdict . ' /m', $census);
+            // Cast because `preg_match_all` answers `int|false`, and a false would otherwise be summed as 0
+            // -- a silent zero for a verdict that exists is the failure this whole test is about.
+            $counts[$verdict] = (int) preg_match_all('/^' . $verdict . ' /m', $census);
         }
 
         // The kind listing is the diagnostic, not the check — printed only when the sum disagrees, and
