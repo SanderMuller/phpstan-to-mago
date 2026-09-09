@@ -19794,3 +19794,55 @@ predicate as well. Against that: registering every kind costs +84% engine CPU on
 every rule sharing the worker; deriving the targets from the rule's own dispatch costs about 0.10s. The third
 option is the only one whose price matches what it buys, and it is a change to a stated design rule rather than
 a build — which is why it is recorded here and not implemented.
+
+### The dispatch-derived option needs a polarity analysis, not an occurrence scan
+
+A peer session enumerated the bare-root rules in phpstan-src and found two shapes that break a target set
+derived from `instanceof` occurrences. Re-derived here before repeating, from
+**`vendor/phpstan/phpstan/phpstan.phar`** — the distributed build, not the git repository, and the line
+numbers below are the phar's, because this log already records those two artefacts disagreeing by line while
+both being correct.
+
+`src/Rules/PhpDoc/WrongVariableNameInVarTagRule.php`, phar:50, one line in the phar and a formatted block in
+git:
+
+    if (!(!$node instanceof Node\Stmt\Property && !$node instanceof Node\Stmt\ClassConst
+          && !$node instanceof Node\Stmt\Const_ && !$node instanceof Node\Stmt\ClassLike
+          && !$node instanceof Node\Stmt\Function_ && !$node instanceof Node\Stmt\ClassMethod)) {
+        return [];
+
+The outer `!` inverts the whole conjunction, so the rule returns early when the node **is** one of the six.
+Its target set is every statement *except* those six. Beside it, `NoReferenceRule` in this corpus:
+
+    if (! $node instanceof Closure && ! $node instanceof ArrowFunction && ... ) {
+        return [];
+
+which returns early when the node is **none** of the seven, so its target set is exactly those seven. **The
+two guards hold the same `instanceof` occurrences with the same `&&` and opposite meaning, separated by one
+outer `!`.** An occurrence scan gets the first exactly backwards and the second exactly right, and produces a
+plausible list of six statement kinds either way.
+
+It is worse than a clean inversion. The same rule then dispatches *positively* at phar:70–88 on `Foreach_`,
+`Static_`, `Expression`, `Return_` and `Global_` — kinds outside the excluded six — and reads
+`$originalNode instanceof Interface_ | Class_ | Enum_ | Trait_ | ClassMethod` behind a virtual-node guard. So
+an occurrence scan yields the union of a set the rule excludes, a set it operates on, and a set of virtual
+nodes: neither the truth nor its complement.
+
+The second shape needs no derivation at all. `src/Rules/Playground/PhpdocCommentRule.php` phar:24 holds one
+`instanceof`, a negative guard on `VirtualNode`, and then reads `getComments()` on everything. A comment can
+attach to any node, so **that rule genuinely wants all 227** — which is the requirement the `HOOK_KINDS`
+sentence describes, met by a real rule rather than asserted.
+
+Of the peer's five bare-root rules, two are positive chains a derivation handles, one inverts, one has no
+dispatch. And the statement root is the more populated there, four rules to one, against zero in this corpus.
+
+**So the refusal condition I proposed is wrong.** I wrote "refuse where a branch does not open with an
+explicit kind test". `WrongVariableNameInVarTagRule` opens with an explicit kind test and still derives the
+complement. The condition has to be about the *polarity* of the guard, and a derivation that gets polarity
+wrong fails in the direction that looks correct — a reviewer checking that the derivation ran sees six
+statement kinds and no reason to doubt them. Deriving targets is therefore a boolean-normalisation problem
+with a refusal for any guard outside the recognised normal forms, not the occurrence scan I priced at 0.10s.
+
+`ForbiddenNodeRule` is worth noting beside these: its guard is `! $node instanceof $forbiddenNode`, an
+`instanceof` against a *variable*. An occurrence scan would find a target named `$forbiddenNode`, which is the
+same failure wearing a name that at least looks wrong.
