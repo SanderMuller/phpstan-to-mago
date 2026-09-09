@@ -382,7 +382,7 @@ REFUSE  ClassDependencyTreeRule
 EMIT    ClassLikeCognitiveComplexityRule
 EMIT    FunctionLikeCognitiveComplexityRule
 
-## phpstan/phpstan-strict-rules — 35 of 45 portable rules the package registers emit, 0 covered by the engine, 10 refuse, 0 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-strict-rules — 36 of 45 portable rules the package registers emit, 0 covered by the engine, 9 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
         assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
@@ -448,10 +448,7 @@ REFUSE  OverwriteVariablesWithForLoopInitRule
 REFUSE  OverwriteVariablesWithForeachRule
         a definedness test, which the PHP target has no way to answer: a plugin receives span-keyed types and no definedness (carthage-software/mago#2334)
         needs-at-least: a definedness test, which the PHP target has no way to answer: a plugin receives span-keyed types and no definedness (carthage-software/mago#2334)
-REFUSE  RequireParentConstructCallRule
-        function call outside the vocabulary property_exists()
-        needs-at-least: function call outside the vocabulary property_exists()
-        needs-at-least: statement outside the vocabulary: Stmt_While
+EMIT    RequireParentConstructCallRule
 REFUSE  StrictFunctionCallsRule
         assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ParametersAcceptorSelector::selectFromArgs()

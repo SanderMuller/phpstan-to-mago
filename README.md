@@ -105,11 +105,11 @@ Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and r
 | `hihaho/phpstan-rules` | 8 | 7 | 1 | 0 |
 | `tomasvotruba/type-coverage` | 5 | 5 | 0 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
-| `phpstan/phpstan-strict-rules` | 45 | 35 | 10 | 0 |
+| `phpstan/phpstan-strict-rules` | 45 | 36 | 9 | 0 |
 | `phpstan/phpstan-phpunit` | 13 | 7 | 6 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 2 | 0 | 0 |
 
-`--status` counts 131 of 231 here and writes a page under `--out`. The denominator includes three more
+`--status` counts 132 of 231 here and writes a page under `--out`. The denominator includes three more
 installed packages that emit nothing. Run it on your own project.
 
 <details>

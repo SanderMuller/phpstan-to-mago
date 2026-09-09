@@ -840,6 +840,23 @@ final class Vocabulary
         // Both arms are literals, so the whole set is readable from the collaborator, and `identifiers:
         // declared` makes the runtime class hold it and the transpiler check it — see
         // {@see Runtime\CoversTargets::IDENTIFIERS}.
+        // The rule's *own* two helpers, mapped as questions because neither is a statement this vocabulary
+        // has: one recurses to any depth and the other walks `getParentClass()` in a `while`. Depth is what
+        // the recursion was for, so it becomes a descendant search, and the walk becomes "the nearest
+        // ancestor declaring a constructor" -- see {@see Runtime\Constructors} for the three probed facts
+        // about mago's metadata that a direct translation would have got wrong.
+        'PHPStan\Rules\Classes\RequireParentConstructCallRule::callsParentConstruct' => [
+            'helper' => 'Constructors::callsParent',
+            'kind' => 'bool',
+            'takes' => 'context-node',
+            'arguments' => [],
+        ],
+        'PHPStan\Rules\Classes\RequireParentConstructCallRule::getParentConstructorClass' => [
+            'helper' => 'Constructors::parentDeclaring',
+            'kind' => 'named-class',
+            'takes' => 'context-node',
+            'arguments' => [],
+        ],
         'PHPStan\Rules\PHPUnit\CoversHelper::processCovers' => [
             'helper' => 'CoversTargets::report',
             'kind' => 'reports',

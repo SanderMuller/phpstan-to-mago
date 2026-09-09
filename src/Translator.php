@@ -13392,6 +13392,22 @@ final readonly class Translator
             );
         }
 
+        // `$parentClass !== false` on a class handle whose helper answers null for "nothing found". The
+        // original's absent value is `false` because it comes from `ReflectionClass::getParentClass()`; the
+        // helper's is null, and the guard asks the same question either way. Faithful rather than lenient:
+        // the two values are the same fact spelled differently, which is why this is folded into the null
+        // test rather than compared against a boolean the helper never returns.
+        if ($right instanceof ConstFetch
+            && strtolower($right->name->toString()) === 'false'
+            && $subject['kind'] === 'named-class'
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a parent-class absence test, which only the PHP target carries', $line);
+            }
+
+            return $this->operand($subject) . ' === null';
+        }
+
         throw new Refusal(
             'comparison outside the vocabulary: ' . $this->describe($left) . ' against ' . $this->describe($right),
             $line,
