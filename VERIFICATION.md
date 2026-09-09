@@ -18316,7 +18316,46 @@ than any single build in this session's shortlist, and it costs a version bump r
 
 It also corrects the closed-versus-stuck table one more way: it lists definedness as a construct closure, and
 a construct closure reads as permanent. **A version boundary is a closure with an expiry date, and a table
-that cannot express one will quietly keep three rules out of the pool after they become portable.**
+that cannot express one will quietly keep three rules out of the pool after they become portable.** Four
+kinds of closure, then — construct, configuration, cross-file, version — and only the last changes without
+anyone touching it.
+
+#### So it is a test rather than a row
+
+A peer's suggestion was to put the expiry condition in the table, so `>=1.47.7` is something the table says
+rather than something someone remembers. The stronger form of that is this repository's own finding: the
+enforced rules hold without you, and the remembered ones are the ones you have to run yourself. **Nothing
+prompts a re-read of a row already marked closed**, so a version boundary held in prose costs three rules for
+as long as nobody happens to look, and the cost is silent.
+
+`WatchesForDefinednessTest` reads the installed SDK's `FileAnalysisRequirement` cases and fails when
+`VariableDefinedness` appears. It fires exactly once, when the capability ships, and its failure message
+names the three rules, the mapping, and the bound below. Mutation-checked by pointing the assertion at a case
+that *is* present, so the alarm is known to be able to fire rather than assumed to be.
+
+Verified here rather than taken from the peer's report: 1.47.6 ships six requirement cases —
+`ExpressionTypes`, `TargetExpressionTypes`, `ReceiverType`, `ArgumentTypes`, `TargetSubtree`, `SourceText` —
+and no `getVariableDefinedness` anywhere in the SDK.
+
+#### The API, marked as unverified here
+
+The peer filed the issue and read the merged commit; **none of this is checkable against a release yet**, so
+it is recorded as their reading rather than as measurement, and the test's message says so where the next
+reader will see it.
+
+Their mapping is 1:1 — `hasVariableType($n)->yes()` becomes
+`getVariableDefinedness($n) === VariableDefinedness::Defined` — which means this does *not* enter the trinary
+category at all: no composition, no `->negate()`.
+
+The bound worth carrying is that **`null` and `Undefined` are different answers**. `null` means the
+requirement was not requested, or the target was skipped or unanalysed; treating it as `Undefined` would
+report on targets mago never looked at. Both `Overwrite*` rules guard on `->yes()` and so suppress unless
+`Defined`, which makes null-as-not-Defined safe for them **by their polarity rather than by design** — a rule
+guarding on `->no()` would invert. That is a distinction to state, not to inherit, and it is exactly the shape
+of *a value can be right and still be the answer to a question nobody asked*.
+
+Also flagged and not measured: the requirement touched `performance.md` upstream, so requesting it has a
+stated cost.
 
 ### The same construct-scan failure, three times in one session
 
