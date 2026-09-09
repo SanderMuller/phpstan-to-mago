@@ -19560,3 +19560,60 @@ establishes.
 Corrected to what is checkable — seven causes pinned, four since closed — with the gap stated in the README
 rather than papered over: the sweep's occurrences are not individually mapped onto the pinned cases. Naming
 an unmapped relation costs one clause and stops a reader inferring a completeness nobody claimed.
+
+## The needs ranking's largest row, resolved rule by rule — and the leave-alone that was one claim over two mechanisms
+
+`$errorMessage is not a message built in this rule` is the largest cross-cutting need in the current census,
+6 rules. It was **left alone deliberately** when the two stepping-over filters went in, on this stated
+ground: *"it appears five times in the pre-descent census, so it is an existing need with an existing
+meaning."*
+
+That sentence is one claim over six rules, and resolving all six mechanically splits them two ways. The
+refusal comes from `Translator::translateMessageExpression()`, which accepts a local only when
+`locals[$name]['kind'] === 'message'`, and the only assignment that sets that kind is `$x = sprintf(..)`.
+
+| rule | how the message is built | why the row appears |
+|:--|:--|:--|
+| `ForbiddenNodeRule` | `sprintf(ERROR_MESSAGE, $contents)` | `$contents` comes from `$this->standard->prettyPrint()`, stepped over |
+| `NoGetRepositoryOnServiceRepositoryEntityRule` | `sprintf(.., $short, $repository)` | both from `resolveFromEntityClass()`, stepped over |
+| `NoTestMocksRule` | `sprintf(.., $type->getClassName())` | `->getClassName()` stepped over |
+| `ParamNameToTypeConventionRule` | `sprintf(.., $variableName, $expectedType)` | `node.var` navigation stepped over, and the type from an unwired parameter |
+| `ForbiddenFuncCallRule` | `$this->createErrorMessage(..)` | not a `sprintf`, so the local never takes the kind |
+| `PhpUpgradeDowngradeRegisteredInSetRule` | `$this->createErrorMessage(..)` | same, and the helper holds `new SplFileInfo(..)` |
+
+**Four of the six are the artefact the filters exist to remove**, by the same mechanism as `unknown local
+$x`: an assignment whose value was stepped over leaves the name unbound, and the name here happens to be a
+message. Pre-dating the descent does not make it a different mechanism — it means the unbound-local artefact
+was already there before the descent widened it. The remaining two are a *third* mechanism, and a real one: a
+message built by a helper method rather than by an inline `sprintf` is never recognised however much is
+translated.
+
+**Neither mechanism is a lever, and the standing conclusion holds.** The four artefact rules are each blocked
+upstream at the dependency that produced the unbound name. Of the two helper-built ones, `ForbiddenFuncCallRule`
+is refused on two of the package's own neons disagreeing about `$forbiddenFunctions` and
+`PhpUpgradeDowngradeRegisteredInSetRule` on a three-statement `if` — so recognising a helper-built message
+would emit nothing, which is the condition every revert in this log was made under.
+
+What this changes is the instrument's reading, not its verdict: the top row of the needs ranking is four
+downstream names and two rules blocked elsewhere, so **nobody should size work from it**. It also does not
+license adding the phrase to the filter, which was the obvious move and is wrong — the filter would then hide
+the two helper-built cases, which are a genuine unrecognised shape and the only part of this row worth
+keeping a name for.
+
+### Two facts re-derived that this repository had already written down
+
+Recorded because the cost was two probes and one wrong report, not because the facts were new:
+
+- `src/Transpiler.php:558-566` already states which multi-kind rules read the same child — `NoReferenceRule`
+  `->byRef`, `NewWithFollowingSettersCollector` `->stmts` — and that `PreferredClassRule` dispatches per kind.
+  Four vendor rule sources were read to establish it. The census message says *"has not been checked here"*,
+  which is true of the message and reads as an open question about the repository.
+- `src/Runtime/Declarations.php:81` already states that `&` is not a child node, *"probed, along with `...`"*.
+  A mago probe plugin was built to establish it.
+
+The probe was not wasted, and the part that was new is the part with controls in it: `array &$xs` against
+`array $ys` (a leading-`&` text test is wrong once a hint stands in front), `int &...$rest`, `static function
+(&$x)` where the `Keyword` child is `function` and `static` is text only, and `$r = &$a` which is
+`Assignment` with a plain `=` whose right-hand `Expression` text begins `&`. So `byRef` is a span-gap read
+between the last `Hint` and the `DirectVariable`, which is exactly what `Declarations::isVariadic()` already
+does for `...`.
