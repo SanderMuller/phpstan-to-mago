@@ -17924,3 +17924,73 @@ text, and a message is the one operand written for a human.
 Both were found by the corpus, not by the fixture pair. The pair discriminates the defect from its control
 and says nothing about how far the check overreaches — that is what 192 emitted plugins are for, and it is
 why "refuses none of the corpus" and "refuses the probe" are two claims that need two instruments.
+
+### Analysing the emitted tree: the config gap was mine, and the gate is still not a clean exit
+
+The entry above left one question open — whether a real generated plugin analyses clean once its dependencies
+are in mago's paths — and recorded, as measured, that "a clean exit cannot be the gate, because ten
+diagnostics are the SDK's own classes failing to resolve". A peer showed the SDK cause is configuration
+rather than generated code. It is, and the fix is larger than the one they found:
+
+| `mago.toml` `[source]` | correct plugin | defective plugin |
+|:--|--:|--:|
+| `paths` only | 8 | 11 |
+| `+ includes = [mago SDK src]` | 9 | 10 |
+| `+ includes = [mago SDK src, this project's src]` | **0** | **3** |
+
+Both includes are needed and for the same reason: an emitted plugin's dependencies are the SDK it implements
+*and* the `Support` facade it calls, and with only one of them mago trades `non-existent-class-like` for
+`non-existent-method`. With both, the correct plugin analyses **completely clean** and the defective one
+reports exactly three rows, all three about its defect.
+
+**So my sentence was wrong about its cause and the correction is mine, not the peer's to make.** "A clean
+exit fails every plugin forever" described a run missing two `includes` entries, and I published it as a
+property of generated code. It is the same species as the ms/file quotient two entries up: a number measured
+correctly on a misconfigured instrument, stated as a fact about the subject.
+
+#### And it is still not a clean exit, for a reason that had to be measured
+
+Over the 192 plugins the corpus and fixtures emit, with both includes:
+
+| identifier | count |
+|:--|--:|
+| `error[mixed-argument]` | 174 |
+| `error[mixed-property-access]` | 23 |
+| `error[possibly-invalid-argument]` | 14 |
+| `warning[possibly-null-operand]` | 8 |
+| `error[possibly-null-argument]` | 6 |
+| `warning[impossible-condition]` / `help[redundant-comparison]` | 2 / 2 |
+| four others | 4 |
+| **`warning[possibly-undefined-variable]`** | **0** |
+| **`help[unevaluated-code]`** | **0** |
+
+233 issues, so the gate is an identifier set after all — but for a different reason than the one I gave, and
+that distinction is the whole point of re-measuring. The bulk is `Support`'s own return types arriving as
+`mixed` at a `sprintf` argument or a property access, which is a real property of this repository's runtime
+typing rather than an artefact of where mago was pointed.
+
+**The two rows that would have caught the loop escape are zero across all 192**, from an instrument that
+demonstrably reports both on the fixture. That is what makes this zero evidence rather than a shared silence
+— *agreement on zero is not evidence* is satisfied by the positive control, not by the count.
+
+It also independently confirms the text-based audit from two entries up, which reached the same zero by
+regex over the same tree. Two instruments, different mechanisms, same answer, and the earlier one had a
+false positive the later one does not.
+
+#### The four `impossible-condition` rows are vacuous guards, and the direction matters
+
+Traced rather than assumed, because the two readings differ by everything: a guard that can never fire is
+harmless, and one that always fires is a plugin that reports nothing forever.
+
+- `ServicesExcludedDirectoryMustExistRule:94` is the rule's own `if (! is_string($directoryPath)) continue;`
+  where `$directoryPath` ported to a string concatenation. `!(concat !== null)` is always false, so the
+  guard never fires and the rule proceeds.
+- `FoldsARecordRule:59` is the same shape: `=== null` against a name the port binds from a non-null string.
+
+Both are the translation of a PHP nullability check onto an operand this port cannot make null. mago's own
+wording settles the direction — *this condition will always evaluate to false* is about the condition, so the
+body never runs. Dead code, not an inverted rule, and nothing to fix in either plugin.
+
+Worth keeping as the shape to watch for, though: **`impossible-condition` on a generated guard is one bit
+away from a rule that emits and never reports**, which is a failure the emit count cannot see and only the
+fires gate or this instrument can.
