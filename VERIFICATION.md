@@ -20504,3 +20504,51 @@ native-versus-phpdoc type pair, and a closure that decorates the builder.
 obstacle — which is the value the `SeeAnnotationToTestRule` commit rests on too. The yield table's
 `UselessCastRule` row should now be read as 176 findings behind three body-level pieces, not behind an
 impossibility.
+
+### Three blockers closed on `UselessCastRule`, and the fourth is a decision
+
+The hook was one row. Past it, three things that read as capabilities and were not:
+
+- **`instanceof Cast\Void_`** folds to false, and the fold is about the language: `(void)` is a token
+  php-parser's lexer produces and PHP's parser rejects — `$x = (void) 1;` is a parse error — so no file mago
+  can analyse holds one.
+- **The hook node's own inferred type** is `FileAnalysisRequirement::TargetExpressionTypes`, which exists and
+  `Emitter` never requested. Probed: on `(int) $s` the targeted node's type is `int` and its operand's is
+  `string`, which is the pair the rule compares.
+- **`generalize(GeneralizePrecision::lessSpecific())`** is the identity here, measured on six casts including
+  three over literals: `(int) 5` reports `int` and not `5`, `(string) 'already'` reports `string`, `(bool)
+  true` reports `bool`. PHPStan's `getType()` answers the literal in that position and needs the widening;
+  mago never produces one. Only that precision folds — the others refuse, the same shape `describe()` uses
+  for verbosity.
+
+**The fourth is not a measurement.** The rule then writes
+
+    if ($this->treatPhpDocTypesAsCertain) { $t = $scope->getType($node->expr); }
+    else                                  { $t = $scope->getNativeType($node->expr); }
+
+and mago's `FileAnalysis` has **no native-type API at all** — `getExpressionType()` and nothing beside it, so
+one inferred type rather than a native-and-phpdoc pair. The flag is a PHPStan *core* parameter,
+`%treatPhpDocTypesAsCertain%`, defaulting to `true` in the phar's own `conf/config.neon`, and `true` selects
+the arm that maps.
+
+So this is not the unbounded configuration case this log refuses elsewhere.
+`%universalObjectCratesClasses%` has no single value because it is a function of which extensions a consumer
+installs; this has a documented core default, and {@see Vocabulary::CORE_PARAMETER_DEFAULTS} already carries
+one of those. The choice is between carrying the default — 176 findings, with a divergence whose trigger is
+one named config key — and refusing on the grounds that a plugin should not assume a consumer's parameter.
+Recorded rather than taken, like the bare-`Node` targets and the identifier table.
+
+### Two defects of my own on this stretch, both found by a tool
+
+Worth keeping because neither was visible from reading the change.
+
+**The census alarm caught a verdict regression.** Adding a `UnaryPrefix` group to `FIELDS` stopped
+`OperandInArithmeticPreDecrementRule` and `OperandInArithmeticPreIncrementRule`, both of which were emitting.
+
+**PHPStan's duplicate-key check then showed the first fix was wrong.** A complete `UnaryPrefix` group already
+existed with both `expr` and `var`; mine was a duplicate that *shadowed* it, and PHP keeps the last. Adding
+`var` to my copy restored parity by luck and left the duplicate in place. So `node->expr` on a cast was never
+the blocker — I had mis-attributed a refusal to a table row that was already there — and the row is deleted.
+
+The pair is one lesson rather than two: **a table row that already exists does not announce itself**, and the
+symptom was a rule I was not looking at.

@@ -505,6 +505,41 @@ RUST;
      * `getRequirements()` still exist because the interface asks for them, empty, exactly as
      * {@see emitAggregate()} leaves them.
      */
+    /**
+     * The `FileAnalysisRequirement` list the plugin declares, as written source.
+     *
+     * **Opt-in per capability**, which is the load-bearing part: a rule that reads a type it never asked for
+     * gets null, and a null type silently turns every check on it into a pass. So each flag the translation
+     * set adds exactly one requirement.
+     *
+     * `TargetExpressionTypes` is the narrower of the two type requirements -- the type of the node the hook
+     * fired on, which `ExpressionTypes` also carries but at the cost of every type in the file. Asked for
+     * separately so a rule reading only its own node's type does not pay for the rest.
+     *
+     * Split from {@see emitPhp()} because adding the fourth flag took that method past its complexity limit,
+     * and a new per-function baseline entry is the one thing this repository's baseline discipline forbids.
+     */
+    private function requirements(): string
+    {
+        $requirements = ['TargetSubtree', 'SourceText'];
+        if ($this->context->usesReceiverType) {
+            $requirements[] = 'ReceiverType';
+        }
+
+        if ($this->context->usesExpressionTypes) {
+            $requirements[] = 'ExpressionTypes';
+        }
+
+        if ($this->context->usesTargetExpressionTypes) {
+            $requirements[] = 'TargetExpressionTypes';
+        }
+
+        return implode(', ', array_map(
+            static fn (string $requirement): string => 'FileAnalysisRequirement::' . $requirement,
+            $requirements,
+        ));
+    }
+
     private function emitAfterOnly(string $className): string
     {
         $identifier = 'transpiled/' . str_replace('_', '-', self::snake($className));
@@ -641,16 +676,7 @@ REPORT, ['{ANCHOR}' => $this->context->anchor ?? $this->defaultAnchor()]) : '';
         ));
         $identifier = 'transpiled/' . str_replace('_', '-', self::snake($className));
 
-        // Requirements are opt-in per capability: a rule that reads a type without asking for it gets
-        // null, which would silently turn every check on it into a pass.
-        $requirements = 'FileAnalysisRequirement::TargetSubtree, FileAnalysisRequirement::SourceText';
-        if ($this->context->usesReceiverType) {
-            $requirements .= ', FileAnalysisRequirement::ReceiverType';
-        }
-
-        if ($this->context->usesExpressionTypes) {
-            $requirements .= ', FileAnalysisRequirement::ExpressionTypes';
-        }
+        $requirements = $this->requirements();
 
         $constructor = $this->emitConstructor();
 

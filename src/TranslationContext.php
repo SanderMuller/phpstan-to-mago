@@ -54,6 +54,17 @@ final class TranslationContext
      */
     public bool $usesExpressionTypes = false;
 
+    /**
+     * Whether the rule asks for the inferred type of the node the hook fired on, rather than of some
+     * sub-expression of it.
+     *
+     * A separate requirement from {@see $usesExpressionTypes} and a narrower one:
+     * `FileAnalysisRequirement::TargetExpressionTypes` embeds the type of each *targeted* node, where
+     * `ExpressionTypes` embeds every type in the file and is documented for after-file hooks. `UselessCastRule`
+     * wants the cast's own type and its operand's, so it asks for both.
+     */
+    public bool $usesTargetExpressionTypes = false;
+
     /** The Rust expression producing the reported message, from the report site. */
     public ?string $message = null;
 

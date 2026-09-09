@@ -450,9 +450,7 @@ REFUSE  OverwriteVariablesWithForeachRule
 EMIT    RequireParentConstructCallRule
 EMIT    StrictFunctionCallsRule
 REFUSE  UselessCastRule
-        the inferred type of a hook-node
-        needs-at-least: the inferred type of a hook-node
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->generalize()
+        cannot read a type as a name
         needs-at-least: cannot read a type as a name
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getNativeType()
         needs-at-least: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return

@@ -1716,6 +1716,27 @@ final readonly class Translator
     }
 
     /**
+     * Whether a `generalize()` call names the one precision measured to be the identity here.
+     *
+     * `GeneralizePrecision::lessSpecific()` is what the corpus writes. A different precision refuses at the
+     * caller rather than folding, because the fold rests on a measurement of what mago's types already are
+     * and that measurement was taken for this one.
+     */
+    private function generalizesLessSpecifically(MethodCall $expr, int $line): bool
+    {
+        $argument = $expr->getArgs()[0] ?? null;
+        if (! $argument instanceof Arg || ! $argument->value instanceof StaticCall) {
+            return false;
+        }
+
+        $precision = $argument->value;
+
+        return $precision->class instanceof Name
+            && $precision->class->getLast() === 'GeneralizePrecision'
+            && $this->memberName($precision->name, $line) === 'lessSpecific';
+    }
+
+    /**
      * A node predicate that can never hold, folded to `false`, or null where none applies.
      *
      * Split out to keep {@see instanceofPredicate()} under its complexity limit -- a new per-function
@@ -14119,6 +14140,21 @@ final readonly class Translator
             // meaningful in the second case, and the rules that ask have already guarded the first with
             // `instanceof Name`: `VariableStaticMethodCallableRule` resolves a written name and describes a
             // type, in the two arms of one `if`.
+            // The hook's own node, which is a position of its own rather than a sub-expression.
+            // `FileAnalysisRequirement::TargetExpressionTypes` embeds exactly it, and this transpiler never
+            // asked for that requirement -- so the refusal below read as an SDK limit and was a gap here.
+            // Probed: on `(int) $s` the targeted node's type is `int` and its operand's is `string`, which is
+            // the pair `UselessCastRule` compares.
+            if ($of['kind'] === 'hook-node') {
+                $this->context->usesTargetExpressionTypes = true;
+
+                return [
+                    'rust' => self::PHP_ONLY,
+                    'kind' => 'type',
+                    'php' => 'Support::expressionType($context, $node)',
+                ];
+            }
+
             if (! in_array($of['kind'], ['expr', 'found-node', 'argument', 'const-item', 'name-part', 'name-expr'], true)) {
                 throw new Refusal("the inferred type of a {$of['kind']}", $line);
             }
@@ -16256,6 +16292,25 @@ final readonly class Translator
                 if ($this->readsAnUnsuppliedProperty($argument->value)) {
                     $this->resolve($argument->value, $line);
                 }
+            }
+        }
+
+        // `$type->generalize(GeneralizePrecision::lessSpecific())` — widening a literal to its general type,
+        // which on mago's side has already happened. **Measured on six casts, three of them over literals:**
+        // `(int) 5` reports its type as `int` and not `5`, `(string) 'already'` as `string`, `(bool) true` as
+        // `bool`. PHPStan's `getType()` answers the literal there and needs the widening; mago never produces
+        // one in this position, so the call is the identity rather than a capability this port is missing.
+        //
+        // Only `lessSpecific()`, and the other precisions refuse -- the same shape
+        // {@see describeType()} uses for verbosity, and for the same reason: a precision nobody measured
+        // would fold to the identity here and be wrong somewhere nothing in the corpus reaches.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $line) === 'generalize'
+            && $this->generalizesLessSpecifically($expr, $line)
+        ) {
+            $of = $this->resolve($expr->var, $line);
+            if ($of['kind'] === 'type') {
+                return $of;
             }
         }
 

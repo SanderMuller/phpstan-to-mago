@@ -495,6 +495,10 @@ final class Vocabulary
         'Instantiation' => [
             'class' => ['node.class', 'name-expr', 'Support::classPart($context, {base})'],
         ],
+        // A cast's operand. `(int) $s` is a `UnaryPrefix` whose operator carries the parentheses and whose
+        // sole expression child is the thing being cast -- probed, alongside `-$f` as the control for a
+        // non-cast prefix with the same shape. `UselessCastRule` reads it to compare the operand's inferred
+        // type against the cast's own.
         // `return;` has no expression child at all, which is what makes `$return->expr === null` the question a
         // rule asks — probed across `return null;`, `return 1 + 2;` and a bare `return;`.
         'Return' => [
