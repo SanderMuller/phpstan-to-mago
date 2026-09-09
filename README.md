@@ -174,22 +174,29 @@ differential caught first.
 ## Performance
 
 `php tests/Support/run-benchmark.php <project>` runs both engines over your own code. Here, on
-`vendor/nikic/php-parser/lib` — 270 files, 80 emitted rules, against PHPStan 2.2.13, best of six:
+`vendor/nikic/php-parser/lib` — 270 files, 97 emitted rules, best of three on an idle machine:
 
 | | wall | CPU |
 |:--|--:|--:|
-| mago, engine only | 4.00s | 3.87s |
-| mago + the 80 transpiled rules it had then | 6.03s | 7.21s |
-| PHPStan, cold result cache | 2.74s | 8.64s |
-| PHPStan, warm result cache | 0.89s | 0.87s |
+| mago, engine only | 4.77s | 4.10s |
+| mago + a host with no plugins | 3.92s | 3.93s |
+| mago + the 97 transpiled rules | 4.99s | 6.37s |
+| PHPStan, cold result cache | 2.74s | 8.70s |
+| PHPStan, warm result cache | 1.10s | 0.97s |
 
-**Read the CPU column**: this ran at a load average near 5, so the wall figures are pessimistic and
-unequally so. All four rows come from the same two runs, on mago 1.47.5; the two mago rows reproduce within
-2% on the 1.47.6 this package requires. The rules add **3.34s CPU** — the
-marginal cost, which no total gives.
+**The rules cost row three against row two**, not against row one: a host that starts and speaks the protocol
+while registering nothing is what separates the host's own cost from the rules'. So the rules add **1.07s wall
+and 2.44s CPU**, and the host itself is free — rows one and two are equal within their spreads, and their
+ordering is noise rather than a result. The rules row has a 1.32s wall spread, so prefer its CPU figure.
 
-**Not a speed win on this corpus**: 1.20x cheaper than a cold PHPStan on CPU, dearer than a warm one,
-because `mago analyze` has no result cache. Measure your own.
+**Not a wall-clock win on this corpus, and the reason is not the rules.** With `includes = []` the engine
+alone runs in **0.17s** rather than 3.92s, so about 96% of the floor is mago indexing the include tree before
+it analyses anything. Those includes are what let a rule reach a vendored parent — without them rules go
+silently narrow — so the lever is their width: name the packages your rules need rather than all of `vendor`.
+This project's own test suite went from 346s to 115s on exactly that change.
+
+On CPU the port is already cheaper than a cold PHPStan and dearer than a warm one, because `mago analyze` has
+no result cache. Measure your own.
 
 ## Requirements
 
