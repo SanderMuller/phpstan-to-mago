@@ -10,6 +10,7 @@ use Mago\Sdk\Analyzer\Type\AtomicType;
 use Mago\Sdk\Analyzer\Type\CallableType;
 use Mago\Sdk\Analyzer\Type\EnumType;
 use Mago\Sdk\Analyzer\Type\GenericParameterType;
+use Mago\Sdk\Analyzer\Type\IntegerType;
 use Mago\Sdk\Analyzer\Type\IterableType;
 use Mago\Sdk\Analyzer\Type\KeyedArrayType;
 use Mago\Sdk\Analyzer\Type\ListType;
@@ -141,11 +142,33 @@ final class Describe
             }
         }
 
+        // Two ranges order by their lower bound, which is `sortTypes()`'s own rule for a pair of
+        // `IntegerRangeType`: `($a->getMin() ?? PHP_INT_MIN) <=> ($b->getMin() ?? PHP_INT_MIN)`. Without it a
+        // union of ranges came out in mago's order -- `int<398, max>|int<min, 396>` against the original's
+        // `int<min, 396>|int<398, max>` -- which the rendered-text tail cannot fix, because `<` sorts before
+        // a digit.
+        $left = self::rangeMinimum($a[0]);
+        $right = self::rangeMinimum($b[0]);
+        if ($left !== null && $right !== null && $left !== $right) {
+            return $left <=> $right;
+        }
+
         // The original's tail: `strcasecmp` on the rendering, tie-broken by a binary compare so the order is
         // total rather than merely consistent.
         $insensitive = strcasecmp($a[1], $b[1]);
 
         return $insensitive !== 0 ? $insensitive : $a[1] <=> $b[1];
+    }
+
+    /** The lower bound of a scalar narrowed to an integer range, or null where the atomic is not one. */
+    private static function rangeMinimum(mixed $atomic): ?int
+    {
+        if (! $atomic instanceof ScalarType || ! $atomic->refinement instanceof IntegerType) {
+            return null;
+        }
+
+        // `PHP_INT_MIN` for an open lower bound, which is what the original's comparator substitutes.
+        return $atomic->refinement->minimum ?? PHP_INT_MIN;
     }
 
     /** Whether an atomic is a boolean narrowed to `true` or `false`, which sorts last but for `null`. */
@@ -203,7 +226,11 @@ final class Describe
         return match (true) {
             $atomic instanceof ScalarType => self::scalar($atomic),
             $atomic instanceof SimpleAtomicType => self::SIMPLE[$atomic->kind->name] ?? strtolower($atomic->kind->name),
-            $atomic instanceof NamedObjectType => $atomic->name,
+            // `$this(Foo)` where the type is `$this` rather than merely a `Foo`, which is
+            // `ThisType::describe()`'s own shape. `NamedObjectType` carries the distinction on `isThis` and
+            // this dropped it, so three of the seventeen divergences left after the range work were a port
+            // that rendered the class where the original marked the receiver.
+            $atomic instanceof NamedObjectType => $atomic->isThis ? '$this(' . $atomic->name . ')' : $atomic->name,
             $atomic instanceof EnumType => $atomic->name,
             $atomic instanceof GenericParameterType => $atomic->name,
             $atomic instanceof ReferenceType => $atomic->name ?? (string) $atomic,
@@ -212,13 +239,75 @@ final class Describe
             $atomic instanceof MixedType => 'mixed',
             $atomic instanceof CallableType => 'callable',
             $atomic instanceof ResourceType => 'resource',
-            $atomic instanceof KeyedArrayType => 'array',
+            // An array is parameterised at every verbosity, which this rendered as bare `array` until the
+            // corpus differential printed `array<PhpParser\Comment>` against it. `ArrayType::describe()` in
+            // the phar is `$level->handle($valueHandler, $valueHandler, ..)` -- the value and type-only
+            // handlers are the same closure -- and that closure drops a key only when the key carries
+            // nothing, which is what makes `array<Value>` the one-parameter form rather than a shorthand.
+            $atomic instanceof KeyedArrayType => self::keyedArray($atomic),
             // The two generics `typeOnly()` still parameterises. `list<Thing>` is the shape a rule quotes;
             // `Type::__toString()` prints `list` and drops the element, which is 14003 of the 22868 sites.
             $atomic instanceof ListType => 'list<' . self::type($atomic->elementType) . '>',
             $atomic instanceof IterableType => 'iterable<' . self::type($atomic->keyType) . ', ' . self::type($atomic->valueType) . '>',
             default => (string) $atomic,
         };
+    }
+
+    /**
+     * An array with whatever parameters it carries, the way `ArrayType::describe()` writes them.
+     *
+     * Three forms, and the condition is the *key* rather than the value: a key that carries nothing gives the
+     * one-parameter form, and an array carrying neither gives the bare word. PHPStan's own test is an
+     * implicit `mixed` or a `never` key; mago spells an unparameterised side as null, so null is what stands
+     * in for it here — and where that mapping is wrong the differential says so, which is how the bare
+     * `array` this replaced was found.
+     */
+    private static function keyedArray(KeyedArrayType $atomic): string
+    {
+        // `mixed` counts as carrying nothing, not just null. `ArrayType::describe()` gives the bare word
+        // only when the key *and* the item are an implicit `mixed` (or `never`), and mago spells a bare
+        // `array`'s value as `mixed` rather than leaving it unset -- so testing null alone rendered
+        // `array<mixed>` and broke five fires-gate pairs that had been agreeing. The gate caught it in the
+        // opposite direction from the differential, which had wanted *more* detail here.
+        $value = $atomic->valueType instanceof Type ? self::type($atomic->valueType) : null;
+        if (in_array($value, [null, 'mixed', 'never'], true)) {
+            return 'array';
+        }
+
+        // `array-key` is how mago spells a key that carries nothing, where PHPStan spells it an implicit
+        // `mixed` and drops it — so this is the one-parameter form's real condition, and reading null for it
+        // was a guess the differential corrected: it printed `array<array-key, PhpParser\Comment>` against
+        // the original's `array<PhpParser\Comment>` on thirteen rows.
+        $key = $atomic->keyType instanceof Type ? self::type($atomic->keyType) : null;
+
+        return $key === null || $key === 'array-key'
+            ? 'array<' . $value . '>'
+            : 'array<' . $key . ', ' . $value . '>';
+    }
+
+    /**
+     * An integer, with its range where it has one.
+     *
+     * `int<%s, %s>` with `min` and `max` for an open end, which is `IntegerRangeType::describe()` verbatim.
+     * An integer with neither bound is the plain word, because PHPStan builds a range type only where a bound
+     * exists — `fromInterval()` answers a plain `IntegerType` for two nulls.
+     */
+    private static function integer(IntegerType $atomic): string
+    {
+        // Two ways a range is not written as one, both from `IntegerRangeType::fromInterval()`: neither
+        // bound gives a plain `IntegerType`, and **equal bounds give a `ConstantIntegerType`**, which
+        // `describe()` renders as `int` at type-only verbosity and as the number at value verbosity. So
+        // `int<0, 0>` is a shape PHPStan cannot print, and rendering it was this port reading *more* than the
+        // original said -- nine of the seventeen divergences left after the range work.
+        if ($atomic->minimum === null && $atomic->maximum === null) {
+            return 'int';
+        }
+
+        if ($atomic->minimum !== null && $atomic->minimum === $atomic->maximum) {
+            return 'int';
+        }
+
+        return 'int<' . ($atomic->minimum ?? 'min') . ', ' . ($atomic->maximum ?? 'max') . '>';
     }
 
     /**
@@ -231,6 +320,16 @@ final class Describe
     {
         if ($atomic->kind === ScalarTypeKind::Boolean && is_bool($atomic->refinement)) {
             return $atomic->refinement ? 'true' : 'false';
+        }
+
+        // **A range lives on the scalar's refinement, not on an atomic of its own.**
+        // `ScalarType::$refinement` is declared `bool|IntegerType|FloatType|StringType|ClassLikeStringType|null`,
+        // so an `int<0, 16>` arrives as an Integer-kinded scalar carrying an `IntegerType` with the bounds --
+        // a match arm on `IntegerType` never sees it, because the scalar arm is checked first and there is no
+        // bare `IntegerType` atomic to reach. Found by the differential: adding the arm alone moved 0 of the
+        // 46 rows it was written for.
+        if ($atomic->refinement instanceof IntegerType) {
+            return self::integer($atomic->refinement);
         }
 
         return self::SCALARS[$atomic->kind->name] ?? strtolower($atomic->kind->name);

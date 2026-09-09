@@ -20749,3 +20749,51 @@ the same reason and only *looked* live because it tested an array assembled from
 
 Still open: 46 refinement-dropped (`int<0, 16>`, `array<PhpParser\Comment>`), five other shapes including
 PHPStan's `$this(Foo)` rendering, and one genuine inference difference.
+
+### Five rendering mechanisms closed: 70 divergences to 3, every fix read off PHPStan's source
+
+Each mechanism was derived rather than guessed, which the entry above committed to before any of them was
+attempted:
+
+| mechanism | authority | rows |
+|:--|:--|--:|
+| union member order | `UnionTypeHelper::sortTypes()` | 18 |
+| array parameters dropped | `ArrayType::describe()` — value and type-only share one handler | 13 |
+| integer range dropped | `IntegerRangeType::describe()`, one `sprintf` with `?? 'min'` / `?? 'max'` | ~22 |
+| `int<0, 0>` printed where PHPStan cannot | `fromInterval()` collapses equal bounds to a `ConstantIntegerType`, whose `describe()` is `int` at type-only | ~9 |
+| `$this(Foo)` flattened to the class | `NamedObjectType::$isThis` carries the distinction | 3 |
+
+`agree 238, only-original 9, only-port 0` held constant across all five steps, so no finding was gained or
+lost and only the text moved. **No emitted byte changed**: the rendering lives in the runtime behind
+`Support::describeType()`, which is the facade property the first `Support` split was measured on.
+
+### Three of the five I got wrong first, and a run corrected each
+
+None was visible from reading the change:
+
+- **`array-key` read as null.** PHPStan drops the key when it is an implicit `mixed`; mago spells an
+  unparameterised key `array-key`, so the one-parameter condition never fired and the port printed
+  `array<array-key, PhpParser\Comment>`.
+- **An `IntegerType` match arm that moved 0 of the 46 rows it was written for.** A range is not a bare atomic:
+  `ScalarType::$refinement` is declared `bool|IntegerType|FloatType|StringType|ClassLikeStringType|null`, so
+  `int<0, 16>` arrives as an Integer-kinded *scalar* carrying an `IntegerType`, and the scalar arm is checked
+  first. The arm was dead the moment it was written and the count said so.
+- **`array<mixed>` from testing null alone**, which broke five fires-gate pairs that had been agreeing.
+  PHPStan gives the bare word only when the key *and* the item carry nothing, and mago spells a bare array's
+  value as `mixed` rather than leaving it unset.
+
+### The two instruments disagree by design, and both were necessary
+
+The third defect is the one worth keeping, because **the gate caught it in the opposite direction from the
+differential.** The differential wanted more detail in array rendering; the gate showed that for a bare
+`array` the port had started writing more than the original. Neither instrument could have found both:
+
+- the differential sees real code and no hand-written pair — it found the refined ranges, the parameterised
+  arrays, the ordered unions and the `$this`
+- the gate sees hand-written pairs at exactly the shapes someone chose to pin — it found the bare `array`,
+  which appears in an example pair and in none of the divergences
+
+A fix pushed by one instrument alone would have shipped, and did, until the other ran.
+
+Still open, and not rendering: two ranges PHPStan narrows where mago does not, and one element type mago reads
+as `never`. Those are inference differences and belong to a different investigation.
