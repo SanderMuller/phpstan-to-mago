@@ -19268,3 +19268,55 @@ And the honest first row: **nothing mechanical caught the census-marker filter.*
 
 Which makes the summary two of four rather than three of four: one instance reached only by an
 answer-in-hand check, one reached by nothing mechanical at all. A less comfortable figure and the right one.
+
+### Unavailable is a different state from unused, and the anchor column hid it
+
+The matrix above puts "external anchor" in one column, and a peer's last consequence is that the column holds
+two states with different fixes. Confirmed against this log's own rows:
+
+| instance | the anchor |
+|:--|:--|
+| anchored `^REFUSE` finding 34 | **existed and was unused** — the file states its own 43 |
+| the configuration count of 4 | **never existed** — no independent total for "rules closed by configuration" |
+
+For the first the fix is to use what is already there, which is what `CensusAccountsForEveryRowTest` now does
+against the header's 192.
+
+For the second there is nothing to use, and *check the count harder* is not a fix, because **a count with no
+independent total is unfalsifiable.** Nothing could have contradicted the 4. That is not a lapse in rigour —
+it is a missing artefact, and the fix is to create the thing the number can be wrong against rather than to
+scrutinise the number.
+
+**And what actually closed it was a second, differently-shaped count.** There is no natural total for that
+question the way 192 is natural for "rules in the corpus". The peer matched configuration *vocabulary*
+anywhere in a `REFUSE` block where I had matched five sentence forms, got 13 against my 12, and the two
+reconciled under the once-per-rule accounting — recorded above as *"the first count in this exchange to
+survive an independent check by a differently-shaped method."* So the substitute for an absent anchor is a
+count constructed differently enough that it *could* disagree, which is the control pair arriving in the
+counting domain with a use rather than as an analogy.
+
+Which completes the table, named by mechanism rather than by outcome:
+
+| countermeasure | the defect it reaches |
+|:--|:--|
+| assert the reject side | exclusion — a filter that silently narrows |
+| run the instrument before proposing it | over-match — something wrongly kept |
+| assert against an external total | a count where a total exists |
+| build a second, differently-shaped count | a count where none exists |
+| a known positive | regression only; needs the answer already in hand |
+| reading the artefact | the member none of the above reached |
+
+Six rows, five mechanical, and the last one is not a countermeasure so much as the thing the others are
+substitutes for. The census-marker filter is on the record as reached by reading, prompted by a second party
+pointing at a field I had printed and not used.
+
+---
+
+That is the end of what either session could run. The board holds one item — a coverage driver, to turn *3 of
+5 on one helper* into a figure for all 478 runtime helpers — and installing an extension is a machine change
+and the user's call.
+
+By the only measure that held up across the whole exchange: **the useful thing was that neither session could
+see its own reject side.** Six figures wrong between two parties, every one caught by the other, none by its
+author and none by care — and the four filter defects were each an instrument reporting confidently on the
+half it had kept.
