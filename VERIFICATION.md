@@ -18412,3 +18412,45 @@ the two I caught came from an instrument and a second party, not from rememberin
 So the operational form, for a construct scan specifically: **the grep is the shortlist, and every row is
 unread until its call site is read.** Nine of eleven closed rows were confirmed that way and held; the two
 that were not are the two that moved.
+
+### The refusal list, sorted by why — and five kinds, not one
+
+Of the 43 rules the census records as refused:
+
+| why it refuses | rules |
+|:--|--:|
+| a construct the code deliberately refuses | 11 |
+| reads the filesystem at analysis time | 3 |
+| a version boundary that has already closed upstream | 3 |
+| configured values the package wires nowhere | 3 |
+| configured through the container rather than the package neon | 1 |
+| **cause not yet identified** | **22** |
+
+So 21 of 43 have an identified cause, and it is a different cause in five kinds. The earlier framing of
+*13 of 43* was both an undercount and one column where five were needed.
+
+Two corrections to figures this log has carried:
+
+- **"Seven unwired" was recollection, not measurement.** The census marker appears for three rules; the
+  seven came from a shortlist row I had annotated from memory of an earlier finding. The number that
+  survives is the one the census prints.
+- **The tally's own total is the check that caught it.** The first run reported 34 where the census has 43,
+  and `unwired` came out 0 where it should have been 3. Cause: census lines carry trailing parentheticals —
+  `REFUSE  NoTestMocksRule  (the package registers it nowhere)` — and an anchored `^REFUSE\s+(\S+)\n`
+  silently drops exactly the annotated rules, which are disproportionately the unwired ones. **A regex that
+  drops rows drops the rows that are unusual, and those are never a random sample.**
+
+Of the 22 unattributed, nine were read this session and none is a job: `ArrayFilterStrictRule` (14 obstacle
+lines), `StrictFunctionCallsRule` (five capabilities for one rule), `NewOverSettersRule` (depends on a
+collector with ten), `ForbiddenFuncCallRule` (two of the package's own neons disagree on its config),
+`NoGetRepositoryOnServiceRepositoryEntityRule` (an injected resolver), `UselessCastRule`,
+`AssertEqualsIsDiscouragedRule`, `AssertSameWithCountRule` (a rule-local trinary helper) and
+`RectorCheaperGuardsFirstRule` (`NodeFinder` plus an index scan with mutable state). So roughly thirteen
+rules in the corpus have never had their call sites read, and that is the honest size of the frontier.
+
+**The pattern across every candidate read this session is worth stating, because it is the argument against
+picking by metrics at all.** Not one was blocked by the thing its census line named. The blocker was one or
+two obstacles deeper every time — a printer behind a verbosity refusal, a definedness test behind an
+iteration, a third-party parser behind a collaborator, a filesystem read behind a guard chain. The census
+names first obstacles and a scan names mentioned constructs; **neither names what a rule needs, and only
+reading the body does.**
