@@ -13,10 +13,11 @@ use Sandermuller\PhpstanToMago\Transpiler;
 /**
  * A refusal says how far its `needs-at-least:` list falls short, and one that falls short by nothing says so.
  *
- * `PackageCoverage::needs()` drops two labels as artefacts of stepping over a statement. Where they are
+ * `PackageCoverage::needs()` drops three labels as artefacts of stepping over a statement. Where they are
  * dropped they stand for work the pass cannot see: an unbound loop variable makes every statement in the
  * body refuse with `unknown local $x`, so a rule whose whole body sits inside one loop prints one visible
- * need and hides the rest.
+ * need and hides the rest. The third is `a second message before the first was reported`, which a
+ * stepped-over conditional report provokes in a rule whose two reports are both portable.
  *
  * **This exists because the floor was read as a total three times in one session.** Ranking the refused
  * rules by reason frequency, then by blocker count, then by sole-terminal-need each produced a candidate

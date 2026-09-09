@@ -385,16 +385,20 @@ final class TracksUpstreamDriftTest extends TestCase
                 // rule -- the refusal above it is accurate. It says the check behind the rule is already
                 // carried by a sibling that emits, which is the half that decides whether the row is work.
                 // `floor:` between the needs and the subsumption, because it qualifies the list directly
-                // above it. A refusal dropped as an artefact of a stepped-over binding stands for work the
+                // above it. A refusal dropped as an artefact of a stepped-over statement stands for work the
                 // pass cannot see, so a rule with one visible need and several suppressed ones is not one
                 // capability away -- which is how this backlog was mis-sized three times in one session.
+                //
+                // "statement" rather than "binding": the artefacts are an unbound local, a `continue` whose
+                // loop refused, and a second message whose first report was stepped over. Only the first is
+                // a binding, and this line said so while counting all three.
                 $lines[] = 'REFUSE  ' . $outcome->name . $where . "\n        " . $outcome->reason
                     . ($outcome->needs === [] ? '' : "\n        needs-at-least: " . implode("\n        needs-at-least: ", $outcome->needs))
                     . ($outcome->suppressedNeeds === 0 ? '' : "\n        floor: " . $outcome->suppressedNeeds
                         . ($outcome->suppressedNeeds === 1
                             ? ' further refusal suppressed as an artefact'
                             : ' further refusals suppressed as artefacts')
-                        . ' of a stepped-over binding, so the list above is a floor')
+                        . ' of a stepped-over statement, so the list above is a floor')
                     . ($outcome->alsoEmittedBy === [] ? '' : "\n        also-emitted-by: " . implode(', ', $outcome->alsoEmittedBy));
             }
         }

@@ -344,6 +344,32 @@ final readonly class PackageCoverage
                 static fn (string $need): bool => ! str_contains($need, 'unknown local $')
                     && ! str_contains($need, 'outside a loop'),
             );
+
+            // A third artefact, and it needs the other entries to identify it. `a second message before the
+            // first was reported` guards a real hazard -- a rule whose second message overwrites a first that
+            // was never reported under -- and its test is `! $reportTaken`. A stepped-over conditional report
+            // never sets that flag, so in survey mode the *next* message trips a check that would not have
+            // fired had the first one translated.
+            //
+            // Measured with a probe rather than reasoned about: two conditional reports over one argument,
+            // both portable, emit both identifiers and produce no need. Make only the first condition refuse,
+            // leave both reports untouched, and `a second identifier before the first was reported` appears.
+            // The reports did not change; what changed is that one statement was stepped over.
+            //
+            // Unconditional, unlike the terminal refusal above, and the guard that was written first is why
+            // this says so. `count($needs) > 1` looked like the same caution and mutation-showed no effect:
+            // no rule in the corpus carries this as its only need. It was also wrong in one corner -- where
+            // the step-over's own refusal is itself filtered as `unknown local $x`, the artefact is the sole
+            // entry and that guard would have preserved it, which is the case it was meant to catch.
+            //
+            // Nothing real is lost. The refusal can only arise in survey mode: outside it the first refusal
+            // propagates and becomes the rule's *reason*, which the census prints on its own line. Measured
+            // across the corpus, no rule has this refusal as its reason.
+            $needs = array_filter(
+                $needs,
+                static fn (string $need): bool => ! str_contains($need, 'before the first was reported'),
+            );
+
             $suppressed = $before - count($needs);
 
             // The refusal that *ended* the pass, and only where the pass stepped over nothing.

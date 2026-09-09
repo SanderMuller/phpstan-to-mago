@@ -12412,10 +12412,32 @@ final readonly class Translator
         //
         // `hasVariableType()->no()` is exempt below, because that one is not a collapse: it maps onto a helper
         // that answers the same question directly rather than onto the negation of another.
+        //
+        // **That exemption is the general shape, and the refusal used to deny it existed.** This said "the
+        // port has one boolean to answer with", which reads as a property of the target and is not one. What
+        // cannot be represented is `Maybe` as a value, and neither direction needs it. A reader sizing
+        // `AssertSameWithCountRule` off the old wording would have costed a three-valued type lattice; what
+        // that rule wants is one `no`-direction helper for `isArray()`.
+        //
+        // **The helper is per query, not one flipped quantifier reused.** A union reduces through
+        // `notBenevolentUnionResults()`, which is agreement-or-`Maybe` -- so there `yes` is every atomic
+        // qualifying and `no` is none of them, and the shape helpers in `Runtime\Types` are written that way.
+        // An intersection reduces through `intersectResults()`, which is *any* constituent qualifying, and
+        // that is how an accessory refines its base: `non-empty-array` is `ArrayType & NonEmptyArrayType`,
+        // where the base answers `Maybe` to `isIterableAtLeastOnce()` and the accessory answers `Yes`. Every
+        // atomic qualifying downgrades that to `Maybe` and silently weakens `non-empty-string`,
+        // `non-empty-array` and `literal-string` alike. `intersectResults()` also takes a per-predicate
+        // filter and answers `No` for an empty filtered set, which no single helper carries either.
+        //
+        // So the refusal names the missing helper rather than the target's limits, and names it for the one
+        // query. It is still a refusal, and deliberately: writing `! ->yes()` here is the collapse the
+        // paragraph above measures.
         if ($tail === 'no' && $name !== 'hasVariableType') {
             throw new Refusal(
-                "->{$name}()->no(), which is not the negation of ->yes(): PHPStan answers Maybe for a type "
-                . 'that is partly this and partly not, and the port has one boolean to answer with',
+                "->{$name}()->no(), for which no `no`-direction helper exists: it is not `! ->yes()`, because "
+                . 'PHPStan answers Maybe for a type that is partly this and partly not. A helper for this one '
+                . 'query would carry it, the way `hasVariableType()` already does — reducing a union and an '
+                . 'intersection the way PHPStan does, which are not the same quantifier',
                 $line,
             );
         }
