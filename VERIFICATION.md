@@ -16074,3 +16074,42 @@ All seven README rows re-derived mechanically against the census.
 One census change I did not intend: `ArrayFilterStrictRule` lost one deeper `needs-at-least` line, first
 obstacle unchanged and nothing replacing it. **INFERRED, not traced** — the survey walks further now, so that
 path is no longer reached. No correctness risk: the rule still refuses and emits nothing.
+
+### Where the pool stands after two emits, and the first two-rule lead whose rules are both shallow
+
+Re-read all 42 refusals with today's seven capabilities in place. Neither remaining closure-resolver sibling
+moved: `NoServiceAutowireDuplicateRule` still refuses on *a search filter that needs a bind-arg statement,
+whose position decides the answer* — the case `searchFilteredByAClosure()`'s own docblock records as written,
+run and read before the current design replaced it — and `AlreadyRegisteredAutodiscoveryServiceRule` needs
+three resolver inlinings plus the `realpath` inside `SymfonyClosureServicesExcludeResolver`.
+
+**Most of the shallow-looking refusals are my own fixtures.** `DisagreeingAttributeWalkRule`,
+`AnchorEscapesLoopRule`, `CyclicHelperRule`, `MissingHelperRule`, `NonTerminalReportBranchRule`,
+`UnmappedNodeTypeRule`, `UnsupportedRule`, `DynamicNameComparisonRule`, `LooseNumericNameSetRule`,
+`LooseTraitNameSetRule` and `FeedsBackIntoPhpstanRule` all exist to refuse. Reading the list without that in
+mind overstates the pool by eleven.
+
+#### The lead: `ClassConstructorTypesResolver`, behind two rules
+
+`NoDuplicateArgAutowireByTypeRule` and `NoDuplicateArgsAutowireByTypeRule` both refuse on
+`$this->classConstructorTypesResolver->resolveClassConstructorNamesToTypes()`. Inventoried, **both rules are
+shallow**: `getArgs`, `NamingHelper::isName`/`isNames`/`getName`, the resolver call, and a report on a node's
+line. No disk, no regex, no reflection selectors.
+
+The resolver is 82 lines and needs two things:
+
+- **A receiver-chain walk**, which I built this session as `Chains::chainedCallNamed()` — but a *variant*. This
+  one advances before testing (`while ($current->var instanceof MethodCall) { $current = $current->var; … }`),
+  carries a `continue`, and returns from either argument 0 or argument 1 when that argument is a
+  `ClassConstFetch`. My recogniser matches the test-then-advance shape only.
+- **A constructor-parameter-type map** — `getConstructor()->getOnlyVariant()->getParameters()`, each
+  parameter's name against its `ObjectType` class name. Mago answers this directly:
+  `FunctionLikeMetadata->parameters` gives `ParameterMetadata` with `name` and a `TypeMetadata`, so one runtime
+  primitive covers it.
+
+**Two capabilities, two rules, and everything above them already shallow.** That is a better-shaped target than
+anything the earlier rankings produced — and unlike them it comes from reading both rule bodies and the
+collaborator, not from grouping refusal text.
+
+Stated as a lower bound, because that is all any assessment establishes here: **at least two**. Every rule this
+session has moved that bound upward at least once after a build began.
