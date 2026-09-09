@@ -19375,3 +19375,61 @@ What this establishes is the method, not the answer. One rule touches only what 
 and says nothing about the gate as a whole; the figure the peer asked for needs the instrumented sandbox
 across all 140 emitting rules, which is a harness pass rather than a command. **The board item is unblocked
 and unfinished**, which is a better state than blocked and was one question away the whole time.
+
+### The board item, answered: the example corpus executes 70.6% of the runtime
+
+With the driver reachable and the worker's command line ours, the figure the mutation could only give per
+helper is now one run. Method: every one of the 193 emitted plugins registered in a single instrumented
+worker, all 426 example files from all 175 example directories as the analysed source, `mago analyze` once.
+A crowded worker gives a **superset** of reached lines — the fires gate's own note records that a rule can
+fire in a crowded extension and be dead alone — which is the safe direction for finding zeros.
+
+    mago issues                        6,174
+    plugins that failed to construct       0
+    src/Runtime files loaded          47 of 47
+    executed lines                     2,274
+    executable lines                   3,223   ->  70.6%
+
+**Not 20% and not 90%**, which was the whole question. And no runtime file has zero executed lines, which the
+one-rule run could not have told us: there, 39 of 47 files never loaded at all.
+
+#### Which helpers are never reached, and the cross-check
+
+Per public static helper, folded so a name counts dead only when dead in **every** file declaring it:
+
+| | |
+|:--|--:|
+| distinct helper names with a verdict | 279 |
+| dead everywhere they are declared | 17 |
+| of those, named by no emitted plugin | **15** |
+| of those, named by a plugin and never reached | 2 |
+
+**The 15 is exactly the figure the static screen produced** two stints ago from a completely different
+instrument — a name grep over the emitted plugins, no execution at all. Two differently-shaped counts, same
+answer, which is the counting-domain control pair with an agreement rather than a discrepancy for once.
+
+The 2 are what only coverage could find, and one of them dissolved on inspection. `usedTraitNames` is called
+by `TraitRequiresInterfaceRule`, whose emitted body cannot avoid it — and that rule guards
+`if ($this->pairs === []) { return; }` first. **My crowded worker constructs every plugin with no arguments**,
+and `FiresGate::CONFIGURED` exists precisely because the package wires that rule's pairs nowhere. So it bails
+at line one and the helper is unreachable *in my harness*, not in the gate.
+
+Bounded rather than hand-waved: **36 of 193 emitted plugins take constructor parameters, and exactly one
+bails immediately on an empty configured collection** — that one. So the artefact explains `usedTraitNames`
+and nothing else, the 70.6% is a floor with one rule's paths missing from it, and `afterLast`
+(`NoSetClassServiceDuplicationRule`, which has no such guard) is **unresolved** rather than confirmed either
+way.
+
+#### And the harness's own reject side, twice
+
+The first version of the aggregate reported *"runtime files with zero executed lines: 0"* — true and
+meaningless, because xdebug emits no row for a file it never loaded and 39 of 47 had not. Correcting for that
+moved the one-rule figure 3x.
+
+The second version folded per-helper verdicts by marking a name dead if it was dead in **any** file, which
+inflated the never-reached set from 2 to a claim I nearly published. A name declared in both a facade and its
+delegate must be dead in both to be dead.
+
+Fifth and sixth instances of the class in this session, both inside the instrument built to measure it. The
+pattern is not that filters are hard: it is that **every aggregation step has a reject side, and each one is
+a fresh place to lose the rows that matter.**
