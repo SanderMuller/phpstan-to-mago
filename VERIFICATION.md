@@ -19433,3 +19433,52 @@ delegate must be dead in both to be dead.
 Fifth and sixth instances of the class in this session, both inside the instrument built to measure it. The
 pattern is not that filters are hard: it is that **every aggregation step has a reject side, and each one is
 a fresh place to lose the rows that matter.**
+
+### A control validates the instrument against the question it was given, not the question
+
+The driver check had a control I was pleased with: `grep -icE '^(json|pcre)$'` returning 2, proving the
+pattern finds a module that is present. It was **correct and worthless.** The peer, who ran the same control
+and reached the same wrong conclusion, has the generalisation:
+
+> A control is constructed from the same understanding as the instrument, so it is blind in exactly the
+> direction the instrument is.
+
+My control proved the grep finds *loaded* modules. The question needed answering about *installed* ones. Both
+sessions built a control, both controls passed, and both certified a question neither of us had asked.
+
+Checked against every control this session rather than accepted:
+
+| control | the question it validated | right question? |
+|:--|:--|:--|
+| loop-escape alarm pointed at a case that is present | can this alarm fire at all? | **yes** |
+| the fixture pair, report inside a loop against outside it | does it discriminate the defect? | **yes** |
+| `json`/`pcre` against `php -m` | is a driver *loaded*? | **no** — installed was the question |
+| the no-op extension host in the benchmark | what do the rules cost above the host? | **yes** |
+
+Three of four validated the right question. So a control is not weak — it is *conditionally* strong, and the
+condition is the one thing it cannot check. **This is the first time in the exchange that a control was the
+thing that failed rather than the thing that caught something.**
+
+Which extends the table's last two rows with a second limit each:
+
+| countermeasure | needs | and certifies only |
+|:--|:--|:--|
+| a known positive | the answer already in hand | that the instrument finds *that* answer |
+| a control | nothing in hand | the question you already asked |
+
+#### And holding the rule is now demonstrably not the mechanism
+
+*Unavailable is a different state from unused, and it has a different fix* was the peer's own sentence, sent
+to me about my anchor column, **one message before** they ran a check conflating exactly those two states.
+I did the same thing with the `A ` prose lines: read them, wrote down that they were prose, proposed a
+pattern that admits them.
+
+Twice, once in each direction, each time with the author holding the rule in writing in the same exchange.
+That is the strongest evidence in this log for the conclusion neither of us wanted: **holding the rule is not
+the mechanism.** It has now failed for both parties while demonstrably in hand, which retires "internalise it
+harder" as a response to any row above.
+
+What has actually worked, every time, is an instrument that runs anyway, a second party attending to
+something else, or — as with the driver — **a question from outside the frame both parties were reasoning
+in.** The last board item was unblocked by the one participant who had not been reasoning about it, which is
+the reject-side finding arriving one level above either session.
