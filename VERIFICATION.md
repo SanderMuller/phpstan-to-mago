@@ -17665,6 +17665,13 @@ turned into a non-directory in a consumer's config.
 
 ### The index cost tracks resolvability, not file count — and that couples speed to correctness
 
+> **Superseded in its mechanism, not in its advice — see *"The resolvability multiplier was mostly a
+> floor-division artefact"* below.** The heading asserts resolvability as *the* multiplier. A peer's
+> discriminating measurement puts the resolvable/unresolvable difference at 5%, not 2.5x, and most of the
+> ms/file gradient below is an artefact of dividing a wall clock that barely moves. The coupling of index
+> speed to rule correctness is unaffected: it rests on the two rejected include sets losing a finding, which
+> was measured directly and does not depend on the multiplier being large.
+
 Chasing the superlinearity found a mechanism that changes what the include advice means.
 
 The per-file cost is not a constant. Measured across include sets, each against the same 270-file corpus:
@@ -17721,3 +17728,95 @@ sets the multiplier.**
 
 Worth keeping regardless of mago: **profile the Rust binary, not `vendor/bin/mago`**, which is a PHP shim
 whose sample profile is almost entirely `usleep`.
+
+### The resolvability multiplier was mostly a floor-division artefact
+
+The entry above ranks include sets by ms/file and reads a twelve-fold spread off it. A peer asked what the
+un-normalised numbers were, and that is the whole correction: re-measured at n=5, wall clock against the same
+270-file corpus —
+
+| include set | files | wall (n=5) | delta vs. none |
+|:--|--:|--:|--:|
+| none | 0 | 0.12s | — |
+| `nesbot/carbon` | 921 | 0.13s | +0.01s |
+| `laravel/framework` | 1,711 | 0.33s | +0.21s |
+| `laravel` + `carbon` | 2,632 | 0.45s | +0.33s |
+| `vendor` | 14,019 | 3.78s | +3.66s |
+
+**A 33x range in files moves the wall clock from 0.12s to 0.33s.** Dividing four figures that close by four
+very different file counts manufactures a gradient, and the gradient was the evidence. `carbon` at "0.022
+ms/file" is a 10 ms delta measured on a 0.12s floor — below this instrument's resolution, not twelve times
+cheaper than anything.
+
+Two things survive and one does not:
+
+- **Superadditivity survives.** `carbon` +0.01s and `laravel` +0.21s predict 0.34s together; the pair measures
+  0.45s. Superadditive by 0.11s, at n=5, on deltas large enough to read. So *some* cross-package work exists.
+  (My earlier `laravel` delta was 0.28s against 0.21s here, and the peer's differs from mine by roughly 4x.
+  Unexplained, and named rather than reconciled.)
+- **`vendor` being the outlier survives**, on every normalisation, and it is the only figure large enough that
+  no normalisation choice can produce it.
+- **Resolvability as the mechanism does not.** The peer built the discriminating pair the entry above never
+  did — synthetic trees identical except that one's hierarchies resolve — and got **5%**, against the 2.5x the
+  model needed. Adding namespaces and imports produced 60% growth, which is real and still leaves roughly 3x
+  of `vendor` unaccounted for.
+
+The failure mode is one this file already names twice, arriving a third way. *"Read the model, never a
+rendering"* is about `__toString()`; *"an aggregate counted what it did not print"* is about a total. This is
+a **derived column standing in for the measurement it was derived from**: ms/file is not a rendering and not
+an aggregate, it is a quotient, and a quotient hides how small its numerator is. The rule that catches it is
+the same one — **print the un-normalised figure beside the normalised one** — and the reason it was not caught
+here is that the normalisation was the point of the table, so nothing in the table looked like a claim.
+
+And the mechanism was never measured with a control pair. The entry above reaches resolvability by
+*reconciliation* — it explains every row, which is exactly the shape *"a unification that fit every cell
+anyone had run"* warns about — and then the sentence "the interaction is measurable rather than inferred"
+attaches the superadditive pair to it as proof. The superadditivity is measured. That it is *resolvability*
+was not, and the peer's pair is what settles it. **A measured row next to an inferred cause reads as evidence
+for the cause.**
+
+### A report followed by `continue` is a suppression the emitted shape cannot express
+
+`MockMethodCallRule` was worked to within one statement of emitting and then reverted. Five obstacles cleared
+in order, each confirmed by the refusal moving: `in_array` over the classes a type names (the descriptor is
+`sole-class` and already carries a `listPhp` rendering for rules that iterate — no branch used it),
+`array_filter` excluding two canonical names from that list, `count()` of the filtered list, a bare error
+return inside a helper, and `getMethodReflection`. After all five the helper `checkCallOnType()` translates
+end to end, and the terminal refusal is in the caller:
+
+    $error = $this->checkCallOnType($scope, $type, $method);
+    if ($error !== null) {
+        $errors[] = $error;
+        continue;
+    }
+
+The machinery for the first three lines exists. `inlineErrorHelper()` inlines a helper that builds a finding
+and records the name it was assigned to in `$reportedErrors`, and `isReportedErrorBookkeeping()` then drops
+`if ($error !== null) { $errors[] = $error; }` as bookkeeping — by that point the report has been emitted.
+It rejects this block for `count($stmt->stmts) !== 1`, which is the trailing `continue`.
+
+**Accepting the `continue` would be an approximation, and that is why the rule stayed refused.** The rule
+calls `checkCallOnType()` twice per iteration — once on `$scope->getType($node->var)`, once on
+`$scope->getType($node->var->var)` behind an `expects` guard — and the `continue` exists to stop the second
+from running when the first fired. The emitted shape puts each inlined check in its own method
+(`openCheck()` / `finishCheck()`, with `refuseASecondCheck()` outside check mode) and runs them
+independently, so dropping the `continue` is a rule that can report twice where PHPStan reports once.
+
+The tempting argument is that the two are exclusive: `expects()` returns `InvocationMocker`, which carries no
+`MockObject` in its object class names, so the first check cannot fire on a node where the second can run.
+That holds for the inferred type and **not** for a docblocked one — `@return MockObject&Foo` on a method
+whose call is the receiver makes both reachable. Near-exclusive is not exclusive, and *"a plausible-but-wrong
+rule is the failure mode to design against, because you would trust it"*.
+
+So the gap is nameable and narrow: **there is no way to say "this node is finished" between two inlined
+checks.** A `bail()` ends a guard chain within one check; nothing ends the sequence.
+
+Two things worth carrying:
+
+- **Census unchanged at 139 EMIT before and after**, so all five cleared obstacles are unexercised vocabulary
+  and went out. Corpus incidence, read off the committed census before deciding: `unknown local` 0
+  occurrences, `no PHP navigation for node.var` 3 — two of them a `Param` node and the third this rule's own
+  line. Sole payoff, which is what made the tripwire the right instrument rather than the build order.
+- **The needs-at-least list under-reported this one.** It named only the `node.var` navigation, because the
+  `$error` assignment's refusal is filtered as an `unknown local $` (`PackageCoverage.php`) — a fourth
+  artefact of a stepped-over statement, beside the three already recorded. A needs list is a floor.
