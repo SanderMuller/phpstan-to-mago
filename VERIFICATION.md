@@ -18592,8 +18592,8 @@ Two rules carry it, and the answer differs:
 So the hedge was right to be there, and the rule it protects against is real — but for `NoReferenceRule` the
 multi-kind narrowing is **not** the operative blocker. A peer measured that mago's
 `MetadataFlags::BY_REFERENCE` reaches named functions and methods and not closures, arrow functions,
-`foreach`, array items or `AssignRef`, so a port would be silent on five of the eight kinds the rule handles
-— partial by construction, which is the direction this project refuses. That is the blocker, and the census
+`foreach`, array items or `AssignRef` — **six of the eight kinds are unreachable on metadata, not five; see
+the correction below** — partial by construction, which is the direction this project refuses. That is the blocker, and the census
 names neither it nor the field question's answer.
 
 **A generated refusal that states an open question is better than one that guesses**, and this is the first
@@ -18624,3 +18624,38 @@ Which is a materially different design question from the one I posed. **The bind
 is one report site in the rule body, not the whole "guards then one report" shape** — and relaxing where a
 finding may be constructed is a narrower change than relaxing the guard chain. Whether either is worth its
 cost is a pricing question about the emitter rather than a search, and it is not mine to open.
+
+
+### A count I formed by subtracting a quoted list from someone else's denominator
+
+*"A port would be silent on five of the eight kinds the rule handles."* A peer could not reproduce five from
+either scope they had measured, and the reconciliation is that I never counted anything.
+
+Their earlier message listed the unreachable kinds — closures, arrow functions, `foreach`, array items,
+`AssignRef`. Five items. I paired that list with the rule's eight-kind narrowing and reported the difference.
+**Which asserts that the other three are reachable, and nobody had measured one of them.** `Arg` is not:
+mago cannot parse call-time pass-by-reference at all, so the file does not even reach the question. On
+metadata the figure is six unreachable and two reachable — `Function_` via `getFunction(name)->flags` and
+`ClassMethod` via `getMethod(class, method)->flags`.
+
+Their second scope, which counts the positional ampersand work from an earlier session that this session
+cannot verify, gives three unreachable — `Foreach_`, `ArrayItem` and `AssignRef` becoming reachable by source
+text, leaving the two anonymous function-likes with no operand to anchor return-by-reference on and `Arg`
+with no parse. My sentence cited the metadata measurement, so **six** is the figure that belongs to the claim
+I made.
+
+**The mechanism is a subtraction, and it is the cheapest way to publish an unmeasured cell.** A quoted list
+of what does not work, minus a denominator sourced from somewhere else, produces a residue that reads as
+measured and never was. It differs from the ms/file quotient in being *exact* arithmetic on two correct
+inputs — five is genuinely the length of their list, eight is genuinely the rule's kind count — which is why
+nothing about it looked derived. The defect is that the two came from different questions, and the residue
+belongs to neither.
+
+So: **when a count is a difference, name what was measured on each side.** "Five of eight" carries no trace
+of the fact that the five were counted by one person about metadata and the eight by another about a
+`instanceof` chain, and that no one had asked about `Arg`.
+
+The verdict is unchanged on all three readings — partial by construction, which this project refuses — and
+that is why it was worth raising rather than leaving. **A number that supports a decision outlives the
+decision**, and an unexamined one sitting in a row already marked closed is precisely what the definedness
+alarm exists to prevent, one artefact over.
