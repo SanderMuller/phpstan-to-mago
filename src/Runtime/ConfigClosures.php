@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Runtime;
 
+use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Syntax\Node;
+use Sandermuller\PhpstanToMago\Vocabulary;
 
 /**
  * What a Symfony config closure declares about itself, which `FileNameMatchesExtensionRule` reads.
@@ -41,6 +43,53 @@ use Mago\Sdk\Syntax\Node;
  */
 final class ConfigClosures
 {
+    /**
+     * Each constructor parameter of the service a `set()` call in this receiver chain names, against the class
+     * its type names.
+     *
+     * `ClassConstructorTypesResolver::resolveClassConstructorNamesToTypes()` in one question, which is what
+     * {@see Vocabulary::COLLABORATOR_CALLS} is for: the collaborator walks a
+     * receiver chain to the `set()` that named the service, reads that class's constructor through PHPStan's
+     * reflection, and keeps the parameters whose type is an object. Mago answers the same three steps -- the
+     * chain through {@see Chains::chainedCallNamed()}, the class name from the call's own arguments, and the
+     * parameters from `getMethod($class, '__construct')`.
+     *
+     * A service named by a string rather than a class constant answers nothing, exactly as the original does:
+     * it reads `NamingHelper::getName()` off a `ClassConstFetch` and returns null for anything else.
+     *
+     * @return array<string, string>
+     */
+    public static function constructorParameterTypes(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        $set = Chains::chainedCallNamed($context, $subject, 'set');
+        if (! $set instanceof Part) {
+            return [];
+        }
+
+        $arguments = Calls::argumentList($context, $set);
+        $class = ConstantStrings::at($context, Calls::positionalArgAt($arguments, 1))
+            ?? ConstantStrings::at($context, Calls::positionalArgAt($arguments, 0));
+        if ($class === null || $class === '') {
+            return [];
+        }
+
+        $constructor = $context->codebase->getMethod($class, '__construct');
+        if (! $constructor instanceof FunctionLikeMetadata) {
+            return [];
+        }
+
+        $types = [];
+        foreach ($constructor->parameters as $parameter) {
+            $named = $parameter->declaredType ?? $parameter->type;
+            $object = $named === null ? null : Types::soleObjectClass($named->type);
+            if ($object !== null && $object !== '') {
+                $types[$parameter->name] = $object;
+            }
+        }
+
+        return $types;
+    }
+
     /** The method a Symfony config closure adds a service through. */
     private const string CALL_NAME = 'call';
 

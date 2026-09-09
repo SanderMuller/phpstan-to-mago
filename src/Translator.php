@@ -480,6 +480,22 @@ final readonly class Translator
         // original's strict comparison against canonical names asks. A list the rule built itself holds
         // whatever it put there, and folding case for that would be wider than the `true` it was given.
         $haystack = $written ? null : $this->resolve($args[1]->value, $line);
+
+        // A lookup table's *values*, which is what `in_array($x, $map)` asks of a map -- `array_keys` would be
+        // the other question and the rules reading one ask `isset()` for that. Loose comparison is not folded
+        // here: both sides are class names the rule read as written, so `==` between them is already
+        // case-sensitive and the strict form answers the same.
+        if ($haystack !== null && $haystack['kind'] === 'lookup') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('in_array() over a lookup, which only the PHP target carries', $line);
+            }
+
+            return $this->context->backend->call('lookup_has_value', [
+                $this->operand($haystack),
+                $this->stringValue($args[0]->value, $line),
+            ]);
+        }
+
         if ($haystack !== null && $this->holdsMetadataNames($haystack)) {
             // The fold above belongs to the strict form: `==` between two strings is already case-sensitive,
             // so carrying it over would report where the rule stays silent.
@@ -573,7 +589,7 @@ final readonly class Translator
                 ? $this->context->backend->call('bytes_is_one_of', [$this->operand($subject), $list])
                 : "support::local_name_is_one_of({$subject['rust']}, &{$list})",
             'name-selector' => $this->context->backend->call('selector_is_one_of', [$this->operand($subject), Transpiler::$target === 'php' ? $list : '&' . $list]),
-            'name-expr' => $this->nameExprIsOneOf($subject, $list),
+            'name-expr' => $this->nameExprIsOneOf($subject, $list, $options),
             'extends' => Transpiler::$target === 'php'
                 ? $this->context->backend->call('extends_is_one_of', ['$context', '$node', $list])
                 : "support::extends_is_one_of(context, node, &{$list})",
@@ -783,8 +799,37 @@ final readonly class Translator
      *
      * @param Descriptor $subject
      */
-    private function nameExprIsOneOf(array $subject, string $list): string
+    /**
+     * `->name` against a list of names, the plural of {@see nameExprEquals()} and with the same split.
+     *
+     * A **namespaced** entry cannot match a name as written unless the file imported it, so such a list is
+     * compared against what the name resolves to. `NamingHelper::isNames($funcCall->name, [REF, SERVICE])`
+     * over `Symfony\...\Configurator\ref` matched only the fully qualified spelling, and an imported
+     * `ref()` -- the way it is written -- was silently missed.
+     *
+     * `resolvedNameIsOneOf()` already existed for the class-name branch above, which is where the leading-`\`
+     * and case handling was measured; this reuses it rather than adding a second comparison.
+     *
+     * A list of bare names keeps comparing as written, which is what every shipped plugin does.
+     *
+     * @param Descriptor $subject
+     * @param list<string> $options
+     */
+    private function nameExprIsOneOf(array $subject, string $list, array $options = []): string
     {
+        $namespaced = false;
+        foreach ($options as $option) {
+            $namespaced = $namespaced || str_contains($option, '\\');
+        }
+
+        if ($namespaced && Transpiler::$target === 'php') {
+            return $this->context->backend->call('resolved_name_is_one_of', [
+                '$context',
+                $this->operand($subject),
+                $list,
+            ]);
+        }
+
         if (Transpiler::$target !== 'php') {
             return "support::name_is_one_of({$subject['rust']}, &{$list})";
         }
@@ -2203,16 +2248,6 @@ final readonly class Translator
             }
 
             $bound[$param->var->name] = $descriptor;
-            if (getenv('DBG_BIND') !== false) {
-                fwrite(STDERR, sprintf(
-                    "DBG bind %s(\$%s) <- kind=%s php=%s as=%s\n",
-                    $methodName,
-                    $param->var->name,
-                    $descriptor['kind'] ?? '?',
-                    substr((string) ($descriptor['php'] ?? '?'), 0, 34),
-                    $descriptor['as'] ?? '-',
-                ));
-            }
         }
 
         return $bound;
@@ -12180,7 +12215,11 @@ final readonly class Translator
             // only because nothing iterates it back. `param-decls` is the same case one step along: the
             // `foreach` over it is mapped where the loop is opened rather than through that table, so asking
             // whether a method takes no parameters at all had no reading.
-            if (isset(Vocabulary::ITERABLES[$subject['kind']]) || in_array($subject['kind'], ['list', 'param-decls'], true)) {
+            // `lookup` joins them for the same reason: it is an array at runtime, so a rule asking whether the
+            // table came back empty is asking the question `=== []` already answers. It is absent from
+            // `ITERABLES` because nothing iterates it back -- the two rules that read one ask `isset()` and a
+            // value read, never a walk.
+            if (isset(Vocabulary::ITERABLES[$subject['kind']]) || in_array($subject['kind'], ['list', 'param-decls', 'lookup'], true)) {
                 if (Transpiler::$target === 'php') {
                     return $this->operand($subject) . ' === []';
                 }

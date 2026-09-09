@@ -1067,6 +1067,42 @@ final class Support
     }
 
     /**
+     * The value a lookup table holds for a key, or null when it holds none.
+     *
+     * {@see Text::lookupValue()} carries why this sits beside `lookupHas()`.
+     *
+     * @param array<string, string> $table
+     */
+    public static function lookupValue(array $table, ?string $key): ?string
+    {
+        return Text::lookupValue($table, $key);
+    }
+
+    /**
+     * Whether a lookup table holds this value, which is `in_array($x, $map)` over a map.
+     *
+     * {@see Text::lookupHasValue()}
+     *
+     * @param array<string, string> $table
+     */
+    public static function lookupHasValue(array $table, ?string $value): bool
+    {
+        return Text::lookupHasValue($table, $value);
+    }
+
+    /**
+     * Each constructor parameter of the service a `set()` call in this receiver chain names, against its type.
+     *
+     * {@see ConfigClosures::constructorParameterTypes()}
+     *
+     * @return array<string, string>
+     */
+    public static function constructorParameterTypes(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        return ConfigClosures::constructorParameterTypes($context, $subject);
+    }
+
+    /**
      * `array_any()` is PHP 8.4, and the generated rules should run on 8.1.
      *
      * Generic, because the body is: the emitter hands it a list of names from a configured list and a list of

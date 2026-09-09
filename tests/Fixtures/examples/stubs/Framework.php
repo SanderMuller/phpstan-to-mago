@@ -475,6 +475,12 @@ final class ServicesConfigurator
         return $this;
     }
 
+    /** The call the duplicate-args rules read, whose array they compare against the constructor. */
+    public function args(array $args): self
+    {
+        return $this;
+    }
+
     /** The call `ServicesExcludedDirectoryMustExistRule` checks against the disk. */
     public function exclude(array $paths): self
     {
@@ -537,4 +543,12 @@ namespace Symfony\Component\DependencyInjection\Loader\Configurator;
 function param(string $name): string
 {
     return '%' . $name . '%';
+}
+
+namespace Symfony\Component\DependencyInjection\Loader\Configurator;
+
+/** A service reference in a config closure, which the duplicate-args rules read the class out of. */
+function ref(string $id): string
+{
+    return $id;
 }

@@ -719,6 +719,18 @@ final class Vocabulary
         // names flattened and resolved, so answering `->attrs` and `->name` from that list would be three
         // mappings pretending the tree has a shape it does not. The *question* maps exactly instead, and the
         // two Symfony rules that reach the finder through `SymfonyControllerAnalyzer` get it.
+        // `ClassConstructorTypesResolver::resolveClassConstructorNamesToTypes()` walks a receiver chain to
+        // the `set()` that named a service, reads that class's constructor through PHPStan's reflection, and
+        // keeps the parameters whose type is an object. Three steps mago answers directly, so the *question*
+        // maps rather than the collaborator -- the same choice the `AttributeFinder` row below records.
+        // `lookup` because the two rules reading it ask `isset($map[$name])` and then `$map[$name]`, which is
+        // what {@see Support::lookupHas()} and {@see Support::lookupValue()} answer.
+        'Symplify\\PHPStanRules\\Symfony\\Reflection\\ClassConstructorTypesResolver::resolveClassConstructorNamesToTypes' => [
+            'helper' => 'Support::constructorParameterTypes',
+            'kind' => 'lookup',
+            'takes' => 'context',
+            'arguments' => [0],
+        ],
         'Symplify\PHPStanRules\NodeAnalyzer\AttributeFinder::hasAttribute' => [
             'helper' => 'Support::hasAttributeNamed',
             'kind' => 'bool',

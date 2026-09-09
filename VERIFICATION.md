@@ -16150,3 +16150,56 @@ as text rather than through `FIELDS['FunctionCall']['name']` — and it is answe
 
 The pair's bound: **at least five**, moved upward once again after the build began, which is now true of every
 rule this session.
+
+### `NoDuplicateArgsAutowireByTypeRule` emits and fires — and my diagnosis of obstacle 5 was wrong
+
+Census 134 → **135**, symplify 71 → **72 of 89**, `--status` 124 → **125 of 236**.
+
+The previous entry blamed obstacle 5 on "the `isFunctionCall` narrowing is not travelling to the `->name`
+read". **Wrong, and one probe settled it:**
+
+    DBG nav property=name base.kind=expr base.as=FunctionCall key=$arrayItem->value narrowed=FunctionCall -> FunctionCall
+
+The narrowing travels perfectly. The defect was one level further on: `nameExprIsOneOf()` emitted
+`bytes_is_one_of(text_of(..), $list)` **unconditionally**, comparing written text against whatever the list
+held. Its singular twin `nameExprEquals()` had been given the namespaced/resolved split two entries earlier;
+the plural had not, and `resolvedNameIsOneOf()` was already in the tree for the class-name branch.
+
+So the fix is the same split, reusing the existing runtime helper: a list with a namespaced entry compares
+resolved, a list of bare names compares as written.
+
+**I asserted a cause I had not traced**, in a log whose oldest rule is that a wrong *why* is worse than none.
+The instrument cost one command; the assertion cost an entry.
+
+#### Obstacles, and where the pair now stands
+
+| # | obstacle | what it took |
+|--:|:--|:--|
+| 1 | the resolver call | `COLLABORATOR_CALLS` row (kind `lookup`) + `ConfigClosures::constructorParameterTypes()` |
+| 2 | `$map[$k]` | `Text::lookupValue()` |
+| 3 | `$map === []` | `lookup` joins the emptiable kinds |
+| 4 | `in_array($x, $map)` | `Text::lookupHasValue()` — the values, not the keys |
+| 5 | the plural name test | the namespaced/resolved split in `nameExprIsOneOf()` |
+
+The **singular** `NoDuplicateArgAutowireByTypeRule` is not emitted: its refusal advanced past the resolver to
+*an `if` whose body is an assignment then a nested `if`*, with a new `needs-at-least` of `Expr_ArrayDimFetch`
+behind it. Four of the five capabilities were built for the pair and one rule took them; the other needs a
+statement-shape capability neither of us has priced.
+
+#### Verification
+
+Emit-all: php 148 → **149**, analyzer and linter **zero diff**, and the php diff is the new plugin, the
+manifest and the worker only — **no existing plugin's bytes moved**, which is what the `nameExprIsOneOf`
+change had to be checked against. This time the blast-radius measurement and the diff agreed; two entries ago
+they did not, and the diff was right.
+
+Fires gate **4/4** on the imported `ref()` spelling — chosen deliberately, because a fully qualified fixture
+would have passed before obstacle 5 was fixed and left the common form silently unreported. That is the third
+time this session a fixture's spelling decided whether a rule was honest.
+
+Suite **1105/1105**, `--group engine` **790/790**, PHPStan **0** with **13** baseline entries (one figure
+raised), Rector 0 after applying one fix it asked for, Pint clean. All seven README rows re-derived against the
+census.
+
+Two debug probes were removed before committing, one of them carried in from the saved scaffold — worth noting
+because the scaffold is now a place instrumentation can survive a revert and reappear.

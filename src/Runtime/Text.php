@@ -154,6 +154,34 @@ final class Text
     }
 
     /**
+     * The value a lookup table holds for a key, or null when it holds none.
+     *
+     * The read beside {@see lookupHas()}: a rule that tests `isset($map[$k])` and then reads `$map[$k]` asks
+     * two questions of one table, and the second had no rendering until a rule needed the value in its own
+     * message rather than only in a condition.
+     *
+     * @param array<string, string> $table
+     */
+    public static function lookupValue(array $table, ?string $key): ?string
+    {
+        return $key === null ? null : ($table[$key] ?? null);
+    }
+
+    /**
+     * Whether a lookup table holds this value, which is `in_array($x, $map)` over a map.
+     *
+     * The values, not the keys: `isset($map[$k])` is the key question and {@see lookupHas()} answers it.
+     * Compared with `===` because both sides are class names a rule read as written, so folding case would be
+     * wider than the comparison the original makes.
+     *
+     * @param array<string, string> $table
+     */
+    public static function lookupHasValue(array $table, ?string $value): bool
+    {
+        return $value !== null && in_array($value, $table, true);
+    }
+
+    /**
      * `array_any()` is PHP 8.4, and the generated rules should run on 8.1.
      *
      * Generic, because the body is: the emitter hands it a list of names from a configured list and a list of
