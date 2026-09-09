@@ -205,18 +205,6 @@ final class Calls
     }
 
     /**
-     * Whether a node names its member dynamically — computed at runtime rather than written out.
-     *
-     * The question `! $node->name instanceof Expr` asks, inverted: php-parser gives an `Identifier` for a
-     * written name and an expression for anything else. Mago has no such split, so the answer comes from the
-     * spelling: a selector holding a variable or a braced expression is dynamic, a bare word is not.
-     */
-    public static function hasDynamicName(NodeAnalysisContext $context, Part|Node|null $subject): bool
-    {
-        return ! self::isWrittenName(self::namePart($context, $subject));
-    }
-
-    /**
      * Whether a name part is written out rather than computed.
      *
      * Structural, not textual: a static property's *written* name is `$prop`, so a leading `$` proves nothing.

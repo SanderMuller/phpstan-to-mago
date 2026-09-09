@@ -16318,3 +16318,47 @@ extracted rather than the row added. Baseline still **13**.
 Verified: php 149 → **150**, analyzer and linter **zero diff**, only the new plugin, manifest and worker moved.
 Gate **4/4**, suite **1109/1109**, engine **794/794**, PHPStan 0, Rector 0, Pint clean, all seven README rows
 re-derived.
+
+### Auditing for unexercised helpers: the answer moved four times, and the test I wanted cannot be written
+
+The previous entry found `Text::lookupValue()` shipped called by nothing and noted that no test looks for a
+helper no plugin calls. This is the follow-through, and it is mostly a record of my own instrument being wrong
+four times in a row on one question.
+
+    32   public Support helpers not called by any emitted plugin
+    21   after excluding those called through the facade from elsewhere in src/
+     4   after checking the emitter's snake_case spelling (`is_uppercase`, not `isUppercase`)
+     2   after finding `self::` calls and a camelCase field mapping (`'isStatic' => 'reflectedMethodIsStatic'`)
+
+Each refinement was a route to reachability my check did not know about. **The number never moved because the
+code changed; it moved because I kept discovering how a helper can legitimately be used.** Of 213 public
+helpers, 181 are called by an emitted plugin, 11 through the facade from elsewhere, 17 are named by the
+emitter but not reached by this corpus, and **2 were reachable from nothing**.
+
+Removed: `Support::fileEndsWithAny()`, `Support::hasDynamicName()` and `Calls::hasDynamicName()` behind it.
+Emit-all across all three targets: **zero diff**, counts unchanged at 150 / 34 / 25, suite 1109/1109, PHPStan
+0. Dead by measurement, not by reading.
+
+#### The test cannot be written the way I wanted, and that is the finding
+
+I wrote it, ran it, and it reported **three** — including `hintIsName`, which an emitted plugin demonstrably
+calls. The reason is the fifth route, and it defeats the whole approach:
+
+    Name::class => "hint{$suffix}_is_name",
+    …
+    $helper = str_replace('_option', '', $hintPredicates[$wanted]);
+
+**The helper name is assembled at runtime.** No literal `'hint_is_name'` exists anywhere in the source, so no
+static scan of the emitter can see that it is reachable. Had I trusted my own test I would have deleted a
+helper the corpus calls.
+
+So the rule *unexercised vocabulary goes out* cannot be cheaply enforced. The two mechanically sound signals
+are "an emitted plugin calls it" and "something in `src/` calls it"; the third — "the emitter can reach it" —
+is undecidable by inspection wherever a name is built rather than written. A test using only the sound two
+would flag the 17 reachable-but-unexercised helpers as dead.
+
+This is the *ask which of the rules you rely on are enforced* rule answering in the negative. That rule stays
+enforced by attention, and now with a number: **17 helpers are reachable-but-unexercised today**, so anyone
+adding an eighteenth has nothing to distinguish it from the seventeen. The audit above is reproducible in one
+script; the reverted test is recorded here rather than committed, because a check that would delete working
+code is worse than no check.
