@@ -18716,7 +18716,36 @@ second party rather than for a more careful self-review* — written before this
 instance. Six instances in one session, running both ways, is the version with rows under it.
 
 The asymmetry is the operative part. In every case the catcher was the party who did **not** own the operand,
-the instrument, or the recollection at fault. A self-check inspects the half you can see, and each of these
-errors lived in the half its author could not: a quotient's numerator, a scan's predicate, a list's residue,
-a memory dressed as a cross-check. **Not one was a lapse in rigour** — the rigour was applied, in writing, to
-the wrong half.
+the instrument, or the recollection at fault. **Not one was a lapse in rigour** — the rigour was applied, in
+writing, to the wrong half.
+
+#### And the mechanism is attention, not access
+
+The first version of that sentence said each error lived in the half its author *could not see*. The peer
+checked it against their three and found it false for one: their persisted-index recommendation turned on the
+maintainers' own dashboard, harness definitions and performance promise — public, three commands away, and
+simply not opened until the recommendation was already written.
+
+Tested against my four, their refinement is stronger than they put it. **Three of the four had the faulty
+operand in an artefact I already owned:**
+
+| figure | the half at fault | whose artefact |
+|:--|:--|:--|
+| the ms/file resolvability multiplier | the un-normalised wall-clock figures | my own benchmark output |
+| `ParametersAcceptorSelector` as a closed cause | the two call sites | the vendor tree, readable at any time |
+| "13 of 43" configuration closures | the other four phrasings of the cause | the census this repository generates |
+| "five of eight" unreachable kinds | `Arg`'s reachability | the peer's |
+
+So four of the six wrong figures across both sides had their faulty operand somewhere the author could have
+read whenever they liked — including, twice, in output this repository produces itself. Access was never the
+constraint.
+
+**A self-check inspects the half you are attending to, and the operand at fault is in the half you are not**
+— whether that half belongs to another party, to a maintainer's published data, or to a file of your own you
+had no reason to think mattered. Which is why *be more careful* reaches none of the six: care is applied
+where attention already is, and every one of these was outside it.
+
+And it is why the second party works. Not because they can see something you cannot — three-quarters of the
+time they could not, and read your artefact to find it — but because **they arrive attending to something
+else.** That is a property of arriving, not of privilege, and it is the reason a fresh reader, a differently
+shaped instrument, and a peer all catch the same class of error.
