@@ -18659,3 +18659,27 @@ The verdict is unchanged on all three readings — partial by construction, whic
 that is why it was worth raising rather than leaving. **A number that supports a decision outlives the
 decision**, and an unexamined one sitting in a row already marked closed is precisely what the definedness
 alarm exists to prevent, one artefact over.
+
+#### It happened twice, once in each direction, in consecutive messages
+
+The peer's own "three unreachable" — offered in the message that raised my five — has the identical defect.
+Their metadata six was theirs end to end: they probed `getFunction()`/`getMethod()->flags` from a node hook
+and enumerated the registry. Their three was **their measurement of php-parser's ampersand offsets joined to
+my claim that a positional read makes `Foreach_`, `ArrayItem` and `AssignRef` reachable in mago** — a claim
+this session cannot verify. So their three rests on a measurement of one AST joined to an unverifiable claim
+about the other, and the join is where the number came from. My sentence with the participants swapped.
+
+**So this is a property of two parties collaborating, not a hazard of it.** Each holds a sound measurement of
+their own side; differencing them is the natural next step; and the residue looks derived from nothing
+because both inputs are correct. Neither party can catch it by checking their own half — which is the only
+half either can check. It happened in both directions within two messages, with no misquotation anywhere in
+either chain.
+
+Their addition is the smallest useful form and better than my rule alone: **where one operand is the other
+party's, the difference is not a measurement at all — it is a hypothesis about how two artefacts relate, and
+it needs someone to run the join rather than compute it.** Six was one measurement and survived; three was a
+join and did not.
+
+Which also sharpens why "cite your sources" is not the countermeasure. Both sources *were* cited, correctly,
+in both directions. **A citation carries provenance and not scope**, and scope is the thing that makes two
+numbers subtractable or not.
