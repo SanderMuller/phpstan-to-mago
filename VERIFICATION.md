@@ -20361,3 +20361,58 @@ callers wanting opposite directions, and the census does not move.
 
 Five rules still have no readable identifier. And a zero belongs to these trees: a rule about Symfony
 configuration or Doctrine mappings fires nowhere in a corpus holding neither, which is a fact about the corpus.
+
+## The type renderer is not a gap, and a figure in this log reads as though it were
+
+Sizing `ArrayFilterStrictRule` — the last item on the yield table that is ordinary vocabulary work — turned
+up a correction to something this log says about itself.
+
+Two places here describe a rendered type in a message as a large shared capability: the census header's *"a
+type renderer looked like one customer where 27 rules interpolate a rendered type"*, and
+`Translator:16148`'s *"the rendering 27 rule classes interpolate"*. Read together they say a renderer is what
+27 rules are waiting on.
+
+Derived from the corpus rather than repeated:
+
+| verdict | rule classes calling `->describe(VerbosityLevel..)` |
+|:--|--:|
+| **EMIT** | **22** |
+| REFUSE | 4 |
+| NEVER | 0 |
+
+**Twenty-two of the twenty-six already emit through it.** `Runtime\Describe` implements
+`describe(VerbosityLevel::typeOnly())`, `Support::describeType()` exposes it, and `Translator:16148` maps the
+idiom — refusing only the other verbosities. So the figure is right about how many rules *interpolate* a
+rendered type and wrong about what that costs: it reads as a queue and it is a capability that shipped.
+
+I acted on the wrong reading for one step. Having seen branch B of `ArrayFilterStrictRule` interpolate
+`$callbackType->describe(VerbosityLevel::typeOnly())`, I assessed the rule as blocked on "the single largest
+shared capability in the corpus, 27 rules" and was about to record it as not worth starting. The renderer had
+been built and gate-verified for twenty-two rules already.
+
+### What `ArrayFilterStrictRule` actually needs
+
+Measured first, because it decides how much of the rule has to work: **all 87 of its findings across 3630
+files are branch A** — *"requires parameter #2 to be passed"* — and branch B, the one carrying the rendered
+type, reports zero times. That does not license porting branch A alone: branch B is a *report* path, so a
+plugin implementing only branch A runs to completion and stays silent where PHPStan speaks. The
+named-argument bound shipped in `StrictFunctionCallsRule` is a different thing and the difference is the
+point — there the port declines at a guard the rule itself writes, which is a decline; here it would answer.
+
+So the remaining work is structural rather than a capability: a four-statement `if` body, a two-`elseif`
+chain, `getIterableValueType()`, and a union walk carrying two flags to a `break`. Ordinary, and the largest
+single vocabulary unit left.
+
+### Where the 982 findings stand
+
+| findings | rule | state |
+|--:|:--|:--|
+| 275 | `StrictFunctionCallsRule` | emits |
+| 121 | `RequireParentConstructCallRule` | emits |
+| 231 | `VariablePropertyFetchRule` | `%universalObjectCratesClasses%` — the consumer's installed extensions |
+| 176 | `UselessCastRule` | mago has no `Cast` node kind |
+| 88 | `OverwriteVariablesWithForeachRule` | definedness, upstream |
+| 87 | `ArrayFilterStrictRule` | the structural unit above |
+| 4 | `DisallowedImplicitArrayCreationRule` | `Stmt_While` |
+
+396 emit. 319 are unreachable by any plugin. 176 want a node kind that does not exist. 91 are vocabulary.
