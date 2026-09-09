@@ -16257,3 +16257,64 @@ to prove nothing else moves — which is exactly what that apparatus is for.
 decision on the record; the evidence that its stated reason no longer holds is worth more than my unilaterally
 reversing it at the end of a long session. The stale claims are marked here rather than edited away in the
 fixture, per this log's own rule about superseded claims.
+
+### `NoDuplicateArgAutowireByTypeRule` emits and fires, and the refusal I flagged was narrower than I said
+
+Census 135 → **136**, symplify 72 → **73 of 89**, `--status` 125 → **126 of 236**. Four rules this session.
+
+I flagged the non-terminal-branch refusal twice as a design boundary I would not cross alone. **It turned out
+I did not need to cross it**, and the previous entry overstated the case — a correction that matters more than
+the emit.
+
+`NonTerminalReportBranchRule`'s shape is `Expression + If_ + Return_`: an assignment, an **exiting guard**, and
+a report. The corpus rule's is `Expression + If_`: an assignment and a nested conditional report, no exiting
+guard inside the branch. **Different shapes.** The fixture still refuses after this change, exactly as designed,
+and its "no corpus rule has this shape" claim is still true *of its own shape*. My previous entry said that
+claim was invalidated; it was not. What I found was a neighbouring shape, and I filed it under the boundary it
+sits beside rather than the one it is.
+
+The machinery needed no redesign either: `translateConditionalReport()` already emits a real
+`if-open`/`block-close` and translates the body **recursively**, so a nested conditional report needed only
+*acceptance*, not emission. Two predicates:
+
+- a trailing `If_` whose body is itself a conditional report, extracted to `isNestedConditionalReport()`
+- `$e = RuleErrorBuilder::..; return [$e];` — the fourth report form, the builder bound to a name first, which
+  the translation already handled through `pendingReport` while the acceptance test rejected it
+
+Plus the `lookup` index read, `$x = <lookup>[$k]` → `Support::lookupValue()`.
+
+#### An unexercised helper I committed, and nothing caught it
+
+`Text::lookupValue()` and `Support::lookupValue()` went in with `bd1d85d` **called by nothing**: the plural
+rule reads the map with `in_array` and `=== []`, never `$map[$k]`. Measured over the emitted corpus,
+`lookupValue` appeared in **0** plugins while its two siblings appeared in 1 each.
+
+`test_every_helper_the_corpus_calls_exists()` checks the *other* direction — that every helper a plugin calls
+exists — so nothing in the suite looks for a helper no plugin calls. That is a real gap in a repository whose
+rule is that unexercised vocabulary gets reverted: **the rule is enforced by my attention, not by a test.**
+The helper is now exercised by this rule, which resolves the instance and not the gap.
+
+#### The sigil, found by probe
+
+Path 1 emitted correctly and reported nothing. The probe:
+
+    PROBE key[dependency] map[$dependency=Examples\DuplicateArgAutowire\ArgDependency]
+
+Mago's `ParameterMetadata->name` carries the `$`; PHPStan's `ParameterReflection::getName()` does not, and the
+rule looks up the name it ltrimmed out of `arg('$dependency', ..)`. Every key missed. One `ltrim()` in the
+primitive.
+
+#### Both report paths are fixtured, and my first attempt at the second was wrong
+
+The rule reports on a type match *or* on a named-autowired string, the second reached by falling out of the
+first block. My first `BadNamedAutowiredString` passed a bare string and **PHPStan was silent on it too** —
+the rule reads the string *inside* `ref()`. So the fixture tested nothing until corrected, and the gate said so
+in the right words: agreement measured against it would have been agreement on zero. Corrected, path 2 reports
+at line 25 and agrees, which is what proves the fall-through emission correct rather than merely syntactic.
+
+`isConditionalReport()` reached 21 against a limit of 20 — a **new** baseline entry — so the predicate was
+extracted rather than the row added. Baseline still **13**.
+
+Verified: php 149 → **150**, analyzer and linter **zero diff**, only the new plugin, manifest and worker moved.
+Gate **4/4**, suite **1109/1109**, engine **794/794**, PHPStan 0, Rector 0, Pint clean, all seven README rows
+re-derived.

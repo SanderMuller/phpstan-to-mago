@@ -4659,6 +4659,27 @@ final readonly class Translator
                 return true;
             }
 
+            // The fourth: `$e = RuleErrorBuilder::..; return [$e];` -- the same finding as
+            // {@see isSingleErrorReturn()} with the builder bound to a name first, which a rule writes when the
+            // chain is too long for one line. Accepted structurally only; the *translation* already handles it,
+            // because `translateConditionalReport()` sets `inConditionalReport` and the return path reports
+            // against `pendingReport` there. `NoDuplicateArgAutowireByTypeRule` writes it two branches deep.
+            if ($last && $index > 0 && $this->returnsTheNameJustBound($statement, $statements[$index - 1])) {
+                return true;
+            }
+
+            // A conditional report nested one level: `if (A) { $t = ..; if (B) { <report> } }`. The block
+            // form this predicate admits translates its body statements *recursively*, so an inner
+            // conditional report needs no new emission -- only this acceptance.
+            //
+            // `NoDuplicateArgAutowireByTypeRule` writes it, binding the constructor type it then compares
+            // against. Sound here for the reason the outer block is: what follows the branch still runs,
+            // because a real `if-open`/`block-close` is emitted rather than the branch being folded into the
+            // guard chain. {@see NonTerminalReportBranchRule} is the fixture that pins the difference.
+            if ($last && $this->isNestedConditionalReport($statement)) {
+                return true;
+            }
+
             if (! $statement instanceof Expression || ! $statement->expr instanceof Assign) {
                 return false;
             }
@@ -4676,6 +4697,42 @@ final readonly class Translator
     }
 
     /** `return [<one built error>];` — a block that reports and exits rather than collecting. */
+    /**
+     * A conditional report nested one level: `if (B) { <report> }` as the last statement of a branch body.
+     *
+     * Extracted so {@see isConditionalReport()} stays inside the method-complexity limit rather than earning
+     * a baseline entry -- the split this repository prefers over a row.
+     */
+    private function isNestedConditionalReport(Stmt $statement): bool
+    {
+        return $statement instanceof If_
+            && $statement->elseifs === []
+            && ! $statement->else instanceof Else_
+            && $this->isConditionalReport($statement->stmts);
+    }
+
+    /** `$e = RuleErrorBuilder::..->build(); return [$e];` — one finding, bound to a name first. */
+    private function returnsTheNameJustBound(Stmt $statement, Stmt $previous): bool
+    {
+        if (! $statement instanceof Return_
+            || ! $statement->expr instanceof Array_
+            || count($statement->expr->items) !== 1
+        ) {
+            return false;
+        }
+
+        $only = $statement->expr->items[0];
+        if (! $only instanceof ArrayItem || ! $only->value instanceof Variable || ! is_string($only->value->name)) {
+            return false;
+        }
+
+        return $previous instanceof Expression
+            && $previous->expr instanceof Assign
+            && $previous->expr->var instanceof Variable
+            && $previous->expr->var->name === $only->value->name
+            && $this->isRuleErrorBuilder($previous->expr->expr);
+    }
+
     private function isSingleErrorReturn(Stmt $statement): bool
     {
         if (! $statement instanceof Return_ || ! $statement->expr instanceof Array_ || count($statement->expr->items) !== 1) {
@@ -9796,6 +9853,32 @@ final readonly class Translator
             $this->context->locals[$name] = Transpiler::$target === 'php'
                 ? ['rust' => $path, 'kind' => 'args', 'php' => $path]
                 : ['rust' => $path, 'kind' => 'args'];
+
+            return;
+        }
+
+        // $x = <a lookup>[$k] — the value the table holds for a key, which is the read beside the `isset()`
+        // that {@see issetOverConstant()} already answered. `NoDuplicateArgAutowireByTypeRule` tests the key
+        // and then binds the value to put it in its message.
+        if ($value instanceof ArrayDimFetch
+            && $value->dim instanceof Expr
+            && $value->var instanceof Variable
+            && is_string($value->var->name)
+            && ($this->context->locals[$value->var->name]['kind'] ?? null) === 'lookup'
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a lookup read, which only the PHP target carries', $line);
+            }
+
+            $table = $this->context->locals[$value->var->name];
+            $this->context->locals[$name] = [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'bytes',
+                'php' => $this->context->backend->call('lookup_value', [
+                    $this->operand($table),
+                    $this->stringValue($value->dim, $line),
+                ]),
+            ];
 
             return;
         }

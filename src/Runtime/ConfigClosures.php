@@ -83,7 +83,12 @@ final class ConfigClosures
             $named = $parameter->declaredType ?? $parameter->type;
             $object = $named === null ? null : Types::soleObjectClass($named->type);
             if ($object !== null && $object !== '') {
-                $types[$parameter->name] = $object;
+                // Keyed without the sigil: mago's `ParameterMetadata->name` is `$dependency` where
+                // PHPStan's `ParameterReflection::getName()` is `dependency`, and the rules reading this map
+                // look a key up by the name they ltrimmed out of `arg('$dependency', ..)`. Measured with a
+                // probe -- the map came back keyed `$dependency` against a lookup of `dependency`, so every
+                // key missed and the port reported nothing where PHPStan reports.
+                $types[ltrim($parameter->name, '$')] = $object;
             }
         }
 

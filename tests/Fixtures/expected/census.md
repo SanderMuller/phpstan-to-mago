@@ -111,7 +111,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 72 of 89 portable rules the package registers emit, 1 covered by the engine, 16 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 73 of 89 portable rules the package registers emit, 1 covered by the engine, 15 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -171,11 +171,7 @@ EMIT    NoControllerMethodInjectionRule
 EMIT    NoDoctrineListenerWithoutContractRule
 EMIT    NoDocumentMockingRule
 EMIT    NoDoubleConsecutiveTestMockRule
-REFUSE  NoDuplicateArgAutowireByTypeRule
-        if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
-        needs-at-least: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_ArrayDimFetch
-        needs-at-least: assignment value outside the vocabulary: no PHP navigation for node.class (kind expr) on a MethodCall node
+EMIT    NoDuplicateArgAutowireByTypeRule
 EMIT    NoDuplicateArgsAutowireByTypeRule
 EMIT    NoDynamicNameRule
 EMIT    NoEntityMockingRule
@@ -534,7 +530,6 @@ REFUSE  ClassCoversExistsRule
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getResolvedPhpDoc()
         needs-at-least: assignment to something other than a simple local
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: array_shift()
-        needs-at-least: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_If
         needs-at-least: a second identifier before the first was reported
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: array_merge()
 REFUSE  ClassMethodCoversExistsRule
