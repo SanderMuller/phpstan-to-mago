@@ -675,6 +675,31 @@ final class Transpiler
     }
 
     /**
+     * Notes that the package wires this parameter twice, differently, so the refusal can say so.
+     *
+     * Only the neons `composer.json` auto-includes reach {@see PackageConfiguration::argumentsFor()}, which is
+     * the right default -- those are the configuration a consumer gets by installing the package. A rule
+     * configured only in a file a consumer includes by hand therefore reads as one nobody wires, and where
+     * two such files disagree that sentence is false: the wiring is in the package, twice.
+     *
+     * Recorded *beside* the unwired mark rather than instead of it, so the property read refuses in exactly
+     * the place it refused before and only the sentence changes.
+     */
+    private function recordConflictingWiring(
+        ?PackageConfiguration $configuration,
+        string $className,
+        string $name,
+    ): void {
+        $conflicting = $configuration instanceof PackageConfiguration
+            ? $configuration->conflictingWirings($className)
+            : [];
+
+        if ($conflicting !== []) {
+            $this->context->conflicting[$name] = array_keys($conflicting);
+        }
+    }
+
+    /**
      * Sorts the rule's constructor properties into configured values and PHPStan services.
      *
      * A property is only configured if the package's neon says so. When the package declares no neon there
@@ -742,6 +767,7 @@ final class Transpiler
                 // `hihaho/phpstan-rules` registers only the constructor and nullsafe variants of its
                 // positional-flag family, and the two it leaves to a combined rule refused with
                 // `unknown local $this`, which points at nothing.
+                $this->recordConflictingWiring($configuration, $className, $name);
                 $this->context->unwired[$name] = $className;
                 $this->context->ruleIsUnregistered = $this->isUnregistered($configuration, $className);
 

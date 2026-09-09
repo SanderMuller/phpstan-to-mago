@@ -1,7 +1,7 @@
 parameters:
 	ignoreErrors:
 		-
-			rawMessage: 'Class cognitive complexity is 2798, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 2799, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Translator.php
@@ -73,7 +73,7 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Class cognitive complexity is 208, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 210, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php

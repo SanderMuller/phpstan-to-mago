@@ -273,6 +273,19 @@ final class TranslationContext
     public array $unwired = [];
 
     /**
+     * Constructor parameters two neons the package ships wire differently, by parameter name.
+     *
+     * A third answer beside {@see $unwired} and {@see $ruleIsUnregistered}, and it is not a gap: the value a
+     * consumer gets depends on which config file it includes, so there is no single value a generated plugin
+     * could carry. Recorded so that reading such a property says *that* rather than "the package's neon does
+     * not wire it", which is false — the wiring is in the package, in files `composer.json` does not
+     * auto-include. {@see PackageConfiguration::conflictingWirings()} carries the measurement.
+     *
+     * @var array<string, list<string>>
+     */
+    public array $conflicting = [];
+
+    /**
      * Whether no neon the package ships names this rule at all.
      *
      * The other half of {@see $unwired}, and usually the whole of it: nobody wires configuration for a service

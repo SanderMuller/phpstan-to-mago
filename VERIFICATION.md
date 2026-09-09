@@ -16686,3 +16686,87 @@ and its worker line (analyzer and linter unchanged at 34 and 25); fires gate 4 o
 across the group; suite 315 of 315; PHPStan 0 with the baseline still 13 entries and its two complexity figures
 re-read rather than added to; Rector 0; Pint clean; census regenerated after reading its six-line diff; every
 README package row re-derived from the census by script rather than by eye.
+
+### No emit this time: a configuration cluster that was four wrong refusals and a zero
+
+Chasing the next emit through the census's largest need clusters, and the answer is that the cluster I picked
+does not exist. Recording it because the shape recurs: **a refusal that reads as a gap to close, on a rule that
+can never emit, is how a candidate pool gets padded.**
+
+`SeeAnnotationToTestRule` refuses on `array_all($this->requiredSeeTypes, fn ($t) => ! $classReflection->is($t))`
+— *not a resolvable list of strings*. `stringList()` folds a list written in the rule; a consumer-configured
+list is a `config-list`, a runtime value on the plugin, so the combinator has to run rather than fold. I built
+that (`array_all`/`array_any` over a `config-list`, tried before the node form for the reason the ordering
+comment beside it already records) and the refusal moved one step, to:
+
+    $requiredSeeTypes is a constructor parameter the package's neon does not wire for
+    Symplify\PHPStanRules\Rules\SeeAnnotationToTestRule, and its type names no PHPStan service
+
+**That sentence is false.** Two neons the package ships wire it — `config/configurable-rules.neon` with three
+types and `config/rector-rules.neon` with one. Only the four files `composer.json` auto-includes reach
+`PackageConfiguration::argumentsFor()`, and symplify ships thirteen.
+
+#### The measurement, before deciding what to do about it
+
+Every neon in every installed package, parsed for `services:` entries carrying `arguments:`:
+
+| | count |
+|:--|--:|
+| classes with constructor wiring | 55 |
+| wired in exactly one file | 50 |
+| wired in two files that agree | 0 |
+| wired in two files that **disagree** | 5 |
+
+Of the five, four are `symplify/phpstan-rules` rules — `SeeAnnotationToTestRule`, `ForbiddenNodeRule`,
+`ForbiddenFuncCallRule`, `PreferredClassRule` — and the fifth is a PHPStan parser service neither engine ports.
+And **not one class is wired in a single hand-included file and refused for it.** The only rule whose wiring is
+invisible to the manifest reader is `ClassNameRespectsParentSuffixRule`, which already emits, by
+`PURE_STRING_RESOLVERS` rather than by neon.
+
+**So reading every neon for wiring would move the emit count by zero.** Same shape as the twelve `HOOK_KINDS`
+rows that moved it by zero, and the same lesson: the first obstacle named the reader, and the reader was never
+the operative thing.
+
+A conflict is also a **correct-forever refusal** rather than a gap. Which of two values a consumer gets depends
+on which config file it includes, so there is no single value a generated plugin could carry. That removes four
+rules from the candidate pool — and a peer session has previously ranked exactly this kind of line as a
+configuration cluster worth closing.
+
+#### What shipped, and what was reverted
+
+**Reverted: the `config-list` combinator.** Grepping the corpus for `array_all(`/`array_any(` over a rule
+property returns exactly one site, in `SeeAnnotationToTestRule` — which is one of the four that can never
+emit. Unexercised vocabulary with one possible consumer, and that consumer refused forever. Out, per the rule
+this log has applied nine times before.
+
+**Shipped: the refusal says the true reason.** `conflictingWirings()` reads every neon under the package root
+— the same deliberately broad choice `registeredClassNames()` already records — and the mark is recorded
+*beside* the unwired mark rather than instead of it, so the property read refuses in exactly the place it
+refused before and only the sentence changes. Three census lines on two rules moved from a false reason to a
+true one; `SeeAnnotationToTestRule` and `PreferredClassRule` refuse earlier on something else and never carried
+the false sentence at all.
+
+Mutation-checked, because it is a filter: forcing `conflictingWirings()` to return `[]` turns the census alarm
+red, and restoring it passes. The filter is load-bearing rather than decorative.
+
+#### Two candidates killed, one by a peer and one by a grep
+
+- **`ClosureUsesThisRule`** — killed, and not on the need its census line names. The peer measured that mago
+  collapses `$this` into the class type: a variable holding `$this` and a variable holding any other instance
+  of the enclosing class are both `NamedObjectType "C"`, where PHPStan distinguishes `$this(C)` from `C`. The
+  rule's reporting test is `$varType instanceof ThisType`, and no `This`, `Static` or `Self` atomic exists —
+  `DerivedTypeKind`'s nine cases carry no self-referential kind. A port either reports on every `use` of a
+  variable typed as the enclosing class or reports nothing. **The need list named the suppressing guard
+  (`isInClosureBind()`, which the peer measured to be approximable through `getAncestors()`) and did not name
+  the fatal reporting test three lines below it.** So the lower bound is short in a direction even *within one
+  method*: the guard is at the top and got listed, the reporting test is at the bottom and did not.
+- **`OverwriteVariablesWithForLoopInitRule`** — two needs listed, and its body asks `$scope->hasVariableType()`,
+  the definedness gap (carthage-software/mago#2334) its `Foreach` sibling already terminates on. The census
+  header names this very rule as its own measured example of a needs list being a lower bound; re-derived here
+  rather than trusted, and it holds.
+
+Verified: emit-all byte-identical across all three targets (190 php, 34 analyzer, 25 linter, no diff at all);
+suite 315 of 315; PHPStan 0 with the baseline still 13 entries and `collectConfiguration()` extracted rather
+than baselined when it crossed the method limit; Rector 0; Pint clean; census regenerated after reading its
+three-line diff. The engine group was not re-run and does not need to be: the emitted trees are byte-identical
+and `src/Runtime/` is untouched, so its inputs did not change.

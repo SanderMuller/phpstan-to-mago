@@ -104,6 +104,101 @@ final readonly class PackageConfiguration
         return $this->hasParameter($arguments[0]['reference']) ? $arguments[0]['reference'] : null;
     }
 
+    /**
+     * The neons under the package root that wire this class differently from each other.
+     *
+     * Only the files `composer.json` auto-includes feed {@see argumentsFor()}, which is right: those are the
+     * configuration a consumer gets by installing the package. But a rule wired *only* in a file a consumer
+     * has to include by hand then reads as one "the package's neon does not wire", and that sentence is
+     * false — the wiring is in the package, in a file this does not read.
+     *
+     * Measured across every neon in every installed package: 55 classes carry constructor wiring, 50 in
+     * exactly one file, and 5 in two files that disagree. Of the five, four are `symplify/phpstan-rules`
+     * rules and the fifth is a PHPStan parser service. Not one class is wired in a single hand-included file
+     * *and* refused for it, so reading every neon here would move the emit count by zero. What it changes is
+     * what four refusals say, and a refusal naming the wrong obstacle is how work gets sized wrongly.
+     *
+     * A conflict is a correct-forever refusal rather than a gap: which of the two values a consumer gets
+     * depends on which config file it includes, so there is no single value a generated plugin could carry.
+     *
+     * Keyed by file, relative to the package root, with the argument names each file wires.
+     *
+     * @return array<string, list<string>>
+     */
+    public function conflictingWirings(string $ruleClass): array
+    {
+        $class = ltrim($ruleClass, '\\');
+        $byFile = [];
+
+        foreach ($this->neonFiles() as $path) {
+            $decoded = Neon::decode((string) file_get_contents($path));
+            if (! is_array($decoded) || ! is_array($decoded['services'] ?? null)) {
+                continue;
+            }
+
+            foreach ($decoded['services'] as $service) {
+                if (! is_array($service) || ($service['class'] ?? null) !== $class) {
+                    continue;
+                }
+
+                $wiring = $service['arguments'] ?? null;
+                if (! is_array($wiring) || $wiring === []) {
+                    continue;
+                }
+
+                $relative = str_starts_with($path, $this->root . '/')
+                    ? substr($path, strlen($this->root) + 1)
+                    : $path;
+
+                $byFile[$relative] = $wiring;
+            }
+        }
+
+        if (count($byFile) < 2 || count(array_unique(array_map(json_encode(...), $byFile))) < 2) {
+            return [];
+        }
+
+        return array_map(static fn (array $wiring): array => array_map(strval(...), array_keys($wiring)), $byFile);
+    }
+
+    /**
+     * Every neon under the package root.
+     *
+     * Deliberately broad, the same choice {@see registeredClassNames()} records: a consumer includes whichever
+     * config file it wants, so a file the manifest does not auto-include is still configuration the package
+     * ships. Memoised per root, because this is asked once per unwired parameter.
+     *
+     * @return list<string>
+     */
+    private function neonFiles(): array
+    {
+        /** @var array<string, list<string>> $memo */
+        static $memo = [];
+
+        if (isset($memo[$this->root])) {
+            return $memo[$this->root];
+        }
+
+        $found = [];
+        if (! is_dir($this->root)) {
+            return $memo[$this->root] = $found;
+        }
+
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($this->root, FilesystemIterator::SKIP_DOTS),
+        );
+
+        foreach ($files as $file) {
+            if ($file instanceof SplFileInfo && $file->getExtension() === 'neon') {
+                $found[] = $file->getPathname();
+            }
+        }
+
+        sort($found);
+
+        return $memo[$this->root] = $found;
+    }
+
     public function hasParameter(string $path): bool
     {
         $value = $this->parameters;

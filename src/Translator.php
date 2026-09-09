@@ -1514,6 +1514,20 @@ final readonly class Translator
             );
         }
 
+        if (isset($this->context->conflicting[$property])) {
+            throw new Refusal(
+                sprintf(
+                    '$%s is wired by %d neons the package ships and they disagree — %s — so which value a '
+                    . 'consumer gets depends on which config file it includes, and there is no single one for '
+                    . 'a generated plugin to carry',
+                    $property,
+                    count($this->context->conflicting[$property]),
+                    implode(' and ', $this->context->conflicting[$property]),
+                ),
+                $line,
+            );
+        }
+
         if (isset($this->context->unwired[$property])) {
             // Which of the two facts is the cause. An unregistered rule has no wiring *because* nothing
             // registers it, so naming the missing wiring alone reads as a gap to close and is a symptom.

@@ -127,8 +127,8 @@ EMIT    FileNameMatchesExtensionRule
 EMIT    ForbiddenArrayMethodCallRule
 EMIT    ForbiddenExtendOfNonAbstractClassRule
 REFUSE  ForbiddenFuncCallRule
-        assignment value outside the vocabulary: $forbiddenFunctions is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\ForbiddenFuncCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
-        needs-at-least: assignment value outside the vocabulary: $forbiddenFunctions is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\ForbiddenFuncCallRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        assignment value outside the vocabulary: $forbiddenFunctions is wired by 2 neons the package ships and they disagree — config/configurable-rules.neon and config/rector-rules.neon — so which value a consumer gets depends on which config file it includes, and there is no single one for a generated plugin to carry
+        needs-at-least: assignment value outside the vocabulary: $forbiddenFunctions is wired by 2 neons the package ships and they disagree — config/configurable-rules.neon and config/rector-rules.neon — so which value a consumer gets depends on which config file it includes, and there is no single one for a generated plugin to carry
         needs-at-least: $errorMessage is not a message built in this rule
 EMIT    ForbiddenMultipleClassLikeInOneFileRule
 REFUSE  ForbiddenNewArgumentRule  (the package registers it nowhere)
@@ -136,7 +136,7 @@ REFUSE  ForbiddenNewArgumentRule  (the package registers it nowhere)
         needs-at-least: $forbiddenTypes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\Complexity\ForbiddenNewArgumentRule, and no neon the package ships names this rule at all — so there is nothing to wire it from, and a consumer that wants it registers and configures it itself
 REFUSE  ForbiddenNodeRule
         PhpParser\Node covers several node kinds, and this rule narrows to them with `instanceof` against a value rather than a written class name — a configured list of node classes. A plugin declares its targets statically, so there is no shape to register: the rule's target set is only known at analysis time
-        needs-at-least: $forbiddenNodes is a constructor parameter the package's neon does not wire for Symplify\PHPStanRules\Rules\ForbiddenNodeRule, and its type names no PHPStan service, so there is no value for the generated plugin to carry
+        needs-at-least: $forbiddenNodes is wired by 2 neons the package ships and they disagree — config/configurable-rules.neon and config/rector-rules.neon — so which value a consumer gets depends on which config file it includes, and there is no single one for a generated plugin to carry
         needs-at-least: access path outside the vocabulary: Expr_New
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->standard->prettyPrint()
