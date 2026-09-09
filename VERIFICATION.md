@@ -18749,3 +18749,40 @@ And it is why the second party works. Not because they can see something you can
 time they could not, and read your artefact to find it — but because **they arrive attending to something
 else.** That is a property of arriving, not of privilege, and it is the reason a fresh reader, a differently
 shaped instrument, and a peer all catch the same class of error.
+
+### The priced design change unblocks zero rules on its own
+
+The residual split names *one report site, in the rule body* as the assumption binding six rules, and that
+reads like a shortlist for a design change. It is not, and the difference between *binding* and *sufficient*
+is the last open question in this search.
+
+Taking each of the six on the body actually read, and asking what remains once a finding may be constructed
+away from the rule's tail:
+
+| rule | what still blocks it |
+|:--|:--|
+| `AlreadyRegisteredAutodiscoveryServiceRule` | three static resolver classes and set arithmetic between their results; and a report line that is not a node's own |
+| `NoGetRepositoryOnServiceRepositoryEntityRule` | an injected `repositoryClassResolver` doing entity-to-repository class resolution |
+| `NewOverSettersRule` | the collector aggregate for `NewWithFollowingSettersCollector`, itself among the most obstructed rules in the corpus |
+| `SlowMigrationDdlRule` | a resolver instantiated over the class node, a spread-merge of two helpers, and a `usort` over tuple-wrapped findings |
+| `PreferredClassRule` | fails the field-mapping test — `processClass()` asks about the enclosing class's parent where the others read `->class` |
+| `NoReferenceRule` | partial by construction: six of eight kinds unreachable on `BY_REFERENCE` |
+
+**Not one would emit.** For the four collaborator rules the report site is one blocker among several, and for
+the two multi-kind rules the remaining blocker is independently fatal — a field table that cannot serve the
+body, and a port that would be silent on most of the kinds the rule handles.
+
+So the honest statement is narrower than the split invited: the invariant is *necessary* for six rules and
+*sufficient* for none. **A count of rules an assumption binds is not a count of rules relaxing it would
+unblock**, and reading the split as a shortlist would have been the same error as reading obstacle counts as
+a ranking — one more derived figure standing in for the thing it was derived from.
+
+Which closes the search rather than leaving a next step in it. Within the installed corpus there is no rule
+whose emission is one change away, and the design work has no immediate payoff to price against. Two things
+would change that and neither is a search:
+
+- **The mago release.** Three rules unblock on 1.47.7, and `WatchesForDefinednessTest` fires when it lands.
+  That is the only pending movement this repository can expect without a decision.
+- **A new corpus package**, which is a dependency addition and therefore not the agent's call. The three
+  packages already installed outside the seven-package census are measured at zero — 0 of 38, 0 of 2, 0 of 26
+  — so extending the corpus means a package nobody here has read yet.
