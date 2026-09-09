@@ -31,9 +31,8 @@ Mago's own tree. Every count here is the `php` target — a rule can render as R
 
 ## What this is for
 
-- **Rules are the unit; a package is not.** Every rule in
-  `phpstan/phpstan-deprecation-rules` emits and the package still is not droppable — its neon registers
-  extensions too, and those are not rules.
+- **Rules are the unit; a package is not.** A package whose every rule emits can still be undroppable, because
+  its neon registers extensions too.
 - As a pre-filter: transpiled rules on save and push, full PHPStan on merge or nightly.
 
 It does not make an existing PHPStan run cheaper: dropping rules does not drop the parsing and type
@@ -154,25 +153,25 @@ the defects in this port the differential caught first.
 was not otherwise idle. Mago's `includes` are the 12 package roots the emitted rules derive, 6614 files, which
 is what `--out` writes into the snippet:
 
-| | wall | CPU |
-|:--|--:|--:|
-| mago, engine only | 1.00s | 1.13s |
-| mago + a host with no plugins | 1.03s | 1.21s |
-| mago + the 97 transpiled rules | 1.96s | 3.49s |
-| PHPStan, cold result cache | 2.74s | 8.73s |
-| PHPStan, warm result cache | 1.03s | 0.92s |
+| | wall | CPU | wall, all of `vendor` |
+|:--|--:|--:|--:|
+| mago, engine only | 1.00s | 1.13s | 3.91s |
+| mago + a host with no plugins | 1.03s | 1.21s | 3.94s |
+| mago + the 97 transpiled rules | 1.96s | 3.49s | 4.96s |
+| PHPStan, cold result cache | 2.74s | 8.73s | |
+| PHPStan, warm result cache | 1.03s | 0.92s | |
 
 **The rules cost row three against row two**, not against row one: a host that starts and speaks the protocol
 while registering nothing separates the host's own cost from the rules'. They add **0.93s wall and 2.28s
 CPU**, and the host itself is free — rows one and two agree to 0.03s.
 
-**A mago figure without its include set means nothing.** Point the same run at all of `vendor` — 14822 files
-rather than 6614 — and the mago rows become 3.91s, 3.94s and 4.96s for the same 2686 findings: 2.5x the wall
-clock, none of it the rules. Those includes are what let a rule reach a vendored parent, and **without them
-rules go silently narrow** rather than failing, so the lever is their width.
+**A mago figure without its include set means nothing**, because mago indexes every file under `includes` on
+every run. The last column is the same run pointed at all of `vendor`, 14822 files rather than 6614, for the
+same 2686 findings. Those includes are what let a rule reach a vendored parent, and **without them rules go
+silently narrow** rather than failing, so the lever is their width.
 
-Cheaper than cold PHPStan on both axes, still not a win against a warm result cache: `mago analyze` has no
-result cache and redoes the whole job every run. Measure your own.
+`mago analyze` has no result cache and redoes the whole job every run, which is why the warm PHPStan row is
+the one to beat. Measure your own.
 
 ## Requirements
 
@@ -185,6 +184,8 @@ silently wrong on anything earlier.
 
 `composer qa-check` runs the lot. Two invariants matter most, both in `CLAUDE.md`: the emitted output is the
 contract, and anything the vocabulary does not cover is refused.
+
+Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Credits
 
