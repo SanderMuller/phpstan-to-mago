@@ -128,10 +128,41 @@ final readonly class PackageConfiguration
      */
     public function conflictingWirings(string $ruleClass): array
     {
-        $class = ltrim($ruleClass, '\\');
-        $byFile = [];
+        $byFile = $this->wiringIndex($this->root)[strtolower(ltrim($ruleClass, '\\'))] ?? [];
 
-        foreach ($this->neonFiles() as $path) {
+        if (count($byFile) < 2 || count(array_unique(array_map(json_encode(...), $byFile))) < 2) {
+            return [];
+        }
+
+        return array_map(static fn (array $wiring): array => array_map(strval(...), array_keys($wiring)), $byFile);
+    }
+
+    /**
+     * Every class any neon under the package root wires, and with what, keyed by file.
+     *
+     * Built once per root rather than per question, and that is a correctness matter rather than a tidiness
+     * one: the first version decoded every neon under the root on every call, and every unwired constructor
+     * parameter in the corpus asks. It did not fail — it took the `prefer-lowest` leg from 6 minutes to past
+     * the workflow's `timeout-minutes: 10`, which GitHub reports as `cancelled` and which reads as
+     * infrastructure rather than as a regression. The two `prefer-stable` legs were already at 7 and 9
+     * minutes, so the headroom was one minute and the scan spent it.
+     *
+     * Keys are lowercased, because a neon may spell a class with a leading backslash or in another case and
+     * the question arrives from PHP source.
+     *
+     * @return array<string, array<string, array<array-key, mixed>>>
+     */
+    private function wiringIndex(string $root): array
+    {
+        /** @var array<string, array<string, array<string, array<array-key, mixed>>>> $memo */
+        static $memo = [];
+
+        if (isset($memo[$root])) {
+            return $memo[$root];
+        }
+
+        $index = [];
+        foreach ($this->neonFiles($root) as $path) {
             // Guarded, unlike {@see readNeon()}, and the difference is the input set rather than caution.
             // That one reads the files a package's own manifest points at, which have always parsed; this one
             // reads *every* neon under the root, including files nobody promised were valid standalone neon.
@@ -148,8 +179,9 @@ final readonly class PackageConfiguration
                 continue;
             }
 
+            $relative = str_starts_with($path, $root . '/') ? substr($path, strlen($root) + 1) : $path;
             foreach ($decoded['services'] as $service) {
-                if (! is_array($service) || ($service['class'] ?? null) !== $class) {
+                if (! is_array($service) || ! is_string($service['class'] ?? null)) {
                     continue;
                 }
 
@@ -158,19 +190,11 @@ final readonly class PackageConfiguration
                     continue;
                 }
 
-                $relative = str_starts_with($path, $this->root . '/')
-                    ? substr($path, strlen($this->root) + 1)
-                    : $path;
-
-                $byFile[$relative] = $wiring;
+                $index[strtolower(ltrim($service['class'], '\\'))][$relative] = $wiring;
             }
         }
 
-        if (count($byFile) < 2 || count(array_unique(array_map(json_encode(...), $byFile))) < 2) {
-            return [];
-        }
-
-        return array_map(static fn (array $wiring): array => array_map(strval(...), array_keys($wiring)), $byFile);
+        return $memo[$root] = $index;
     }
 
     /**
@@ -182,22 +206,22 @@ final readonly class PackageConfiguration
      *
      * @return list<string>
      */
-    private function neonFiles(): array
+    private function neonFiles(string $root): array
     {
         /** @var array<string, list<string>> $memo */
         static $memo = [];
 
-        if (isset($memo[$this->root])) {
-            return $memo[$this->root];
+        if (isset($memo[$root])) {
+            return $memo[$root];
         }
 
         $found = [];
-        if (! is_dir($this->root)) {
-            return $memo[$this->root] = $found;
+        if (! is_dir($root)) {
+            return $memo[$root] = $found;
         }
 
         $files = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($this->root, FilesystemIterator::SKIP_DOTS),
+            new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
         );
 
         foreach ($files as $file) {
@@ -208,7 +232,7 @@ final readonly class PackageConfiguration
 
         sort($found);
 
-        return $memo[$this->root] = $found;
+        return $memo[$root] = $found;
     }
 
     public function hasParameter(string $path): bool

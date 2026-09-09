@@ -17027,3 +17027,46 @@ indentation on line 3 at column 2*, thrown from the same place — and passes wi
 accepts every neon in `vendor`, measured, which is exactly why the test had to bring its own broken file
 rather than rely on one being installed.
 
+
+### A timeout reads as infrastructure, and the two cancellations before it had a different cause
+
+The fix for the neon guard turned an error into a **timeout**, and the record needs both halves because the two
+look identical in the run list and are not the same thing.
+
+`run-tests` sets `timeout-minutes: 10`. Job durations, read off the API rather than inferred:
+
+| commit | prefer-lowest | prefer-stable 8.4 | prefer-stable 8.5 | what happened |
+|:--|:--|:--|:--|:--|
+| `ccdf8be` | 7:33 success | 8:40 success | 8:32 success | baseline, ~1.3 min of headroom |
+| `5a4ba11` | 7:40 cancelled | 7:41 cancelled | 7:39 cancelled | **all three at once** — the next push cancelled the run |
+| `effb5af` | 5:55 cancelled | 5:55 cancelled | 5:55 cancelled | same |
+| `7999b5a` | 9:26 **failure** | 7:56 success | 8:47 success | the unguarded neon decode |
+| `7aacfa6` | **10:14 cancelled** | 7:01 success | 9:10 success | one leg only — the job timeout |
+
+**All three legs ending together is a cancelled run; one leg ending at the limit is a timeout.** I had
+attributed every cancellation to my own push cadence, which is right for the first two rows and wrong for the
+last — and I would not have caught it by reading conclusions, because GitHub reports a timed-out job as
+`cancelled` too. The duration column is what separates them.
+
+#### The cost, measured
+
+`conflictingWirings()` decoded every neon under the package root **on every call**, and `collectConfiguration`
+asks once per unwired constructor parameter across the corpus. Indexing per root instead, memoised:
+
+| | non-engine suite | n |
+|:--|--:|--:|
+| per-call decode (`7aacfa6`) | 35.5s, 35.7s | 2 |
+| memoised index | 23.6s, 23.7s, 23.7s | 3 |
+
+**11.9s of a 35.5s suite, a third of it**, on an unloaded local machine — and the CI legs were between 7:33 and
+8:40 at the baseline against a 10:00 limit, so a third of the suite is more than the headroom. The scan spent
+it, and prefer-lowest is the leg with the least to spare.
+
+Two things worth keeping apart. **The guard was the right fix and it was not the whole fix**: with the
+exception swallowed, the work that used to abort early now ran to completion every time. And **a performance
+regression that lands as a `cancelled` job is invisible as a regression** — nothing in the run list says
+"slower", and the natural reading of one leg cancelling is that the runner had a bad day.
+
+Verified: PHPStan 0 after narrowing the index's declared value type to `array<array-key, mixed>` (only the keys
+are read, and they are stringified where they are used); Rector 0 after it turned the two new statics into
+instance methods; Pint clean; suite 316 of 316; emit-all byte-identical across all three targets.
