@@ -20312,3 +20312,52 @@ So the port would need a statement-level docblock primitive, which is a position
 type system or a presence-only approximation whose failure direction is quiet. For eight findings on four
 thousand files. **Recorded as not worth porting**, which is a sizing answer rather than a capability one — and
 the sizing is the thing that took the work.
+
+## What each refused rule is worth, which the census could never say
+
+The census counts rules. This counts findings, and the two rank the frontier differently enough that every
+sizing decision in this log was made on the wrong axis.
+
+`tests/Support/run-refusal-yield.php`, over five vendored trees, 3630 files, rules registered by
+`extension-installer`:
+
+| findings | refused rule | what stops it |
+|--:|:--|:--|
+| 275 | `StrictFunctionCallsRule` | `ParametersAcceptorSelector::selectFromArgs()` |
+| 231 | `VariablePropertyFetchRule` | `%universalObjectCratesClasses%`, a fact about the consumer's extensions |
+| 176 | `UselessCastRule` | no `Cast` hook, `generalize()`, a rendered type in the message |
+| 121 | `RequireParentConstructCallRule` | `property_exists()` |
+| 88 | `OverwriteVariablesWithForeachRule` | a definedness test, upstream |
+| 87 | `ArrayFilterStrictRule` | the same blocker as `StrictFunctionCallsRule` |
+| 4 | `DisallowedImplicitArrayCreationRule` | `Stmt_While` |
+
+**7 of 38 fire. The other 31 fire zero times on 3630 files.** And the two sharing one blocker are worth 362
+findings together, which no reading of the needs list could have surfaced: they sit under different first
+obstacles in the census and the same second one.
+
+### Why this exists, and it is last session's mistake rather than an idea
+
+`NoJustPropertyAssignRule` was sized at **8 findings on 4000 files** *after* two capabilities had been costed
+for it — a statement-level docblock position and a PHPDoc type parser matched to mago's type system. The cost
+was measured and the benefit was not, and the benefit turned out to be the smaller number. Every ranking in
+this log before now ordered the frontier by the shape of a rule's first blocker, which says nothing about
+whether anyone would ever see the rule fire.
+
+### Two things that make it a measurement rather than a plausible table
+
+**PHPStan's own baseline is the transport, and that is not convenience.** Reading findings off the report gave
+five consecutive zeros, because this environment wraps the analyser and truncates the per-file detail list:
+174 errors arrived with 9 files detailed, 4650 errors in 5.6 kB. `--generate-baseline` is written by PHPStan
+itself and is complete. The script asks for one and parses it, and says so where a reader would otherwise
+reach for `--error-format=json`.
+
+**The tool prints its own blind spot.** A rule whose identifier is not a literal contributes no row, so its
+zero means *unreadable* rather than *silent* — and that was 30 of 43 rules, because `symplify/phpstan-rules`
+spells every identifier as `RuleIdentifier::SOME_NAME`. {@see ReportedIdentifiers} now resolves a class
+constant or enum case to its value, **opt-in**: the subsumption marker keeps the conservative default, where
+an unread identifier leaves a refusal looking like a gap rather than claiming a check is covered, and the
+yield instrument asks for the fuller set, where a missing identifier hides a rule entirely. Same reader, two
+callers wanting opposite directions, and the census does not move.
+
+Five rules still have no readable identifier. And a zero belongs to these trees: a rule about Symfony
+configuration or Doctrine mappings fires nowhere in a corpus holding neither, which is a fact about the corpus.

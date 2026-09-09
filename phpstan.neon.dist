@@ -139,6 +139,7 @@ parameters:
                 - tests/Support/CoverageSetDiff.php
                 - tests/Support/TypeDescriptions.php
                 - tests/Support/run-render-census.php
+                - tests/Support/run-refusal-yield.php
                 - tests/Support/HierarchyKnowledge.php
                 - tests/Support/ReferenceKnowledge.php
                 - tests/Unit/AnnotationTagsAreNotInheritedTest.php

@@ -6,12 +6,15 @@ namespace Sandermuller\PhpstanToMago;
 
 use PhpParser\Node;
 use PhpParser\Node\Arg;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Class_;
+use PhpParser\Node\Stmt\ClassConst;
 use PhpParser\Node\Stmt\ClassLike;
+use PhpParser\Node\Stmt\EnumCase;
 use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\NodeFinder;
 use PhpParser\ParserFactory;
@@ -42,11 +45,12 @@ final readonly class ReportedIdentifiers
      *
      * @param array<string, string> $siblings rule name to file, for resolving a trait or parent in the same
      *                                        package
+     * @param bool $throughConstants whether to follow a `Foo::BAR` identifier to the constant's own value
      * @return list<string> sorted, unique
      */
-    public static function of(string $file, array $siblings): array
+    public static function of(string $file, array $siblings, bool $throughConstants = false): array
     {
-        $found = self::inFile($file, $siblings, [basename($file, '.php') => true]);
+        $found = self::inFile($file, $siblings, [basename($file, '.php') => true], $throughConstants);
         sort($found);
 
         return array_values(array_unique($found));
@@ -57,7 +61,7 @@ final readonly class ReportedIdentifiers
      * @param array<string, true>   $seen     names already read, so a cycle cannot recurse
      * @return list<string>
      */
-    private static function inFile(string $file, array $siblings, array $seen): array
+    private static function inFile(string $file, array $siblings, array $seen, bool $throughConstants): array
     {
         if (! is_file($file)) {
             return [];
@@ -70,6 +74,12 @@ final readonly class ReportedIdentifiers
             $identifier = self::identifierArgument($call);
             if ($identifier !== null) {
                 $identifiers[] = $identifier;
+
+                continue;
+            }
+
+            if ($throughConstants) {
+                $identifiers = [...$identifiers, ...self::throughConstant($call, $siblings)];
             }
         }
 
@@ -79,7 +89,7 @@ final readonly class ReportedIdentifiers
             }
 
             $seen[$relative] = true;
-            $identifiers = [...$identifiers, ...self::inFile($siblings[$relative], $siblings, $seen)];
+            $identifiers = [...$identifiers, ...self::inFile($siblings[$relative], $siblings, $seen, $throughConstants)];
         }
 
         return $identifiers;
@@ -105,6 +115,78 @@ final readonly class ReportedIdentifiers
         }
 
         return $argument->value instanceof String_ ? $argument->value->value : null;
+    }
+
+    /**
+     * An identifier written as `SomeEnumOrClass::NAME`, read from the constant's own declaration.
+     *
+     * Off by default and asked for explicitly, because the two readers of this class want opposite
+     * directions. The subsumption marker under-reports on purpose: an unmarked refusal reads as a gap, which
+     * is what a refusal reads as anyway, where a wrongly marked one claims a check is covered. The yield
+     * instrument wants the fullest set it can get, because there a missing identifier is a rule that
+     * silently leaves the table and its zero cannot be told from a rule nobody's code triggers.
+     *
+     * `symplify/phpstan-rules` spells every identifier this way -- `RuleIdentifier::SEE_ANNOTATION_TO_TEST`
+     * -- which is thirty of the forty-three refused rules having no readable identifier without this.
+     *
+     * @param array<string, string> $siblings
+     * @return list<string>
+     */
+    private static function throughConstant(MethodCall $call, array $siblings): array
+    {
+        if (! $call->name instanceof Identifier || $call->name->toString() !== 'identifier') {
+            return [];
+        }
+
+        $argument = $call->args[0] ?? null;
+        if (! $argument instanceof Arg
+            || ! $argument->value instanceof ClassConstFetch
+            || ! $argument->value->class instanceof Name
+            || ! $argument->value->name instanceof Identifier
+        ) {
+            return [];
+        }
+
+        $holder = $argument->value->class->getLast();
+        if (! isset($siblings[$holder])) {
+            return [];
+        }
+
+        return self::constantValue($siblings[$holder], $argument->value->name->toString());
+    }
+
+    /**
+     * One constant's string value, from the file declaring it.
+     *
+     * Parsed rather than reflected: reflecting means loading the class, and this runs over whichever package
+     * versions are installed rather than over code this repository controls.
+     *
+     * @return list<string>
+     */
+    private static function constantValue(string $file, string $constant): array
+    {
+        if (! is_file($file)) {
+            return [];
+        }
+
+        $statements = (new ParserFactory())->createForHostVersion()->parse((string) file_get_contents($file)) ?? [];
+
+        foreach ((new NodeFinder())->findInstanceOf($statements, ClassConst::class) as $declaration) {
+            foreach ($declaration->consts as $const) {
+                if ($const->name->toString() === $constant && $const->value instanceof String_) {
+                    return [$const->value->value];
+                }
+            }
+        }
+
+        // An enum spells its cases with a backing value rather than as constants.
+        foreach ((new NodeFinder())->findInstanceOf($statements, EnumCase::class) as $case) {
+            if ($case->name->toString() === $constant && $case->expr instanceof String_) {
+                return [$case->expr->value];
+            }
+        }
+
+        return [];
     }
 
     /**
