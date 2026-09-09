@@ -8,9 +8,17 @@ declare(strict_types=1);
  *   php tests/Support/run-benchmark.php <consumer-root> [--paths=a,b] [--packages=one/rules] [--runs=N]
  *       [--sandbox=DIR]
  *
- * Four rows: the mago engine with no plugins, the same engine carrying the transpiled ones, PHPStan with a
- * cold result cache, and PHPStan with a warm one. Wall clock and CPU for each, best of `--runs`, with the
- * spread printed beside it.
+ * Three mago rows per include set -- the engine with no host, the engine carrying a host that registers
+ * nothing, and the engine carrying the transpiled rules -- then PHPStan with a cold result cache and with a
+ * warm one. Wall clock and CPU for each, best of `--runs`, with the spread printed beside it.
+ *
+ * **Two include sets, because mago's `includes` is the largest term in its runtime and the two that matter
+ * are not the same one.** The snippet this tool emits hands a consumer the set the emitted rules derive; the
+ * corpus differential points mago at all of `vendor` so neither engine is blind to a vendored ancestor. A
+ * table quoting one of those alone reads as general and is not: the same 97 plugins on the same corpus differ
+ * by more than 3x between them. So both are measured here, each labelled with its root and file counts, and
+ * the findings each reports are printed untimed -- a narrower set that indexes fewer files can leave a rule
+ * unable to resolve an ancestor, and such a rule goes quiet rather than failing.
  *
  * **The instrument is here because the number was not.** The README has carried a performance table for a
  * long time, measured with a harness that lived in a gitignored directory against a project that is not in
@@ -33,8 +41,8 @@ declare(strict_types=1);
  *   when the machine is shared.
  */
 
+use Sandermuller\PhpstanToMago\RecommendedIncludes;
 use Sandermuller\PhpstanToMago\Tests\Support\CorpusDifferential;
-use Sandermuller\PhpstanToMago\Tests\Support\ResolutionRoots;
 use Sandermuller\PhpstanToMago\Tests\Support\Subprocess;
 
 require __DIR__ . '/../../vendor/autoload.php';
@@ -106,39 +114,30 @@ file_put_contents($benchmarkConfig, <<<NEON
         tmpDir: {$cache}
     NEON);
 
-// The same source set with no extension host at all, which is the only honest baseline for "what do the
-// rules cost": measured against a plain run the host's own startup is charged to the rules, and measured
-// against nothing at all there is no marginal figure to give.
-$engineOnly = $sandbox . '/engine-only';
-if (! is_dir($engineOnly) && ! mkdir($engineOnly, 0o777, true)) {
-    fwrite(STDERR, "Could not create {$engineOnly}\n");
-
-    exit(1);
-}
+// The include set the emitted rules actually need, composed the way `bin/phpstan-to-mago` composes the
+// snippet it ships: glob the emitted plugin directory and hand it to {@see RecommendedIncludes}. Building a
+// file list here instead would measure a configuration nobody ships, which is the error the second block
+// exists to correct -- the README carried an all-of-vendor reading for a long time and read as general.
+// Quoted here rather than there: `RecommendedIncludes` answers bare absolute paths and the snippet writer
+// quotes them, so handing them straight to a TOML `includes = [..]` writes a file mago refuses to parse. It
+// did, and the block read 0.05s with no findings -- a broken run that looks exactly like a fast one, which is
+// what the parity row below exists to catch.
+$plugins = glob($sandbox . '/plugins/*.php');
+$recommended = array_map(
+    static fn (string $root): string => '"' . $root . '"',
+    RecommendedIncludes::forEmitted($plugins === false ? [] : $plugins),
+);
 
 $magoToml = (string) file_get_contents($magoConfig);
-$hostAt = strpos($magoToml, '[extension-hosts');
-file_put_contents($engineOnly . '/mago.toml', $hostAt === false ? $magoToml : substr($magoToml, 0, $hostAt));
 
-// A third mago row: the same host, started and spoken to, registering no plugins at all. Without it the
-// engine-only row charges the host's own startup and per-node protocol traffic to the rules, and this
-// repository has already recorded getting the opposite conclusion from the two baselines -- a mago reverse
-// index read as 23% of a plain run and 12% of a run with a no-op host, where starting the host cost more
-// than the index did. The rules' marginal cost is this row against the one below it, not against the first.
-$noopHost = $sandbox . '/noop-host';
-if (! is_dir($noopHost) && ! mkdir($noopHost, 0o777, true)) {
-    fwrite(STDERR, "Could not create {$noopHost}\n");
-
-    exit(1);
-}
-
-file_put_contents($noopHost . '/mago.toml', str_replace(
-    'command = ["php", "worker.php"]',
-    'command = ["php", "' . $noopHost . '/worker.php"]',
-    $magoToml,
-));
-
-file_put_contents($noopHost . '/worker.php', <<<PHP
+// A worker that starts, speaks the protocol and registers nothing, so each include set can carry a no-op
+// host of its own. Without that row the engine-only one charges the host's own startup and per-node protocol
+// traffic to the rules, and this repository has already recorded getting the opposite conclusion from the
+// two baselines -- a mago reverse index read as 23% of a plain run and 12% of a run with a no-op host, where
+// starting the host cost more than the index did. The rules cost the third row against the second, and both
+// have to sit under the same `includes` or the subtraction crosses configurations.
+$noopWorker = $sandbox . '/noop-worker.php';
+file_put_contents($noopWorker, <<<PHP
     <?php
 
     declare(strict_types=1);
@@ -157,6 +156,144 @@ file_put_contents($noopHost . '/worker.php', <<<PHP
         analyzerPlugins: [],
     )))->run();
     PHP);
+
+/**
+ * One directory holding one `mago.toml`: the sandbox's, with its include set and its host swapped.
+ *
+ * @param list<string> $includes already quoted for TOML
+ * @param ?string      $worker    absolute; null drops the host section entirely
+ */
+function variant_dir(string $sandbox, string $name, string $magoToml, array $includes, ?string $worker): string
+{
+    $directory = $sandbox . '/' . $name;
+    if (! is_dir($directory) && ! mkdir($directory, 0o777, true)) {
+        fwrite(STDERR, "Could not create {$directory}\n");
+
+        exit(1);
+    }
+
+    $toml = (string) preg_replace(
+        '/^includes = \[.*\]$/m',
+        'includes = [' . implode(', ', $includes) . ']',
+        $magoToml,
+        1,
+    );
+
+    if ($worker === null) {
+        $hostAt = strpos($toml, '[extension-hosts');
+        $toml = $hostAt === false ? $toml : substr($toml, 0, $hostAt);
+    } else {
+        // `worker.php` is resolved against the directory mago runs in, so every variant names it absolutely.
+        $toml = str_replace('command = ["php", "worker.php"]', 'command = ["php", "' . $worker . '"]', $toml);
+    }
+
+    file_put_contents($directory . '/mago.toml', $toml);
+
+    return $directory;
+}
+
+/**
+ * The include roots the written configuration actually names, unquoted.
+ *
+ * Read back out of the file rather than recomputed. Two derivations of the same list is how a table comes to
+ * describe one configuration and be measured on another, and only one of them is the configuration mago read.
+ *
+ * @return list<string>
+ */
+function include_roots(string $magoToml): array
+{
+    if (preg_match('/^includes = \[(.*)\]$/m', $magoToml, $match) !== 1) {
+        return [];
+    }
+
+    $roots = [];
+    foreach (explode(',', $match[1]) as $entry) {
+        $root = trim(trim($entry), '"');
+        if ($root !== '') {
+            $roots[] = $root;
+        }
+    }
+
+    return $roots;
+}
+
+/**
+ * How many PHP files an include set puts in front of the indexer.
+ *
+ * The root count is not the figure that matters: {@see RecommendedIncludes} measures the cost per *file* and
+ * slightly superlinear, so one root holding fourteen thousand files and eleven holding sixty are the two ends
+ * of the table and the root count reads them the wrong way round.
+ *
+ * @param list<string> $roots
+ */
+function include_files(array $roots): int
+{
+    $files = 0;
+    foreach ($roots as $root) {
+        if (is_file($root)) {
+            ++$files;
+
+            continue;
+        }
+
+        if (! is_dir($root)) {
+            continue;
+        }
+
+        /** @var iterable<SplFileInfo> $entries */
+        $entries = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
+        foreach ($entries as $entry) {
+            if ($entry->isFile() && $entry->getExtension() === 'php') {
+                ++$files;
+            }
+        }
+    }
+
+    return $files;
+}
+
+/**
+ * How many findings the transpiled rules report from one directory, untimed.
+ *
+ * **This is the discriminating check, not a decoration.** A narrower include set indexes fewer files, and a
+ * rule that cannot resolve an ancestor goes *quiet* rather than failing -- `NoPropertyNodeAssignRule` did
+ * exactly that on the file-level include set {@see RecommendedIncludes} records rejecting. A faster row with
+ * fewer findings is a quieter run, and the timed rows send output to /dev/null and cannot see it.
+ */
+function transpiled_findings(string $mago, string $cwd): int
+{
+    $process = proc_open(
+        [$mago, 'analyze', '--reporting-format', 'json'],
+        [1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']],
+        $pipes,
+        $cwd,
+        Subprocess::environment(),
+    );
+
+    if (! is_resource($process)) {
+        return -1;
+    }
+
+    $output = (string) stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    proc_close($process);
+
+    /** @var array{issues?: list<array{code?: string}>}|null $decoded */
+    $decoded = json_decode($output, true);
+    if (! is_array($decoded)) {
+        return -1;
+    }
+
+    $findings = 0;
+    foreach ($decoded['issues'] ?? [] as $issue) {
+        // Mago reports its own native diagnostics on the same run; only the transpiled rules' count.
+        if (str_starts_with((string) ($issue['code'] ?? ''), 'transpiled/')) {
+            ++$findings;
+        }
+    }
+
+    return $findings;
+}
 
 /**
  * One run's wall clock and child CPU, which is where a subprocess's time is charged.
@@ -255,14 +392,50 @@ $phpstanCommand = [$phpstan, 'analyse', '-c', $benchmarkConfig, '--memory-limit=
 
 printf("%s  (%d files)\n", $consumerRoot, count($differential->corpusFiles()));
 printf("  emitted:  %d rule(s), refused %d (target: php)\n", $emitted['emitted'], $emitted['refused']);
-printf("  includes: %d resolution root(s)\n", count(ResolutionRoots::of($consumerRoot, [$consumerRoot])));
-printf("  %-34s %8s %9s\n", '', 'wall', 'CPU');
 
-benchmark_row('mago, engine only', [$mago, 'analyze'], $engineOnly, $runs);
-benchmark_row('mago + a host with no plugins', [$mago, 'analyze'], $noopHost, $runs);
-benchmark_row('mago + the transpiled rules', [$mago, 'analyze'], $sandbox, $runs);
+// Both include sets, in one instrument, each labelled. The shipped snippet hands a consumer the derived set
+// and the differential runs the vendor-wide one, so a table quoting either alone is unrepresentative of the
+// other -- and the sentence built on it inherits that. A count belongs to its configuration.
+$blocks = [
+    ['the include set the emitted rules need', 'derived', $recommended],
+    ["all of vendor plus the consumer's autoload roots", 'vendor', array_map(
+        static fn (string $root): string => '"' . $root . '"',
+        include_roots($magoToml),
+    )],
+];
+
+$parity = [];
+foreach ($blocks as [$label, $slug, $includes]) {
+    $host = variant_dir($sandbox, $slug . '-host', $magoToml, $includes, $sandbox . '/worker.php');
+    printf(
+        "\n  includes: %s -- %d root(s), %d file(s)\n",
+        $label,
+        count($includes),
+        include_files(include_roots((string) file_get_contents($host . '/mago.toml'))),
+    );
+
+    $parity[$label] = transpiled_findings($mago, $host);
+    printf("  %-34s %8s %9s\n", '', 'wall', 'CPU');
+    benchmark_row('mago, engine only', [$mago, 'analyze'], variant_dir($sandbox, $slug . '-engine', $magoToml, $includes, null), $runs);
+    benchmark_row('mago + a host with no plugins', [$mago, 'analyze'], variant_dir($sandbox, $slug . '-noop', $magoToml, $includes, $noopWorker), $runs);
+    benchmark_row('mago + the transpiled rules', [$mago, 'analyze'], $host, $runs);
+}
+
+printf("\n  %-34s %8s %9s\n", '', 'wall', 'CPU');
 benchmark_row('PHPStan, cold result cache', $phpstanCommand, $sandbox, $runs, $clearCache);
 benchmark_row('PHPStan, warm result cache', $phpstanCommand, $sandbox, $runs);
 
-echo "\n  The rules cost row three against row two. Row two against row one is what the host costs, which is\n"
-    . "  not the rules' to carry -- and quote the PHPStan row you compared against.\n";
+echo "\n  findings, untimed:\n";
+foreach ($parity as $label => $findings) {
+    printf("    %-52s %d\n", $label, $findings);
+}
+
+if (count(array_unique(array_values($parity))) > 1) {
+    echo "\n  STOP. The include sets do not report the same findings, so the faster row is the quieter one\n"
+        . "  rather than the cheaper one. A rule that cannot resolve an ancestor goes silent; do not quote\n"
+        . "  either row until they agree.\n";
+}
+
+echo "\n  The rules cost row three of a block against row two of the same block. Row two against row one is\n"
+    . "  what the host costs, which is not the rules' to carry -- and quote the PHPStan row you compared\n"
+    . "  against, and the include set the mago row was measured under.\n";

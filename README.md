@@ -150,28 +150,29 @@ the defects in this port the differential caught first.
 ## Performance
 
 `php tests/Support/run-benchmark.php <project>` runs both engines over your own code. Here, on
-`vendor/nikic/php-parser/lib` — 270 files, 97 emitted rules, n=3 on a machine that was not otherwise idle.
-Wall spreads ran 0.01–0.33s, so prefer the CPU column:
+`vendor/nikic/php-parser/lib` — 270 files, 97 emitted rules, n=3, wall spreads 0.01–0.09s, on a machine that
+was not otherwise idle. Mago's `includes` are the 12 package roots the emitted rules derive, 6614 files, which
+is what `--out` writes into the snippet:
 
 | | wall | CPU |
 |:--|--:|--:|
-| mago, engine only | 3.88s | 3.80s |
-| mago + a host with no plugins | 3.91s | 3.88s |
-| mago + the 97 transpiled rules | 5.01s | 6.31s |
-| PHPStan, cold result cache | 2.75s | 8.73s |
+| mago, engine only | 1.00s | 1.13s |
+| mago + a host with no plugins | 1.03s | 1.21s |
+| mago + the 97 transpiled rules | 1.96s | 3.49s |
+| PHPStan, cold result cache | 2.74s | 8.73s |
 | PHPStan, warm result cache | 1.03s | 0.92s |
 
 **The rules cost row three against row two**, not against row one: a host that starts and speaks the protocol
-while registering nothing is what separates the host's own cost from the rules'. So the rules add **1.10s wall
-and 2.43s CPU**, and the host itself is free — rows one and two agree to 0.03s.
+while registering nothing separates the host's own cost from the rules'. They add **0.93s wall and 2.28s
+CPU**, and the host itself is free — rows one and two agree to 0.03s.
 
-**Not a wall-clock win on this corpus, and the reason is not the rules.** With `includes = []` the engine
-alone runs in **0.11s** rather than 3.91s, so about 97% of the floor is mago indexing the include tree before
-it analyses anything. Those includes are what let a rule reach a vendored parent — **without them rules go
-silently narrow** — so the lever is their width: name the packages your rules need rather than all of
-`vendor`. This project's own suite went from 346s to 115s on that change.
+**A mago figure without its include set means nothing.** Point the same run at all of `vendor` — 14822 files
+rather than 6614 — and the mago rows become 3.91s, 3.94s and 4.96s for the same 2686 findings: 2.5x the wall
+clock, none of it the rules. Those includes are what let a rule reach a vendored parent, and **without them
+rules go silently narrow** rather than failing, so the lever is their width.
 
-`mago analyze` has no result cache, which is why the warm PHPStan row is the one to beat. Measure your own.
+Cheaper than cold PHPStan on both axes, still not a win against a warm result cache: `mago analyze` has no
+result cache and redoes the whole job every run. Measure your own.
 
 ## Requirements
 
