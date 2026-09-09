@@ -694,7 +694,8 @@ REPORT, ['{ANCHOR}' => $this->context->anchor ?? $this->defaultAnchor()]) : '';
         // what keeps those files byte-identical.
         $checkMethods = '';
         foreach ($this->context->checks as $check) {
-            $checkMethods .= "\n    private function {$check['name']}({$check['signature']}): void\n"
+            $returns = $check['returns'];
+            $checkMethods .= "\n    private function {$check['name']}({$check['signature']}): {$returns}\n"
                 . "    {\n{$check['body']}    }\n";
         }
 

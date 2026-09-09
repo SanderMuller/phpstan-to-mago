@@ -10,6 +10,8 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\BinaryOp\Identical;
+use PhpParser\Node\Expr\BinaryOp\NotIdentical;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
@@ -24,19 +26,23 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\Break_;
 use PhpParser\Node\Stmt\Case_;
 use PhpParser\Node\Stmt\Catch_;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
+use PhpParser\Node\Stmt\Continue_;
 use PhpParser\Node\Stmt\Else_;
 use PhpParser\Node\Stmt\ElseIf_;
 use PhpParser\Node\Stmt\Expression;
 use PhpParser\Node\Stmt\Finally_;
+use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use PHPStan\Collectors\Collector;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
@@ -283,6 +289,7 @@ final class Transpiler
 
         $processNode = $this->inheritedRuleMethod($class, 'processNode');
         $this->context->currentMethod = $processNode;
+        $this->context->checksWhoseAnswerIsRead = $this->answersReadByTheRule($processNode);
         $this->context->checkMode = self::$target === 'php' && $this->independentChecks($processNode) >= 2;
         foreach ($processNode->stmts ?? [] as $stmt) {
             $this->translateOrCollect($stmt);
@@ -1493,14 +1500,37 @@ final class Transpiler
      */
     private function independentChecks(ClassMethod $processNode): int
     {
+        // Every assignment in the method, not only the ones at its top level. A rule that asks its check once
+        // per item of a list writes the call inside the `foreach`, and reading only the top level counted
+        // `MockMethodCallRule`'s two checks as none -- so it fell to the single-check path, where the guards
+        // land in the loop and the one report is appended after it, which is the shape
+        // {@see refuseStatementsOutsideTheirLoop()} exists to refuse.
+        //
+        // The predicate is unchanged, which is what keeps this from moving anything else: the assignment
+        // still has to be a `$this->` call whose declaration builds a rule error. Of the 13 corpus rules that
+        // assign a `$this->` call inside a loop, four reach two by this count; two are permanently unportable
+        // and `ServicesExcludedDirectoryMustExistRule` -- the only one of the four that emits today -- assigns
+        // `resolveDirectoryPath()`, which builds no error. So the emit-all diff for this is the seven
+        // check-method plugins and nothing else.
+        $answered = $this->answersReadByTheRule($processNode);
+
         $checks = 0;
-        foreach ($processNode->stmts ?? [] as $stmt) {
-            if (! $stmt instanceof Expression || ! $stmt->expr instanceof Assign) {
+        foreach ((new NodeFinder())->findInstanceOf($processNode->stmts ?? [], Assign::class) as $assign) {
+            $call = $assign->expr;
+            if (! $assign->var instanceof Variable || ! $this->translator->isOwnMethodCall($call)) {
                 continue;
             }
 
-            $call = $stmt->expr->expr;
-            if (! $stmt->expr->var instanceof Variable || ! $this->translator->isOwnMethodCall($call)) {
+            // A nested assignment counts only where the rule *acts* on the answer. Counting every one of
+            // them turned check mode on for `DynamicCallOnStaticMethodsRule`, which asks no check method for
+            // anything -- the only effect was to move which branch `emitHelperReports()` takes, and with it
+            // the emitted bytes of a rule that needed nothing. Top-level assignments count as they always
+            // did, so this widens the count exactly as far as the shape it was added for.
+            $nested = ! in_array($assign, array_map(
+                static fn (Stmt $stmt): ?Expr => $stmt instanceof Expression ? $stmt->expr : null,
+                $processNode->stmts ?? [],
+            ), true);
+            if ($nested && (! is_string($assign->var->name) || ! isset($answered[$assign->var->name]))) {
                 continue;
             }
 
@@ -1512,6 +1542,84 @@ final class Transpiler
         }
 
         return $checks + $this->branchChecks($processNode);
+    }
+
+    /**
+     * The names a rule assigns a check's answer to and then acts on, beyond collecting it.
+     *
+     * The pairing is with the statement *after* the assignment, which is why this is computed here over the
+     * whole method rather than in the translator, which sees one statement at a time. A block that only
+     * appends the name to a list is bookkeeping; one that also `continue`s, `break`s or returns is using the
+     * answer to decide what happens next, and the check has to give it one.
+     *
+     * @return array<string, true>
+     */
+    private function answersReadByTheRule(ClassMethod $processNode): array
+    {
+        $read = [];
+        foreach ($this->statementLists($processNode->stmts ?? []) as $statements) {
+            $statements = array_values($statements);
+            foreach ($statements as $index => $statement) {
+                if (! $statement instanceof Expression
+                    || ! $statement->expr instanceof Assign
+                    || ! $statement->expr->var instanceof Variable
+                    || ! is_string($name = $statement->expr->var->name)
+                    || ! $this->translator->isOwnMethodCall($statement->expr->expr)
+                ) {
+                    continue;
+                }
+
+                $next = $statements[$index + 1] ?? null;
+                if ($next instanceof If_ && $this->actsOnTheAnswer($next, $name)) {
+                    $read[$name] = true;
+                }
+            }
+        }
+
+        return $read;
+    }
+
+    /**
+     * Whether an `if` testing `$name` does more with it than collect it.
+     */
+    private function actsOnTheAnswer(If_ $stmt, string $name): bool
+    {
+        $tested = $stmt->cond;
+        $subject = match (true) {
+            $tested instanceof NotIdentical, $tested instanceof Identical => $tested->left,
+            default => null,
+        };
+
+        if (! $subject instanceof Variable || $subject->name !== $name) {
+            return false;
+        }
+
+        foreach ($stmt->stmts as $inner) {
+            if ($inner instanceof Continue_ || $inner instanceof Break_ || $inner instanceof Return_) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Every statement list in a method, so a pairing can be made inside a loop or a branch as well as at the
+     * top level.
+     *
+     * @param array<Stmt> $statements
+     *
+     * @return iterable<array<Stmt>>
+     */
+    private function statementLists(array $statements): iterable
+    {
+        yield $statements;
+
+        foreach ($statements as $statement) {
+            if ($statement instanceof Foreach_ || $statement instanceof If_ || $statement instanceof While_ || $statement instanceof For_) {
+                yield from $this->statementLists($statement->stmts);
+            }
+        }
     }
 
     /**

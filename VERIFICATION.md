@@ -18049,3 +18049,72 @@ because the ten properties it correctly passed made the shape of the failure vis
 That is the same lesson as the positive control two entries up, arriving from the other side: **the rows an
 instrument gets right are what let you recognise the one it gets wrong.** A checker that reports a single hit
 and nothing else offers no shape to read.
+
+### MockMethodCallRule emits, and it was fatally wrong twice on the way
+
+139 EMIT to 140, and the rule that had been reverted nine times is the one that moved. What is worth keeping
+is not the route but that **the emitted plugin was wrong in opposite directions at two points, and both times
+it emitted, parsed, called only helpers that exist, and leaked no Rust.**
+
+#### First: silent forever
+
+The first version's check methods held `return false;` immediately before their `$context->report(...)`. The
+helper's trailing `return null` emits a bail whenever the *rule's* `loopDepth > 0` — correct for a `return []`
+written inside a rule's `foreach`, which really is an exit — but a check reached from inside that loop is a
+separate method whose fall-through is the tail `closeCheck()` writes. So both checks answered "did not
+report" on every path.
+
+#### Then: report everything
+
+With that fixed, the report sat *outside* the `if (namesContain(MockObject) || namesContain(Stub))` block, so
+a receiver that is not a mock skipped the block and fell straight into the report. The rule that reports on a
+mock's undefined method would have reported on every method call whose method it could not resolve.
+
+The cause: a helper's report inside a conditional block defers its message to the helper's tail, and the tail
+is after `block-close`. Where the block is the helper's *whole answer* — nothing after it but `return null` —
+its condition is a guard, and folding it is exactly equivalent. Where it is not, folding would decline the
+rest of the helper, which is what `NonTerminalReportBranchRule` pins.
+
+**Measured before it was called pre-existing.** One helper in the seven installed packages writes the shape,
+and it is `MockMethodCallRule::checkCallOnType` itself — so the mistranslation is latent in HEAD's code and
+unreachable from HEAD's corpus. "Latent" and "shipped" are different sentences and this log has been
+corrected on that distinction twice.
+
+#### Two of my own changes were broader than I measured
+
+Both surfaced as *other rules moving* in the emit-all diff, which is the only instrument that could see them.
+
+- **`independentChecks` counting every nested assignment** turned check mode on for
+  `DynamicCallOnStaticMethodsRule`, which asks no check method for anything. The only effect was to move
+  which branch `emitHelperReports()` takes, and with it the bytes of a rule that needed nothing. My
+  blast-radius script had said four rules could flip and this was not one of them — because the script
+  matched a narrower statement shape than the `NodeFinder` version it was meant to be sizing. **A sizing
+  instrument that does not share the implementation's own predicate is measuring a different question.**
+- **Accepting a bail among a conditional report's statements** admitted blocks in a rule's own body that were
+  already translating as a folded guard chain, and rerouted them through `translateConditionalReport()`.
+  Same behaviour, different file.
+
+Both are now gated to the shape they were added for — the answered-check set for the first, `inErrorHelper`
+for the second — and the emit-all diff is one file appearing and no other byte on any target.
+
+#### What the gate says, which is the only thing that settles it
+
+The port and PHPStan agree exactly on the example pair, line and message:
+
+    23: Trying to mock an undefined method receive() on class ...\Gateway.
+    34: Trying to mock an undefined method receive() on class ...\Gateway.
+
+Line 34 is the `expects()` chain, where the rule asks its check twice and the `continue` means at most one
+finding. **One finding, not two** — which is the cardinality claim the whole build turns on, and it is now a
+measurement rather than the argument about when the two checks can both fire that this log spent a day on.
+
+`Good.php` carries the discriminating row: a receiver that is not a mock at all, which the report-everything
+version would have flagged. Both tools are silent there, and the gate asserts non-empty on `Bad` for *both*
+tools, so a shared zero fails rather than passes.
+
+**The peer's negated-guard composition was not built.** Their equivalence argument was correct, and their
+survey put the demand at one rule in 213, which is a refusal by this project's standard. What made it
+unnecessary is that check mode gives the check a method to return from, so the rule's own `$error !== null`
+becomes a guard over an answer instead of over a duplicated predicate — no purity precondition, and no
+negating of rendered condition strings, which is the class that produced the prose-as-code false positive two
+entries up.

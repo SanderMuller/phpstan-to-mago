@@ -434,6 +434,56 @@ final class TranslationContext
     public array $reportConditions = [];
 
     /**
+     * Whether the statements now being translated belong to a check method rather than to the rule body.
+     *
+     * The rule's loop depth says nothing about a check's own body. A helper's trailing `return null` emits a
+     * bail when `loopDepth > 0`, because a `return []` written inside a rule's `foreach` is a real exit
+     * rather than the fall-through of the conditions above it — but a check reached from inside that
+     * `foreach` is a separate method whose last statement *is* its last statement, and whose "no finding"
+     * exit is the tail {@see Translator::closeCheck()} gives it.
+     *
+     * Emitting the bail there put an unconditional exit in front of the report the check appends, so both of
+     * `MockMethodCallRule`'s checks answered "did not report" on every path and the plugin was silent
+     * forever. It emitted, it parsed, every helper existed, and only reading it showed anything wrong.
+     */
+    public bool $inCheckBody = false;
+
+    /**
+     * Whether the statement now being translated is the last thing in an error helper that can report.
+     *
+     * A helper's report may sit inside a conditional block — `if (A || B) { $x = ..; if (C) return null;
+     * return <error>; }` — and where nothing follows that block but `return null`, the block is the helper's
+     * whole answer. Folding its condition into the guard chain is then exactly equivalent, and it is the only
+     * translation that puts the report inside the branch that produces it.
+     *
+     * Without this the block was emitted as a real `if`, its return deferred the message to the helper's
+     * tail, and the report landed *after* `block-close` — so a receiver failing the outer condition fell
+     * straight into the report. `MockMethodCallRule` is the one helper in the seven installed packages that
+     * writes the shape, which is why nothing shipped carries it.
+     *
+     * Not for a *non-terminal* block: what follows one still runs, so folding its condition would decline the
+     * rest of the helper. {@see NonTerminalReportBranchRule} is the fixture that pins that difference.
+     */
+    public bool $atHelperTail = false;
+
+    /**
+     * Names a rule assigns an inlined check's answer to *and then acts on*, beyond collecting it.
+     *
+     * `$e = $this->check(..); if ($e !== null) { $errors[] = $e; }` is bookkeeping: the check has already
+     * reported and the collecting is only what the original must hand back, so the name's reads are dropped
+     * ({@see $reportedErrors}). `MockMethodCallRule` writes `{ $errors[] = $e; continue; }`, and that
+     * `continue` skips the rule's *second* check for this item — control flow, not bookkeeping. There the
+     * check has to answer whether it reported and the rule's own test becomes a guard over it.
+     *
+     * Precomputed from the rule's own statements, because the difference is in the statement *after* the
+     * assignment and the translator sees one statement at a time. Reading the producer alone put the three
+     * `Combined*` rules on the answering path, where they refused; they collect and nothing more.
+     *
+     * @var array<string, true>
+     */
+    public array $checksWhoseAnswerIsRead = [];
+
+    /**
      * Whether the inlined helper also reports on its fall-through, after every condition above it.
      *
      * `processInterfaceSuffix()` is the shape: one guard reports the trait message and returns, and the
@@ -476,7 +526,7 @@ final class TranslationContext
     /**
      * The checks emitted so far, each already rendered.
      *
-     * @var list<array{name: string, signature: string, body: string}>
+     * @var list<array{name: string, signature: string, returns: string, body: string}>
      */
     public array $checks = [];
 

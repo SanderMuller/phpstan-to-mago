@@ -456,7 +456,7 @@ EMIT    VariableStaticPropertyFetchRule
 EMIT    VariableVariablesRule
 EMIT    WrongCaseOfInheritedMethodRule
 
-## phpstan/phpstan-phpunit — 5 of 13 portable rules the package registers emit, 0 covered by the engine, 8 refuse, 1 unportable in principle, 0 it registers nowhere
+## phpstan/phpstan-phpunit — 6 of 13 portable rules the package registers emit, 0 covered by the engine, 7 refuse, 1 unportable in principle, 0 it registers nowhere
 
 REFUSE  AssertEqualsIsDiscouragedRule
         guard body is neither `return []` nor `continue`, but Stmt_Expression
@@ -496,11 +496,7 @@ REFUSE  DataProviderDeclarationRule
         access path outside the vocabulary: $this->dataProviderHelper->getDataProviderMethods()
         needs-at-least: access path outside the vocabulary: $this->dataProviderHelper->getDataProviderMethods()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: array_merge()
-REFUSE  MockMethodCallRule
-        count() of something other than an argument list
-        needs-at-least: count() of something other than an argument list
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getMethodReflection()
-        needs-at-least: no PHP navigation for node.var (kind expr) on a MethodCall node
+EMIT    MockMethodCallRule
 EMIT    NoMissingSpaceInClassAnnotationRule
 EMIT    NoMissingSpaceInMethodAnnotationRule
 EMIT    ShouldCallParentMethodsRule

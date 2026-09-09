@@ -486,14 +486,17 @@ final readonly class Translator
         // here: both sides are class names the rule read as written, so `==` between them is already
         // case-sensitive and the strict form answers the same.
         if ($haystack !== null && $haystack['kind'] === 'lookup') {
-            if (Transpiler::$target !== 'php') {
-                throw new Refusal('in_array() over a lookup, which only the PHP target carries', $line);
-            }
+            return $this->membershipInALookup($haystack, $args, $line);
+        }
 
-            return $this->context->backend->call('lookup_has_value', [
-                $this->operand($haystack),
-                $this->stringValue($args[0]->value, $line),
-            ]);
+        // `in_array(A::class, $type->getObjectClassNames(), true)` — membership over *all* the classes a type
+        // names. The descriptor for that call is `sole-class`, because most rules ask `count(..) === 1` and
+        // then use the single name, and it carries the list rendering alongside for the rules that iterate.
+        // This is a third way to ask it, and the single-class reduction is the wrong one: an intersection
+        // like `MockObject&Foo` has no sole class, so reducing would answer null and the membership test
+        // would go quiet on exactly the type `MockMethodCallRule` exists to report on.
+        if ($haystack !== null && $haystack['kind'] === 'sole-class') {
+            return $this->membershipInTheClassesATypeNames($haystack, $args[0]->value, $strict, $line);
         }
 
         if ($haystack !== null && $this->holdsMetadataNames($haystack)) {
@@ -1234,6 +1237,17 @@ final readonly class Translator
         $absence = $this->nullTestOfANavigatedValue($subject, $line);
         if ($absence !== null) {
             return $absence;
+        }
+
+        // `$error === null` where `$error` holds what an inlined check handed back. The check returns whether
+        // it reported, so "no error" is "it did not report" -- and the caller inverts this for `!== null`,
+        // which is how `if ($error !== null) { .. continue; }` becomes a guard over the check.
+        if ($subject['kind'] === 'check-result') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a check answering whether it reported, which only the PHP target carries', $line);
+            }
+
+            return '! ' . $this->operand($subject);
         }
 
         // `$parentClass === null` on a class the rule reached through `getParentClass()`. The descriptor is a
@@ -4309,9 +4323,15 @@ final readonly class Translator
         // after its guards — so translating it as a block leaves an empty `if` and lets the next branch
         // overwrite the message. Asked before the block shape, and a no-op outside a helper because
         // {@see takeReportCondition} tests that first.
-        if ($stmt->elseifs === [] && ! $stmt->else instanceof Else_ && count($stmt->stmts) === 1
-            && $this->takeReportCondition($stmt, $stmt->stmts[0])
-        ) {
+        if ($this->takesTheReportCondition($stmt)) {
+            return;
+        }
+
+        // `if (A || B) { $x = ..; if (C) return null; return <error>; }` at the tail of an error helper: the
+        // block is the helper's whole answer, so its condition is a guard. Emitting it as a block instead
+        // leaves the report to the helper's tail, where it lands *after* the branch and fires for a subject
+        // the branch excluded. Only at the tail — {@see TranslationContext::$atHelperTail} carries why.
+        if ($this->foldsATerminalReportBlock($stmt)) {
             return;
         }
 
@@ -4705,20 +4725,44 @@ final readonly class Translator
                 return true;
             }
 
-            if (! $statement instanceof Expression || ! $statement->expr instanceof Assign) {
-                return false;
-            }
-
-            $appends = $statement->expr->var instanceof ArrayDimFetch
-                && ! $statement->expr->var->dim instanceof Expr
-                && $this->isRuleErrorBuilder($statement->expr->expr);
-
-            if ($last !== $appends) {
+            if (! $this->belongsInAConditionalReport($statement, $last)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    /**
+     * `if (COND) { return null; }` or `{ return []; }` — a guard that declines rather than reporting.
+     *
+     * The two spellings are the same statement in different positions: a helper returning `?RuleError` writes
+     * the first and a rule returning a list writes the second. Neither builds a finding, which is what lets
+     * one sit among the statements of a conditional report without ending it.
+     */
+    private function isBailingGuard(Stmt $statement): bool
+    {
+        if (! $statement instanceof If_
+            || $statement->elseifs !== []
+            || $statement->else instanceof Else_
+            || count($statement->stmts) !== 1
+        ) {
+            return false;
+        }
+
+        $only = $statement->stmts[0];
+        if (! $only instanceof Return_ || ! $only->expr instanceof Expr) {
+            return false;
+        }
+
+        return $this->isNullLiteralExpression($only->expr)
+            || ($only->expr instanceof Array_ && $only->expr->items === []);
+    }
+
+    /** Whether an expression is the literal `null`. */
+    private function isNullLiteralExpression(Expr $expr): bool
+    {
+        return $expr instanceof ConstFetch && strtolower($expr->name->toString()) === 'null';
     }
 
     /** `return [<one built error>];` — a block that reports and exits rather than collecting. */
@@ -4760,13 +4804,160 @@ final readonly class Translator
 
     private function isSingleErrorReturn(Stmt $statement): bool
     {
-        if (! $statement instanceof Return_ || ! $statement->expr instanceof Array_ || count($statement->expr->items) !== 1) {
+        if (! $statement instanceof Return_) {
+            return false;
+        }
+
+        // Inside an error helper the finding is returned bare, because the helper's own return type is
+        // `?IdentifierRuleError` rather than a list. Both spellings are one finding and the translation is
+        // the same; only the wrapper differs, so accepting one and not the other refused a rule on where it
+        // put its brackets. `MockMethodCallRule::checkCallOnType()` writes the bare form.
+        if ($this->context->inErrorHelper && $statement->expr instanceof Expr) {
+            return $this->isRuleErrorBuilder($statement->expr);
+        }
+
+        if (! $statement->expr instanceof Array_ || count($statement->expr->items) !== 1) {
             return false;
         }
 
         $only = $statement->expr->items[0];
 
         return $only instanceof ArrayItem && $this->isRuleErrorBuilder($only->value);
+    }
+
+    /**
+     * `in_array($x, $this->configuredList, true)` where the list arrived as a configured lookup.
+     *
+     * Its own method so {@see inArrayPredicate()} stays under the complexity limit; the branch is unchanged.
+     *
+     * @param Descriptor  $haystack
+     * @param array<Arg>  $args
+     */
+    private function membershipInALookup(array $haystack, array $args, int $line): string
+    {
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('in_array() over a lookup, which only the PHP target carries', $line);
+        }
+
+        return $this->context->backend->call('lookup_has_value', [
+            $this->operand($haystack),
+            $this->stringValue($args[0]->value, $line),
+        ]);
+    }
+
+    /**
+     * `in_array(A::class, $type->getObjectClassNames(), true)` -- membership over every class a type names.
+     *
+     * The descriptor for that call is `sole-class`, because most rules ask `count(..) === 1` and then use the
+     * single name; it carries the list rendering alongside for the rules that iterate, and this is a third
+     * way to ask it. The single-class reduction is the wrong one here: an intersection like `MockObject&Foo`
+     * has no sole class, so reducing would answer null and the membership test would go quiet on exactly the
+     * type `MockMethodCallRule` exists to report on.
+     *
+     * @param Descriptor $haystack
+     */
+    private function membershipInTheClassesATypeNames(array $haystack, Expr $needle, bool $strict, int $line): string
+    {
+        if (! $strict) {
+            throw new Refusal('in_array() without strict comparison, over the classes a type names', $line);
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('in_array() over the classes a type names, which only the PHP target carries', $line);
+        }
+
+        return $this->context->backend->call('names_contain', [
+            $this->handlePart($haystack, 'listPhp', $line),
+            $this->nameText($this->resolve($needle, $line), $line),
+        ]);
+    }
+
+    /**
+     * Whether one statement of a candidate conditional-report block belongs in it.
+     *
+     * A bail among the statements before the finding -- `if (count($mockClasses) === 0) { return null; }` --
+     * says "no finding from here" and is not itself a report, so it neither ends the block nor disqualifies
+     * it. `MockMethodCallRule` writes one between binding the classes it will name and building the message
+     * about them.
+     *
+     * Only inside an error helper, which is where that rule writes it. Accepting it in a rule's own body
+     * admitted blocks that were already translating as a folded guard chain and rerouted them through
+     * {@see translateConditionalReport()} instead -- `DynamicCallOnStaticMethodsRule` moved from two guards
+     * and a report to a nested block, the same behaviour in a different file, for a rule that needed nothing.
+     */
+    private function belongsInAConditionalReport(Stmt $statement, bool $last): bool
+    {
+        if (! $last && $this->context->inErrorHelper && $this->isBailingGuard($statement)) {
+            return true;
+        }
+
+        if (! $statement instanceof Expression || ! $statement->expr instanceof Assign) {
+            return false;
+        }
+
+        $appends = $statement->expr->var instanceof ArrayDimFetch
+            && ! $statement->expr->var->dim instanceof Expr
+            && $this->isRuleErrorBuilder($statement->expr->expr);
+
+        return $last === $appends;
+    }
+
+    /**
+     * Whether an `if` inside an error helper is a condition to report *under* rather than a block.
+     *
+     * The single-statement form, which {@see takeReportCondition()} collects. Its own predicate so the shape
+     * test sits beside the two other report-block shapes rather than inside the statement dispatch.
+     */
+    private function takesTheReportCondition(If_ $stmt): bool
+    {
+        return $stmt->elseifs === []
+            && ! $stmt->else instanceof Else_
+            && count($stmt->stmts) === 1
+            && $this->takeReportCondition($stmt, $stmt->stmts[0]);
+    }
+
+    /**
+     * Fold a terminal report block's condition into the guard chain, and say whether it applied.
+     *
+     * `if (A || B) { $x = ..; if (C) return null; return <error>; }` at the tail of an error helper is the
+     * helper's whole answer, so its condition is a guard and folding it is exactly equivalent. Emitting it
+     * as a block instead leaves the report to the helper's tail, where it lands *after* the branch and fires
+     * for a subject the branch excluded -- `MockMethodCallRule` would have reported every method call whose
+     * method it could not resolve, mock or not.
+     *
+     * Only at the tail. What follows a non-terminal branch still runs, so folding its condition would
+     * decline the rest of the helper, and {@see NonTerminalReportBranchRule} is the fixture that pins the
+     * difference.
+     */
+    private function foldsATerminalReportBlock(If_ $stmt): bool
+    {
+        if (! $this->context->inErrorHelper
+            || ! $this->context->atHelperTail
+            || $stmt->elseifs !== []
+            || $stmt->else instanceof Else_
+            || count($stmt->stmts) < 2
+            || ! $this->isConditionalReport($stmt->stmts)
+        ) {
+            return false;
+        }
+
+        $this->context->lines[] = new Stm('guard', [
+            'condition' => '!(' . $this->translateCondition($stmt->cond) . ')',
+            'exit' => $this->context->backend->bail(),
+        ], $this->context->indent);
+
+        $atTail = $this->context->atHelperTail;
+        $this->context->atHelperTail = false;
+
+        try {
+            foreach ($stmt->stmts as $inner) {
+                $this->translateStatement($inner);
+            }
+        } finally {
+            $this->context->atHelperTail = $atTail;
+        }
+
+        return true;
     }
 
     private function translateConditionalReport(If_ $stmt): void
@@ -5335,7 +5526,7 @@ final readonly class Translator
      * @param int|null                            $checkStart where this check's statements begin, or null outside check mode
      * @param array<string, array<string, mixed>> $available  the locals bound at the call site
      */
-    private function finishCheck(?int $checkStart, string $method, array $available): void
+    private function finishCheck(?int $checkStart, string $method, array $available, ?string $resultInto = null): void
     {
         $reported = $this->emitHelperReports();
         if ($reported && $this->context->inlineDepth === 1) {
@@ -5354,7 +5545,7 @@ final readonly class Translator
             $this->context->lines[] = $this->reportNode();
         }
 
-        $this->closeCheck($checkStart, $method, $available);
+        $this->closeCheck($checkStart, $method, $available, $resultInto);
     }
 
     /**
@@ -5365,13 +5556,18 @@ final readonly class Translator
      * body's indentation, which a method body shares, so they move across unchanged.
      *
      * The method takes whatever locals the rule had bound and the check's statements name — the prologue's
-     * work, done once and passed in rather than repeated per check. They are typed `mixed`: the transpiler
-     * tracks each local's shape well enough to render it, not well enough to name a PHP type for it, and a
-     * guessed type is a `TypeError` at analysis time rather than a refusal here.
+     * work, done once and passed in rather than repeated per check. The hook node is typed, because the SDK
+     * declares `NodeAnalysisContext::$node` as `readonly Node` and every check receives that; the rest are
+     * `mixed`, because the transpiler tracks a local's shape well enough to render it and not well enough to
+     * name a PHP type for it, and a guessed type is a `TypeError` at analysis time rather than a refusal
+     * here.
      *
-     * @param array<string, array<string, mixed>> $available the locals bound at the call site
+     * @param array<string, array<string, mixed>> $available  the locals bound at the call site
+     * @param string|null                         $resultInto a local to assign the check's answer to, for a
+     *                                                        rule whose control flow depends on whether the
+     *                                                        check reported
      */
-    private function closeCheck(int $from, string $method, array $available): void
+    private function closeCheck(int $from, string $method, array $available, ?string $resultInto = null): void
     {
         $body = '';
         foreach (array_splice($this->context->lines, $from) as $statement) {
@@ -5400,17 +5596,51 @@ final readonly class Translator
             $arguments[] = $variable;
         }
 
+        // The name comes from the helper, and a rule may ask the same helper twice about different subjects.
+        // `MockMethodCallRule` does: once about the receiver's type and once about the receiver's own
+        // receiver. Two entries of one name render two methods of one name, which is a redeclaration -- so
+        // the second and later get an index. Caught by `php -l` rather than silently, but only after the
+        // file is written.
         $name = 'check' . ucfirst((string) preg_replace('/[^A-Za-z0-9]/', '', $method));
+        $taken = array_column($this->context->checks, 'name');
+        if (in_array($name, $taken, true)) {
+            $suffix = 2;
+            while (in_array($name . $suffix, $taken, true)) {
+                ++$suffix;
+            }
+
+            $name .= $suffix;
+        }
+
+        // A check whose answer the rule reads becomes a predicate: it returns whether it reported, and the
+        // rule's own `if ($error !== null) { .. continue; }` becomes a guard over that. The bails inside it
+        // are already rendered, so they are rewritten here rather than created differently -- sound because
+        // a generated check body holds no closure, which is asserted rather than assumed.
+        $returns = 'void';
+        if ($resultInto !== null) {
+            if (str_contains($body, 'function (') || str_contains($body, 'fn (')) {
+                throw new Refusal(
+                    'a check whose answer the rule reads, whose body holds a closure, so the exits this '
+                    . "would have to rewrite cannot be told from the closure's own",
+                );
+            }
+
+            $returns = 'bool';
+            $body = (string) preg_replace('/^(\s*)return;$/m', '$1return false;', $body);
+            $body .= str_repeat(' ', 8) . "return true;\n";
+        }
 
         $this->context->checks[] = [
             'name' => $name,
             'signature' => implode(', ', $parameters),
+            'returns' => $returns,
             'body' => $body,
         ];
 
         $this->context->lines[] = new Stm('check-call', [
             'name' => $name,
             'arguments' => implode(', ', $arguments),
+            'into' => $resultInto ?? '',
         ], $this->context->indent);
 
         // Every check reports for itself, so the rule has no trailing report to make.
@@ -5509,6 +5739,16 @@ final readonly class Translator
         // MinPhpVersionInterfaceRule` is the shape — `foreach (..) { ..guards..; return []; }` means "one of
         // them matched, so there is nothing to report" — and without this the loop body ended up empty and
         // the rule reported every class the loop existed to let through.
+        // Both clauses are about where the fall-through goes, and inside a check method it goes to the tail
+        // {@see closeCheck()} writes -- `return false;` for a check that answers, nothing for one that does
+        // not. So neither reason to bail applies there, and emitting one puts an unconditional exit in front
+        // of the report the check appends. That is how both of `MockMethodCallRule`'s checks came to answer
+        // "did not report" on every path: it emitted, it parsed, every helper existed, and only reading the
+        // plugin showed it was silent forever.
+        if ($this->context->inCheckBody) {
+            return;
+        }
+
         if ($this->context->reportConditions === [] || $this->context->loopDepth > 0) {
             $this->context->lines[] = new Stm('bail', [], $this->context->indent);
         }
@@ -5711,9 +5951,30 @@ final readonly class Translator
      */
     private function inlineErrorHelper(string $method, array $args, int $line, ?Expr $target = null, ?string $branchGuard = null): void
     {
+        // A check whose answer the rule *acts on* is a predicate, not bookkeeping. `MockMethodCallRule` asks
+        // its check once per constant string and writes `if ($error !== null) { $errors[] = $error;
+        // continue; }` -- the `continue` skips the rule's second check for that string, and dropping it
+        // would let the port report twice where PHPStan reports once. So the check returns whether it
+        // reported and the rule's own test becomes a guard over that, which is the original's cardinality by
+        // construction rather than by an argument about when the two checks can both fire.
+        //
+        // Only in check mode: outside it there is no method to return from, and only for an assignment,
+        // which is what leaves every check the corpus emits today in statement position and unchanged.
+        $resultInto = null;
+        if ($this->context->checkMode
+            && $this->context->inlineDepth === 0
+            && $target instanceof Variable
+            && is_string($target->name)
+            && isset($this->context->checksWhoseAnswerIsRead[$target->name])
+        ) {
+            $resultInto = '$' . Emitter::snake($target->name) . '_reported';
+        }
+
         // Remembered so the bookkeeping the original does with the returned error can be dropped: by the time
-        // this returns, whatever the helper decided has already been reported.
-        if ($target instanceof Variable && is_string($target->name)) {
+        // this returns, whatever the helper decided has already been reported. Not for a check carrying its
+        // answer back -- there the name is a value the rule reads, and dropping its reads drops the control
+        // flow with them.
+        if ($resultInto === null && $target instanceof Variable && is_string($target->name)) {
             $this->context->reportedErrors[$target->name] = true;
         }
 
@@ -5731,6 +5992,8 @@ final readonly class Translator
         }
 
         $checkStart = $this->openCheck($line);
+        $savedInCheckBody = $this->context->inCheckBody;
+        $this->context->inCheckBody = $checkStart !== null;
 
         // A branch delegating its whole case: the condition that says which case this is becomes the check's
         // first guard. Pushed after `openCheck` so it lands inside the check method rather than in the rule
@@ -5899,13 +6162,19 @@ final readonly class Translator
         $this->enterInline($method, 'inlining', $line);
 
         try {
-            foreach ($helper->stmts ?? [] as $statement) {
+            $statements = array_values($helper->stmts ?? []);
+            foreach ($statements as $index => $statement) {
+                // Everything after this statement is "no finding", so this statement is the helper's answer.
+                $rest = array_slice($statements, $index + 1);
+                $this->context->atHelperTail = ($rest !== [] || $index === count($statements) - 1) && array_all($rest, fn (Stmt $later): bool => $this->isReturnNull([$later]) || $this->isReturnEmptyArray([$later]));
                 $this->translateStatement($statement);
             }
 
+            $this->context->atHelperTail = false;
+
             // The caller's locals, not the helper's: the parameters a check method needs are the ones the
             // rule had bound before it asked, and `$this->context->locals` here is the helper's own scope.
-            $this->finishCheck($checkStart, $method, $savedLocals);
+            $this->finishCheck($checkStart, $method, $savedLocals, $resultInto);
 
             // Whatever this helper took has now been emitted, or handed to the rule's trailing report. A rule
             // that asks several helpers in one pass is free to take a different message from the next one.
@@ -5924,6 +6193,20 @@ final readonly class Translator
             $this->context->arrayConstants = $savedArrayConstants;
             $this->context->currentClass = $savedClass;
             $this->context->useMap = $savedUses;
+            $this->context->inCheckBody = $savedInCheckBody;
+        }
+
+        // Bound after the scope is restored, because this name belongs to the *rule* rather than to the
+        // helper that was just inlined. `check-result` is a boolean the emitted check handed back, and the
+        // only questions the vocabulary answers about it are the ones the rule asks: whether the check
+        // reported, and whether it did not.
+        if ($resultInto !== null && $target instanceof Variable && is_string($target->name)) {
+            $this->context->locals[$target->name] = [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'check-result',
+                'php' => $resultInto,
+                'local' => true,
+            ];
         }
     }
 
@@ -7545,7 +7828,7 @@ final readonly class Translator
             return $this->context->backend->call('arg_count', [$this->operand($subject)]);
         }
 
-        if (! in_array($subject['kind'], ['found-nodes', 'method-members', 'param-decls', 'property-members', 'config-list', 'list'], true)) {
+        if (! in_array($subject['kind'], ['found-nodes', 'method-members', 'param-decls', 'property-members', 'config-list', 'list', 'constant-strings'], true)) {
             throw new Refusal("count() of a {$subject['kind']} compared numerically", $line);
         }
 
@@ -9509,6 +9792,15 @@ final readonly class Translator
         }
 
         $item = $this->resolve($value, $line);
+
+        // Appending what a check handed back is bookkeeping the original needs and the plugin does not: the
+        // check reported before it answered, so the finding is already out. Dropped rather than appended,
+        // which also keeps the accumulator from being declared -- an emitted `$errors = []` that nothing
+        // reads is the sort of dead line the snapshots exist to notice.
+        if ($item['kind'] === 'check-result') {
+            return;
+        }
+
         // A class name renders as a PHP string, so a list of them is as well defined as a list of nodes. The
         // restriction below is about having a rendering for the item, not about what a list may hold.
         if (! in_array($item['kind'], ['expr', 'found-node', 'method-decl', 'class-name', 'bytes'], true)) {
@@ -10628,6 +10920,89 @@ final readonly class Translator
         }
 
         return $parts === [] ? null : new InterpolatedString($parts, $expr->getAttributes());
+    }
+
+    /**
+     * `array_filter(<a name list>, fn ($n) => $n !== A::class && ...)`, or null when it is another filter.
+     *
+     * @param array<Arg> $args
+     * @return Descriptor|null
+     */
+    private function namesWithoutTheExcluded(array $args, int $line): ?array
+    {
+        $closure = $args[1]->value;
+        if (! $closure instanceof ArrowFunction || count($closure->params) !== 1) {
+            return null;
+        }
+
+        $parameter = $closure->params[0]->var;
+        if (! $parameter instanceof Variable || ! is_string($parameter->name)) {
+            return null;
+        }
+
+        $excluded = $this->excludedNames($closure->expr, $parameter->name, $line);
+        if ($excluded === null) {
+            return null;
+        }
+
+        $of = $this->resolve($args[0]->value, $line);
+        if (! in_array($of['kind'], ['class-names', 'list', 'sole-class'], true)) {
+            return null;
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a name list with exclusions, which only the PHP target carries', $line);
+        }
+
+        // `sole-class` through its list rendering, for the reason the `in_array` branch records: the classes
+        // a type names is a list, and the single-class reduction beside it answers null for the intersection
+        // this filter exists to take apart.
+        return [
+            'rust' => self::PHP_ONLY,
+            'kind' => 'class-names',
+            'php' => $this->context->backend->call('names_except', [
+                $of['kind'] === 'sole-class' ? $this->handlePart($of, 'listPhp', $line) : $this->operand($of),
+                $this->byteSliceList($excluded),
+            ]),
+        ];
+    }
+
+    /**
+     * The literals a `!==` conjunction on one parameter rules out, or null when the body is anything else.
+     *
+     * Recursive over `&&` so a filter excluding three names reads the same as one excluding two, and strict
+     * about the shape: each operand has to compare *this* parameter against a name literal. Anything else --
+     * a call, a loose comparison, a comparison of something else -- means the filter asks a question this has
+     * no reading for, and returning null lets the refusal name the filter rather than a wrong answer.
+     *
+     * @return list<string>|null
+     */
+    private function excludedNames(Expr $body, string $parameter, int $line): ?array
+    {
+        if ($body instanceof BooleanAnd) {
+            $left = $this->excludedNames($body->left, $parameter, $line);
+            $right = $this->excludedNames($body->right, $parameter, $line);
+
+            return $left === null || $right === null ? null : [...$left, ...$right];
+        }
+
+        if (! $body instanceof NotIdentical) {
+            return null;
+        }
+
+        foreach ([[$body->left, $body->right], [$body->right, $body->left]] as [$subject, $against]) {
+            if (! $subject instanceof Variable || $subject->name !== $parameter) {
+                continue;
+            }
+
+            try {
+                return [$this->rawStringLiteral($against, $line)];
+            } catch (Refusal) {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     /** Returns a Rust expression that is true exactly when the PHP predicate is true. */
@@ -12450,7 +12825,11 @@ final readonly class Translator
 
         // A declaration's parameter list is a plain PHP list, so its length is its length — any number is a
         // meaningful comparison, unlike the sole-receiver question below.
-        if (in_array($subject['kind'], ['param-decls', 'array-items', 'list'], true)) {
+        // `constant-strings` beside them: the literal strings an inferred type holds are a plain PHP list of
+        // them, and `MockMethodCallRule` asks `count(...) === 0` to mean "the argument is not a literal".
+        // `class-names` the same way: the classes a type names, less whatever the rule filtered out, is a plain
+        // PHP list, and `MockMethodCallRule` asks `count(...) === 0` to mean "nothing survived the filter".
+        if (in_array($subject['kind'], ['param-decls', 'array-items', 'list', 'constant-strings', 'class-names'], true)) {
             return 'count(' . $this->operand($subject) . ') === ' . $this->intLiteral($right, $line);
         }
 
@@ -14747,6 +15126,36 @@ final readonly class Translator
             return ['rust' => 'node', 'kind' => 'hook-node', 'key' => '$node', 'php' => '$node'];
         }
 
+        // `$scope->getMethodReflection(<a type>, <a name>)` — whether any class the type names has that
+        // method. Reduced to the only thing the rule asking it reads, which is whether the answer is null:
+        // the helper hands the *name* back rather than a bool, so the `!== null` at the call site stays the
+        // test the original wrote instead of a negation this had to invent.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getMethodReflection'
+            && $expr->var instanceof Variable
+            && is_string($expr->var->name)
+            && ($expr->var->name === 'scope'
+                || ($this->context->locals[$expr->var->name]['kind'] ?? null) === 'scope')
+            && count($expr->getArgs()) === 2
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a method lookup on a type, which only the PHP target carries', $line);
+            }
+
+            $type = $this->resolve($expr->getArgs()[0]->value, $line);
+            $method = $this->resolve($expr->getArgs()[1]->value, $line);
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'bytes',
+                'php' => $this->context->backend->call('method_on_type', [
+                    '$context',
+                    $this->operand($type),
+                    $this->operand($method),
+                ]),
+            ];
+        }
+
         // `$node->getRightScope()` on a virtual boolean node — the scope after the left operand has been
         // evaluated and assumed truthy, which is what `BooleanAndHandler` constructs it with. Bound to the
         // *ordinary* scope, and that is a measured equivalence rather than a simplification: PHPStan stores
@@ -14884,6 +15293,21 @@ final readonly class Translator
             $folded = $this->caseFoldedNameList($expr->getArgs(), $line);
             if ($folded !== null) {
                 return $folded;
+            }
+        }
+
+        // `array_filter(<a name list>, fn ($n) => $n !== A::class && $n !== B::class)` — the list without the
+        // names the closure rules out. Only that shape: a filter whose body is anything but a conjunction of
+        // `!==` comparisons against literals on the closure's own parameter is a different question, and
+        // answering it here would be inventing one.
+        if ($expr instanceof FuncCall
+            && $expr->name instanceof Name
+            && $expr->name->toString() === 'array_filter'
+            && count($expr->getArgs()) === 2
+        ) {
+            $without = $this->namesWithoutTheExcluded($expr->getArgs(), $line);
+            if ($without !== null) {
+                return $without;
             }
         }
 

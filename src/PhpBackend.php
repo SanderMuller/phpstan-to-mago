@@ -75,7 +75,12 @@ final class PhpBackend implements Backend
             case 'append':
                 return "{$pad}\${$this->name($a['target'])}[] = {$this->checked($a['value'])};\n";
             case 'check-call':
-                return "{$pad}\$this->{$a['name']}({$a['arguments']});\n";
+                // `into` is set for a check whose answer the rule reads, which is what lets the rule's own
+                // `if ($error !== null) { .. continue; }` become a guard over the check rather than being
+                // dropped as bookkeeping.
+                $into = ($a['into'] ?? '') === '' ? '' : $a['into'] . ' = ';
+
+                return "{$pad}{$into}\$this->{$a['name']}({$a['arguments']});\n";
             case 'pass-call':
                 // A runtime pass that decides *and* reports, so there is no message here to render. The
                 // call arrives already written, because only the transpiler knows what the rule handed it.

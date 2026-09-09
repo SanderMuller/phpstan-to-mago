@@ -72,6 +72,32 @@ final class Text
     }
 
     /**
+     * A list of names with some removed, comparing the way a name comparison here always does.
+     *
+     * `array_filter($names, fn ($n) => $n !== A::class && $n !== B::class)` -- what a rule writes to name the
+     * *other* classes an intersection holds. `MockMethodCallRule` uses it to say which class a mocked method
+     * was missing from, having established that the type is a mock.
+     *
+     * Case-insensitively and backslash-tolerantly, for the reason {@see namesContain()} carries: the list
+     * comes from metadata, which lowercases, and the names removed are written in the rule.
+     *
+     * @param list<string> $names
+     * @param list<string> $removed
+     * @return list<string>
+     */
+    public static function namesExcept(array $names, array $removed): array
+    {
+        $kept = [];
+        foreach ($names as $name) {
+            if (! self::namesContain($removed, $name)) {
+                $kept[] = $name;
+            }
+        }
+
+        return $kept;
+    }
+
+    /**
      * Every name in a list, folded to lower case.
      *
      * A rule folds a name list before a membership test, which {@see namesContain()} would answer without the

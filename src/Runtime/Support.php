@@ -182,6 +182,16 @@ final class Support
     }
 
     /**
+     * The name of a method an inferred type declares or inherits, or null.
+     *
+     * {@see Reflect::methodOnType()}
+     */
+    public static function methodOnType(NodeAnalysisContext $context, ?Type $type, ?string $method): ?string
+    {
+        return Reflect::methodOnType($context, $type, $method);
+    }
+
+    /**
      * Whether a named class declares or inherits a method, which is `ClassReflection::hasMethod()`.
      *
      * `getDeclaringMethod()` answers for the whole hierarchy, which is what PHPStan's question means — a class
@@ -391,6 +401,18 @@ final class Support
     public static function namesContain(array $names, ?string $name): bool
     {
         return Text::namesContain($names, $name);
+    }
+
+    /**
+     * A list of names with some removed. {@see Text::namesExcept()}
+     *
+     * @param list<string> $names
+     * @param list<string> $removed
+     * @return list<string>
+     */
+    public static function namesExcept(array $names, array $removed): array
+    {
+        return Text::namesExcept($names, $removed);
     }
 
     /**

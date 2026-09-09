@@ -10,6 +10,7 @@ use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\Metadata\MetadataFlags;
 use Mago\Sdk\Analyzer\Metadata\ParameterMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
+use Mago\Sdk\Analyzer\Type;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
 
@@ -332,6 +333,32 @@ final class Reflect
      * grandparent declares the constructor, and the protected-member one skips an override of a method a
      * grandparent declares — and both agree with the original on the pair.
      */
+    /**
+     * The name of a method an inferred *type* declares or inherits, or null when no class it names has one.
+     *
+     * `$scope->getMethodReflection($type, $method)` in PHPStan's terms, reduced to the only thing the rule
+     * asking it reads: whether the answer is null. The name is handed back rather than a bool so that the
+     * null test at the call site is the null test the original wrote, instead of a negation this had to
+     * invent.
+     *
+     * Every class the type names is asked, which is what a reflection lookup on an intersection does --
+     * `MockObject&Foo` has `Foo`'s methods. A type naming no object answers null, and so does a null type.
+     */
+    public static function methodOnType(NodeAnalysisContext $context, ?Type $type, ?string $method): ?string
+    {
+        if ($method === null) {
+            return null;
+        }
+
+        foreach (Types::objectClasses($type) as $class) {
+            if (self::methodExists($context, $class, $method)) {
+                return $method;
+            }
+        }
+
+        return null;
+    }
+
     public static function methodExists(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
         if ($class === null || $method === null || $class === '' || $method === '') {
