@@ -20021,3 +20021,108 @@ resolution is not established and is the thing to measure before building.
 
 Recorded rather than started, because a five-part port whose first primitive under-reports in the quiet
 direction is exactly the shape this log has reverted nine times.
+
+### Measured: the inheritance gap does not exist, so the family's foundation is sound
+
+The section above named the question that decides whether an annotation-tag reader can be built on
+`Support::docblockText()`: `getResolvedPhpDoc()` resolves, and `docblockText()` returns one declaration's own
+docblock. Answered by running the real rules over a fixture rather than by reading the resolver, because what
+a port has to match is the observable behaviour.
+
+| line | subject | tag written on | reports |
+|--:|:--|:--|:--|
+| 15 | `ParentCase`, abstract | itself | yes — control |
+| 20 | `InheritsFromParent extends ParentCase` | its parent | **no** |
+| 30 | `OwnAnnotation` | itself | yes — control |
+| 40 | `ParentWithCovers`, abstract | itself | yes — control |
+| 45 | `InheritsMethodCovers extends ParentWithCovers` | its parent | **no** |
+| 56 | `OwnMethodCovers::test_own` | itself | yes — control |
+
+**An arbitrary annotation tag is reported only on the declaration that writes it**, for both the class rule
+and the method rule, each negative row beside a control that fires. So `docblockText()` is equivalent to what
+these five rules need, and the silent-narrowing risk the previous section flagged is not there.
+
+Pinned as `AnnotationTagsAreNotInheritedTest` rather than recorded as a figure, because it is a fact about an
+upstream package and this repository keeps a census precisely because those move. A release that starts
+resolving inherited tags turns the foundation from equivalent to narrow without any local change, and the
+negative rows are what would say so. Mutation-checked by putting the parent's tag on the child, which is what
+inheritance would look like: 2 of 3 fail.
+
+Every target names something nothing declares, and that is the fixture rather than carelessness — the rule
+reports an *invalid* target, so a valid one would leave each row silent for a second reason and the pairs
+would stop discriminating.
+
+#### Two instrument defects, and one of them is the reason to distrust a silent control
+
+- **A neon included twice made PHPStan report nothing at all.** The package's rules arrive through
+  `extension-installer`, so naming its neon in the test config as well produced a warning and a completely
+  empty result. **That empty result reads exactly like "tags are not inherited"** — the answer being sought.
+  It was caught only because the control row was silent too, which is the one thing a zero cannot explain
+  away. A control that must fire is what separates "measured no" from "never looked", and this is the second
+  time in this session that a green-looking silence was the instrument rather than the subject.
+- **Writing about a tag writes the tag.** An at-sign followed by `covers` at the start of a docblock line is
+  parsed by the package under test. It happened three times: in the fixture's prose, in the test's own
+  docblock, and then in the sentence added to warn about it.
+
+### The port design, read out of the precedent rather than invented — and the one gap left
+
+`ClassCoversExistsRule` was surveyed, and the first blocker is `->getResolvedPhpDoc()` at line 57. Reading how
+this repository already ports the *other* annotation helper settles most of the design and leaves one gap.
+
+**The precedent is `kind: 'reports'`, and it exists for this exact package.**
+`Vocabulary::COLLABORATOR_CALLS` maps `PHPStan\Rules\PHPUnit\AnnotationHelper::processDocComment` to
+`PhpUnitAnnotations::report`, documented as the one entry that is not an answer: the collaborator "decides
+*and* builds the findings, so the pass reports for itself, at the node the rule fired for, under the
+identifier read out of the collaborator". `CoversHelper::processCovers()` is the same shape — sixty lines
+that end in `RuleErrorBuilder` calls under four identifiers.
+
+**And `Runtime\PhpUnitAnnotations` is further along than the sizing said.** It already reproduces the upstream
+helper literally, reads docblocks through `Support::docblockText()`, and its `WITH_PARAMS` list already
+contains `covers`, `coversDefaultClass` and `dataProvider` — three of the tags this family needs. It also
+carries two measured facts a new sibling would otherwise have to rediscover: an ordinary block comment is not
+a docblock (different trivia kinds, silent on both engines), and a finding with no `->line()` lands on the
+declaration rather than on the annotation.
+
+So the class-level checks map as *questions*, which the `COLLABORATOR_CALLS` docblock names as the preferred
+choice over mapping a collaborator:
+
+| the rule asks | maps to |
+|:--|:--|
+| `count($coversDefaultClasses) >= 2` | a tag-count question, compared numerically — a shape the vocabulary has |
+| `array_shift(..)` then `(string) $tag->value` | the first tag's value, a string question |
+| `$this->reflectionProvider->hasClass($className)` | already mapped |
+| `$this->coversHelper->processCovers(..)` | a `reports` helper, the `processDocComment` shape |
+
+**The gap is how the `reports` helper is reached.** `processDocComment` is *returned* from `processNode`
+directly. `processCovers` is called inside `foreach ($classCovers as $covers)` and merged into an accumulator
+with `array_merge`. A `reports` helper can loop internally — `PhpUnitAnnotations::report` already reports for
+every bad annotation in one docblock — so the emitted shape wants the whole `foreach` to collapse into one
+call. Whether the transpiler can recognise *that* is the open question, and it is one question rather than the
+five-part vocabulary extension the previous section implied: no tuple destructuring, no `array_shift` and no
+list-local arithmetic are needed once the class-level checks map as questions.
+
+#### Target picked, and the alternative ruled out by reading it
+
+`ClassMethodCoversExistsRule` looked like the smaller of the pair and is larger: `array_map` with a closure
+over the class tags, `fileTypeMapper->getResolvedPhpDoc()` with five arguments including
+`$scope->isInTrait() ? $scope->getTraitReflection()->getName() : null`, `in_array` against that derived list,
+two tuple destructurings and an `array_shift` behind a ternary. `ClassCoversExistsRule` is the first target.
+
+Four pieces, and the count is the point — it is a unit, not a step, because a runtime helper no emitted rule
+calls is what this log has reverted nine times:
+
+1. A docblock-tag question pair in the runtime: how many tags of a name a declaration carries, and the first
+   one's value. `Runtime\PhpUnitAnnotations` already reads docblocks and already lists `covers` and
+   `coversDefaultClass`, so this is a sibling rather than a new mechanism.
+2. `CoversHelper::getCoverAnnotations()` recognised such that the tuple never materialises — the two
+   class-level checks map as questions against the declaration and the destructuring statement is stepped
+   over. Without this the port needs tuple destructuring, `array_shift` and list-local arithmetic, none of
+   which the vocabulary has.
+3. `CoversHelper::processCovers()` as a `reports` helper covering every `@covers` tag on the declaration.
+4. A fold recogniser for `foreach ($tags as $t) { $errors = array_merge($errors, <reports call>); }`. Two
+   `reports` call sites exist — a bare `return` and an assignment — and this accumulate-inside-a-loop is a
+   third. {@see Translator::takeAncestorSuffixFold()} is the precedent for collapsing a loop whose work moves
+   elsewhere, and collapsing one has to be proven by the fires gate rather than by reading, because the
+   failure mode is reporting once where the original reports per tag.
+
+Not started, deliberately. Everything above is read or measured; nothing of the build is in the tree.

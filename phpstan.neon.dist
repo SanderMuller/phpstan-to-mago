@@ -45,6 +45,10 @@ parameters:
         # Three classes and a probe over them. One extends a class nothing declares, and being
         # unresolvable is the whole fixture: it is what makes the *cannot tell* state observable.
         - tests/Fixtures/hierarchy
+        # Six classes carrying deliberately invalid `covers` targets. Naming something nothing declares is
+        # the fixture: the rule under test reports an *invalid* target, so a valid one would leave every row
+        # silent for a second reason and the pairs would not discriminate.
+        - tests/Fixtures/phpdoc-inheritance
         # Every position PHP writes `&` in, each beside a by-value control. A bare by-reference parameter
         # carries no native type on purpose -- that pair is the shape being measured -- so typing it to reach
         # 100% param coverage would delete the row. Same argument as the inferred-type fixtures above.
@@ -137,6 +141,7 @@ parameters:
                 - tests/Support/run-render-census.php
                 - tests/Support/HierarchyKnowledge.php
                 - tests/Support/ReferenceKnowledge.php
+                - tests/Unit/AnnotationTagsAreNotInheritedTest.php
                 - tests/Support/FiresGate.php
                 # And the divergence batch, which boots both engines once over every case for the same
                 # reason: what two engines say about code is a property of running them.
