@@ -20168,3 +20168,58 @@ The example pair is written and the target is pinned, so whichever way the decis
 exists: `tests/Fixtures/examples/ClassCoversExistsRule/{Bad,Good}.php`, with real PHPStan reporting
 `phpunit.covers` on `Bad.php:14` and nothing on `Good.php`. The finding lands on the class declaration rather
 than on the annotation, which is the fact `Runtime\PhpUnitAnnotations` already records for its sibling.
+
+### Superseded: the identifiers *are* readable, and the principle holds
+
+The section above concludes that the stated principle *"never hold an identifier in a table"* **cannot be
+honoured** for `ClassCoversExistsRule`, because `CoversHelper:121` builds its identifier with `sprintf`. That
+conclusion is wrong. Marked here rather than edited away, because the reason it was wrong is the reusable part.
+
+    ->identifier(sprintf('phpunit.covers%s', $isMethod ? 'Method' : ''));
+
+The format string is a literal and **both ternary arms are literals**. So the two identifiers this site can
+produce — `phpunit.covers` and `phpunit.coversMethod` — are fully derivable from the source, and so are the
+other three. Nothing needs to go in a table. I saw `sprintf` and inferred "computed, therefore unreadable"
+without reading its arguments, which is the same tier error a peer session made and corrected in the same
+exchange: `Variables/UnsetRule` picks between two literals with a ternary and their classifier had filed it as
+unreachable for containing `sprintf(`.
+
+**A wrapper is not a provenance.** `sprintf` over literal arguments is source-visible; the thing that makes an
+identifier unreadable is where its *material* comes from, not the call that assembles it.
+
+### What the peer's census does to the design, measured on their side
+
+844 `->identifier()` call sites across phpstan-src `src/Rules`, their figures at their checkout:
+
+| tier | sites | share |
+|:--|--:|--:|
+| literal string | 743 | 88.0% |
+| computed from source-visible material | 86 | 10.2% |
+| passed in as a parameter | 3 | 0.4% |
+| originates outside the analysed source | 11 | 1.3% |
+
+Two things follow, and neither was available from this repository:
+
+- **Read-the-identifier-from-source is a mechanism with a measured ceiling, not a principle with one
+  exception.** 88% today, 98.2% if the source-visible tier is modelled, and 1.3% never — ten
+  `$restrictedUsage->identifier` sites plus one `$errors[0]->getIdentifier()`, where the value is chosen by a
+  third-party extension at analysis time. That last tier is the same provenance class as this repository's
+  `%deprecationRulesInstalled%` row: a fact about the consumer's installation, which no table could carry
+  either.
+- **The shape blocking the covers pair is the commonest one in the whole computed tier** — a format string
+  plus a ternary on a boolean computed in the same body. `ContinueBreakInLoopRule`,
+  `ConstantLooseComparisonRule`, `StrictComparisonOfDifferentTypesRule`, the six `*ConstantConditionRule`s and
+  `AccessPropertiesCheck` all write it. So modelling one computed form buys far more than two rules.
+
+### The corrected fifth piece, which is smaller than the wrong one
+
+`reportedIdentifierIn()` returns one identifier and refuses on any other count. It becomes: the **set** of
+identifiers a collaborator can report under, derived from literals, from `sprintf` whose arguments are
+literals, and from ternaries over literals — refusing only where the material is genuinely not in the source.
+
+The runtime helper chooses per finding, because it reproduces the collaborator's branches anyway. And the set
+the transpiler read from source is **asserted against the identifiers the runtime class declares**, which
+keeps the reason the principle was written for: a drift guard rather than a table, so an upstream identifier
+change arrives as a failure rather than as a plugin reporting under a name the package no longer uses.
+
+That is one mechanism change with a measured constituency, replacing "weaken a stated principle for one rule".
