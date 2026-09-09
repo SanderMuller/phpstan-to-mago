@@ -15816,3 +15816,48 @@ obstacles**, stated as a lower bound because that is all a single build ever est
 Unexercised vocabulary: no rule emits from the combinator, so it goes out under the condition the earlier
 reverts share. `git diff` against HEAD is empty. Recorded precisely enough to rebuild — sixty lines, and the
 ordering constraint is the part that would otherwise be rediscovered by breaking two targets again.
+
+### Two obstacles cleared on one rule, a third localised, all reverted
+
+Continuing on `PreferAutowireAttributeOverConfigParamRule`, this time trying to clear its whole chain in one
+turn rather than one obstacle per turn — because work only survives when the rule emits, and one-per-turn
+throws it away.
+
+**Cleared, and both work:**
+
+- **`array_any` over a node list** — ~60 lines, with the ordering constraint from the entry above (string form
+  first; the node form only when it raises).
+- **The receiver-chain walk** — `Calls::chainedCallNamed($context, $subject, 'set')` walks child 0 outwards
+  while the node is a method call, plus a `receiverChainSearchHelper()` recogniser matching the three-statement
+  `$cursor = $param; while ($cursor instanceof MethodCall) { … } return null;` shape. The primitive went in
+  `Calls` rather than `Tree`, because `Tree` holds what the others build on and must not call out to them.
+
+**Third obstacle, localised by instrumenting rather than guessing.** The refusal is *"no argument list on a
+Closure node (line 148)"*, at the inner helper's `$setMethodCall->getArgs()`. Two `fwrite(STDERR)` probes in
+the transpiler establish that my side is correct:
+
+    DBG chain subject kind=expr php=$method_call cursor=currentMethodCall sought=set
+    DBG cursor bound to $chain_0 kind=expr inner=PhpParser\Node\Expr\MethodCall
+
+So the cursor **is** bound to the chain result at the call site, and the binding is lost inside
+`bindParameters()` — the inner helper's `MethodCall $setMethodCall` ends up as the hook node, which for this
+rule is a `Closure`. That is a method every inlined helper in the corpus goes through, so changing how it
+binds a node-typed parameter is a wide-blast-radius edit and the wrong thing to attempt speculatively at the
+end of a long chain.
+
+Two probes, one answer — against four fixture edits that answered nothing two entries ago. The difference is
+that a probe inside the transpiler reports *its own state*, where changing an input only re-asks the same
+question.
+
+**Reverted**, all four files, `git diff` against HEAD empty. Nothing here is exercised: no rule emits from
+either capability.
+
+#### What the turn establishes
+
+`PreferAutowireAttributeOverConfigParamRule` has **at least four** obstacles, two now cleared-and-recorded and
+the third localised to a named method. Stated as a lower bound, which is all a build establishes — and this
+rule has now moved the bound twice, from "one" to "at least three" to "at least four".
+
+The strategy change did not pay off either. Clearing a whole chain in one turn was the right idea against
+throwing work away, but it does not shorten the chain: I cleared two obstacles instead of one and still
+reverted everything, because the survival condition is the rule emitting and nothing else.
