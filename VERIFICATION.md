@@ -19045,3 +19045,58 @@ returned *wrong* answers to questions they were asked. **The byte diff returns a
 really are identical — to a question nobody asked it.** A green diff on a runtime change is not a false
 negative; it is a true statement about the wrong artefact, which is the harder kind to notice because there
 is nothing wrong with it.
+
+### A denominator for runtime coverage, and the instrument that produced it was one rule short
+
+A peer's follow-up to the 3-of-5 mutation was the right one: that figure rests on one helper, and *"partial
+at an unmeasured rate"* is a different situation at 90% than at 20%. Their instrument was line coverage over
+`src/Runtime` while the fires gate runs — one execution instead of one mutation per helper, and `Support`
+alone has 220 public statics.
+
+**Not runnable here: neither xdebug nor pcov is loaded**, and installing a PHP extension is not a change to
+make unprompted. So the question was answered by the cheaper route whose zeros are conclusive in the same
+direction — which runtime helpers does any emitted plugin *name* at all:
+
+    478  public static helpers across src/Runtime
+    413  named by at least one of the 193 emitted plugins
+     65  named by none
+
+**A lower bound, and the reason is worth stating:** the match is by bare method name over the concatenated
+plugins, so a helper sharing a name with a called facade method is marked called when it may not be. It
+over-counts reachability, so the 65 can only grow.
+
+It is also a weaker signal than the mutation, exactly as the peer said of their own proposal: naming a helper
+is not reaching the branch inside it. What it finds is the zeros, and a zero is conclusive.
+
+#### And the measurement caught a flaw in the instrument that produced it
+
+Sixteen of the 220 `Support::` helpers looked unreferenced, including `isUppercase` — which I had *seen* in
+Rust output earlier in the session. Chasing that found the real thing:
+
+    REFUSE  UppercaseConstantRule: two rules would be written to UppercaseConstantRule.php:
+            vendor/symplify/phpstan-rules/src/Rules/UppercaseConstantRule.php, tests/Fixtures/Rules/...
+
+`symplify/phpstan-rules` and `tests/Fixtures/Rules` both hold a rule of that class name, and both would emit
+to one file. **The tool refuses, loudly, naming both sources** — *refuse rather than approximate* applied to
+an output-filename collision, and it is working exactly as designed.
+
+**The flaw is mine.** Every emit-all run this session passed both paths on one command line, so symplify's
+`UppercaseConstantRule` never emitted into either side of any byte diff I took. The diff stayed *valid* —
+both trees equally short — and the per-target counts matched each other, so nothing announced it. **A change
+affecting only that rule would have been invisible to every emit-all comparison this session made**, and the
+shared-zero problem is what hid it: two sides agreeing because neither looked.
+
+That also corrects the figure above. `isUppercase` is called by symplify's rule, which emits fine on its own,
+so **15 of 220** is the honest count and one of the sixteen was an artefact of the instrument measuring it.
+
+Three things to carry:
+
+- **Pass colliding paths separately, or emit each corpus into its own tree.** The counts matching is not
+  evidence when both sides are produced by the same flawed invocation — this log's own *agreement on zero is
+  not evidence*, arriving in the instrument rather than in a result.
+- **A refusal in the tool can become a blind spot in a harness.** The collision refusal is correct; passing
+  the colliding paths together turned a correct refusal into a missing row in every diff. **A well-behaved
+  component can be misused into silence by the thing measuring it.**
+- The unreferenced-helper measurement is the one that found it, which is the argument for running the cheap
+  screen even when the good instrument is unavailable: it did not answer the question it was built for and
+  found something else.
