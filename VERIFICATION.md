@@ -17820,3 +17820,52 @@ Two things worth carrying:
 - **The needs-at-least list under-reported this one.** It named only the `node.var` navigation, because the
   `$error` assignment's refusal is filtered as an `unknown local $` (`PackageCoverage.php`) — a fourth
   artefact of a stepped-over statement, beside the three already recorded. A needs list is a floor.
+
+### The emit-all diff I trusted was reading two nearly-empty trees
+
+A check that refuses a shape no corpus rule reaches has one pass condition: the corpus must be
+byte-identical. I ran it, got zero, and it was zero for the wrong reason.
+
+`--out` is a destination, not an accumulator. Emitting seven packages one after another into the same
+`--out` leaves only the last one, so the before and after trees each held `tests/Fixtures/Rules` alone. The
+diff was honest about what it compared and what it compared was 55 files.
+
+**The instrument agreed with the hypothesis, which is the case this log already names as the dangerous
+one.** Zero diff was the result I wanted, so nothing about it prompted a second look. And the tell was in the
+output: 55 php files where `CLAUDE.md` records the corpus emitting 138. I read that number, wrote "let me not
+chase this now", and moved on. The deferral is the whole error — a count that disagrees with a committed
+figure by 2.5x is not a loose end, it is the instrument telling you it is not measuring what you think.
+
+What caught it was the census alarm, which transpiles the packages through its own path and does not share
+the bug. Two rules had stopped emitting: **enforced beat careful**, and the guideline about which of the
+rules you rely on are enforced is the one that paid here.
+
+Two things now stand in the way of a repeat:
+
+- **The emit-all runs once per target with every path on one command line**, so no package can overwrite
+  another. It also prints its file counts per target, and the counts are the assertion: a tree with the wrong
+  number in it cannot pass by being equal to another tree with the wrong number in it.
+- **zsh does not word-split an unquoted variable.** The first repaired version passed `$PATHS` and the whole
+  string arrived as one path, emitting zero php files. It was caught in one run *because the count was
+  printed*, which is the argument for printing it rather than for remembering the shell rule.
+
+#### Both false positives were the check reading something that was not a read
+
+Neither was a wrong idea about the defect; both were the instrument's reach.
+
+- **`TraitRequiresInterfaceRule`** walks two lists with one name, `$trait_`. The shadowing logic was already
+  right, but the read check ran on the `foreach-keyed-open` *before* the binding was recorded, and that
+  header carries the name in its `variable` operand — so every legal reopening looked like an escape of
+  itself. Fixed by naming, per statement kind, which operands bind rather than read.
+- **`NoMockOnlyTestRule`** reports the words *"non-mocked property"* and iterates `$property`. The bare-word
+  half of the match — needed because the two Rust targets write a binding with no sigil — hit the English
+  word inside the message literal. Fixed by blanking quoted text before matching.
+
+The second is the more instructive. The first was reading structure wrongly; **the second was reading prose
+as code**, and it can only happen because one statement list serves three targets, so the matcher has to be
+looser than any single target requires. A check that scans rendered text inherits every ambiguity of the
+text, and a message is the one operand written for a human.
+
+Both were found by the corpus, not by the fixture pair. The pair discriminates the defect from its control
+and says nothing about how far the check overreaches — that is what 192 emitted plugins are for, and it is
+why "refuses none of the corpus" and "refuses the probe" are two claims that need two instruments.

@@ -288,6 +288,8 @@ final class Transpiler
             $this->translateOrCollect($stmt);
         }
 
+        $this->refuseStatementsOutsideTheirLoop();
+
         $rust = match (self::$target) {
             'php' => $this->emitter->emitPhp($className, $hook),
             'linter' => $this->emitter->emitLint($className, $hook),
@@ -1805,6 +1807,180 @@ final class Transpiler
      * hook table's `kind` already names the Mago node kind the SDK's `NodeKind` uses.
      * @param array<string, string>|array<string, null>|array<string, bool> $hook
      */
+
+    /**
+     * Refuse a statement that reads a loop variable after that loop has closed.
+     *
+     * A guard chain and one report is the emitted shape everything here assumes, and a rule whose report is
+     * the *rule's* trailing one while its guards are inlined inside a `foreach` breaks it in two ways at
+     * once: {@see Translator} emits the bail for a helper's trailing `return null` whenever `loopDepth > 0`
+     * -- right for a `return []` that really is an exit -- and the report then lands after `block-close`,
+     * reading the name the loop bound. `MockMethodCallRule` and a hand-written probe both produce it.
+     *
+     * Neither half announces itself. The file parses, every `Support::` helper it calls exists, no Rust
+     * leaks into it, and the escaped read is a bare snake_case identifier, which is well-formed PHP -- so
+     * the plugin loads, then reports under an undefined name where the list was empty and not at all where
+     * it was not. That is the reason this is a check rather than a snapshot: no rule in the corpus reaches
+     * the shape, so no snapshot could ever have covered it.
+     *
+     * Measured before it was relied on. Over the 193 plugins the seven packages plus `tests/Fixtures/Rules`
+     * emit, this refuses none; a probe rule written to reach the shape is refused. The corpus figure says
+     * the check narrows nothing, and the probe says it is not silent -- neither claim stands without both.
+     */
+    private function refuseStatementsOutsideTheirLoop(): void
+    {
+        /** @var list<list<string>> one entry per open block, holding the loop names it binds */
+        $blocks = [];
+
+        /** @var array<string, true> names whose binding loop has closed */
+        $escaped = [];
+
+        foreach ($this->context->lines as $statement) {
+            if ($statement->unused) {
+                continue;
+            }
+
+            foreach ($this->readsEscapedName($statement, $escaped, $this->bindsRatherThanReads($statement)) as $name) {
+                throw new Refusal(sprintf(
+                    'a %s statement reads `%s` after the loop that binds it has closed: the guards were '
+                    . 'inlined inside the loop and the report belongs to the rule after it, so the two '
+                    . 'cannot be one shape',
+                    $statement->kind,
+                    $name,
+                ));
+            }
+
+            // A binding shadows an earlier one of the same name, which is how a rule that walks two lists
+            // with one variable name stays legal -- `TraitRequiresInterfaceRule` does exactly that, and
+            // reading its second loop's own binding as an escape of its first was the first false positive
+            // this was measured against. `for-open` destructures and declares its names separately, so it
+            // binds none here: an escape of one of those is outside what this reads.
+            $named = static fn (?string ...$names): array => array_values(
+                array_filter($names, static fn (?string $name): bool => $name !== null && $name !== ''),
+            );
+
+            $bound = match ($statement->kind) {
+                'foreach-open' => $named($statement->args['variable'] ?? null),
+                'foreach-keyed-open' => $named(
+                    $statement->args['key'] ?? null,
+                    $statement->args['variable'] ?? null,
+                ),
+                'if-open', 'for-open' => [],
+                default => null,
+            };
+
+            if ($bound !== null) {
+                foreach ($bound as $name) {
+                    unset($escaped[$name]);
+                }
+
+                $blocks[] = $bound;
+
+                continue;
+            }
+
+            if ($statement->kind !== 'block-close' && $statement->kind !== 'else') {
+                continue;
+            }
+
+            foreach (array_pop($blocks) ?? [] as $name) {
+                $escaped[$name] = true;
+            }
+
+            if ($statement->kind === 'else') {
+                $blocks[] = [];
+            }
+        }
+
+        // A report the translator placed itself is covered by the walk above, wherever it landed. Only where
+        // the emitter still owes one does it append it from the context, and only that one can escape a loop.
+        // {@see TranslationContext::owesATrailingReport()} is the same question {@see Emitter::emitPhp()}
+        // asks before appending, so the two cannot disagree about whether there is a trailing report.
+        //
+        // `UppercaseConstantRule` reports from inside its own `foreach` and its message reads that loop's
+        // binding, which is correct. It was the false positive measured first, and it is also why the gate
+        // is this method rather than "did a `report` statement appear": on the analyzer target the same
+        // in-place report is a `raw` statement carrying the rendered text, so counting kinds missed it and
+        // the rule stopped emitting on two of the three targets while still emitting on the third.
+        if (! $this->context->owesATrailingReport()) {
+            return;
+        }
+
+        // The rule's own trailing report is not in the statement list -- {@see Emitter::reportStatement()}
+        // composes it from the context when the file is rendered -- so the escape that matters most is the
+        // one this walk cannot see. Its operands are the rendered message and the span it anchors on.
+        $trailing = new Stm('report', array_filter([
+            'message' => $this->context->message,
+            'span' => $this->context->reportSpan,
+        ], static fn (?string $operand): bool => $operand !== null));
+
+        foreach ($this->readsEscapedName($trailing, $escaped) as $name) {
+            throw new Refusal(sprintf(
+                'the rule reports after a loop, reading `%s` which only that loop binds: the guards were '
+                . 'inlined inside the loop and the report belongs to the rule after it, so the two cannot '
+                . 'be one shape',
+                $name,
+            ));
+        }
+    }
+
+    /**
+     * The operand keys by which a statement names what it *binds*, rather than what it reads.
+     *
+     * A `foreach` that reopens a name its own earlier loop closed is legal shadowing, and its header carries
+     * that name in `variable` (and `key`) — so reading the header's operands as reads makes every such loop
+     * look like an escape of itself. `TraitRequiresInterfaceRule` walks two lists with one name and was
+     * refused exactly that way, while the shadowing logic below it was already correct: the defect was that
+     * the read check ran on the binding statement before the binding was recorded.
+     *
+     * @return list<string>
+     */
+    private function bindsRatherThanReads(Stm $statement): array
+    {
+        return match ($statement->kind) {
+            'foreach-open' => ['variable'],
+            'foreach-keyed-open' => ['key', 'variable'],
+            default => [],
+        };
+    }
+
+    /**
+     * The escaped loop names a statement's operands read.
+     *
+     * Operands arrive already rendered for the target, so this reads text rather than structure. Both
+     * spellings are matched because one statement list serves every target: PHP writes `$name` and Rust
+     * writes the bare binding, and matching only the sigil would leave the two Rust targets unchecked.
+     *
+     * @param array<string, true> $escaped
+     * @param list<string>        $binding operand keys that name what the statement binds, not what it reads
+     *
+     * @return list<string>
+     */
+    private function readsEscapedName(Stm $statement, array $escaped, array $binding = []): array
+    {
+        if ($escaped === []) {
+            return [];
+        }
+
+        $found = [];
+        foreach (array_diff_key($statement->args, array_flip($binding)) as $operand) {
+            // Quoted text is not a read. The bare-word half of the match below has to be there for the two
+            // Rust targets, where a binding is written without a sigil -- and that is exactly what makes a
+            // message literal dangerous: `NoMockOnlyTestRule` reports the words "non-mocked property" and
+            // iterates `$property`, so matching inside the literal refused a rule whose emitted output is
+            // correct. It was the second false positive measured here, and the more instructive one: the
+            // first came from reading structure wrongly, this one from reading prose as code.
+            $operand = (string) preg_replace('/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/', "''", $operand);
+
+            foreach (array_keys($escaped) as $name) {
+                if (preg_match('/\\b' . preg_quote($name, '/') . '\\b/', $operand) === 1) {
+                    $found[$name] = true;
+                }
+            }
+        }
+
+        return array_keys($found);
+    }
 }
 
 /** Assembles the emitted rules into one plugin module, so the whole output is generated. */
