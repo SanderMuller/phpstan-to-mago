@@ -15921,3 +15921,52 @@ nesting depth, and the inner predicate bound to its own item. Not attempted.
 The scaffold with all six obstacles is saved outside the repository this time, so the next attempt costs a run
 rather than a rebuild. That is the one process change that clearly paid: obstacles 3 through 6 took one cycle
 each, against four fruitless fixture edits for a single obstacle two entries ago.
+
+### Obstacle 7 named a hazard class, and the shipped output is clean of it
+
+Restored the saved scaffold — which cost a run rather than a rebuild, the first time that has been true — and
+went after the nested-combinator defect.
+
+**The collision hypothesis was wrong.** `foreachAsAny()` already names its bound variable `item` at depth 0
+and `item1` deeper, threading the depth itself; my `nodeListCombinator` hard-coded `$item` and could not see
+that counter. Renaming mine to `$element` fixes the shadowing — and the defect survived it:
+
+    static fn ($element): bool => Support::anyOf(Support::findKind($context, Support::argumentValue($element), ['FunctionCall']),
+        static fn ($item): bool => Support::nameEquals(Support::nthExpression($context, $node, 0), '…\\param'))
+
+The shadowing was real and was **not** the cause.
+
+**The cause, located.** `$funcCall->name` rendered as *child 0 of the hook node*. The sibling branch renders
+correctly — `$string->value` → `literalStringValue($context, $item)` — so the difference is the field, not the
+closure. `->name` on a `FunctionCall` resolves through the **hook-kind field table**, whose rows hard-code
+`$node`:
+
+    'FunctionCall' => [ … ]
+    'If'  => ['cond' => [PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']]
+
+That is correct for the hook's own node and wrong for a node the rule *found*. **`KIND_FIELDS`, the table
+beside it, parameterises `{base}` and has no such problem** — the two tables differ in exactly this respect.
+
+#### The generalisation, which is worth more than the fix
+
+Obstacle 4 was the same root at a different site: the assignment path for `->getArgs()` assumed the hook. So
+this is a **class**, not two bugs: *a field read of a found node can silently resolve against the hook node.*
+And it is a silent-narrowing class rather than a refusal class — the plugin emits, loads, and answers about
+the wrong node.
+
+Which makes the shipped output worth auditing, so I did. Over all **147** emitted plugins, looking for a
+`Support::x($context, $node, …)` call inside a loop over found nodes: **5 sites, all
+`Support::viaTraitUsers($context, $node, <message>)` in the report statement**, which takes the hook node
+deliberately — its own docblock says the users of the declaring trait are what it names. **Zero real
+instances.** The hazard exists in the transpiler and no rule currently reaches it, because the rules that
+would refuse first for other reasons.
+
+#### Reverted
+
+`git diff` against HEAD empty; the scaffold with all six obstacles is saved outside the repository. Obstacle 7
+needs the hook-kind field table to take a base like `KIND_FIELDS` does, which is a change to how every field
+on that table renders — byte-affecting across the corpus, verifiable by the three-target diff, and not
+something to start at the end of a long chain.
+
+`PreferAutowireAttributeOverConfigParamRule` stands at **six cleared, one named, unknown remaining** — and the
+count has moved on every observation, which is the whole reason I now state it as a lower bound.
