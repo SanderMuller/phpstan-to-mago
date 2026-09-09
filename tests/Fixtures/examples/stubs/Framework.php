@@ -468,6 +468,12 @@ final class ServicesConfigurator
     {
         return $this;
     }
+
+    /** The call `ServicesExcludedDirectoryMustExistRule` checks against the disk. */
+    public function exclude(array $paths): self
+    {
+        return $this;
+    }
 }
 
 namespace Symfony\Component\EventDispatcher;

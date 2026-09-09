@@ -7,6 +7,7 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 use LogicException;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Syntax\Node;
+use Mago\Sdk\Syntax\NodeKind;
 use Mago\Sdk\Syntax\SourceFile;
 
 /**
@@ -82,6 +83,43 @@ final class Tree
     public static function node(Part|Node|null $subject): ?Node
     {
         return $subject instanceof Part ? $subject->node : $subject;
+    }
+
+    /**
+     * The expression an array element holds, with the element wrappers taken off.
+     *
+     * Three wrappers deep, measured with a probe plugin rather than reasoned about: an `ArrayElement` holds a
+     * `ValueArrayElement` (or a `KeyValueArrayElement`), which holds an `Expression`, which holds the
+     * expression itself. Stopping at any level above the last leaves a node whose own children are wrappers,
+     * and every predicate then answers false -- the port emitted, loaded and reported nothing through two
+     * wrong guesses at the depth. {@see Constants::constantItemValue()} descends the `Expression` for the
+     * same reason.
+     *
+     * The *last* child at each level, so a keyed element answers with its value rather than its key.
+     *
+     * Not the identity, though several helpers make it look like one: `expressionType()` and
+     * `constantStringAt()` descend on their own, so passing either the element itself works. A predicate does
+     * not -- `binaryOperatorIs()` looks for a `BinaryOperator` among its subject's own children.
+     */
+    public static function arrayItemValue(?Part $item): ?Part
+    {
+        $wrappers = [
+            NodeKind::ArrayElement,
+            NodeKind::ValueArrayElement,
+            NodeKind::KeyValueArrayElement,
+            NodeKind::Expression,
+        ];
+
+        while ($item instanceof Part && in_array($item->kind, $wrappers, true)) {
+            $children = $item->children();
+            if ($children === []) {
+                return $item;
+            }
+
+            $item = $children[count($children) - 1];
+        }
+
+        return $item;
     }
 
     /**

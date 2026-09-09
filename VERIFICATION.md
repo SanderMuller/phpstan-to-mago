@@ -15712,3 +15712,60 @@ What is durable: `array-items` → `array-item` with an unwrapping `value` edge 
 verified across all three targets. The `find()` accumulator and the `Concat` predicate are recorded above. The
 remaining unknown is a single question — which guard in that body answers false — and it is answerable by the
 probe I did not build.
+
+### `ServicesExcludedDirectoryMustExistRule` emits and fires — found by the probe I should have built first
+
+The previous entry ends with the rule emitting and reporting nothing after four uninstrumented guesses. The
+probe localised it in **one pass**, and then found two more depths I would not have guessed.
+
+**The probe**: the gate leaves its sandbox on disk, so the loop is a stripped plugin plus `./mago analyze`.
+Insert an unconditional report at successive depths and read where it stops firing.
+
+    after line 77  -> 2 hits
+    after line 81  -> 0 hits        <- the guard between them is the answer
+
+One harness bug worth recording: the sandbox is named per-PID, so `ls -d … | head -1` picked an **older**
+sandbox that still held a probe from a previous cycle, and every variant "fired". `ls -dt … | head -1` fixes
+it — the same `head -1`-chooses-silently defect as the two enums, in my own scaffolding, two entries after I
+wrote the rule against it.
+
+**What it found**, by printing kinds rather than reasoning about them:
+
+    ArrayElement → ValueArrayElement → Expression → Binary
+
+**Three wrappers, not one.** My identity mapping stopped at zero, my first fix stopped at one
+(`ValueArrayElement`), and the probe showed the second — `Expression` — which `Constants::constantItemValue()`
+already descends for exactly this reason. Every predicate answered false because the operator it looks for sat
+two levels below where I handed it.
+
+I would not have reached that by reading: nothing in the PHP source says an array element is three nodes deep
+in mago's tree, and the emitted code looked correct at every step.
+
+#### Verification
+
+- Emit-all, all three targets: php 146 → **147**, analyzer and linter unchanged. `diff -rq` over the php tree
+  names exactly the manifest, the worker and the new plugin — **no existing plugin's bytes moved**, which the
+  `array-item` re-kinding had to be checked against.
+- Fires gate: **4/4**, agreeing with PHPStan on both examples.
+- Suite **1097/1097**, `--group engine` **782/782**.
+- PHPStan **0 errors**, baseline still **13 entries**. `Calls.php` crossed the class-complexity limit when the
+  helper went there, which would have been a *new* baseline entry — the thing this repo watches — so the
+  helper moved to `Runtime\Tree`, which `CLAUDE.md` names as the home for navigation primitives. Two existing
+  Translator figures moved, one up and one **down** (`resolveReflection` 464 → 463, because deleting the
+  `find()` refusal shortened it).
+- Rector 0 changed, Pint clean.
+
+#### Two things I had to decide rather than accept
+
+- **Displaced docblocks, third time this session.** Inserting above a signature took the anchor's docblock
+  again. `git diff --numstat` insisting on `-0` caught it; the two runtime files are purely additive, and the
+  Translator and Vocabulary deletions are the `find()` refusal block and one replaced table line.
+- **A second census change I did not intend.** `NoDuplicateArgsAutowireByTypeRule` lost one deeper
+  `needs-at-least` line, with its first obstacle unchanged and no new entry replacing it. **INFERRED, not
+  traced:** `NamingHelper::isNames()` iterates a literal `['arg', 'args']`, whose items are now `array-item`
+  rather than a generic `expr`, so that path resolves instead of refusing. No correctness risk either way —
+  the rule still refuses and emits nothing — but it is a change to another rule's record and it is recorded as
+  an inference.
+
+Census 132 → **133**, symplify 69 → **70 of 89**, `--status` 122 → **123 of 236**, and all seven README rows
+re-derived mechanically against the census.

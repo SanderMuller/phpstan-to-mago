@@ -1843,6 +1843,23 @@ final class Support
         return Calls::arrayElements($context, $array);
     }
 
+    /** {@see Tree::arrayItemValue()} */
+    public static function arrayItemValue(NodeAnalysisContext $context, ?Part $item): ?Part
+    {
+        return Tree::arrayItemValue($item);
+    }
+
+    /**
+     * Whether the part is a string concatenation.
+     *
+     * Asked of the operator rather than of the node kind: mago has no `Concat` kind, and `Binary` covers every
+     * arithmetic and comparison operator too, so a kind test would answer true for `$a + $b`.
+     */
+    public static function isConcatenation(NodeAnalysisContext $context, Part|Node|null $part): bool
+    {
+        return Operators::binaryOperatorIs($context, $part, '.');
+    }
+
     /** Two written names compared the way PHP compares them: case-insensitively, and null matching nothing. */
     public static function nameIs(?string $written, string $name): bool
     {

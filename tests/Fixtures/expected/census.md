@@ -111,7 +111,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 69 of 89 portable rules the package registers emit, 1 covered by the engine, 19 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 70 of 89 portable rules the package registers emit, 1 covered by the engine, 18 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -179,7 +179,6 @@ REFUSE  NoDuplicateArgAutowireByTypeRule
 REFUSE  NoDuplicateArgsAutowireByTypeRule
         assignment value outside the vocabulary: access path outside the vocabulary: $this->classConstructorTypesResolver->resolveClassConstructorNamesToTypes()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->classConstructorTypesResolver->resolveClassConstructorNamesToTypes()
-        needs-at-least: NamingHelper::isNames() over a expr
 EMIT    NoDynamicNameRule
 EMIT    NoEntityMockingRule
 EMIT    NoEntityOutsideEntityNamespaceRule  (the package registers it nowhere)
@@ -291,9 +290,7 @@ REFUSE  SeeAnnotationToTestRule
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->phpDocResolver->resolve()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->getDeprecatedTag()
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->seePhpDocTagNodesFinder->find()
-REFUSE  ServicesExcludedDirectoryMustExistRule
-        assignment value outside the vocabulary: find() with a closure filter, whose every match the rule then walks — only findFirst() reduces to one question
-        needs-at-least: assignment value outside the vocabulary: find() with a closure filter, whose every match the rule then walks — only findFirst() reduces to one question
+EMIT    ServicesExcludedDirectoryMustExistRule
 EMIT    SingleArgEventDispatchRule
 EMIT    SingleRequiredMethodRule
 EMIT    StringFileAbsolutePathExistsRule  (the package registers it nowhere)

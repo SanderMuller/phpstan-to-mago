@@ -8282,7 +8282,7 @@ final readonly class Translator
      *
      * @return Descriptor
      */
-    private function searchFilteredByAClosure(Expr $closure, string $within, int $line): array
+    private function searchFilteredByAClosure(Expr $closure, string $within, int $line, bool $every = false): array
     {
         if (! $closure instanceof Closure || count($closure->params) !== 1 || $closure->uses !== []) {
             throw new Refusal('a search filter that is not a plain one-parameter closure', $line);
@@ -8360,7 +8360,7 @@ final readonly class Translator
         }
 
         $found = 'Support::findKind($context, ' . $within . ", ['" . implode("', '", $kinds) . "'])";
-        $this->context->lines[] = new Stm('declare-null', ['target' => $slot], $this->context->indent);
+        $this->context->lines[] = new Stm($every ? 'declare-list' : 'declare-null', ['target' => $slot], $this->context->indent);
         $this->context->lines[] = new Stm('foreach-open', ['iterable' => $found, 'variable' => $candidate], $this->context->indent);
         $this->context->indent += 4;
 
@@ -8369,8 +8369,11 @@ final readonly class Translator
         // would have refused on its own filter. The rendering is the same shape either way.
         $this->context->lines[] = new Stm('if-open', ['condition' => $condition], $this->context->indent);
         $this->context->indent += 4;
-        $this->context->lines[] = new Stm('assign', ['target' => $slot, 'value' => '$' . $candidate], $this->context->indent);
-        $this->context->lines[] = new Stm('break', [], $this->context->indent);
+        $this->context->lines[] = new Stm($every ? 'append' : 'assign', ['target' => $slot, 'value' => '$' . $candidate], $this->context->indent);
+        if (! $every) {
+            $this->context->lines[] = new Stm('break', [], $this->context->indent);
+        }
+
         $this->context->indent -= 4;
         $this->context->lines[] = new Stm('block-close', [], $this->context->indent);
         $this->context->indent -= 4;
@@ -8378,12 +8381,12 @@ final readonly class Translator
 
         $descriptor = [
             'rust' => self::PHP_ONLY,
-            'kind' => 'found-node',
+            'kind' => $every ? 'found-nodes' : 'found-node',
             'key' => '$' . $slot,
             'php' => '$' . $slot,
         ];
 
-        if (count($kinds) === 1) {
+        if (count($kinds) === 1 && ! $every) {
             $descriptor['as'] = $kinds[0];
         }
 
@@ -13205,18 +13208,11 @@ final readonly class Translator
                 throw new Refusal('a subtree search, which only the PHP target carries', $line);
             }
 
-            if ($this->memberName($expr->name, $expr->getStartLine()) === 'find') {
-                throw new Refusal(
-                    'find() with a closure filter, whose every match the rule then walks — only findFirst() '
-                    . 'reduces to one question',
-                    $line,
-                );
-            }
-
             return $this->searchFilteredByAClosure(
                 $expr->getArgs()[1]->value,
                 $this->subtreeArgument($expr->getArgs()[0]->value, $line),
                 $line,
+                $this->memberName($expr->name, $expr->getStartLine()) === 'find',
             );
         }
 
@@ -14726,7 +14722,7 @@ final readonly class Translator
         'function-reflection' => ['FunctionNotFoundException', 'Throwable', 'Exception'],
     ];
 
-    private const array PHP_ONLY_PREDICATES = [
+    private const array PHP_ONLY_PREDICATES = ['is_concatenation',
         'is_dir_constant', 'is_literal_string', 'is_class_constant_declaration', 'is_property_declaration',
         'is_instanceof', 'is_expression_statement',
     ];
@@ -14740,7 +14736,7 @@ final readonly class Translator
     private const array EXITING_STATEMENTS = ['guard', 'bail', 'bind-arg', 'bind-adapter'];
 
     /** Node predicates that answer from the node's kind, and so have to look it up. */
-    private const array CONTEXT_PREDICATES = ['is_literal_string', 'is_instanceof', 'is_expression_statement'];
+    private const array CONTEXT_PREDICATES = ['is_concatenation', 'is_literal_string', 'is_instanceof', 'is_expression_statement'];
 
     /**
      * Descriptor kinds an `instanceof` test narrows, so later field reads navigate the tested kind.

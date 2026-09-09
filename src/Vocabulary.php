@@ -523,6 +523,9 @@ final class Vocabulary
         'const-item' => [
             'value' => [self::PHP_ONLY, 'expr', 'Support::constantItemValue($context, {base})'],
         ],
+        'array-item' => [
+            'value' => [self::PHP_ONLY, 'expr', 'Support::arrayItemValue($context, {base})'],
+        ],
         'attr-group' => [
             'attrs' => [self::PHP_ONLY, 'attributes', 'Support::attributesOf({base})'],
         ],
@@ -609,7 +612,8 @@ final class Vocabulary
         // match a written attribute name as it stands.
         'attribute-names' => ['iter' => self::PHP_ONLY, 'item' => 'bytes', 'phpIter' => '{rust}'],
         // The elements of an array literal, one wrapped element each.
-        'array-items' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => '{rust}'],
+        'array-items' => ['iter' => self::PHP_ONLY, 'item' => 'array-item', 'phpIter' => '{rust}'],
+        'array-item' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => '{rust}'],
         // Every literal string a type names, which is PHPStan's `getConstantStrings()`. A union of them names
         // more than one, and the rules that walk it act per element — so this is the list rather than the
         // single reduction `constantStringOf()` gives. The item stays a *type* rather than becoming text,
@@ -1291,6 +1295,7 @@ final class Vocabulary
         // item's own kind — {@see Runtime\Statements} carries the measurement.
         Expression::class => 'is_expression_statement',
         Instanceof_::class => 'is_instanceof',
+        Concat::class => 'is_concatenation',
         Dir::class => 'is_dir_constant',
         String_::class => 'is_literal_string',
     ];
