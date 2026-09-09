@@ -20223,3 +20223,32 @@ keeps the reason the principle was written for: a drift guard rather than a tabl
 change arrives as a failure rather than as a plugin reporting under a name the package no longer uses.
 
 That is one mechanism change with a measured constituency, replacing "weaken a stated principle for one rule".
+
+## The annotation-tag family, closed: one emits and four are blocked for four different reasons
+
+`ClassCoversExistsRule` emits and the fires gate agrees with PHPStan, which took the tag reader, a
+question-per-tuple-position binding, a fold and two drift guards. The other four are each blocked by something
+distinct, and none of them is a vocabulary shape:
+
+| rule | blocker | kind of blocker |
+|:--|:--|:--|
+| `ClassMethodCoversExistsRule` | `$fileTypeMapper` is a PHPStan service the package's neon does not wire | no value a worker could supply |
+| `SeeAnnotationToTestRule` | `requiredSeeTypes` wired by two of the package's neons to values that disagree | a fact about the package |
+| `DataProviderDeclarationRule` | `%deprecationRulesInstalled%` | a fact about the consumer's installation |
+| `NoJustPropertyAssignRule` | a docblock type compared to an inferred type for equality | a real capability gap |
+
+The last is the only one worth sizing, and it is two capabilities deep rather than one. Its refusal stops at
+`$this->phpDocResolver->resolve()`; mapping that to a docblock handle the way `getResolvedPhpDoc()` now is
+would reach `getVarTags()`, which is keyed by *variable name* and yields a tag carrying a parsed **type** —
+and then `$varTag->getType()->equals($exprType)`, an equality between a type parsed out of a docblock and one
+mago inferred.
+
+Two things make that unlike the tag work already done. A statement-level docblock is a different position from
+a declaration's: `Support::docblockText()` finds the trivia before a declaration, and
+`/** @var Foo $x */ $x = $this->prop;` attaches to an expression statement. And a tag's *type* is not its text
+— porting the comparison means parsing a PHPDoc type into mago's type system well enough that equality means
+the same thing, where being close is the plausible-but-wrong shape this repository designs against: the answer
+is used only to *skip*, so getting it wrong makes the rule quietly narrower or wider with nothing to show it.
+
+So the family produced one rule, and the honest reading of the remaining four is that three refuse correctly
+and one is a capability with a real cost and one consumer.
