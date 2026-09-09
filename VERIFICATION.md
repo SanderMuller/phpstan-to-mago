@@ -18932,7 +18932,7 @@ measurement travels with the plugin and a figure without its condition is the ca
 - **The emit-all byte diff cannot see a runtime change.** It compares generated plugins; `TypeCoverage` is
   called *by* them. The fix moved zero bytes, and so would have a regression. Every runtime change this
   session — `6fe1c99` touched `Support`, `Reflect` and `Text` — passed a diff that was structurally unable
-  to look at it. The aggregate tests and the fires gate are the only instruments that execute the runtime.
+  to look at it. **The size of that hole is measured below, and it is smaller than this sentence implies.**
 - **A prose exemption has no expected value and cannot fail**, which is the `uniq -c` finding one artefact
   over. The corpus list's comment was right about *why* the package is excluded and stale about *what*
   covers it, and nothing compared the exemption against the population it exempted.
@@ -18995,3 +18995,53 @@ The remaining 45 are recorded and not fixed: the `list`-versus-`array` variance 
 configuration and deserves its own pass, and `missingType.iterableValue` is annotation-only on generated
 code. **Whether the 31-file config should become a 193-file one is a real decision** — it would turn 45
 findings into a red suite — and it is not the agent's to take.
+
+
+### How blind is the byte diff, actually — measured
+
+The entry above says the emit-all byte diff cannot see a runtime change, which reads as a coverage hole. A
+peer asked the right follow-up — *which instrument does cover it, since a reader will ask* — and guessed the
+fires gate, being the only thing that executes the runtime. Guessing is what this log is about, so it was
+measured instead.
+
+`Text::namesContain()` mutated to answer `false` unconditionally. Five emitted plugins call it.
+
+| instrument | verdict |
+|:--|:--|
+| emit-all byte diff, all three targets | **blind** — zero bytes move, because the *generator* did not change |
+| the 323-test unit suite | **blind** — every instrument in it compares text: emitted bytes, census verdicts, snapshots |
+| the fires gate, on the five affected rules | **catches it** — 6 of 16 tests fail, across 3 of the 5 |
+
+So the diff is blind and the suite is not, which is the peer's smaller statement and the correct one. The
+first sentence implied a hole where there is a division of labour.
+
+**The precise figure is the interesting part: 3 of the 5 rules caught it, not 5.**
+`ClassConstantIsAStringRule` and `DynamicCallOnStaticMethodsRule` call the mutated helper and their example
+pairs pass anyway — their `Bad`/`Good` files do not exercise the path it decides. So runtime coverage is
+real, load-bearing and **partial, at a rate set by what each rule's examples happen to reach.** An example
+pair is written to make a rule fire, not to cover the helpers behind it, and nothing measures the difference.
+
+That is a better statement than either "the diff is blind" or "the gate covers it": **the only instrument
+that executes the runtime covers it through fixtures chosen for another purpose** — and the mutation is how
+that was established rather than reasoned.
+
+#### And an absence claim is the one to check, which both of us knew
+
+The peer withdrew their half too. They had framed their mago run as filling an absence, on my claim, with the
+repository open all week and one `find . -name '*Emitted*'` between them and the answer.
+
+Their diagnosis is the keeper and it is not about trust: **a positive claim carries its own citation and is
+self-verifying** — *`anyOf` is at line N*, read line N. **An absence claim cannot carry one**, because by
+construction there is nothing to point at. So it is simultaneously the least checkable by reading and the
+cheapest to refute by searching, and neither of us did either.
+
+They had also already derived *search by outcome, not by concept* from finding `getTrivia()` after I claimed
+mago exposed no docblock resolver — then took my absence claim about my own repository on report. A rule they
+own, applied in one direction only. Mine is worse in a different way: I had read the file's name twice, in a
+config I was editing.
+
+And their sharpening of the byte-diff row is better than my own. My brace-regex and prefix-match failures
+returned *wrong* answers to questions they were asked. **The byte diff returns a correct answer — the bytes
+really are identical — to a question nobody asked it.** A green diff on a runtime change is not a false
+negative; it is a true statement about the wrong artefact, which is the harder kind to notice because there
+is nothing wrong with it.
