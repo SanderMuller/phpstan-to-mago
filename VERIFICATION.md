@@ -17070,3 +17070,93 @@ regression that lands as a `cancelled` job is invisible as a regression** — no
 Verified: PHPStan 0 after narrowing the index's declared value type to `array<array-key, mixed>` (only the keys
 are read, and they are stringified where they are used); Rector 0 after it turned the two new statics into
 instance methods; Pint clean; suite 316 of 316; emit-all byte-identical across all three targets.
+
+### The census alarm caught a four-rule regression that reading the diff would not have
+
+Thirteen obstacles cleared on `ClassCoversExistsRule` now, and the tick's real finding is not any of them.
+
+Two of the additions broke rules that already emitted, and the *reasons* are the useful part because neither is
+visible in the code:
+
+- **A recogniser that throws instead of declining converts "handled elsewhere" into "the rule is refused".**
+  `branchBindings()` calls `resolve()`, which throws a `Refusal` for a value it cannot take. Letting that
+  escape refused `NoMockOnlyTestRule` on `Expr_ConstFetch` — a branch assigning `true`, which the existing
+  flag-assignment path handles perfectly well. A speculative recogniser has to catch and fall through.
+- **Speculative work leaves state behind, and the state changes how the *existing* path then translates the
+  same statement.** Translating a condition narrows a kind; resolving a value can inline a helper. Bailing
+  after either, without restoring, made three `VariableStatic*` rules refuse with *cannot render a
+  resolved-name as a message argument*: they bind `$scope->resolveName()` in one branch and a rendered type in
+  the other, and a survived narrowing put the wrong descriptor in front of the message.
+- **And the last one is not a state bug but a modelling one.** Once both branches bind, choosing the *then*
+  side's kind for the conditional describes the other side wrongly to whatever reads the name next. Two sides
+  of different kinds have no single descriptor, so the recogniser declines and the shape falls through to the
+  path that already handled it. That took the count back to 137.
+
+Emit count through the three fixes: 137 recorded → **133** → 134 → **137**. Every step measured by regenerating
+the census rather than by reading the change, and **none of the three would have been caught by reading**: each
+is about what a decline leaves behind or about a kind a consumer downstream cannot take.
+
+#### The rewrite I refused, and it is the half I had suspected wrongly
+
+Obstacle twelve was `if ($isMethod) { [$a, $b] = explode('::', $s); } else { $a = $s; }` followed by
+`isset($method)`. I put a rewrite to the peer — `$a = explode('::', $s)[0]`, `$b = explode('::', $s)[1] ?? null`
+— saying I could not state the shape it generalises over and that this was an argument against building it. The
+peer split it in two and the split is right:
+
+- **Refused.** The `explode` collapse is valid because of a fact about `explode` — element zero is the whole
+  string when the separator is absent — and not because of anything structural about the branch. A recogniser
+  for it is library semantics wearing a pattern's clothes, and it fires on one body in the corpus.
+- **Built.** A two-way *binding*: an `if`/`else` whose branches only assign locals becomes one conditional
+  value per name, with a name absent from a branch bound to `null`. That has nothing to do with `explode`, and
+  a missing `else` means "keep what it already held".
+
+The definedness half is exact and the peer's derivation is better than the guard I was going to write: after
+the hoist the variable is always bound, and for a bound variable `isset($x)` and `$x !== null` agree in **all
+three** binding states — originally unbound becomes null and both are false; bound non-null, both true; bound
+to null, both false, because `isset()` is already false for a bound null. The statable precondition is about
+observers rather than values: nothing may distinguish unbound from bound-null except `isset`/`empty`/`??`,
+which rules out `get_defined_vars()`, `compact()`, a later `unset()`, and a by-reference pass. Four constructs,
+a closed per-body scan, written into the recogniser rather than stated as prose.
+
+#### Also measured: `@covers \A::b::c` needed no fidelity row
+
+I asked whether PHP's list assignment notices or truncates when `explode` yields more parts than targets. It
+truncates silently — it warns only in the opposite case, too few elements for the targets — so the original and
+the rewrite agree on all eight inputs tried, including `'::'`, `''` and `'A::'`. That closed the question
+before it could become a bound I carried in prose.
+
+#### Reverted, and the selector I should have been using
+
+Fourteenth obstacle is the five-outcome `if`/`elseif`/`elseif`/`else` classifier in `processCovers`, with a
+report in each arm. Not one step from done, so: reverted, scaffold saved outside the repository, and the pile
+is still exercising nothing — **137 EMIT before and after, for the third tick running.**
+
+The selector is the thing to change. I have been picking candidates by the length of their census needs list,
+which this session measured to be uninformative — eleven obstacles cleared on this rule and *the list named
+none of them*. Body size is the cheaper proxy and it ranks differently. Over the refused rules the package
+registers, own lines plus the lines of the collaborators they hold:
+
+| lines | rule | state |
+|--:|:--|:--|
+| 51 | `DeclareCollector` | live |
+| 52 | `ClosureUsesThisRule` | dead — no `ThisType` analogue |
+| 52 | `ReturnTypeDeclarationCollector` | live |
+| 60 | `MatchingTypeInSwitchCaseConditionRule` | dead — no verbosity concept |
+| 65 | `DisallowedImplicitArrayCreationRule` | dead — definedness gap |
+| 74 | `ForbiddenNodeRule` | dead — configured target set |
+| 77 | `OverwriteVariablesWithForLoopInitRule` | dead — definedness gap |
+| 80 | `ConstantTypeDeclarationCollector` | live |
+| 96 | `PropertyTypeDeclarationCollector` | live |
+
+With the dead ones struck out, **the four smallest live bodies are all type-coverage collectors** — which I
+dismissed earlier in this session as "census lines without capability", on no measurement at all. That
+dismissal is the next thing to check rather than to repeat: whether an emitted collector is load-bearing for
+its already-emitting `*CoverageRule` or redundant with the aggregate template decides whether it is a rule
+emitting or a line moving.
+
+#### CI headroom, stated because it constrains the next commit
+
+`f4076ce` is green on all three legs, and the durations are 8:28, 8:36 and **9:33** against `timeout-minutes:
+10`. The memoisation bought 41 seconds on the leg that matters (10:14 → 9:33) and prefer-lowest now has 27
+seconds of margin. That is a fact about the next addition rather than about this one, and raising the limit is
+a change to someone else's CI budget rather than mine to make.
