@@ -16557,3 +16557,35 @@ Reverted — unexercised vocabulary — with the scaffold saved outside the repo
 obstacles rather than four. **The rule's bound has moved from two to at least seven across five entries, and
 every move came from a build.** I am no longer estimating it; the number in the log is a count of what has been
 observed, and the two remaining items are named because a refusal named them, not because I read ahead.
+
+### Three more obstacles cleared, and the eighth is a target mismatch rather than a gap
+
+Continuing the build. Eight obstacles observed on this rule now, all by refusal rather than by reading ahead.
+
+| # | obstacle | fix |
+|--:|:--|:--|
+| 5 | `$found[] = $v` refused as *assignment to something other than a simple local* | accumulator writes into a `list` this transpiler opened — one branch, two spellings |
+| 6 | `$map[$k] = $v` | the same branch, with a `keyed-append` statement kind beside `append` |
+| 7 | SetClasses' `find()` unrecognised | `SEARCHABLE` had no `Expression` row; mago's kind is `ExpressionStatement`, which `FIELDS` already mapped |
+
+Obstacle 7 is the shape this log keeps recording: **the read after the narrowing was always there — only the
+searchable row was missing.** `FIELDS['ExpressionStatement']['expr']` has been mapped all along.
+
+#### The eighth is not a missing mapping
+
+`$standaloneSetServices[$serviceClass] = $setServiceExpr->getStartLine();` stores a **line number** and the
+rule reports at it later. `getStartLine()` is mapped in two specific positions — as a report anchor — and not
+as a value, and that is not an oversight:
+
+**PHPStan reports at a line; an emitted plugin reports at a span.** The `report` statement takes an `anchor`,
+which is a span, so "report at a line number I stored earlier" has nothing to render into. Storing the *node*
+instead would be expressible and equivalent for this rule, but that is a change to what the map holds, and
+whether it stays equivalent depends on every other read of that map.
+
+So this is a design decision about the anchoring model rather than a row to add, and it is the first obstacle
+in this rule's eight that is not mechanical. Flagged rather than crossed, like the non-terminal branch two
+entries ago — and unlike that one, I have not established that the boundary is narrower than it looks.
+
+Reverted; scaffold saved with eight obstacles' worth of work. What is banked and reusable regardless of this
+rule: the collecting-search lowering, the accumulator writes, the `Expression` searchable row, and
+`answersANameComparison()`. What is not: any of it, until a rule emits through it.
