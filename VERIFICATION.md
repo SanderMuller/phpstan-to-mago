@@ -20598,3 +20598,51 @@ beside it, and a figure about mago's tree is no different.
 **What it does not do** is answer whether a representation is *reachable*. `&` on a parameter is in the text
 and `ReferenceKnowledge` pins that separately; the probe says where a thing is, and a span-gap read or a
 requirement is still a design question after it.
+
+## The corpus differential found an over-report the fires gate passed, in a rule shipped the same day
+
+`RequireParentConstructCallRule` passes its fires gate and reports once on 270 files where PHPStan is silent.
+The gate compares one example pair I wrote; the differential runs both engines over code nobody wrote for
+either.
+
+    before   constructor.missingParentCall   agree 111   only-original 0   only-port 1
+    after    constructor.missingParentCall   agree 111   only-original 0   only-port 0
+    mutation, guard removed                  agree 111   only-original 0   only-port 1
+
+The site is `PhpParser\Internal\TokenPolyfill`, **declared twice in one file**:
+
+    if (\PHP_VERSION_ID >= 80000) {
+        class TokenPolyfill extends \PhpToken { }
+        return;
+    }
+    class TokenPolyfill { /* the __construct this rule fired on */ }
+
+`Constructors::parentDeclaring()` resolved the enclosing *name* through the codebase, which keeps one
+declaration of a name — the extending one — so the rule reported a missing `parent::__construct()` on a class
+with no parent. Fixed by asking the declaration before the name: `Inheritance::hasExtends()` short-circuits
+before any metadata is consulted.
+
+**The lesson was already written down, in the same file.** `Reflect::parentHasConstructor()`'s docblock says
+it "asks the declaration a node sits in before asking the codebase about its name, because a name can have two
+declarations and the metadata keeps one". I wrote a new helper beside it and did not apply it. The example
+pair was built for the hazards I *had* found — alphabetical `parentClasses`, lowercased names, inherited
+constructors reading as declared — and writing two declarations of one class name never occurred to me.
+
+### The instrument's own scope hid the work, which is the second-order version of the same problem
+
+The first differential run came back `agree 1707, only-original 0, only-port 2` and **contained none of the
+three rules ported this session**. Not `agree 0` — no row at all. `run-corpus-differential.php` defaults to
+the four packages the tool started with, so `phpstan/phpstan-strict-rules` and `phpstan/phpstan-phpunit` were
+outside it: `emitted: 97` against the 44 those two contribute. Reading that clean total as verification would
+have been the fourth silence-as-evidence error in this session.
+
+`EmittedRuleFiresTest` reads its rules from the same default. **An instrument whose scope excludes the newest
+work reports clean and means nothing**, and a default package list is exactly where that exclusion hides —
+nothing about the output says which packages it covered until the `emitted:` line is read against the census.
+
+### And one rule is still unproven rather than verified
+
+`ClassCoversExistsRule` shows `agree 0` on all five of its identifiers here, because `nikic/php-parser` holds
+no PHPUnit test classes. Its fires gate passes, which is a different claim: it reports correctly on the pair
+written for it and has never met a `@covers` annotation nobody wrote for it. `phpunit/phpunit/src` is the
+corpus that would settle it.

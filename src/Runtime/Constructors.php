@@ -77,7 +77,22 @@ final class Constructors
     public static function parentDeclaring(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
         $node = Tree::node($subject);
-        $class = $node instanceof Node ? Support::enclosingClassName($context, $node) : null;
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        // **The declaration this node sits in, before the codebase is asked about its name.** A name can
+        // have two declarations and the metadata keeps one: `PhpParser\Internal\TokenPolyfill` is declared
+        // twice in one file, once `extends \PhpToken` behind a version check and once standalone, and the
+        // constructor here belongs to the standalone one. Resolving the name found the extending
+        // declaration and this rule reported a missing `parent::__construct()` on a class with no parent --
+        // one only-port finding on 270 files, found by the corpus differential and not by the example pair.
+        // {@see Reflect::parentHasConstructor()} records the same distinction for the same reason.
+        if (! Inheritance::hasExtends($context, $node)) {
+            return null;
+        }
+
+        $class = Support::enclosingClassName($context, $node);
         if ($class === null) {
             return null;
         }
