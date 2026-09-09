@@ -20646,3 +20646,25 @@ nothing about the output says which packages it covered until the `emitted:` lin
 no PHPUnit test classes. Its fires gate passes, which is a different claim: it reports correctly on the pair
 written for it and has never met a `@covers` annotation nobody wrote for it. `phpunit/phpunit/src` is the
 corpus that would settle it.
+
+### And that rule cannot be proven on any corpus this checkout has
+
+Chased rather than left as "unproven", because that word implies more effort would settle it. It would not.
+
+- **No vendored package ships a test class carrying a covers annotation.** Grepping the whole `vendor` tree
+  for one finds five files: the two `CoversExists` rules, `CoversHelper`, a docblock library's tag class, and
+  a Rector rule that rewrites the annotation. Not one is an annotation on a `TestCase` — vendored packages
+  ship `src` and leave their tests out of the distribution.
+- **The only real ones here are excluded from analysis by design.** `tests/Fixtures/phpdoc-inheritance` and
+  `tests/Fixtures/examples` carry them and both are in this repository's own `excludePaths`, because they are
+  deliberately-wrong input for the gate. Pointing the differential at them answers `corpus: 0 files`, which
+  is the configuration working rather than a failure.
+
+So `ClassCoversExistsRule` stands on its fires gate and on the four-level reading of `CoversHelper` behind it,
+and the corpus differential has nothing to say about it either way. That is a **bound on the verification**
+rather than a pending task: the rule reports correctly on the pair written for it, and no material available
+to this checkout can tell whether it reports correctly on a covers annotation nobody wrote for it.
+
+The same fact explains its absence from the yield table. A rule that fires zero times across 3630 files
+because the corpus holds nothing it looks at is not a rule worth nothing — it is a rule this corpus cannot
+measure, and those two readings need telling apart wherever a zero is quoted.
