@@ -16443,3 +16443,44 @@ signal, and I read it as one capability rather than as a loop containing them.
 Nothing built and nothing reverted; the tree is untouched. Recording the correction because last entry's "best
 shaped target, two capabilities" is the kind of sizing a reader would plan against, and it was wrong by more
 than a factor of one.
+
+### The same estimate, wrong in both directions, two entries running
+
+Last entry corrected "two capabilities" upward, saying *a loop inside a capture closure is not a variant of
+anything committed today*. That over-corrected, and the evidence is a plugin I shipped this session.
+
+`ServicesExcludedDirectoryMustExistRule`, emitted and gated 4/4, contains **three** nested loops:
+
+    foreach (Support::findKind($context, $node, ['MethodCall']) as $candidate_0) { …
+        foreach ($found_0 as $exclude_method_call) { …
+            foreach (Support::arrayElements($context, $arg_value) as $array_item) { …
+
+The innermost is a `foreach` over an array literal's items, inside a loop, with its own guards — which is
+**exactly** the emission the Exclude resolver's nested `foreach ($excludedExpr->items …)` needs. And
+`file_exists` reaches `pathExistsPredicate()`, so `realpath` is that mapping's sibling rather than a new
+mechanism.
+
+So what is actually new in the third resolver is narrower than either estimate: the **recogniser accepting a
+`foreach` inside a capture closure's body**. The emission machinery ships; the acceptance does not.
+
+#### The pattern is the finding, not the number
+
+| entry | estimate | reasoned from |
+|:--|:--|:--|
+| two ago | two capabilities, one a variant of today's work | two summaries and a table built from them |
+| last | at least three, the third the largest | reading all three closures |
+| this | three, but the third's emission already ships | reading a plugin I had already shipped |
+
+**Wrong low, then wrong high, on the same target, in consecutive entries.** Each time I reasoned from whatever
+view I had just acquired and treated it as the whole. The first was summaries, the second was the source, the
+third was the emitted output — and only the third looked at what the transpiler already does, which is the
+side every cheap method in this log has been shown to skip.
+
+The honest position: **I have no reliable way to size this before building it**, and two entries of sizing say
+so more clearly than either number did. What is established is the shape — `find()` in statement position,
+three accumulator forms, a nested loop whose emission exists, `realpath` as a sibling mapping — and that the
+Exclude resolver cannot be skipped, because `filterOutExcludedPaths()` *removes* services and omitting it would
+make the port **over-report** where PHPStan is silent.
+
+That last check is the one worth keeping: I asked my own log's *is there another route* question, and the
+answer was no in the direction that matters. A skipped filter under-reports sometimes and over-reports here.
