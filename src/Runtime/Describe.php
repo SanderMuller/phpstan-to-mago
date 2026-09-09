@@ -99,7 +99,14 @@ final class Describe
         usort($members, self::compareMembers(...));
 
         return implode('|', array_values(array_unique(array_map(
-            static fn (array $member): string => $member[1],
+            static fn (array $member): string => count($members) > 1 && $member[0] instanceof CallableType
+                // **A callable inside a union is parenthesised**, which `UnionType::describe()`'s own
+                // `joinTypes` does for a `ClosureType`, a `CallableType` and a template union. Twelve of the
+                // fifty-two message divergences on a second corpus were `(callable)|null` against
+                // `callable|null`, and the first corpus printed none of them -- a union with a callable
+                // member never occurs in `nikic/php-parser`, which is why one tree was not enough.
+                ? '(' . $member[1] . ')'
+                : $member[1],
             $members,
         ))));
     }
