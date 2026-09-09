@@ -19517,3 +19517,46 @@ Two things went wrong writing it, both already in this file:
   arithmetic.
 - `preg_match_all` answers `int|false`, caught by PHPStan for the third time this session and the second in
   this exact file — whose neighbouring method carries a comment saying so, four lines above where I wrote it.
+
+### The README had no test, and it showed
+
+Today's audit found five stale figures and one false claim in the one document that ships to consumers. The
+false one is the instructive half: *"the two smallest trees carry most of the divergences"* — the two
+smallest carry 7 of 31 between them, and the tree with 22 of them has 367 files against PHPUnit's clean
+1,003. Nothing was wrong with the sentence when it was written; the corpus moved and the sentence did not.
+
+**A figure copied into prose has no relationship to the file it came from once it is written.** That is this
+log's *a number that cannot be re-derived should not be in the document*, and the README was the artefact it
+had never been applied to — the census has a drift alarm, the snapshots have byte comparisons, the emitted
+plugins have three gates, and the README had a person re-reading it.
+
+`ReadmeFiguresAreDerivedTest` now re-derives every README figure that has a source:
+
+| claim | source |
+|:--|:--|
+| the seven-row per-package table | the census's own package headings |
+| `--status counts 130 of 231` | `EMIT` minus the registers-nowhere rows |
+| `11327 agreeing against 31 divergences` | summed from `corpus-sweep.md`'s rows |
+| the size claim — largest clean tree, worst tree | computed from the sweep, not restated |
+| `seven so far, four of which have since closed` | counted from `divergences.md` |
+| PHP and Mago version floors | `composer.json`, mago from `require-dev` |
+
+Mutation-checked against the **actual historical defects** rather than invented ones: reverting each of
+today's six corrections in turn fails its own assertion, including `22 of the 31` back to `7 of the 31`,
+which is the false claim exactly.
+
+**The measurements stay exempt and should.** A benchmark row is a reading, not a derivation; asserting one
+would pin the machine it was taken on and fail on anyone else's. What protects those is the honesty the
+audit added instead — n stated, spreads printed, and the machine's condition named rather than claimed idle.
+
+#### And one claim the artefacts could not support at all
+
+The README said each divergence found is pinned as a minimal case. There are 7 pinned cases against 31
+sweep occurrences, and **nothing maps the 31 onto them** — the sweep lists `file:line` with no cause
+attached. So the claim was not stale, it was unsupportable by any artefact in the repository, which is a
+third category beside *stale* and *false*: a relation between two published populations that nothing
+establishes.
+
+Corrected to what is checkable — seven causes pinned, four since closed — with the gap stated in the README
+rather than papered over: the sweep's occurrences are not individually mapped onto the pinned cases. Naming
+an unmapped relation costs one clause and stops a reader inferring a completeness nobody claimed.
