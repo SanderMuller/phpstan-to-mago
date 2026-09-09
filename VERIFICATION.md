@@ -18515,3 +18515,59 @@ an arbitrary one that looks principled. What survives is the five-kinds sort, an
 the distinction the peer drew: **a cause that is a property of configuration or of upstream can be recorded
 once and stays true; a cause that is a property of a body cannot be known without reading the body.** Every
 census-derived metric measures the first, and the frontier is entirely the second.
+
+### The refusal list is fully triaged: 43 of 43
+
+The last four unread rules are read. None is a job, and the corpus's refusal list now has no row whose body
+nobody has looked at.
+
+    AlreadyRegisteredAutodiscoveryServiceRule  three static resolver classes, then set arithmetic between
+                                               their results and a filter over that
+    SlowMigrationDdlRule                       instantiates a resolver over the class node, spread-merges two
+                                               helpers' results, usorts tuple-wrapped findings by line and
+                                               array_maps them out
+    PreferredClassRule                         a multi-kind hook narrowing to 5 node kinds, with four helpers
+                                               that each build findings rather than answering
+    NoReferenceRule                            the same across 8 kinds; a peer measured the port as partial by
+                                               construction, since `MetadataFlags::BY_REFERENCE` reaches named
+                                               functions and methods but not closures, arrow functions,
+                                               `foreach`, array items or `AssignRef`
+
+A peer suggested `PreferredClassRule` might be a configuration row already retired under `argumentsFor()`.
+It is not — its terminal refusal is the multi-kind narrowing above. Worth recording because the suggestion
+was the right kind of check to make and the answer was still no; **a candidate closure offered from outside
+needs the same call-site read as one found inside.**
+
+#### What the fifteen unattributed rules turned out to be
+
+Read across this session, grouped by what reading found rather than by what the census printed:
+
+| what actually blocks it | rules |
+|:--|--:|
+| collection work in injected or static collaborators | 4 |
+| a stateful or `NodeFinder` scan over a statement list | 3 |
+| a multi-kind hook whose per-kind helpers each report | 2 |
+| several capabilities at once for one rule | 3 |
+| a rule-local trinary helper, a class-wide constant scan, an unwrapped `describe` | 3 |
+
+Not one of them is a single missing vocabulary row. **The transpiler's frontier is not a list of constructs
+it cannot translate; it is a set of rules whose shape is not "guards then one report".** That is a different
+statement from anything the census can express, and it is the answer to the question this whole search was
+asking — which rule to build next — namely that there isn't one, and the honest next move is a shape rather
+than a row.
+
+#### And the counting, finally checked by a second method
+
+A peer re-derived the configuration figure with a deliberately different instrument: instead of matching the
+five sentence forms, they matched configuration *vocabulary* anywhere in a rule's `REFUSE` line and block —
+`wire|neon|container|configured|registers|%param%|constructor parameter`. Thirteen rules against my twelve,
+and the gap reconciles under the once-per-rule-at-first-cause rule rather than indicating a miss:
+`NoServiceAutowireDuplicateRule` sits at its stateful scan and `NoTestMocksRule` at a declared-default
+refusal, both while still mentioning wiring.
+
+**That is the first count in this exchange to survive an independent check by a differently-shaped method.**
+The three that did not — 13-of-43, seven-unwired, four-configuration — were each a phrasing match checked by
+more phrasing matches. Neither instrument here is exhaustive; a sixth phrasing avoiding all seven tokens
+would be invisible to both, and neither of us has a control that would say so. What is established is that
+two differently-shaped instruments agree modulo an accounting rule, which is more than either says alone —
+and it is the same reason a control pair beats a control.
