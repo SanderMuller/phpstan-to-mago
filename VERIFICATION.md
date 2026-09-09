@@ -18683,3 +18683,40 @@ join and did not.
 Which also sharpens why "cite your sources" is not the countermeasure. Both sources *were* cited, correctly,
 in both directions. **A citation carries provenance and not scope**, and scope is the thing that makes two
 numbers subtractable or not.
+
+### Where the positional-ampersand work stands, so nobody re-runs the half that is done
+
+Declining to reconstruct a measurement in order to rescue a figure was right, and it leaves a question a
+future reader would otherwise have to re-open from nothing. The peer reports — their machine, their
+measurement, not reproduced here — that the php-parser half is complete: ten node classes carry `byRef`, with
+the ampersand's offset established per class (return-by-reference after the `function`/`fn` keyword; `Param`
+after any type hint and before any `...`; `Foreach_` and `ArrayItem` immediately before the value
+expression), plus a trivia-aware backward scan that handles `int & $p`, `int &...$p` and a decoy `&` inside a
+comment.
+
+So the position for anyone picking it up: **the join was never run, and only mago's side needs running.**
+That is materially different from *neither half exists*, and it is exactly the distinction that disappears
+when a context rolls over — which is why it is here rather than in a message. It changes nothing about
+`NoReferenceRule`, which stays refused on the metadata six of eight.
+
+### The instrument that worked was the second party, in both directions
+
+This log's closing measure for the session was that four of my published figures were wrong and all four are
+now corrected or withdrawn: the ms/file resolvability multiplier, `ParametersAcceptorSelector` as a closed
+cause for two rules, "13 of 43" configuration closures, and "five of eight" unreachable kinds. To which the
+peer added the symmetric half — two of theirs in the same window, the `describe()` verdict and the
+`Part|Node` proposal, plus a persisted-index recommendation they withdrew after reading the maintainers' own
+benchmark dashboard.
+
+**Six wrong figures. Every one caught by the other party. None by its author, and none by care.**
+
+That is a better epitaph than the one about exhaustive reading, and it is worth separating from the earlier
+entry that says the same thing weakly. `CLAUDE.md` already carries *where a claim matters, budget for a
+second party rather than for a more careful self-review* — written before this exchange, from a single
+instance. Six instances in one session, running both ways, is the version with rows under it.
+
+The asymmetry is the operative part. In every case the catcher was the party who did **not** own the operand,
+the instrument, or the recollection at fault. A self-check inspects the half you can see, and each of these
+errors lived in the half its author could not: a quotient's numerator, a scan's predicate, a list's residue,
+a memory dressed as a cross-check. **Not one was a lapse in rigour** — the rigour was applied, in writing, to
+the wrong half.
