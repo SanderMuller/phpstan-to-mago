@@ -385,25 +385,49 @@ final class TracksUpstreamDriftTest extends TestCase
                 // rule -- the refusal above it is accurate. It says the check behind the rule is already
                 // carried by a sibling that emits, which is the half that decides whether the row is work.
                 // `floor:` between the needs and the subsumption, because it qualifies the list directly
-                // above it. A refusal dropped as an artefact of a stepped-over statement stands for work the
-                // pass cannot see, so a rule with one visible need and several suppressed ones is not one
-                // capability away -- which is how this backlog was mis-sized three times in one session.
+                // above it. The list is deduplicated and cannot reach inside an expression, so a rule with
+                // few needs is not therefore nearly done -- which is how this backlog was mis-sized four
+                // times in one session.
                 //
-                // "statement" rather than "binding": the artefacts are an unbound local, a `continue` whose
-                // loop refused, and a second message whose first report was stepped over. Only the first is
-                // a binding, and this line said so while counting all three.
+                // **Statements stepped over, not only artefacts suppressed.** The artefact count alone said
+                // nothing about `SlowMigrationDdlRule`: three consecutive statements refuse, dedup leaves two
+                // labels, no artefact label is produced, and one of the largest rules in the corpus printed
+                // as two obstacles with no qualifier at all. The step-over count is what separates that from
+                // a rule whose body really did translate.
+                //
+                // The artefacts are an unbound local, a `continue` whose loop refused, and a second message
+                // whose first report was stepped over.
                 $lines[] = 'REFUSE  ' . $outcome->name . $where . "\n        " . $outcome->reason
                     . ($outcome->needs === [] ? '' : "\n        needs-at-least: " . implode("\n        needs-at-least: ", $outcome->needs))
-                    . ($outcome->suppressedNeeds === 0 ? '' : "\n        floor: " . $outcome->suppressedNeeds
-                        . ($outcome->suppressedNeeds === 1
-                            ? ' further refusal suppressed as an artefact'
-                            : ' further refusals suppressed as artefacts')
-                        . ' of a stepped-over statement, so the list above is a floor')
+                    . self::floorLine($outcome)
                     . ($outcome->alsoEmittedBy === [] ? '' : "\n        also-emitted-by: " . implode(', ', $outcome->alsoEmittedBy));
             }
         }
 
         return implode("\n", $lines) . "\n";
+    }
+
+    /**
+     * How far the `needs-at-least:` list above falls short, or nothing where it falls short by nothing.
+     *
+     * Its own method because `census()` reached the cognitive-complexity limit with it inline, and a new
+     * baseline entry is not the way this repository absorbs that.
+     */
+    private static function floorLine(RuleOutcome $outcome): string
+    {
+        if ($outcome->steppedOver === 0) {
+            return '';
+        }
+
+        $suppressed = $outcome->suppressedNeeds === 0
+            ? ''
+            : ', ' . $outcome->suppressedNeeds . ($outcome->suppressedNeeds === 1
+                ? ' further refusal suppressed as an artefact'
+                : ' further refusals suppressed as artefacts');
+
+        return "\n        floor: " . $outcome->steppedOver
+            . ($outcome->steppedOver === 1 ? ' statement' : ' statements')
+            . ' stepped over' . $suppressed . ', so the list above is a floor';
     }
 
     /**

@@ -63,9 +63,13 @@ final class SaysHowFarTheNeedsListFallsShortTest extends TestCase
      * to `$before` -- the raw total, which measures the walk rather than what the walk could not see -- left
      * that row passing. A control that passes for the wrong reason looks exactly like a control.
      *
-     * `UselessCastRule` discriminates: four needs, none suppressed. It refuses on `$scope->getNativeType()`,
-     * which mago has no API for, and on a closure -- obstacles in separate statements, all of them visible,
-     * so nothing was hidden and zero is the honest answer. Under the `$before` mutation this row reads four.
+     * `UselessCastRule` discriminates: four needs, none suppressed. Under the `$before` mutation this row
+     * reads four.
+     *
+     * **Zero suppressed is not zero hidden**, and this docblock said it was. `UselessCastRule` steps over
+     * four statements without producing a single artefact label, so its obstacles are visible only in the
+     * sense that no *filter* dropped one. `$steppedOver` is the field that carries the rest, and the row
+     * below asserts it, so the pair cannot be read as "this rule is nearly done" again.
      */
     public function test_a_rule_that_hid_nothing_reports_no_shortfall(): void
     {
@@ -81,9 +85,32 @@ final class SaysHowFarTheNeedsListFallsShortTest extends TestCase
         $this->assertSame(
             0,
             $outcome->suppressedNeeds,
-            'A rule whose obstacles were all visible reports a shortfall, so the count is measuring the walk '
-            . 'rather than what the walk could not see.',
+            'A rule that had no refusal filtered reports a suppressed count, so the count is measuring the '
+            . 'walk rather than what the filter dropped.',
         );
+
+        $this->assertGreaterThan(
+            0,
+            $outcome->steppedOver,
+            'This rule steps over four statements and the census would print no qualifier at all, which is '
+            . 'the reading that sent a session to one of the largest rules in the corpus.',
+        );
+    }
+
+    /**
+     * The one rule whose body translated whole, which is what a zero here has to mean.
+     *
+     * `ClassAttributeRequiresPhpVersionRule` steps over nothing: its only need is the terminal refusal, and
+     * {@see PackageCoverage::needs()} records that one *only* where nothing was stepped over. So this is the
+     * row that gives the field its floor, and a change making every rule report a step-over breaks it.
+     */
+    public function test_a_body_that_translated_whole_steps_over_nothing(): void
+    {
+        $outcome = $this->outcome('ClassAttributeRequiresPhpVersionRule', 'phpstan/phpstan-phpunit');
+
+        $this->assertSame(RuleOutcome::REFUSE, $outcome->verdict, 'This row is stale: the rule now emits.');
+        $this->assertSame(0, $outcome->steppedOver);
+        $this->assertSame(0, $outcome->suppressedNeeds);
     }
 
     private function outcome(string $rule, string $package = 'phpstan/phpstan-strict-rules'): RuleOutcome

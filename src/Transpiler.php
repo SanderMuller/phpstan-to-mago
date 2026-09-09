@@ -83,6 +83,18 @@ final class Transpiler
     /** @var list<string> every obstacle this rule's body met, in the order it met them */
     private array $needs = [];
 
+    /**
+     * How many statements the survey stepped over, which is the size of what it could not look inside.
+     *
+     * Distinct from the number of needs, and the distinction is the whole point. Needs are deduplicated and
+     * an obstacle inside a single *expression* has no position to resume from, so a statement that refuses
+     * contributes one label and hides the rest of its own expression -- and every helper only that statement
+     * would have entered. `SlowMigrationDdlRule` is the case that forced this: three consecutive statements
+     * refuse, the list shows two labels after dedup, and its four collaborators are never reached. Two labels
+     * on one of the largest rules in the corpus reads as nearly done.
+     */
+    private int $steppedOver = 0;
+
     /** Which tier to emit for: 'analyzer' (a plugin) or 'linter' (a lint rule). */
     public static string $target = 'php';
 
@@ -1685,6 +1697,12 @@ final class Transpiler
         return $this->needs;
     }
 
+    /** @see $steppedOver for why this is not the same as the number of needs */
+    public function steppedOver(): int
+    {
+        return $this->steppedOver;
+    }
+
     /**
      * One statement of `processNode()`, or — in survey mode — its obstacle, recorded and stepped over.
      *
@@ -1702,6 +1720,8 @@ final class Transpiler
         try {
             $this->translator->translateStatement($stmt);
         } catch (Refusal $refusal) {
+            ++$this->steppedOver;
+
             $reason = trim((string) preg_replace('/ \(line \d+\)/', '', $refusal->getMessage()));
             if (! in_array($reason, $this->needs, true)) {
                 $this->needs[] = $reason;

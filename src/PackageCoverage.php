@@ -55,7 +55,9 @@ final readonly class PackageCoverage
             [$verdict, $reason] = self::verdict($file);
 
             // One pass, not one per field: `needs()` transpiles the rule to collect them.
-            $survey = $verdict === RuleOutcome::REFUSE ? self::needs($file) : ['needs' => [], 'suppressed' => 0];
+            $survey = $verdict === RuleOutcome::REFUSE
+                ? self::needs($file)
+                : ['needs' => [], 'suppressed' => 0, 'steppedOver' => 0];
 
             $outcomes[$name] = new RuleOutcome(
                 name: $name,
@@ -68,6 +70,7 @@ final readonly class PackageCoverage
                 // exists to prevent.
                 needs: $survey['needs'],
                 suppressedNeeds: $survey['suppressed'],
+                steppedOver: $survey['steppedOver'],
             );
         }
 
@@ -158,6 +161,7 @@ final readonly class PackageCoverage
                 // to its default here would reset the shortfall to zero for every rule the subsumption pass
                 // touches -- silently, since zero is also the honest value for a rule that suppressed none.
                 suppressedNeeds: $outcome->suppressedNeeds,
+                steppedOver: $outcome->steppedOver,
             );
         }
 
@@ -301,7 +305,7 @@ final readonly class PackageCoverage
      * travels beside the list and the census prints it, because three separate rankings of this backlog were
      * built on the floor as though it were the total.
      *
-     * @return array{needs: list<string>, suppressed: int}
+     * @return array{needs: list<string>, suppressed: int, steppedOver: int}
      */
     private static function needs(string $file): array
     {
@@ -371,6 +375,7 @@ final readonly class PackageCoverage
             );
 
             $suppressed = $before - count($needs);
+            $steppedOver = $transpiler->steppedOver();
 
             // The refusal that *ended* the pass, and only where the pass stepped over nothing.
             //
@@ -399,6 +404,7 @@ final readonly class PackageCoverage
                     $needs,
                 )),
                 'suppressed' => $suppressed,
+                'steppedOver' => $steppedOver,
             ];
         } finally {
             Transpiler::$survey = $survey;

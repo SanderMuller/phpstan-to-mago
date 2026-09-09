@@ -40,8 +40,12 @@ final readonly class RuleOutcome
      * @param list<string>                        $alsoEmittedBy rules in the same package that already
      *                                                          report an identifier this one reports
      * @param int                                 $suppressedNeeds refusals dropped as artefacts of a
-     *                                                             stepped-over binding, which is how far
-     *                                                             `$needs` falls short of the rule's work
+     *                                                             stepped-over statement
+     * @param int                                 $steppedOver     statements the survey stepped over, which
+     *                                                             is the size of what it could not look
+     *                                                             inside -- `$needs` is deduplicated and an
+     *                                                             obstacle inside one expression has no
+     *                                                             position to resume from
      */
     public function __construct(
         public string $name,
@@ -52,6 +56,7 @@ final readonly class RuleOutcome
         public array $needs,
         public array $alsoEmittedBy = [],
         public int $suppressedNeeds = 0,
+        public int $steppedOver = 0,
     ) {}
 
     public function emitted(): bool
