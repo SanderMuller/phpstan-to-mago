@@ -19715,3 +19715,57 @@ Three ways out, and the third is a change to that rule rather than a build:
 This is recorded rather than decided. It is the fourth thing this session that was already built here, and
 the count is the point: multi-kind registration, the override predicate's two calls, the span-gap read, and
 the `&`-is-not-a-child finding were all in the repository before being looked for.
+
+## The cost of registering every node kind, measured — and my reason for not doing it was wrong
+
+The section above recorded three ways out of the bare-`Node` refusal and said the cost of the first was not
+measured. It is now, and the figure does not support the way I had argued against it.
+
+**What I wrote:** registering all 227 kinds is *"every node in every file crossing the extension-host
+protocol"*, and *"the same kind of cost per node rather than per file"* as the `includes` index — which is
+3.90s of a 4.96s run. That framing predicts a multiple, not a percentage.
+
+**What it measures.** Laravel's `framework/src`, 1694 files, no `includes`, n=3, every plugin body empty so
+the figure is registration and dispatch alone. CPU, because the wall spreads here run to 0.33s:
+
+| host | wall | CPU | against the shipped 8-kind row |
+|:--|--:|--:|:--|
+| no extension host at all | 0.29s | 1.17s | |
+| a host registering 1 target | 0.32s | 1.56s | −0.10s |
+| a host registering 8 — the `Expr` row this repository ships | 0.35s | 1.66s | baseline |
+| a host registering all 227 | 0.74s | 3.06s | **+1.40s, +84%** |
+| the 8-kind plugin **and** a 227-kind one in one worker | 0.56s | 3.12s | +1.46s |
+
+Two readings, and the second is the one the decision turns on.
+
+**The shipped multi-kind rows are nearly free, and the cliff is not where target count is.** One target to
+eight costs 0.10s of CPU. Eight to 227 costs 1.40s. So the expensive step is not "several kinds" — it is the
+difference between the kinds a rule dispatches on and every kind there is.
+
+**One wide plugin sets the floor for the whole worker.** The last row is the control for that: an 8-kind
+plugin beside a 227-kind one costs what the 227-kind one costs alone, 3.12s against 3.06s, and the narrow
+plugin's own 1.66s is absorbed rather than added. Mago sends a node to the worker if *any* registered plugin
+wants it, so a single rule declaring the bare `Node` makes every consumer of that worker pay per-node traffic
+for every other rule they run. The cost is not opt-in per rule, which is what I could not have said from the
+architecture alone.
+
+### A first corpus that would have supported the opposite
+
+The same table on `nikic/php-parser/lib`, 270 files, read the other way round: 1 target 0.29s CPU, 8 targets
+0.57s, 227 targets 0.92s — where one-to-eight costs 0.28s and eight-to-227 costs 0.35s, so the wide
+registration looks like a rounding error on top of a row already shipped. On that corpus the wall spreads are
+0.02–0.08s against deltas of 0.14s, which is too close to the floor to establish a shape, and it is the corpus
+the README's performance table uses. **Recorded because it is the reading I would have published had I stopped
+at one corpus**, and it points the opposite way from the larger one.
+
+### What this does to the three options
+
+It strengthens the third and weakens the first, on the numbers rather than on the principle:
+
+- **Register all 227** now has a price: +84% engine CPU on 1694 files, imposed on every rule sharing the
+  worker, for one rule in the corpus.
+- **Derive the targets from the rule's own dispatch** keeps `NoReferenceRule` at 8 targets, which the first
+  reading above says is within 0.10s of a single target.
+
+Still not decided, and the decision is still about the sentence `HOOK_KINDS` writes about itself rather than
+about these figures.
