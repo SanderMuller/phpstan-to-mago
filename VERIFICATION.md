@@ -16362,3 +16362,45 @@ enforced by attention, and now with a number: **17 helpers are reachable-but-une
 adding an eighteenth has nothing to distinguish it from the seventeen. The audit above is reproducible in one
 script; the reverted test is recorded here rather than committed, because a check that would delete working
 code is worse than no check.
+
+### The pool after four emits, and the one target that builds on today's work
+
+Corpus refusals stand at **27** with my 11 refusal fixtures excluded from the 40 total. Of those 27, **14 are
+correct-forever**: nine unconfigurable constructor parameters, `WriteNamedArgumentManifestRule` which reports
+nothing, `NoMissingVariableDimFetchRule` waiting on mago, `NoTestMocksRule` on this repo's declared-default
+policy, and `PreferredClassRule`/`ForbiddenNodeRule` unconstructable behind their multi-kind refusals.
+
+Two candidates re-inventoried against today's capabilities and both still deep:
+
+- `NoIntegerRefactorReturnRule` — its `->returnType` obstacle is a small metadata mapping, but behind it sits
+  `traverseNodesWithCallable()` with a visitor returning `DONT_TRAVERSE_CURRENT_AND_CHILDREN`. That is a
+  **pruning** traversal, and `findKind()` cannot express one: it returns every descendant of a kind, with no
+  way to decline a subtree.
+- `SlowMigrationDdlRule` — 380 lines and roughly 25 own methods (`inspectBlueprintStatement`,
+  `rootedChains`, `rawAlterFindings`, `resolveOutlierArgument`…). Not a rule shape, a small analyser.
+
+#### The target: `AlreadyRegisteredAutodiscoveryServiceRule`, two capabilities, both characterised
+
+It refuses on *statement outside the vocabulary: `Stmt_Expression`* inside an assignment value — which is the
+`use (&$found)` filter shape, because the `find()` support I built today requires a **pure** predicate. It
+reads all three `SymfonyClosureServices*Resolver`s, and `phpstan-src-e7` and I already established what each
+needs:
+
+| resolver | shape | what it needs |
+|:--|:--|:--|
+| `…LoadResolver` | tests then `$found[] = …` | the by-reference-capture lowering |
+| `…SetClassesResolver` | tests then `$map[$class] = …` | the same, into a keyed accumulator |
+| `…ExcludeResolver` | tests then `realpath(dirname($scope->getFile()) . …)` | `realpath`, beside the `file_exists` already mapped |
+
+**The lowering is a bounded extension of code committed today.** `searchFilteredByAClosure()` already emits
+`declare-list` + `append` over `Support::findKind()` for a pure predicate; the capture case differs only in
+appending *what the closure appends* rather than the candidate, and in the filter's boolean being vestigial —
+which the peer's measurement established: all three closures return a bool every caller discards, so
+`find()`'s result is never read.
+
+So: **one rule, two capabilities, one of them a variant of this session's own work and the other the sibling of
+an existing mapping.** That is the best-shaped target left, and unlike the earlier leads it is not a guess —
+both halves were read at source, by two sessions, before anything was built.
+
+Stated as a lower bound, as every estimate here now is: **at least two**. Every rule this session moved that
+bound upward once a build began, without exception.
