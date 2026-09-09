@@ -16404,3 +16404,42 @@ both halves were read at source, by two sessions, before anything was built.
 
 Stated as a lower bound, as every estimate here now is: **at least two**. Every rule this session moved that
 bound upward once a build began, without exception.
+
+### Correcting last entry's estimate: the target needs three capabilities, not two, and the third is a loop inside a closure
+
+I named `AlreadyRegisteredAutodiscoveryServiceRule` the best-shaped target at "two capabilities, one a variant
+of this session's work". Reading all three of its resolvers in full — rather than the two summaries the peer
+and I had been trading — the estimate was too low.
+
+First, the shape is narrower than "a `find()` with a captured accumulator". It is `find()` **in statement
+position**, its result discarded:
+
+    $loadedNamespaces = [];
+    $nodeFinder = new NodeFinder();
+    $nodeFinder->find($closure->stmts, function (Node $node) use (&$loadedNamespaces): bool { … });
+    return $loadedNamespaces;
+
+Today's `find()` support handles the *value* position — `$x = $finder->find(..)` — so the refusal is
+`Stmt_Expression`, a statement where an expression was wanted. Different capability from the one I said.
+
+Second, the three resolvers are not variations on one shape:
+
+| resolver | closure body | capability |
+|:--|:--|:--|
+| `…LoadResolver` | guards, then `$found[] = <expr>` | list accumulator |
+| `…SetClassesResolver` | guards **two levels** (`Expression` then `->expr`), then `$map[$k] = <expr>` | keyed accumulator, and a searched kind that is a statement wrapper |
+| `…ExcludeResolver` | guards, then a **nested `foreach`** with its own guards, `dirname()`, `realpath()`, and an append inside the loop | a loop inside a filter closure, plus `realpath` |
+
+The rule reads **all three**, so the third is not optional. A `foreach` inside a capture closure is not a
+variant of anything committed today: the lowering I described emits one `if` inside one loop, and this needs a
+loop inside that `if` with its own accumulator writes.
+
+**So the honest count is at least three, and the third is the largest.** My "two" came from two summaries and a
+table I built from them, not from reading the third closure. That is the sixth time this session an estimate
+moved upward on closer reading, and the first where the closer reading was of a source I had already claimed
+to have inventoried — the inventory listed `realpath` and `dirname` for that resolver, which is exactly the
+signal, and I read it as one capability rather than as a loop containing them.
+
+Nothing built and nothing reverted; the tree is untouched. Recording the correction because last entry's "best
+shaped target, two capabilities" is the kind of sizing a reader would plan against, and it was wrong by more
+than a factor of one.
