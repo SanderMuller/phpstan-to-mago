@@ -17,10 +17,15 @@ use Sandermuller\PhpstanToMago\Transpiler;
  * exit — and the rule's own report is appended by the emitter after the loop has closed, reading the name
  * the loop bound.
  *
- * Nothing before execution catches it. The file parses, every `Support::` helper it calls exists, no Rust
- * leaks into it, and the escaped read is a bare snake_case identifier, which PHP takes for a constant. The
- * plugin loads, then reports under an undefined name where the list was empty and not at all where it was
- * not — the plausible-but-wrong shape this project refuses rather than approximates.
+ * No syntactic check this project makes of its output catches it. The file parses, every `Support::` helper
+ * it calls exists, and no Rust leaks into it. On the php target the escaped read carries its sigil, so it is
+ * an undefined variable — a PHP 8 warning evaluating as `null`; on the Rust targets the same read is written
+ * bare, where it is a constant lookup. Either way the plugin loads and reports under a name that is not
+ * there, which is the plausible-but-wrong shape this project refuses rather than approximates.
+ *
+ * `mago analyze` does report it (`possibly-undefined-variable` and `unevaluated-code`), and running the
+ * analyser over the emitted tree is a second net worth having — but it catches a plugin that was already
+ * written, where this refuses to write one.
  *
  * No rule in the seven installed packages reaches it, so no snapshot could ever have covered it, which is
  * why the check has a fixture of its own. The pair varies one axis — where the report is built — and the

@@ -1818,10 +1818,19 @@ final class Transpiler
      * reading the name the loop bound. `MockMethodCallRule` and a hand-written probe both produce it.
      *
      * Neither half announces itself. The file parses, every `Support::` helper it calls exists, no Rust
-     * leaks into it, and the escaped read is a bare snake_case identifier, which is well-formed PHP -- so
-     * the plugin loads, then reports under an undefined name where the list was empty and not at all where
-     * it was not. That is the reason this is a check rather than a snapshot: no rule in the corpus reaches
-     * the shape, so no snapshot could ever have covered it.
+     * leaks into it. On the php target the escaped read is `$name` with its sigil, so the plugin loads and
+     * then reports under a variable no path bound -- a PHP 8 warning that evaluates as `null`; on the Rust
+     * targets the same read is written bare, where it is a constant lookup instead. Either way the report
+     * fires under a name that is not there, and either way the file passes every syntactic check this
+     * project makes of its output.
+     *
+     * `mago analyze` does report both halves, which is the instrument this project does not yet run over
+     * its own output -- see VERIFICATION.md. It is not what makes the check unnecessary: a refusal at
+     * generation time is what stops the plugin being written, and an analyser run over the tree is a second
+     * net rather than the same one.
+     *
+     * No rule in the corpus reaches the shape, so no snapshot could ever have covered it, which is why this
+     * ships with a fixture of its own.
      *
      * Measured before it was relied on. Over the 193 plugins the seven packages plus `tests/Fixtures/Rules`
      * emit, this refuses none; a probe rule written to reach the shape is refused. The corpus figure says

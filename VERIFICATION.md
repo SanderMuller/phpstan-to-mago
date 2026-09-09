@@ -17821,6 +17821,61 @@ Two things worth carrying:
   `$error` assignment's refusal is filtered as an `unknown local $` (`PackageCoverage.php`) — a fourth
   artefact of a stepped-over statement, beside the three already recorded. A needs list is a floor.
 
+### "Nothing before execution catches it" was wrong, and so was the mechanism I gave for it
+
+Committed in `a9b4792`, in the commit message and in the entry above it: *the escaped read is a bare
+snake_case identifier, which PHP takes for a constant*, and *nothing before execution catches it*. A peer
+reconstructed the defective plugin and ran three tools over it. Both halves of that sentence are wrong, and
+they are wrong for different reasons worth separating.
+
+**The instrument claim.** `mago analyze` reports both defects. Reproduced here on the fixture's own emitted
+output, with its control beside it:
+
+| identifier | report-after-the-loop | report-inside-the-loop |
+|:--|:--|:--|
+| `help[unevaluated-code]` | 1 | — |
+| `warning[possibly-undefined-variable]` | 1 | — |
+| `error[mixed-argument]` | 1 | — |
+| eight others (`non-existent-class-like`, `invalid-iterator`, ...) | same | same |
+
+The two rows that matter appear only in the defective file, and every other diagnostic is identical in both
+— so the pair discriminates, and the shared rows are what say the discrimination is not just "the defective
+file is noisier".
+
+**The mechanism claim, which is mine alone and was never traced.** The peer's reconstruction used a *bare*
+identifier and drew `error[non-existent-constant]`. The php target does not emit a bare identifier. It emits
+`sprintf('Method %s() is forbidden.', $constant_string)` — with the sigil — so the defect is an undefined
+**variable**, which PHP 8 warns about and evaluates as `null`, not a constant lookup. The bare spelling is
+the *Rust* targets' form, and I described one target's output while looking at another's.
+
+Nothing downstream could tell: "reports under an undefined name" is true either way, the refusal is right
+either way, and the fixture pair passes either way. Only the artefact says which, and I asserted it from
+plausibility — the exact thing *a wrong "why" is worse than none* is about, arriving inside a commit that
+was otherwise measured end to end.
+
+**And the peer's correct conclusion came through an artefact that was not mine.** Their `non-existent-constant`
+row is real, reproducible, and about a file the generator does not produce. That is *a line number is
+meaningless without the artefact it indexes* in a new dress: a reconstruction is a different artefact from
+the thing reconstructed, and it can be right about the conclusion while being wrong about the row. Both of us
+had to be corrected here, in opposite directions, from the same exchange.
+
+#### The gap the correction actually names
+
+The emitted output is checked three ways: it parses, every `Support::` helper it calls exists, and no Rust
+leaked into a `.php` file. All three are syntactic. **Nothing reads the emitted code semantically**, and this
+defect is exactly that class — valid syntax, real helpers, no leak, a variable read where no path binds it.
+
+The instrument for it is reflexive and already installed: run `mago analyze` over the emitted plugin tree. It
+is the engine this project targets. Two caveats measured rather than assumed:
+
+- **A clean exit is not the gate.** Ten of the diagnostics above are the SDK's own classes failing to resolve
+  because the SDK is not in the analysed paths. Gating on exit status would fail every plugin forever. The
+  gate has to be an identifier set — `unevaluated-code`, the undefined-variable family, and
+  `non-existent-constant` for the Rust spelling are the ones that would have caught this.
+- **One pair, one target.** This is measured on the php target and on two files. It is not yet evidence about
+  the 192-plugin tree, and the honest next step is to run it over that tree and read what a *correct*
+  generated file legitimately trips before deciding which identifiers can be a gate.
+
 ### The emit-all diff I trusted was reading two nearly-empty trees
 
 A check that refuses a shape no corpus rule reaches has one pass condition: the corpus must be
