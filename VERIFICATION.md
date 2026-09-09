@@ -15970,3 +15970,50 @@ something to start at the end of a long chain.
 
 `PreferAutowireAttributeOverConfigParamRule` stands at **six cleared, one named, unknown remaining** — and the
 count has moved on every observation, which is the whole reason I now state it as a lower bound.
+
+### Closing the hook-node hazard, and the one capability that still separates a rule from emitting
+
+Obstacle 7 turned out to be a **partially applied fix already in this file**. `Vocabulary::FIELDS` rows carry
+a php template, and the resolver has always substituted `{base}` into it — two rows already used that, with
+the reasoning written beside them:
+
+> `{base}` rather than `$node`, so a call the rule narrowed to with `instanceof` navigates itself rather than
+> the hook's node. For the hook's own node `{base}` renders as `$node`
+
+Thirteen rows still hard-coded `$node`, including `FunctionCall.name`, which is what made
+`PreferAutowireAttributeOverConfigParamRule`'s predicate read the hook's child 0 instead of its own item.
+Converted them all; the seven remaining `$node` mentions in that table are prose.
+
+**Byte-neutral, and that is the whole safety argument**: a hook-node descriptor's `php` is `$node`, so
+substituting `{base}` renders identically wherever the subject *is* the hook. Measured rather than argued —
+emit-all across the four corpus packages plus fixtures: **zero diff on all three targets**, counts unchanged
+at 147 / 34 / 25.
+
+This is what lands. Suite 1097/1097, PHPStan 0, Rector 0, Pint clean. It removes a silent-narrowing hazard —
+a field read of a found node resolving against the hook — which the previous entry showed no shipped plugin
+reaches, and which two obstacles on this rule both came from.
+
+#### The rule itself: one named capability away, and the fixture is what proves it
+
+With the hazard closed, the predicate renders correctly and the gate is **4/4** — but only after I changed the
+fixture, and the change is the finding:
+
+    param('app.timeout')                                    → plugin silent, PHPStan reports   3/4
+    \Symfony\…\Configurator\param('app.timeout')            → agree                            4/4
+
+The rule compares the called function's name against the fully qualified `SymfonyFunctionName::PARAM`. PHPStan
+resolves the `use function` import; the port compares the name **as written**. So the port catches the
+qualified call and silently misses the imported one, which is the form anybody actually writes.
+
+**So I did not ship it.** Passing 4/4 was available by keeping only the qualified fixture, and that is the
+hollow emit this repository exists to refuse — the same shape as the entry above, where a green gate was green
+because my Bad example took the working branch. The honest fixture is the imported one, and with it the rule
+is red.
+
+What separates it from emitting is now a single named capability: **resolving `use function` imports** so a
+written short name compares against the fully qualified one. Not attempted. The alternative would be an
+`ACCEPTED_DIVERGENCE` entry, which is a judgement about what the tool may knowingly get wrong and is the
+user's call, not mine to slip in at the end of a chain.
+
+Six obstacles cleared, one hazard closed and landed, one capability named, and the rule still refuses —
+correctly.

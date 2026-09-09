@@ -313,14 +313,14 @@ final class Vocabulary
      * @var array<string, array<string, array{0: string, 1: string, 2?: string}>>
      */
     public const array FIELDS = [
-        'If' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
-        'IfStatementBodyElseIfClause' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
-        'While' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
-        'DoWhile' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
-        'Switch' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        'If' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
+        'IfStatementBodyElseIfClause' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
+        'While' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
+        'DoWhile' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
+        'Switch' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
         // The expression an expression-statement wraps. Same shape as the conditions above — the wrapper's
         // only expression child — which is why it reads through the same helper rather than a new one.
-        'ExpressionStatement' => ['expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        'ExpressionStatement' => ['expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
         // `keyVar` is nullable on php-parser's `Foreach_` and the null is the whole question two rules ask, so
         // the helper answers it from mago's own kinds rather than from a position. {@see Runtime\Calls::foreachKey}.
         'Foreach' => [
@@ -331,17 +331,17 @@ final class Vocabulary
         // that is the middle arm of a full ternary and the *else* arm of an elvis, so the two would be
         // indistinguishable and the null test the rule opens with could never hold.
         'Conditional' => [
-            'cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
-            'if' => [self::PHP_ONLY, 'expr', 'Support::conditionalThen($context, $node)'],
+            'cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
+            'if' => [self::PHP_ONLY, 'expr', 'Support::conditionalThen($context, {base})'],
         ],
         // `->expr` and `->var` are the same child under two php-parser names: `UnaryPlus` calls it `expr`
         // and `PreInc` calls it `var`, and both are the one expression the operator applies to.
         'UnaryPrefix' => [
-            'expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
-            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
+            'expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
+            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
         ],
         'UnaryPostfix' => [
-            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
+            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
         ],
         // `$node->name` on a constant read is the node itself here. php-parser hangs a `Name` off the fetch;
         // mago's `ConstantAccess` *is* the name, and every question asked of it — does the codebase know it,
@@ -363,7 +363,7 @@ final class Vocabulary
             'name' => [self::PHP_ONLY, 'name-selector', 'Support::selector($context, {base})'],
         ],
         'FunctionCall' => [
-            'name' => ['node.function', 'name-expr', 'Support::nthExpression($context, $node, 0)'],
+            'name' => ['node.function', 'name-expr', 'Support::nthExpression($context, {base}, 0)'],
         ],
         'StaticMethodCall' => [
             'class' => ['node.class', 'name-expr', 'Support::classPart($context, {base})'],
@@ -388,7 +388,7 @@ final class Vocabulary
             'name' => [self::PHP_ONLY, 'name-part', 'Support::namePart($context, {base})'],
         ],
         'MethodPartialApplication' => [
-            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
+            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
             'name' => [self::PHP_ONLY, 'name-selector', 'Support::selector($context, {base})'],
         ],
         'StaticMethodPartialApplication' => [
