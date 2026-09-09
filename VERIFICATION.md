@@ -18232,7 +18232,7 @@ refuses, with the reason attached:
 | construct | why it is closed | rules |
 |:--|:--|--:|
 | `$scope->hasVariableType(..)` | definedness — mago#2334, a plugin gets span-keyed types and no definedness | 3 |
-| `ParametersAcceptorSelector::selectFromArgs` | PHPStan signature selection | 3 |
+| `ParametersAcceptorSelector::selectFromArgs` | ~~PHPStan signature selection~~ — **wrong for two of the three, see below** | 3 |
 | `->getNativeReflection()` | native reflection with no equivalent | 2 |
 | `->getResolvedPhpDoc()` | PHPStan docblock resolution | 2 |
 | `describe(VerbosityLevel::value())` | only `typeOnly()` is rendered, deliberately | 1 |
@@ -18254,3 +18254,44 @@ And the locator failed once more, in the direction this log has recorded before.
 like a false positive in the list. The rule's real source has the call at line 72. **A name match is a prefix
 match unless you anchor the end of it**, and the failure mode is a confident negative rather than a noisy
 one: nothing about an empty result announces that the locator landed on the wrong file.
+
+
+### "Signature selection" was the wrong cause for two of those three rules
+
+A peer read the call sites I had only pattern-matched, and the recorded cause does not survive them.
+Confirmed here at each site:
+
+    StrictFunctionCallsRule:56   $pa = selectFromArgs(..); $node = ArgumentsNormalizer::reorderFuncArguments($pa, $node);
+    ArrayFilterStrictRule:68     the same shape, then $normalizedFuncCall->getArgs()
+
+Neither reads a parameter type, a return type or anything variant-specific. **The acceptor is discarded
+immediately** — it exists only to give `ArgumentsNormalizer` a parameter list to map names against, so that a
+named argument lands at the index the rule then reads positionally. The requirement is *the callee's
+parameter names in declaration order*, not signature selection.
+
+The peer probed `Codebase::getFunction()` from a node hook and reports full parameter names in declaration
+order for exactly the functions these rules care about — `in_array` giving `$strict` at position 2,
+`array_filter` giving `$callback` at 1, with defaults distinguishable. **Measured on their machine, not
+here**, and this repository has no equivalent helper today: `Support`'s parameter helpers all read a
+function-like *declaration* in source, not a called function's signature from the codebase.
+
+The third rule is genuinely different, and reading it is what separated them. `ClassDependencyTreeRule:72`
+passes `[]` as its arguments, then walks `getParameters()` and resolves each parameter's *type* to a class
+declaration to run a complexity analyzer over it. That is a real signature requirement — and its operative
+blocker is the cross-file class-body analysis rather than the selector, so it is closed either way, for a
+reason the table also did not name.
+
+So the count drops: **11 rules closed by the cause recorded, not 13**, and two move back to open with their
+real blocker unknown. The peer bounded their own claim the same way and it is worth repeating: this says the
+recorded blocker is wrong and the real one looks available, *not* that the rules are portable.
+
+**The failure is one my own scan was built to avoid.** I extended it to follow constructor-injected
+collaborators precisely because a rule that delegates has its blockers elsewhere — and then read a construct's
+*presence* as its purpose. A grep for `ParametersAcceptorSelector::` cannot distinguish "selects a signature
+to read types off" from "produces a throwaway parameter list for a reordering helper", and those are
+different requirements with different answers. **A construct scan finds what a rule mentions; only the call
+site says what it needs it for.**
+
+Which also bounds the closed-versus-stuck table generally: it is a list of *candidate* closures, each needing
+its call site read before the row is load-bearing. Nine were confirmed that way; these two were not, and they
+were the two that moved.
