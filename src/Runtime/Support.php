@@ -2000,6 +2000,23 @@ final class Support
 
         $start = $node->span->start;
 
+        // Memoised per declaration, because the scan is over *every* comment in the file and the question is
+        // asked per declaration per rule: two rules reading one class's docblock scanned the whole trivia
+        // list twice, and a rule that guards on the text and then interpolates it scanned it twice by itself
+        // -- `docblockText` is one of the four calls the emitted corpus repeats most. `array_key_exists`, so
+        // a declaration with no docblock caches that instead of rescanning.
+        /** @var array<string, string|null> $memo */
+        static $memo = [];
+
+        $key = $context->source->path . ':' . $start;
+        if (array_key_exists($key, $memo)) {
+            return $memo[$key];
+        }
+
+        if (count($memo) >= 2048) {
+            unset($memo[array_key_first($memo)]);
+        }
+
         foreach ($context->source->getTrivia() as $trivia) {
             if ($trivia->kind !== TriviaKind::DocBlockComment || $trivia->span->end > $start) {
                 continue;
@@ -2013,10 +2030,10 @@ final class Support
                 continue;
             }
 
-            return $context->source->getText($trivia->span);
+            return $memo[$key] = $context->source->getText($trivia->span);
         }
 
-        return null;
+        return $memo[$key] = null;
     }
 
     /**

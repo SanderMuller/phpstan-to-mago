@@ -469,10 +469,30 @@ final class Names
      */
     public static function enclosingNamespace(NodeAnalysisContext $context): ?string
     {
-        if (preg_match('/^\\s*namespace\\s+([^;{\\s]+)\\s*[;{]/m', $context->source->contents, $matches) !== 1) {
-            return null;
+        // Memoised per file, because the answer is a property of the file and the question is asked per node.
+        // It runs a multiline regex over the whole file's contents, and the emitted corpus asks it 33 times
+        // more than it needs to even within single `analyze()` bodies -- a rule that guards on the namespace
+        // and then interpolates it scans the file twice for one node. Bounded for the reason
+        // {@see Tree::$trees} is, and generously, because an entry is one short string.
+        //
+        // `array_key_exists` rather than `isset`, so a file with no namespace caches its null instead of
+        // rescanning on every node.
+        /** @var array<string, string|null> $memo */
+        static $memo = [];
+
+        $path = $context->source->path;
+        if (array_key_exists($path, $memo)) {
+            return $memo[$path];
         }
 
-        return trim($matches[1], '\\');
+        if (count($memo) >= 512) {
+            unset($memo[array_key_first($memo)]);
+        }
+
+        if (preg_match('/^\\s*namespace\\s+([^;{\\s]+)\\s*[;{]/m', $context->source->contents, $matches) !== 1) {
+            return $memo[$path] = null;
+        }
+
+        return $memo[$path] = trim($matches[1], '\\');
     }
 }

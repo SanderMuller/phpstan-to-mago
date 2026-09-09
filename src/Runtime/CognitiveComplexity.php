@@ -78,26 +78,72 @@ final class CognitiveComplexity
         'Conditional',
     ];
 
+    /**
+     * Scores already computed, by file path and node span.
+     *
+     * A pure function of the declaration, and asked more than once for the same one: an emitted rule guards
+     * on the score and then interpolates it into the message, so every reported declaration is walked twice,
+     * and the class-like form walks every method of the class each time. Memoising here rather than binding
+     * the value in the emitted plugin keeps the generated output unchanged and also catches the case a
+     * per-plugin fix would miss -- two rules asking about one declaration.
+     *
+     * Bounded for the reason {@see Tree::$trees} is: a worker on a large project sees far more declarations
+     * than a corpus like this one, and the entry is only an int, so the cap can be generous.
+     *
+     * @var array<string, int>
+     */
+    private static array $scores = [];
+
+    /** How many declaration scores one worker keeps. */
+    private const int REMEMBERED_SCORES = 2048;
+
     /** The score of one function, method or closure declaration. */
     public static function forFunctionLike(SourceFile $source, Node $functionLike): int
     {
-        $state = ['operations' => 0, 'nesting' => 0, 'level' => 1, 'previous' => 0];
-        self::walk($source, $functionLike, $state);
+        return self::remembered($source, $functionLike, 'fn', static function () use ($source, $functionLike): int {
+            $state = ['operations' => 0, 'nesting' => 0, 'level' => 1, 'previous' => 0];
+            self::walk($source, $functionLike, $state);
 
-        return $state['operations'] + $state['nesting'];
+            return $state['operations'] + $state['nesting'];
+        });
     }
 
     /** The sum over a class-like's own methods, as `analyzeClassLike()` is. */
     public static function forClassLike(SourceFile $source, Node $classLike): int
     {
-        $total = 0;
-        foreach ($source->getChildren($classLike) as $member) {
-            foreach ($source->getDescendants($member, NodeKind::Method) as $method) {
-                $total += self::forFunctionLike($source, $method);
+        return self::remembered($source, $classLike, 'class', static function () use ($source, $classLike): int {
+            $total = 0;
+            foreach ($source->getChildren($classLike) as $member) {
+                foreach ($source->getDescendants($member, NodeKind::Method) as $method) {
+                    $total += self::forFunctionLike($source, $method);
+                }
             }
+
+            return $total;
+        });
+    }
+
+    /**
+     * One score, computed once per declaration.
+     *
+     * Keyed on the file path and the node's span rather than on the node object, because the same
+     * declaration arrives as a different object per hook invocation -- the reason {@see Tree::locate()}
+     * relocates by span in the first place.
+     *
+     * @param callable(): int $compute
+     */
+    private static function remembered(SourceFile $source, Node $node, string $shape, callable $compute): int
+    {
+        $key = $shape . ':' . $source->path . ':' . $node->span->start . ':' . $node->span->end;
+        if (isset(self::$scores[$key])) {
+            return self::$scores[$key];
         }
 
-        return $total;
+        if (count(self::$scores) >= self::REMEMBERED_SCORES) {
+            unset(self::$scores[array_key_first(self::$scores)]);
+        }
+
+        return self::$scores[$key] = $compute();
     }
 
     /**

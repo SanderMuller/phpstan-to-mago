@@ -120,6 +120,44 @@ $magoToml = (string) file_get_contents($magoConfig);
 $hostAt = strpos($magoToml, '[extension-hosts');
 file_put_contents($engineOnly . '/mago.toml', $hostAt === false ? $magoToml : substr($magoToml, 0, $hostAt));
 
+// A third mago row: the same host, started and spoken to, registering no plugins at all. Without it the
+// engine-only row charges the host's own startup and per-node protocol traffic to the rules, and this
+// repository has already recorded getting the opposite conclusion from the two baselines -- a mago reverse
+// index read as 23% of a plain run and 12% of a run with a no-op host, where starting the host cost more
+// than the index did. The rules' marginal cost is this row against the one below it, not against the first.
+$noopHost = $sandbox . '/noop-host';
+if (! is_dir($noopHost) && ! mkdir($noopHost, 0o777, true)) {
+    fwrite(STDERR, "Could not create {$noopHost}\n");
+
+    exit(1);
+}
+
+file_put_contents($noopHost . '/mago.toml', str_replace(
+    'command = ["php", "worker.php"]',
+    'command = ["php", "' . $noopHost . '/worker.php"]',
+    $magoToml,
+));
+
+file_put_contents($noopHost . '/worker.php', <<<PHP
+    <?php
+
+    declare(strict_types=1);
+
+    ini_set('display_errors', 'stderr');
+
+    use Mago\Sdk\Extension;
+    use Mago\Sdk\Worker;
+
+    require '{$root}/vendor/autoload.php';
+
+    (new Worker(new Extension(
+        identifier: 'benchmark/noop',
+        name: 'No plugins at all',
+        version: '0.0.0',
+        analyzerPlugins: [],
+    )))->run();
+    PHP);
+
 /**
  * One run's wall clock and child CPU, which is where a subprocess's time is charged.
  *
@@ -221,8 +259,10 @@ printf("  includes: %d resolution root(s)\n", count(ResolutionRoots::of($consume
 printf("  %-34s %8s %9s\n", '', 'wall', 'CPU');
 
 benchmark_row('mago, engine only', [$mago, 'analyze'], $engineOnly, $runs);
+benchmark_row('mago + a host with no plugins', [$mago, 'analyze'], $noopHost, $runs);
 benchmark_row('mago + the transpiled rules', [$mago, 'analyze'], $sandbox, $runs);
 benchmark_row('PHPStan, cold result cache', $phpstanCommand, $sandbox, $runs, $clearCache);
 benchmark_row('PHPStan, warm result cache', $phpstanCommand, $sandbox, $runs);
 
-echo "\n  Read the marginal cost off the first two rows, and quote the PHPStan row you compared against.\n";
+echo "\n  The rules cost row three against row two. Row two against row one is what the host costs, which is\n"
+    . "  not the rules' to carry -- and quote the PHPStan row you compared against.\n";

@@ -17355,3 +17355,168 @@ Census unchanged at 139 EMIT before and after, so the four cleared obstacles are
 went out. Scaffold saved. Fourth revert of this shape, and the ratio is now the thing worth stating plainly:
 **two emits landed this session against six rules abandoned mid-build**, and every abandonment was at an
 obstacle no list named.
+
+## Performance: where the port's time actually goes
+
+A session on the cost of the emitted plugins, because "everything emits" is worth little if PHPStan is faster.
+The instrument is `tests/Support/run-benchmark.php`, already committed; what it was missing is the row that
+makes the rules' cost readable.
+
+### The decomposition, and the row that was missing
+
+The harness had two mago rows — engine only, and engine plus the transpiled rules — so the host's own startup
+and protocol traffic were charged to the rules. A third row, a host that starts and speaks the protocol while
+registering **no plugins**, is what separates them. That is this repository's own marginal-cost rule applied one
+level deeper, and it is the rule that once produced opposite conclusions from two candidate baselines.
+
+270 files of `vendor/nikic/php-parser/lib`, 97 rules, n=3, spreads under 0.25s:
+
+| | wall | CPU |
+|:--|--:|--:|
+| mago, engine only | 3.93s | 3.81s |
+| mago + a host with no plugins | 3.86s | 3.86s |
+| mago + the 97 transpiled rules | 6.03s | 7.50s |
+| PHPStan, cold result cache | 2.73s | 8.73s |
+| PHPStan, warm result cache | 1.03s | 0.92s |
+
+Four readings, and two of them redirect the work:
+
+- **The host is free.** 3.93s → 3.86s, inside the spread. This repository has recorded that "starting the host
+  costs more than the index does"; that was a 0.63s run with a reverse index, and it does not generalise here.
+- **On CPU the port already wins.** 7.50s against PHPStan cold's 8.73s. PHPStan wins *wall clock* because it
+  parallelises about 3.2× (8.73 CPU in 2.73 wall); mago with our host manages 1.24×, and mago with no plugins
+  1.02×. **So the wall-clock gap is a parallelism gap, and most of it is under the engine rather than in the
+  rules** — even at zero rule cost the floor is 3.86s against PHPStan's 1.03s warm.
+- **Dispatch is not the cost.** A host registering *N* no-op plugins, all targeting `MethodCall`: 0 → 3.98s /
+  3.90s, 1 → 4.12s / 4.20s, 24 → 4.08s / 4.19s, 97 → 4.07s / 4.29s. **Going from one plugin to ninety-seven
+  costs 0.09s CPU.** So plugin count, hook fan-out, and the `TargetSubtree` + `SourceText` requirements that 91
+  of 97 plugins declare are all irrelevant — which killed the optimisation I would have reached for first.
+- **Worker boot is not the cost either.** The autoloader plus 97 plugin `require`s is 11ms, measured three
+  times. Fourteen workers would be 0.15s.
+
+So the cost is the rule bodies, and it is additive — which makes bisection the right instrument and a profiler
+unnecessary.
+
+### Bisecting 97 plugins to 5
+
+Halves, then quarters, then singles, each against its own run's no-plugin baseline:
+
+| subset | Δwall | ΔCPU |
+|:--|--:|--:|
+| first 49 | +0.46s | +1.43s |
+| last 48 | +1.70s | +2.49s |
+| q1 (0–23) | +0.26s | +0.99s |
+| q2 (24–48) | +0.24s | +0.94s |
+| q3 (49–72) | +0.24s | +0.58s |
+| **q4 (73–97)** | **+1.78s** | **+2.47s** |
+| → the 5 `*CoverageRule`s | **+1.42s** | **+1.50s** |
+| → the 2 `*CognitiveComplexityRule`s | +0.31s | +0.79s |
+| → 4 node rules from q4 | +0.12s | +0.25s |
+
+Individually the coverage rules cost +1.07s, +0.06s, +0.20s, +1.13s and +1.19s — three at about 1.1s each,
+summing to +1.42s together. **Three rules at 1.1s that cost 1.42s in total is the signature of one shared
+traversal**, and the sub-additivity is Mago caching its own metadata lookups across rules.
+
+### The traversal: 13,982 round-trips to keep 269
+
+`Analysed::classNames()` asked the codebase for every class-like name Mago scanned and called
+`getClassLike($name)` on each, to read the file it was declared in. `getClassLike()` is
+`getMultipleClassLikes([$name])` — **one host round-trip per name.** Instrumented on the corpus: **13,982
+codebase class-likes scanned to keep 269** in 270 analysed files.
+
+Chunked at 500, the way `Declares::traitUsers()` already chunks its own sweep, that is 28 round-trips instead
+of 13,982. Semantics identical.
+
+| | 5 coverage rules | all 97 rules |
+|:--|--:|--:|
+| before | +1.42s wall / +1.50s CPU | +2.05s / +3.47s |
+| batched | +0.55s / +0.55s | +1.18s / +2.73s |
+
+#### The version before it was faster and wrong, and an existing fixture said so
+
+The first fix derived the class list from the analysed files' *syntax* — walk the four class-like kinds, resolve
+each name — which is O(analysed files) rather than O(everything Mago scanned) and gave the same speedup.
+
+**It counted 2 declarations where the real rule counts 3.** Mago names an anonymous class
+`{anonymous-class:src/Maker.php:13:16}`, so a name-resolving walk skips it while `getClassLikeNames()` lists
+it. `CountsReturnsLikeTheCollectorTest` has carried a fixture for exactly that shape since before this session,
+and it went red on the first engine run.
+
+The comment that version shipped with said anonymous classes are skipped "which is what the codebase-side
+version did too: `getClassLikeNames()` has no name to give for one either". **That was an assumption written as
+a fact about someone else's engine**, and it is the failure this log names most often. What found it was not
+reading the diff — it was logging *both* lists and printing the difference, which named the missing entry
+verbatim.
+
+### Two more caches, one of which was refuted by its own measurement
+
+- **`Tree::$tree` kept one file's node index**, justified in its own docblock by "hooks arrive grouped per file,
+  so a second file simply replaces the first". Instrumented: Mago pooled six workers, three were clean at 32
+  builds over 32 files, and two thrashed — one rebuilt **61 of its 64 files** for 585 index builds, another 26
+  of 46 for 205. **918 index builds where 250 file-visits would do.** Keyed and bounded at eight files: 6.03s →
+  5.86s wall, 7.50s → 7.33s CPU.
+- **Memoising `Analysed::classNames()` and `TraitUsers::of()` moved nothing** — 5.29s → 5.31s, inside the
+  spread. The repeat calls were not the cost, because Mago caches its own metadata; the traversal was genuinely
+  single. Reverted rather than shipped, on the same standard this log applies to unexercised vocabulary.
+
+### The next lever, and why it is in the runtime rather than the emitter
+
+**45 of 97 emitted plugins repeat an identical runtime call inside `analyze()`** — `Support::argCount` 34
+times over, `enclosingNamespace` 33, `bytesStartWith` and `docblockText` 16 each. Stated bound: that is an
+*upper* bound, because identical text in mutually exclusive branches is not executed twice.
+
+The concentrated case is the complexity rules: `CognitiveComplexity::forClassLike($context->source, $node)` is
+emitted in the guard *and* in the message, so every reported class-like is walked twice and the class-like form
+walks every method of the class each time.
+
+Fixed by memoising the score per declaration — keyed on file path and span, bounded — rather than by binding
+the value in the emitted plugin. Three reasons, in order: the generated output stays byte-identical so no
+snapshot needs reviewing; a cache also catches two *different* rules asking about one declaration, which a
+per-plugin fix cannot; and hoisting a call out of a guard in the emitter would make it run unconditionally,
+which for a guard that usually fails is slower rather than faster.
+
+### The session's numbers, on an idle machine
+
+Same corpus, same harness, n=3, after the batching and the four memos:
+
+| | wall | CPU |
+|:--|--:|--:|
+| mago, engine only | 4.77s | 4.10s |
+| mago + a host with no plugins | 3.92s | 3.93s |
+| mago + the transpiled rules | **4.99s** | **6.37s** |
+| PHPStan, cold result cache | 2.74s | 8.70s |
+| PHPStan, warm result cache | 1.10s | 0.97s |
+
+Against the session's opening measurement of 6.03s / 7.50s: **wall −17%, CPU −15%**. Read as the rules'
+marginal cost against the no-plugin host, which is the row this session added: **+2.17s wall / +3.64s CPU
+became +1.07s / +2.44s — a 51% cut in wall overhead and 33% in CPU.**
+
+Two caveats on the table, both of the kind this file exists to state. The rules row has a **1.32s wall
+spread**, so its wall figure is the best of three rather than a typical one; the CPU column is the one to
+quote, per this repository's own rule about contention. And the engine-only row reads 4.77s against the
+no-plugin host's 3.92s, which is backwards — the host cannot make the engine faster. The two are equal within
+their spreads, which is the finding (**the host is free**), and the ordering is noise rather than a result.
+
+### And the floor: 96% of it is indexing the includes
+
+The one measurement that answers "why is PHPStan faster" rather than "what do our rules cost", n=3, spread
+0.01s:
+
+| mago, no plugins | wall | CPU |
+|:--|--:|--:|
+| with `includes` — `vendor`, `src`, `tests` | 4.93s | 4.28s |
+| with `includes = []` | **0.17s** | **0.33s** |
+
+**Mago spends about 4.7s serially indexing the include tree and 0.17s analysing the 270 files.** That is the
+whole wall-clock gap to PHPStan, it is under the engine rather than in the rule bodies, and it is why no amount
+of work on our layer can win here: even at zero rule cost the floor is 3.9s against PHPStan's 1.10s warm.
+
+**The includes are not removable**, and this repository already measured why: without them mago cannot walk
+into a vendored parent and a rule asking about one goes silently narrow — the asymmetry the corpus differential
+found first. So they are a correctness requirement of the rules rather than a configuration nicety.
+
+What is available is their *width*, and the precedent is in this repository's own test configuration:
+`FiresGate`'s mago config says "Named packages rather than all of `vendor`: this is scanned once per rule, and
+the whole tree took the suite from 115s to 346s." **Three times, from narrowing this one setting.** The
+`mago.toml.snippet` this tool emits says nothing about `includes` at all, and that is the place the advice
+belongs — it is the only mago configuration this tool writes.
