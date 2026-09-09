@@ -20252,3 +20252,63 @@ is used only to *skip*, so getting it wrong makes the rule quietly narrower or w
 
 So the family produced one rule, and the honest reading of the remaining four is that three refuse correctly
 and one is a capability with a real cost and one consumer.
+
+## Sizing `NoJustPropertyAssignRule`, and five zeros in a row that were all the instrument
+
+A peer session answered the two questions the rule's port turned on, and both answers hold up — but measuring
+what the port would be worth took five broken runs, and every one of them read as a clean zero.
+
+### What the peer established, confirmed here on a control triple
+
+`Type::equals()` is strict structural identity: `get_class($type) !== static::class` first, so a
+`GenericObjectType` is not equal to a plain `ObjectType` for the same class name, and there is no subtyping or
+coercion. **And the rule's predicate is not what its method name says.**
+`shoulSkipMoreSpecificTypeByDocblock` tests `! $varTag->getType()->equals($exprType)` — inequality in *either*
+direction, so a wider or unrelated docblock type skips exactly as a narrower one does.
+
+Reproduced on three methods in one fixture, run under real PHPStan with the rule registered:
+
+| the statement | PHPStan |
+|:--|:--|
+| no docblock | **reports** — the control |
+| `@var Holder` where the inferred type is exactly `Holder` | **reports**, because `equals()` is true |
+| `@var Holder` where the property is `?Holder` | silent, because the types differ |
+
+So a port written to the method name would be narrower than the rule, and the middle row is the one a
+presence-only port loses: it would skip where PHPStan reports. Silent narrowing.
+
+### Five zeros, one control, and the wrapper
+
+The question was how often that middle row occurs. Four separate corpus runs answered *zero findings on 2357
+files*, which read as "the divergence never happens". A fifth run put the fixture **in the same run as the
+corpora**, and the control went to zero too — with the fixture alone it was two.
+
+The cause was not PHPStan and not the corpus. This environment wraps the analyser's output and **truncates the
+per-file detail list**: 174 errors came back with 9 files detailed, and 4650 errors came back in a 5.6 kB file.
+Every zero was read off a capped list. `--error-format=json`, a redirect to a file and narrowing the paths all
+produced the same artefact, because they all go through the same wrapper.
+
+`--generate-baseline` is the route that works, because PHPStan writes that file itself. On the same corpora it
+lists **8 findings across 8 files** plus the fixture's 2 — where the truncated view had shown none.
+
+**A zero whose expected shape is silence has no self-evidence, and only a control in the same run separates
+"measured none" from "never looked".** That is the third instance this session; the first two were a neon
+included twice reporting nothing at all, and a subsumption pass that marked nothing and produced an empty
+census diff.
+
+### What the rule is worth, and the answer is not much
+
+Eight findings across Laravel's framework, Rector, Symfony Console, PHPUnit and php-parser — five trees, over
+four thousand files. Reading every one of the eight sites: **none carries a `@var`**, so all eight are the
+no-docblock case and the redundant-docblock divergence has zero occurrences here, against the peer's 1 in 28
+on their own resolvable subset.
+
+One limit, stated because it bounds the claim: the sites were found by matching `$x = $this->y;` in the files
+PHPStan flagged, and one flagged file yields no such match — so my shape and the rule's predicate are not
+identical, and 8 is my regex's count rather than provably PHPStan's eight.
+
+So the port would need a statement-level docblock primitive, which is a position
+{@see Runtime\Support::docblockText()} does not answer, and then either a PHPDoc type parser matched to mago's
+type system or a presence-only approximation whose failure direction is quiet. For eight findings on four
+thousand files. **Recorded as not worth porting**, which is a sizing answer rather than a capability one — and
+the sizing is the thing that took the work.
