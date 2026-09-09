@@ -5215,20 +5215,51 @@ final readonly class Translator
             throw new Refusal('a conditional report, which only the PHP target carries', $stmt->getStartLine());
         }
 
-        $condition = $this->translateCondition($stmt->cond);
-        $this->context->lines[] = new Stm('if-open', ['condition' => $condition], $this->context->indent);
-        $this->context->indent += 4;
-
+        // What the condition established holds *inside* the block and not after it, which is the same rule
+        // {@see keepNarrowingsOf()} applies inside a connective and {@see translateGuard()} applies to an
+        // exiting guard. This block is entered where the condition held, so its statements see the narrowing;
+        // the statements after it are reached whether or not it held, so they must not.
+        //
+        // Without the restore a narrowing leaked from one conditional report into the next, and a rule that
+        // asks two different questions about the same local is exactly where that shows. Reproduced at
+        // thirty lines: two `instanceof` helpers over one argument, each clean alone, and together the second
+        // one's field read resolves against the first one's kind — `instanceof Identifier on a name-expr`
+        // with the calls one way round and `instanceof Name on a member selector` with them the other, so the
+        // refusal follows whichever ran first. `AssertSameWithCountRule` is the rule in the corpus that
+        // writes it, testing its argument for `count(...)` and then for `->count()`.
+        //
+        // A refusal is the good outcome here and it is not the only one available: the field read can also
+        // *resolve* against the wrong kind, which emits a plugin that asks the wrong question and reports.
+        // {@see rememberNarrowedKind()} records the same hazard from the other side.
+        //
+        // The restore covers the *condition* too, not only the block. A condition that refuses partway has
+        // already recorded whatever it narrowed before the refusal, and in survey mode the statement is
+        // stepped over and translation carries on -- so a rollback that starts after the condition leaves the
+        // stale kind standing for every later statement. `AssertSameWithCountRule` is that case: its first
+        // condition narrows the argument to a `FuncCall` and then refuses on `->yes()`, and its second
+        // condition reads the same argument as a `MethodCall`.
+        $indent = $this->context->indent;
+        $narrowings = $this->context->narrowedKinds;
         $inConditionalReport = $this->context->inConditionalReport;
-        $this->context->inConditionalReport = true;
 
         try {
+            $condition = $this->translateCondition($stmt->cond);
+            $this->context->lines[] = new Stm('if-open', ['condition' => $condition], $this->context->indent);
+            $this->context->indent += 4;
+            $this->context->inConditionalReport = true;
+
             foreach ($stmt->stmts as $statement) {
                 $this->translateStatement($statement);
             }
-        } finally {
+
             $this->context->indent -= 4;
+        } catch (Refusal $refusal) {
+            $this->context->indent = $indent;
+
+            throw $refusal;
+        } finally {
             $this->context->inConditionalReport = $inConditionalReport;
+            $this->context->narrowedKinds = $narrowings;
         }
 
         $this->context->lines[] = new Stm('block-close', [], $this->context->indent);

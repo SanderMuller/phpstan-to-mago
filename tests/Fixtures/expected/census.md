@@ -498,7 +498,7 @@ EMIT    AssertSameNullExpectedRule
 REFUSE  AssertSameWithCountRule
         method call outside the vocabulary ->yes()
         needs-at-least: method call outside the vocabulary ->yes()
-        needs-at-least: no node predicate for instanceof PhpParser\Node\Identifier on a name-expr
+        needs-at-least: access path outside the vocabulary: Expr_New
         needs-at-least: a second message before the first was reported
 REFUSE  AttributeRequiresPhpVersionRule
         assignment value outside the vocabulary: access path outside the vocabulary: $this->testMethodsHelper->getTestMethodReflection()
