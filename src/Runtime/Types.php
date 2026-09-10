@@ -339,10 +339,19 @@ final class Types
      * `public readonly TypeComparator $types`. Probed rather than read: `int` inside `int|string` is true,
      * `int|string` inside `int` is false, and `Plain` inside `object` is true.
      *
-     * **Only the `yes` half is expressible.** PHPStan's `isSuperTypeOf()` is a trinary and this is a bool, so
-     * `->no()` is not the negation of it — `!isContainedBy()` is *maybe or no*, and answering `no` with it
-     * would claim a proof the comparator never gave. The translator refuses the other tails rather than
-     * approximating them.
+     * **Only the `yes` half is expressible *from this comparison*.** PHPStan's `isSuperTypeOf()` is a trinary
+     * and this is a bool, so `->no()` is not the negation of it — `!isContainedBy()` is *maybe or no*, and
+     * answering `no` with it would claim a proof the comparator never gave. `int|string` and `string|float`
+     * contain neither the other nor are disjoint, which is why containment cannot answer it.
+     *
+     * **It does not follow that `->no()` is unavailable, and this said it did.** `TypeComparator` declares
+     * `canBeIdentical()` beside `isContainedBy()`, over `Protocol::TYPE_COMPARISON_CAN_BE_IDENTICAL`, and
+     * PHPStan's `no` is exactly an empty intersection — so `! canBeIdentical($a, $b)` is the shape of the
+     * missing answer. NEEDS-CONFIRMATION: the semantics are the host's and have not been probed here, and
+     * the pairs that would settle it are `true` against `int` (expected disjoint), `true` against `bool`
+     * (expected not), and two unrelated interfaces (expected not, because one class can implement both).
+     * Until that is run this is a candidate rather than a capability -- but the sentence above read as a
+     * closed question and closed `MatchingTypeInSwitchCaseConditionRule` with it.
      *
      * Each call is an RPC to the host, memoised per distinct pair, and the SDK caps a run at
      * `MAXIMUM_COMPARISONS = 65_536`. A rule asking this inside a loop does not cost what PHPStan's in-process
