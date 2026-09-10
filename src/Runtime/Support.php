@@ -508,6 +508,12 @@ final class Support
         return Types::typeIsUnion($type);
     }
 
+    /** The value type of an iterable, which is `Type::getIterableValueType()`. */
+    public static function iterableValueType(?Type $type): ?Type
+    {
+        return AtomicShapes::iterableValueType($type);
+    }
+
     /**
      * Whether the node the hook fired for is of one kind.
      *

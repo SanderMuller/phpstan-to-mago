@@ -6,6 +6,7 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 
 use Mago\Sdk\Analyzer\Type;
 use Mago\Sdk\Analyzer\Type\AnyObjectType;
+use Mago\Sdk\Analyzer\Type\IterableType;
 use Mago\Sdk\Analyzer\Type\KeyedArrayType;
 use Mago\Sdk\Analyzer\Type\ListType;
 use Mago\Sdk\Analyzer\Type\MixedType;
@@ -207,5 +208,52 @@ final class AtomicShapes
         }
 
         return false;
+    }
+
+    /**
+     * The value type of an iterable, which is `Type::getIterableValueType()`.
+     *
+     * Mago spells it three ways depending on the atomic -- a keyed array carries `valueType`, a list carries
+     * `elementType`, an `IterableType` carries `valueType` -- so the union across atomics is what corresponds
+     * to PHPStan's single answer. `Type::fromAtomics()` is the public factory; the constructor is private, so
+     * a composed answer has to go through it.
+     *
+     * Union rather than the first atomic found. `array<int>|array<string>` has value type `int|string` in
+     * PHPStan, and answering `int` would be narrower than the rule -- and narrower here means *reporting*
+     * where the original is quiet, because a caller testing the answer for a union shape would find a scalar
+     * instead and fall through to its report.
+     *
+     * A type with no iterable atomic answers null, which is how these helpers spell "no answer". PHPStan
+     * returns a `never` there and every predicate asked of a `never` is false, which a null gives too.
+     */
+    public static function iterableValueType(?Type $type): ?Type
+    {
+        if (! $type instanceof Type) {
+            return null;
+        }
+
+        $atomics = [];
+        foreach ($type->atomicTypes as $atomic) {
+            $value = match (true) {
+                $atomic instanceof KeyedArrayType => $atomic->valueType,
+                $atomic instanceof ListType => $atomic->elementType,
+                $atomic instanceof IterableType => $atomic->valueType,
+                default => null,
+            };
+
+            if ($value instanceof Type) {
+                foreach ($value->atomicTypes as $inner) {
+                    $atomics[] = $inner;
+                }
+            }
+        }
+
+        if ($atomics === []) {
+            return null;
+        }
+
+        $first = array_shift($atomics);
+
+        return Type::fromAtomics($first, ...$atomics);
     }
 }

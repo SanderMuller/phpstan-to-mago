@@ -14500,6 +14500,30 @@ final readonly class Translator
             ];
         }
 
+        // `$type->getIterableValueType()` -- the value type of an iterable, which
+        // {@see Runtime\AtomicShapes::iterableValueType()} unions across atomics because mago spells it on
+        // three different ones. Answers a `type`, so everything a rule asks of an inferred type is asked of
+        // this the same way.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getIterableValueType'
+            && $expr->getArgs() === []
+        ) {
+            $of = $this->resolve($expr->var, $line);
+            if (! in_array($of['kind'], ['type', 'type-without-null'], true)) {
+                throw new Refusal("getIterableValueType() of a {$of['kind']}", $line);
+            }
+
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('an iterable value type, which only the PHP target carries', $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'type',
+                'php' => 'Support::iterableValueType(' . $this->operand($of) . ')',
+            ];
+        }
+
         // `getObjectClassReflections()` on a type. Mago has no reflection object, and a rule only ever asks
         // this to find out whether the receiver is one concrete class and which — so the list stands for that
         // one name, and `count(..) === 1` becomes "there is a name".
