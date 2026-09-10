@@ -12627,9 +12627,20 @@ final readonly class Translator
      * The rule asks about the scope *before* this node, which only the pre hook reaches.
      *
      * **The PHP target refuses here rather than downstream.** `support::variable_is_undefined` is an
-     * analyzer-side helper with no PHP counterpart: an extension-host plugin receives span-keyed types and
-     * nothing that separates a definitely-defined variable from an undefined one — which is what
-     * `carthage-software/mago#2334` asks for, measured. Without this the php target built the Rust call
+     * analyzer-side helper with no PHP counterpart, so an extension-host plugin cannot ask the question the
+     * way the analyzer does — which is what `carthage-software/mago#2334` asks for.
+     *
+     * **The reason is narrower than "no definedness", and that sentence stood here until it was probed.**
+     * `TypeFlags::$possiblyUndefined` exists in the installed SDK and `Type::$flags` is a public readonly
+     * property, so the signal is reachable from any type a plugin holds. What is missing is a *type at the
+     * position the rule asks about*: probed on mago 1.47.6, a `Foreach` node hook requesting
+     * `ExpressionTypes`, `TargetExpressionTypes`, `ArgumentTypes` and `ReceiverType` together gets a type for
+     * the iterated expression and **no type at all** for the key or value variable — `$rows` answers `array`
+     * while `$k`, `$v`, `$j` and `$w` answer nothing. So the flag has nothing to attach to.
+     *
+     * That distinction decides what would unblock this. Not a definedness API, which now exists, but a
+     * span-keyed type at the loop variable. Worth saying in those terms if this is ever raised upstream
+     * again: the previous framing asks for a capability that shipped and would read as already done. Without this the php target built the Rust call
      * anyway and refused two layers later naming a leaked Rust operand, so the census recorded a downstream
      * shape as the obstacle for a rule whose real blocker is its first guard.
      *
