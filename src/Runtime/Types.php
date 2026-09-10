@@ -349,7 +349,15 @@ final class Types
      * PHPStan's `no` is exactly an empty intersection — so `! canBeIdentical($a, $b)` is the shape of the
      * missing answer. NEEDS-CONFIRMATION: the semantics are the host's and have not been probed here, and
      * the pairs that would settle it are `true` against `int` (expected disjoint), `true` against `bool`
-     * (expected not), and two unrelated interfaces (expected not, because one class can implement both).
+     * (expected not), two unrelated interfaces (expected not, because one class can implement both), and --
+     * the discriminating one -- **an interface against an unrelated `final` class, which PHPStan answers
+     * `no`**. `ObjectType::isSuperTypeOf()` ends `if ($this->isInterface() && ! $that->isFinalByKeyword())
+     * return maybe; if ($that->isInterface() && ! $this->isFinalByKeyword()) return maybe; return no;` --
+     * phar `src/Type/ObjectType.php:529-535`. So finality is what stops an interface producing `maybe`, and
+     * a `canBeIdentical()` that does not model it answers "can be" where PHPStan answers `no`. That loses a
+     * finding rather than inventing one, so a differential would not show it as a false positive. Note
+     * `isFinalByKeyword()`, not `isFinal()`: the same method uses three notions of finality, and a class
+     * final only by phpdoc counts as non-final here.
      * Until that is run this is a candidate rather than a capability -- but the sentence above read as a
      * closed question and closed `MatchingTypeInSwitchCaseConditionRule` with it.
      *

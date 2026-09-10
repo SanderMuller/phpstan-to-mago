@@ -20855,3 +20855,39 @@ errors that all point one way say the question was asked by someone who wanted a
 sessions were looking for a way for this backlog to be tractable, and an instrument built while wanting an
 answer finds the reading that gives it. Worth checking for directly, because the individual readings each
 survive scrutiny and only the direction of the set does not.
+
+## PHPStan's own 355 rules: 2 emit, and the cause I published was 1.5% of it
+
+PHPStan core ships 355 rule files declaring `getNodeType()` under `src/Rules/` in the installed phar --
+nearly twice the whole census corpus, already installed, needing no new dependency. It was the largest
+untried lever and it is closed.
+
+**Survey mode says 15 emit. A real run says 2.** Seven and a half times, and the first sample was worse: four
+rules hand-picked for size, two emitting, one message away from being reported as "half of core emits". This
+log already records a survey saying 4 where a real run said 3, which is the only reason the figure was
+checked rather than published.
+
+Both rules that do emit catch code `php -l` rejects outright -- `MethodVisibilityInInterfaceRule` for a
+private method in an interface, `ClassAsClassConstantRule` for a constant named `class`. Neither can appear
+in a working codebase, so the marginal coverage is structurally zero, not merely small.
+
+### The stated cause was wrong, and a wrong cause implies a wrong lever
+
+The result was published as "core rules are built on `RuleLevelHelper`, `ReflectionProvider` and level-gated
+type machinery". A peer session counted the markers -- `RuleLevelHelper` in 54 of 373 files, 14.5%, and
+nothing else above a quarter -- and pointed out that no such share explains a 99.4% non-emit rate.
+
+Reading the survey's own first-obstacle distribution over the 340 refusals settles it and refutes the claim
+by more than the peer's count did. `RuleLevelHelper` is the first obstacle for **5 rules, 1.5%**. Nothing
+exceeds 5%: 17 `could not find the reported message`, then a flat tail of 10, 10, 8, 8, 7, 6, 6, 6, 6, 5 --
+`$node->getStatementResult()`, `$node->getFunctionReflection()`, `$this->helper->getBooleanType()`,
+`$this->extensions->getAll()`, `SprintfHelper::escapeFormatString()`, `$node->getPropertyFetch()`,
+`$node->getOriginalExpr()`.
+
+So core is not closed by a dependency. It is closed by **breadth**: virtual PHPStan node getters and injected
+collaborators, a different handful per rule. That distinction decides the lever. "Closed because of
+`RuleLevelHelper`" implies addressing one class would open core; the distribution says addressing the largest
+single obstacle would move 5 rules of 355, and each of those would then meet its own next one.
+
+The general shape is the one the rest of this backlog has: a conjunction per rule rather than a shared
+blocker. It is the same reason ranking by shared-ness fails, recorded above.
