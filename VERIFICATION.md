@@ -20961,6 +20961,16 @@ Resolved by reading the parser rather than by re-running: `preg_match_all('/iden
 (\d+)/')` at `run-refusal-yield.php:133`. A peer session asked which figure carried before either of us
 quoted one, which is what stopped a subset story being written down.
 
+**The diagnostic worth keeping: when two runs of the same thing disagree, the candidates are unit, scope and
+version.** Unit is the cheapest to check and the one that most resembles scope, which is why both sessions
+reached for scope first. A units error wears a subset's clothes -- "90 on four trees, 133 on six" is a
+sentence nobody would ever query. Read the parser before widening the run: a wider run produces a third
+number and no explanation.
+
+And a count derived from a baseline is a floor as well as possibly the wrong unit, because
+`--generate-baseline` drops what it cannot represent and says so in its own output. Two independent defects
+in one number, and the unit one was found only by looking again after the arithmetic failed.
+
 The first is the one-argument path, which never reaches `getNativeType()`. The second is the two-argument
 path, which is the only reader of it, and it fires nowhere -- it needs a call that passes `null` explicitly
 as the callback. So the unportable branch is unreachable for every finding anyone actually gets.
@@ -20985,3 +20995,19 @@ recorded above, and it cost the two largest items on the backlog a day each.
 
 One PHPStan run with the two messages counted separately answers it. Nobody ran it because the refusal read
 as settled.
+
+### If the 1-arg path is built, the loop-carried flag is a recognised shape and not a closed gap
+
+The hard item in that path is two booleans accumulated across loop iterations with `continue` and `break`,
+then tested as a conjunction. A peer session reduced it to three predicates over the member list -- every
+member's boolean coercion definite, at least one definitely true, at least one definitely false -- quiet when
+all three hold. `Support::anyOf()` already expresses `any`.
+
+The step the equivalence rests on is that **the `break` is a pure short-circuit**: resetting both flags
+already guarantees the conjunction fails, so no remaining member can change the answer. That is what makes
+the reduction exact rather than an approximation, it is not visible from the shape, and a later reader would
+try to restore the loop. It is the line to comment if this is ever implemented.
+
+**Recording it as a recognised pattern rather than as the gap being closed.** A general loop-carried-flag
+capability stays absent, and the next rule needing one may not reduce this way -- so a census that reports the
+gap as closed would overstate what exists. This is one shape, proved equivalent, not a mechanism.
