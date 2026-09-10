@@ -85,8 +85,12 @@ final class BacklogRow
      * it here.
      *
      * Measuring them means a corpus that carries test suites and Laravel migrations, which is a different
-     * configuration and so a different set of counts. Ranking them above the measured zeros is the most this
-     * axis can honestly say.
+     * configuration and so a different set of counts. Tried: `vendor/rector` is the only tree here with a
+     * real test population, 104 `TestCase` files, and PHPStan cannot analyse it -- its source alone gives
+     * 878 errors and the tree with its tests ends in internal errors, because rector ships classes under a
+     * `RectorPrefix<date>` namespace that analysis reads as unintentional. `vendor/toolkit` has eight.
+     * So the counts are not available from this machine's vendored trees at all, and ranking these four
+     * above the measured zeros is the most this axis can honestly say.
      */
     /**
      * How the row opens: a count, or that no count could be joined.
