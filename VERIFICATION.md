@@ -20797,3 +20797,61 @@ A fix pushed by one instrument alone would have shipped, and did, until the othe
 
 Still open, and not rendering: two ranges PHPStan narrows where mago does not, and one element type mago reads
 as `never`. Those are inference differences and belong to a different investigation.
+
+## Three instruments pointed one step upstream, and why a positive control missed all three
+
+Three measurements in one session were each correct about the object they measured and wrong about the object
+the question was about. None was a bad reading. Each instrument sat one transformation upstream of the
+pipeline it was describing.
+
+- **The census floor counted suppressed artefacts and was read as hidden work.** A rule can hide most of its
+  body without producing a single artefact label: `SlowMigrationDdlRule` steps over two statements, dedup
+  leaves two needs, no artefact is filtered, and one of the largest rules in the corpus -- four injected
+  collaborators, a `NodeFinder`, six identifiers -- printed as two obstacles with no qualifier at all, because
+  the qualifier counted artefacts. Ranking by "no floor" sent a session to it as the best remaining
+  candidate. The fix was a second count -- statements stepped over -- because the two are different
+  quantities.
+- **A registration search was read as a behaviour search.** A peer session concluded a capability was absent
+  from `hihaho/phpstan-rules` because four class names appear in no `phpstan.rules.rule` entry. The checks
+  ship through `CombinedMethodCallRule` and `CombinedStaticCallRule`, which use the same trait and call the
+  same trait methods. The symbols were absent and the behaviour was not.
+- **A printer test parsed without a `NameResolver` pass.** Source text was compared against
+  `prettyPrintExpr` over 942 `case` labels and reported 0.4% divergence. PHPStan's rules see a name-resolved
+  tree. Re-run with the resolver: 7.1%, and the dominant mechanism is a class constant as a case label --
+  `Stub::TYPE_OBJECT` prints `\Symfony\Component\VarDumper\Cloner\Stub::TYPE_OBJECT`. The figure had already
+  been published, eighteen times too small.
+
+**Every step in these pipelines is a transformation that is usually the identity**, which is what makes the
+class hard and what makes it cheap to defend against once named. A raw parse equals a resolved parse for
+literals. A registration equals a behaviour where no trait is shared. A suppressed-artefact count equals a
+hidden-work count where artefacts are the only hiding. So the wrong object agrees with the right one on most
+inputs, and the disagreement is never where anyone is looking.
+
+### The control has to be on a disagreeing input, not on an input whose answer is known
+
+This log already says a control pair beats a control, and it was not enough. All three instruments above had
+a control and all three passed, because each control was on an input where the two candidate objects agree.
+The printer's control was a string literal, and a literal is exactly where a raw parse and a resolved parse
+give the same answer.
+
+So the rule is narrower than "anchor on a row whose answer you know". **Pick an input on which the two
+candidate objects are known to disagree**, and the instrument fails loudly when it is pointed at the wrong
+one. One namespaced class-name label for the printer. One rule shipping through a shared trait for the
+registration search. One rule with known hidden work and no suppressed artefacts for the census floor -- which
+is why `UselessCastRule` is asserted in `SaysHowFarTheNeedsListFallsShortTest`: four statements stepped over,
+zero artefacts suppressed.
+
+"Usually the identity" is what makes this affordable: the disagreeing inputs are a small nameable set, so the
+control can be written before the instrument is.
+
+### Seven corrections in one session, all in the same direction
+
+Three of the figures corrected here were this repository's, four a peer session's. Every one of the seven made
+the work look smaller than it was: a backlog that was one capability away, a divergence set of two enumerable
+things, a near-empty emit diff, a capability absent that already shipped.
+
+A *directional* error pattern is diagnostic in a way a scattered one is not. Errors both ways are noise;
+errors that all point one way say the question was asked by someone who wanted a particular answer. Both
+sessions were looking for a way for this backlog to be tractable, and an instrument built while wanting an
+answer finds the reading that gives it. Worth checking for directly, because the individual readings each
+survive scrutiny and only the direction of the set does not.
