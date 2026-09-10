@@ -346,20 +346,36 @@ final class Types
      *
      * **It does not follow that `->no()` is unavailable, and this said it did.** `TypeComparator` declares
      * `canBeIdentical()` beside `isContainedBy()`, over `Protocol::TYPE_COMPARISON_CAN_BE_IDENTICAL`, and
-     * PHPStan's `no` is exactly an empty intersection — so `! canBeIdentical($a, $b)` is the shape of the
-     * missing answer. NEEDS-CONFIRMATION: the semantics are the host's and have not been probed here, and
-     * the pairs that would settle it are `true` against `int` (expected disjoint), `true` against `bool`
-     * (expected not), two unrelated interfaces (expected not, because one class can implement both), and --
-     * the discriminating one -- **an interface against an unrelated `final` class, which PHPStan answers
-     * `no`**. `ObjectType::isSuperTypeOf()` ends `if ($this->isInterface() && ! $that->isFinalByKeyword())
-     * return maybe; if ($that->isInterface() && ! $this->isFinalByKeyword()) return maybe; return no;` --
-     * phar `src/Type/ObjectType.php:529-535`. So finality is what stops an interface producing `maybe`, and
-     * a `canBeIdentical()` that does not model it answers "can be" where PHPStan answers `no`. That loses a
-     * finding rather than inventing one, so a differential would not show it as a false positive. Note
-     * `isFinalByKeyword()`, not `isFinal()`: the same method uses three notions of finality, and a class
-     * final only by phpdoc counts as non-final here.
-     * Until that is run this is a candidate rather than a capability -- but the sentence above read as a
-     * closed question and closed `MatchingTypeInSwitchCaseConditionRule` with it.
+     * PHPStan's `no` is exactly an empty intersection -- so `! canBeIdentical($a, $b)` is the shape of the
+     * missing answer. **Both columns below are run, not read: mago's through a probe plugin calling
+     * `canBeIdentical()`, PHPStan's through a probe rule taking `isSuperTypeOf(..)` and printing which tail
+     * holds.** One file, six pairs, five agreeing:
+     *
+     *     true            | int             DISJOINT        PHPStan no      agree
+     *     true            | bool            canBeIdentical  PHPStan maybe   agree
+     *     int             | string          DISJOINT        PHPStan no      agree
+     *     interface Alpha | interface Beta  canBeIdentical  PHPStan maybe   agree
+     *     interface Alpha | final Sealed    canBeIdentical  PHPStan **no**  DIVERGES
+     *     interface Alpha | class Open      canBeIdentical  PHPStan maybe   agree
+     *
+     * The divergent row was predicted from `ObjectType::isSuperTypeOf()` before either engine was run, and
+     * both runs confirmed it -- which is the only row that could have distinguished a comparator modelling
+     * finality from one that does not. The other five agree under either implementation.
+     *
+     * **Mago's comparator does not model finality**, which is the one thing PHPStan's answer turns on here.
+     * `ObjectType::isSuperTypeOf()` ends `if ($this->isInterface() && ! $that->isFinalByKeyword()) return
+     * maybe; if ($that->isInterface() && ! $this->isFinalByKeyword()) return maybe; return no;` -- phar
+     * `src/Type/ObjectType.php:529-535`. A `final` class cannot be made to implement an interface, so the
+     * intersection is empty and PHPStan says `no` where mago says the two can be identical. Note
+     * `isFinalByKeyword()`, not `isFinal()`: that method uses three notions of finality, and a class final
+     * only by phpdoc counts as non-final there.
+     *
+     * **So the mapping is available in the safe direction and not in general.** Every pair mago called
+     * disjoint, PHPStan calls `no`; the reverse fails on finality. A helper built on it would under-report
+     * rather than over-report -- a recall loss a differential cannot see, because it produces no finding to
+     * disagree about. That is a difference in findings, unlike a dropped tip or a dropped fix, so it is a
+     * decision about the contract rather than a free reduction. Left unbuilt on that ground, with the
+     * measurement here so the next reader does not re-derive it.
      *
      * Each call is an RPC to the host, memoised per distinct pair, and the SDK caps a run at
      * `MAXIMUM_COMPARISONS = 65_536`. A rule asking this inside a loop does not cost what PHPStan's in-process
