@@ -20935,3 +20935,42 @@ dependency that genuinely gated a corpus would show a spike -- one bucket holdin
 tail says no single fix moves the total, because each rule clearing its first obstacle meets its own second.
 That is one query to run on any new corpus before choosing a lever, and it is what four rankings in this
 session were substituting for.
+
+## The unportable branch of the two highest-yield rules produces no findings
+
+Both rules at the top of the yield ranking refuse on `$scope->getNativeType()`, for which mago has no
+expression-level equivalent -- `declaredType` exists on class-constant, property and parameter metadata only,
+and `FileAnalysisRequirement` offers `ExpressionTypes` and nothing declared. Both were set aside on the same
+reasoning: porting only the reachable half is a partial port, and this repository refuses those.
+
+That reasoning was never priced. Measured now, and the price is zero.
+
+**`ArrayFilterStrictRule`, 90 findings on four vendored trees, split by message:**
+
+    'requires parameter #2 to be passed to avoid loose comparison semantics'   90
+    'Parameter #2 of array_filter() cannot be null (%s given)'                  0
+
+The first is the one-argument path, which never reaches `getNativeType()`. The second is the two-argument
+path, which is the only reader of it, and it fires nowhere -- it needs a call that passes `null` explicitly
+as the callback. So the unportable branch is unreachable for every finding anyone actually gets.
+
+**`UselessCastRule` is stronger than rare, it is dead by construction at the default.** Its two
+`getNativeType()` calls are the `else` arm of `if ($this->treatPhpDocTypesAsCertain)` and the body of
+`$addTip`. The core default is `treatPhpDocTypesAsCertain: true` -- phar `conf/config.neon:128` -- so the
+`else` arm is unreachable for any consumer at the default, and `$addTip` decorates a finding without changing
+whether it reports, its message or its identifier.
+
+### What this does and does not settle
+
+It does not remove the decision. A contract is about what is guaranteed rather than what is frequent, and a
+consumer who writes `array_filter($x, null)` would get silence where PHPStan reports. What it removes is the
+*unknown*: the question was "how much does narrowing the contract cost", and the answer on this corpus is
+nothing, for 349 of the 786 findings behind refusals.
+
+The reason it went unmeasured for so long is worth naming. Both rules were dismissed on a property of their
+*source* -- an unportable call exists in the body -- when the deciding property is of their *output*, which
+path the findings come from. That is the same distinction as sampling the domain against sampling the output,
+recorded above, and it cost the two largest items on the backlog a day each.
+
+One PHPStan run with the two messages counted separately answers it. Nobody ran it because the refusal read
+as settled.
