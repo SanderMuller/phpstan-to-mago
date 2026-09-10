@@ -20891,3 +20891,21 @@ single obstacle would move 5 rules of 355, and each of those would then meet its
 
 The general shape is the one the rest of this backlog has: a conjunction per rule rather than a shared
 blocker. It is the same reason ranking by shared-ness fails, recorded above.
+
+**Refinement, from a peer asking what the largest bucket actually is.** The 17 `could not find the reported
+message` entries read above as a message-form gap and are not one. Every rule in that bucket sampled --
+`MixinRule`, `ClassConstantAttributesRule`, `MethodTagRule`, `DuplicateDeclarationRule` -- has a
+`processNode()` that is a single `return $this->check->check(...)`. The rule has no message because it has no
+body: it forwards its whole output to an injected checker. 19 of the 355 are that exact shape.
+
+So the bucket belongs *with* the collaborator calls rather than beside them, and merged the head is 60 of 340,
+17.6%. That is a real head where the flat reading suggested none -- and it is still not a lever. Each
+collaborator is its own port: this repository reproduced `CoversHelper::processCovers` by hand as
+`Runtime\CoversTargets` to emit one rule, and core delegates to dozens of distinct checkers. So the
+conclusion holds and the reason is sharper: not breadth of *obstacles* but breadth of *collaborators*.
+
+**And a distribution with no head is the signature of a conjunction**, which is the transferable part. A
+dependency that genuinely gated a corpus would show a spike -- one bucket holding a third or a half. A flat
+tail says no single fix moves the total, because each rule clearing its first obstacle meets its own second.
+That is one query to run on any new corpus before choosing a lever, and it is what four rankings in this
+session were substituting for.
