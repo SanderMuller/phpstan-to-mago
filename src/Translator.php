@@ -216,6 +216,52 @@ final readonly class Translator
     }
 
     /**
+     * An `if`/`elseif`/`else` chain, written as nested blocks because that is what the arms mean.
+     *
+     * Each `elseif` is reached only when every earlier condition was false, which a flat sequence of guards
+     * does not express. Nesting is the desugaring that keeps it: `if (A) X elseif (B) Y` becomes
+     * `if (A) { X } else { if (B) { Y } }`, and the backend already renders every piece -- `if-open`, `else`
+     * and `block-close` are existing statement kinds.
+     */
+    private function translateBranchChain(If_ $stmt): void
+    {
+        $this->context->lines[] = new Stm(
+            'if-open',
+            ['condition' => $this->stripOuterParentheses($this->translateCondition($stmt->cond))],
+            $this->context->indent,
+        );
+
+        $this->context->indent += 4;
+        foreach ($stmt->stmts as $statement) {
+            $this->translateStatement($statement);
+        }
+        $this->context->indent -= 4;
+
+        $remaining = $stmt->elseifs;
+        $next = array_shift($remaining);
+
+        if ($next !== null) {
+            $this->context->lines[] = new Stm('else', [], $this->context->indent);
+            $this->context->indent += 4;
+            $this->translateBranchChain(new If_($next->cond, [
+                'stmts' => $next->stmts,
+                'elseifs' => $remaining,
+                'else' => $stmt->else,
+            ], $next->getAttributes()));
+            $this->context->indent -= 4;
+        } elseif ($stmt->else instanceof Else_) {
+            $this->context->lines[] = new Stm('else', [], $this->context->indent);
+            $this->context->indent += 4;
+            foreach ($stmt->else->stmts as $statement) {
+                $this->translateStatement($statement);
+            }
+            $this->context->indent -= 4;
+        }
+
+        $this->context->lines[] = new Stm('block-close', [], $this->context->indent);
+    }
+
+    /**
      * Why a `foreach` cannot be translated, naming what the rule wrote rather than what it resolved to.
      *
      * The message used to be "no iteration mapped for a {kind}", where the kind is this transpiler's internal
@@ -4637,6 +4683,21 @@ final readonly class Translator
         }
 
         if ($this->translatesAnOperatorDispatch($stmt)) {
+            return;
+        }
+
+        // An `if`/`elseif` chain inside a conditional report, emitted as the chain it is. Sound for the same
+        // reason the branch before the report is: a real `if-open`/`else`/`block-close` is written, so each
+        // arm's own exit stays inside its arm and what follows the chain still runs. Outside a conditional
+        // report the guard-folding paths assume a single-statement guard, so the refusal below stands there.
+        //
+        // `ArrayFilterStrictRule` writes it: a union arm that computes and conditionally bails, then two arms
+        // that bail on a whole-type shape, then the report after the chain. Folding the arms into a guard
+        // chain would be wrong for a reason the arms make plain -- an `elseif` is reached only when every
+        // earlier condition was false, and a folded guard is reached regardless.
+        if ($stmt->elseifs !== [] && $this->context->inConditionalReport) {
+            $this->translateBranchChain($stmt);
+
             return;
         }
 
@@ -14497,6 +14558,29 @@ final readonly class Translator
                 'rust' => self::PHP_ONLY,
                 'kind' => 'constant-strings',
                 'php' => 'Support::constantStringsOf(' . $this->operand($of) . ')',
+            ];
+        }
+
+        // `$union->getTypes()` -- a union's members, one inferred type each, which
+        // {@see Runtime\AtomicShapes::unionMembers()} answers. Iterable through the `union-members` entry,
+        // because the only thing a rule does with the list is walk it asking each member a question.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'getTypes'
+            && $expr->getArgs() === []
+        ) {
+            $of = $this->resolve($expr->var, $line);
+            if (! in_array($of['kind'], ['type', 'type-without-null'], true)) {
+                throw new Refusal("getTypes() of a {$of['kind']}", $line);
+            }
+
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal("a union's members, which only the PHP target carries", $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'union-members',
+                'php' => 'Support::unionMembers(' . $this->operand($of) . ')',
             ];
         }
 

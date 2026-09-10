@@ -508,6 +508,16 @@ final class Support
         return Types::typeIsUnion($type);
     }
 
+    /**
+     * A union's member types, one `Type` each.
+     *
+     * @return list<Type>
+     */
+    public static function unionMembers(?Type $type): array
+    {
+        return AtomicShapes::unionMembers($type);
+    }
+
     /** The value type of an iterable, which is `Type::getIterableValueType()`. */
     public static function iterableValueType(?Type $type): ?Type
     {

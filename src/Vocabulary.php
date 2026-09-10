@@ -636,6 +636,9 @@ final class Vocabulary
         // `SwitchCase`, which is exactly the condition `as` records -- the same fact `found-nodes` carries
         // when a subtree search was for one kind.
         'switch-cases' => ['iter' => self::PHP_ONLY, 'item' => 'switch-case', 'itemAs' => 'switch-case', 'phpIter' => '{rust}'],
+        // `foreach ($union->getTypes() as $member)` -- a union's members, one inferred type each. The item is
+        // a `type`, so a rule asks a member the same questions it asks any type.
+        'union-members' => ['iter' => self::PHP_ONLY, 'item' => 'type', 'phpIter' => '{rust}'],
         // The method declarations of a class-like body, one `method-decl` each.
         'method-members' => ['iter' => self::PHP_ONLY, 'item' => 'method-decl', 'phpIter' => '{rust}'],
         // Every member of a class-like body, one `class-member` each, in source order. Kept apart from

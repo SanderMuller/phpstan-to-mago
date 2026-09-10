@@ -256,4 +256,29 @@ final class AtomicShapes
 
         return Type::fromAtomics($first, ...$atomics);
     }
+
+    /**
+     * A union's member types, which is `UnionType::getTypes()`.
+     *
+     * One `Type` per atomic, through `Type::fromAtomic()`, because that is the shape a rule asks questions
+     * of: `foreach ($itemType->getTypes() as $inner) { $inner->toBoolean() }` wants a type per member and
+     * not an atomic. A non-union answers its single member rather than nothing -- PHPStan only reaches
+     * `getTypes()` behind an `instanceof UnionType`, so the one-member answer is unreachable from a rule and
+     * is the honest reading of the list rather than a special case.
+     *
+     * @return list<Type>
+     */
+    public static function unionMembers(?Type $type): array
+    {
+        if (! $type instanceof Type) {
+            return [];
+        }
+
+        $members = [];
+        foreach ($type->atomicTypes as $atomic) {
+            $members[] = Type::fromAtomic($atomic, $type->flags);
+        }
+
+        return $members;
+    }
 }
