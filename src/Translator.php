@@ -9258,6 +9258,14 @@ final readonly class Translator
         // Both sides read as text, through the same reduction a name-taking helper argument goes through: a
         // written name and a rendered type are both strings by the time the message quotes one.
         //
+        // **`--from-config` does not lift this, tested.** A consumer's container holds a concrete value for
+        // `%treatPhpDocTypesAsCertain%`, so the natural thought is that the branch folds for that consumer
+        // and `UselessCastRule` emits. It does not: run with `--from-config=.` the rule refuses here
+        // unchanged, because a configured value is carried as a *constructor parameter* rather than a
+        // transpile-time constant. That is the right design -- folding would bake one project's value into a
+        // plugin that also advertises the parameter -- so the route arrives back at the same question it was
+        // trying to avoid: whether a plugin may decline to carry a rule's non-default configuration.
+        //
         // **Text is the whole of what this binding carries, and a refusal here has to say so.** An arm that
         // does not reduce refused with `cannot read a <kind> as a name`, which names the reader rather than
         // the shape: `UselessCastRule` binds `$expressionType` from a branch on `treatPhpDocTypesAsCertain`
