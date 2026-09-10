@@ -35,7 +35,7 @@ final class BacklogRow
     }
 
     /**
-     * @return array{bool, bool, int, int, int, string} the ordering key, in the order the axes decide
+     * @return array{bool, bool, int, int, int, int, string} the ordering key, in the order the axes decide
      *
      * **Yield sits above every structural axis, and below coverage and the stop.** A rule that fires nothing
      * on real code is worth nothing however cheap, which this script's closing line has always said and its
@@ -52,6 +52,7 @@ final class BacklogRow
         return [
             $this->covered !== '',
             $this->isStop(),
+            $this->yieldTier(),
             -($this->findings ?? 0),
             $this->stepped,
             count($this->needs),
@@ -59,13 +60,50 @@ final class BacklogRow
         ];
     }
 
+    /**
+     * Measured-firing, then unmeasured, then measured-silent.
+     *
+     * **Absent from a yield report is not zero, and reading it as zero threw away what that report says.**
+     * `run-refusal-yield.php` joins a rule to its findings by identifier and prints the caveat that a rule
+     * spelling its identifier as a class constant or building it in a collaborator "cannot be joined", so its
+     * absence is *unreadable* rather than silent. Four rules are in that state -- including
+     * `ClassAttributeRequiresPhpVersionRule`, which ranked seventh on an `?? 0` that made unmeasured
+     * indistinguishable from worthless.
+     *
+     * A measured zero is evidence the rule is not worth porting. An unmeasured rule is evidence of nothing,
+     * so it sorts above the zeros and below anything known to fire.
+     */
+    /**
+     * How the row opens: a count, or that no count could be joined.
+     *
+     * `yield unreadable` rather than a blank, because a blank reads as zero to exactly the reader the tier
+     * above exists for. The rules in that state build their identifier in a collaborator or from a class
+     * constant, so `run-refusal-yield.php` cannot join them -- and its own header says so.
+     */
+    private function yieldNote(): string
+    {
+        return match (true) {
+            $this->findings === null => 'yield unreadable, ',
+            default => $this->findings . ' finding(s), ',
+        };
+    }
+
+    private function yieldTier(): int
+    {
+        return match (true) {
+            $this->findings === null => 1,
+            $this->findings > 0 => 0,
+            default => 2,
+        };
+    }
+
     public function reason(): string
     {
         return match (true) {
             $this->covered !== '' => 'no marginal coverage — already emitted by ' . $this->covered,
             $this->isStop() => 'a stop, not a cost — ' . substr($this->needs[0], 0, 64),
-            default => ($this->findings === null ? '' : $this->findings . ' finding(s), ')
-                . count($this->needs) . ' need(s), ' . $this->stepped . ' stepped over',
+            default => $this->yieldNote() . count($this->needs) . ' need(s), ' . $this->stepped
+                . ' stepped over',
         };
     }
 }

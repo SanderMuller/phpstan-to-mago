@@ -127,6 +127,43 @@ final class RanksTheBacklogByCoverageFirstTest extends TestCase
         $this->assertStringContainsString('259 finding(s)', $rendered);
     }
 
+    /**
+     * A rule the yield report could not join is not a rule that fires nothing.
+     *
+     * `run-refusal-yield.php` joins by identifier and says in its own header that a rule building its
+     * identifier in a collaborator "cannot be joined", so its absence is unreadable rather than silent. The
+     * first version of this ranking read that absence through `?? 0`, which put
+     * `ClassAttributeRequiresPhpVersionRule` seventh -- above rules measured at zero -- on evidence that did
+     * not exist. A measured zero is evidence against porting; an unmeasured rule is evidence of nothing.
+     */
+    public function test_an_unjoinable_rule_outranks_one_measured_at_zero(): void
+    {
+        // The pair is chosen so the tier and the step-over axis *disagree*. `SlowMigrationDdlRule` is
+        // unjoinable and steps over two statements; `NewOverSettersRule` is measured at zero and steps over
+        // none. Without the tier, step-over puts the measured-zero rule first, so this fails. A pair where
+        // both axes agree passes either way -- which the first version of this test did, using
+        // `ClassAttributeRequiresPhpVersionRule` at zero step-overs against a measured zero at one.
+        $report = tempnam(sys_get_temp_dir(), 'ptm-yield-');
+        file_put_contents($report, "  findings  refused rule\n"
+            . "         0  NewOverSettersRule                             symplify.newOverSetters\n");
+
+        try {
+            $order = array_map(static fn (BacklogRow $row): string => $row->name, Backlog::rows($report));
+            $rendered = Backlog::render($report);
+        } finally {
+            unlink($report);
+        }
+
+        $this->assertLessThan(
+            array_search('NewOverSettersRule', $order, true),
+            array_search('SlowMigrationDdlRule', $order, true),
+            'A rule measured at zero outranks one the report could not join, so an absent row is being read '
+            . 'as a zero.',
+        );
+
+        $this->assertStringContainsString('yield unreadable', $rendered);
+    }
+
     public function test_the_report_says_what_it_cannot_see(): void
     {
         $this->assertStringContainsString(
