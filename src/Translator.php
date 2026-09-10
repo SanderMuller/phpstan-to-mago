@@ -12652,10 +12652,23 @@ final readonly class Translator
      * means pinning a dev ref, which changes a constraint every downstream consumer inherits and is not a
      * decision this file gets to make.
      *
-     * **The map, read from the shipped source at `dev-main` rather than taken on report.** Installed in a
-     * scratch project so this repository's constraint is untouched; the SDK surface is verifiable that way
-     * and the analyzer is not, because the composer package fetches a released binary by tag and a dev ref
-     * has no release artefact. So what follows is read, not run.
+     * **The map, run rather than read.** The composer package fetches a released binary by tag and a dev ref
+     * has no release artefact, so the SDK installs from `dev-main` and the analyzer does not. Building it --
+     * a shallow clone and `cargo build --release --bin mago` -- gets a runnable one at HEAD without changing
+     * anything this package requires. Note the built binary still reports `1.47.6`: the version string is
+     * unbumped, so it names the last release rather than the tree it was built from.
+     *
+     * Probed on that binary, two `foreach` nodes, one variable name carrying the control:
+     *
+     *     in definedBefore(), where `$k = 'outer';` precedes the loop
+     *       $k Defined      $v Undefined     $rows Defined     $nonesuch Undefined
+     *     in notDefinedBefore(), where nothing precedes it
+     *       $k Undefined    $w Undefined     $rows Defined     $nonesuch Undefined
+     *
+     * `$k` answers `Defined` in the first and `Undefined` in the second, differing only in whether it was
+     * assigned before the loop -- which is exactly what `hasVariableType($name)->yes()` asks. A name the
+     * function never mentions answers `Undefined` rather than null, confirming the source read below, and no
+     * null appears anywhere because the requirement was declared.
      *
      * `hasVariableType($name)->yes()` is `getVariableDefinedness($name) === VariableDefinedness::Defined`,
      * one to one. The method's own docblock says it answers whether a local variable exists *immediately
