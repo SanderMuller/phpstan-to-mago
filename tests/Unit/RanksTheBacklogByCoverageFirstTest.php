@@ -88,6 +88,45 @@ final class RanksTheBacklogByCoverageFirstTest extends TestCase
         );
     }
 
+    /**
+     * Measured yield outranks the structural axes, and the row says the count.
+     *
+     * The script's closing line has always said that a rule firing nothing is worth nothing however cheap,
+     * and until now the ordering could not act on it: `ClassAttributeRequiresPhpVersionRule` sat first on
+     * zero findings because it steps over nothing. With a `run-refusal-yield.php` report passed as
+     * `PTM_YIELD`, the rules that actually fire lead.
+     *
+     * Yield is optional and passed as a path rather than committed, because a count belongs to the corpus it
+     * was measured on. So this asserts against a fixture report rather than a real corpus run, which also
+     * keeps the test off a ten-minute measurement.
+     */
+    public function test_measured_yield_outranks_a_cheaper_rule_that_fires_nothing(): void
+    {
+        $report = tempnam(sys_get_temp_dir(), 'ptm-yield-');
+        file_put_contents($report, "  findings  refused rule\n"
+            . "       259  UselessCastRule                                cast.useless\n"
+            . "         0  ClassAttributeRequiresPhpVersionRule           phpunit.attr\n");
+
+        try {
+            $order = array_map(
+                static fn (BacklogRow $row): string => $row->name,
+                Backlog::rows($report),
+            );
+            $rendered = Backlog::render($report);
+        } finally {
+            unlink($report);
+        }
+
+        $this->assertLessThan(
+            array_search('ClassAttributeRequiresPhpVersionRule', $order, true),
+            array_search('UselessCastRule', $order, true),
+            'A rule firing 259 times ranks below one firing nothing, so the ordering is still structural '
+            . 'where a measurement was supplied.',
+        );
+
+        $this->assertStringContainsString('259 finding(s)', $rendered);
+    }
+
     public function test_the_report_says_what_it_cannot_see(): void
     {
         $this->assertStringContainsString(

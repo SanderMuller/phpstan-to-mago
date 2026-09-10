@@ -47,8 +47,37 @@ namespace Sandermuller\PhpstanToMago\Tests\Support;
  */
 final class Backlog
 {
-    /** @return list<BacklogRow> the refused rules, best first */
-    public static function rows(): array
+    /**
+     * Findings per rule, from a `run-refusal-yield.php` report, or none when no report is named.
+     *
+     * Optional and by path rather than committed, because a yield count belongs to the corpus it was
+     * measured on -- a figure baked in here would be a number no reader could re-derive without knowing
+     * which trees produced it. The caller names one.
+     *
+     * @return array<string, int>
+     */
+    private static function findings(?string $path): array
+    {
+        if ($path === null || ! is_file($path)) {
+            return [];
+        }
+
+        $counts = [];
+        foreach (explode("\n", (string) file_get_contents($path)) as $line) {
+            if (preg_match('/^\s+(\d+)\s+([A-Za-z0-9_]+)\s/', $line, $match) === 1) {
+                $counts[$match[2]] = (int) $match[1];
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * @param string|null $yieldReport a `run-refusal-yield.php` report, which adds the yield axis
+     *
+     * @return list<BacklogRow> the refused rules, best first
+     */
+    public static function rows(?string $yieldReport = null): array
     {
         $census = dirname(__DIR__) . '/Fixtures/expected/census.md';
         if (! is_file($census)) {
@@ -87,14 +116,19 @@ final class Backlog
             }
         }
 
+        $findings = self::findings($yieldReport);
+        foreach ($rows as $row) {
+            $row->findings = $findings[$row->name] ?? null;
+        }
+
         usort($rows, static fn (BacklogRow $a, BacklogRow $b): int => $a->rank() <=> $b->rank());
 
         return $rows;
     }
 
-    public static function render(): string
+    public static function render(?string $yieldReport = null): string
     {
-        $rows = self::rows();
+        $rows = self::rows($yieldReport);
 
         $width = 0;
         foreach ($rows as $row) {
@@ -108,7 +142,12 @@ final class Backlog
             $out .= sprintf("  %-{$width}s  %s\n", $row->name, $row->reason());
         }
 
-        return $out . "\n  Ordering is not worth. A rule that fires nothing on real code is worth nothing however\n"
-            . "  cheap: run tests/Support/run-refusal-yield.php over a corpus before committing to any row.\n";
+        $measured = self::findings($yieldReport) !== [];
+
+        return $out . ($measured
+            ? "\n  Ranked with measured yield, which belongs to the corpus it came from -- read that report's\n"
+                . "  own header for which trees, and re-measure before quoting a count anywhere else.\n"
+            : "\n  Ordering is not worth. A rule that fires nothing on real code is worth nothing however\n"
+                . "  cheap: run tests/Support/run-refusal-yield.php over a corpus and pass its report here.\n");
     }
 }
