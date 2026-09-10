@@ -9257,8 +9257,24 @@ final readonly class Translator
 
         // Both sides read as text, through the same reduction a name-taking helper argument goes through: a
         // written name and a rendered type are both strings by the time the message quotes one.
-        $first = $this->nameText($this->resolve($thenAssign->expr, $line), $line);
-        $second = $this->nameText($this->resolve($elseAssign->expr, $line), $line);
+        //
+        // **Text is the whole of what this binding carries, and a refusal here has to say so.** An arm that
+        // does not reduce refused with `cannot read a <kind> as a name`, which names the reader rather than
+        // the shape: `UselessCastRule` binds `$expressionType` from a branch on `treatPhpDocTypesAsCertain`
+        // and then asks `isSuperTypeOf($expressionType)` of it, so even an arm that *did* render would be
+        // bound as text and answer a type question wrongly. The first obstacle read as a missing renderer
+        // and is a limit of the binding, which is a different thing to build.
+        try {
+            $first = $this->nameText($this->resolve($thenAssign->expr, $line), $line);
+            $second = $this->nameText($this->resolve($elseAssign->expr, $line), $line);
+        } catch (Refusal $refusal) {
+            throw new Refusal(sprintf(
+                'a value bound by a branch, which this carries as text only: %s. A local bound here is a '
+                . 'string, so a rule that also asks a type question of it needs the branch translated rather '
+                . 'than folded',
+                $refusal->getMessage(),
+            ), $line);
+        }
 
         $this->context->locals[$then] = [
             'rust' => self::PHP_ONLY,

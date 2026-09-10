@@ -157,7 +157,7 @@ REFUSE  ForbiddenNewArgumentRule  (the package registers it nowhere)
 REFUSE  ForbiddenNodeRule
         PhpParser\Node covers several node kinds, and this rule narrows to them with `instanceof` against a value rather than a written class name — a configured list of node classes. A plugin declares its targets statically, so there is no shape to register: the rule's target set is only known at analysis time
         needs-at-least: $forbiddenNodes is wired by 2 neons the package ships and they disagree — config/configurable-rules.neon and config/rector-rules.neon — so which value a consumer gets depends on which config file it includes, and there is no single one for a generated plugin to carry
-        needs-at-least: access path outside the vocabulary: Expr_New
+        needs-at-least: a value bound by a branch, which this carries as text only: access path outside the vocabulary: Expr_New
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_New
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $this->standard->prettyPrint()
         needs-at-least: $errorMessage is not a message built in this rule
@@ -418,7 +418,7 @@ REFUSE  ArrayFilterStrictRule
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->toBoolean()
         needs-at-least: statement outside the vocabulary: Stmt_Break
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getNativeType()
-        needs-at-least: cannot read a type as a name
+        needs-at-least: a value bound by a branch, which this carries as text only: cannot read a type as a name
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Scalar_String
         needs-at-least: sprintf() format is not a literal or a class constant
         needs-at-least: guard body is neither `return []` nor `continue`, but Stmt_Expression
@@ -480,8 +480,8 @@ REFUSE  OverwriteVariablesWithForeachRule
 EMIT    RequireParentConstructCallRule
 EMIT    StrictFunctionCallsRule
 REFUSE  UselessCastRule
-        cannot read a type as a name
-        needs-at-least: cannot read a type as a name
+        a value bound by a branch, which this carries as text only: cannot read a type as a name. A local bound here is a string, so a rule that also asks a type question of it needs the branch translated rather than folded
+        needs-at-least: a value bound by a branch, which this carries as text only: cannot read a type as a name
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getNativeType()
         needs-at-least: if statement that is not a single-statement guard, but 2 statements: Stmt_Expression + Stmt_Return
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: Expr_Closure
