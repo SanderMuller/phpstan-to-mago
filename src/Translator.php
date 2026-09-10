@@ -5173,6 +5173,23 @@ final readonly class Translator
      * {@see translateConditionalReport()} instead -- `DynamicCallOnStaticMethodsRule` moved from two guards
      * and a report to a nested block, the same behaviour in a different file, for a rule that needed nothing.
      */
+    /**
+     * Whether a statement before the report belongs in a conditional report's block.
+     *
+     * Assignments, and a bailing guard inside an error helper. **Not any branch, tried and refuted by this
+     * repository's own fixture.** `ArrayFilterStrictRule`'s one-argument block is
+     * `$a = ..; $b = ..; if (..) {..} elseif ..; return [<error>];`, so accepting a mid-block `If_` is the
+     * obvious first step toward it -- and accepting one makes `NonTerminalReportBranchRule` emit, a fixture
+     * written *to be refused*. Its docblock is the argument: something follows its branch, so folding the
+     * branch into the guard chain would return on every call whose name is not `first` and leave a reader
+     * looking at a guard chain that appears correct. The same acceptance restructured
+     * `DynamicCallOnStaticMethodsRule`, an emitting rule, from a guard chain into a conditional report --
+     * equivalent by reading, and a shipped rule's emitted bytes moved on nothing but my reading.
+     *
+     * So the precondition that acceptance has to satisfy is the one the fixture pins: nothing may follow the
+     * branch. A mid-block branch in a conditional report does have the report after it, which is why the
+     * naive acceptance is unsound rather than merely wide.
+     */
     private function belongsInAConditionalReport(Stmt $statement, bool $last): bool
     {
         if (! $last && $this->context->inErrorHelper && $this->isBailingGuard($statement)) {
