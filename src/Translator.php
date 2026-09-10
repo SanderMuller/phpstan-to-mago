@@ -12686,6 +12686,16 @@ final readonly class Translator
      *
      * `TypeFlags::$possiblyUndefined` is a different mechanism and unblocks none of these three.
      *
+     * **The analyzer target is not a way round this, though it looks like one.** It carries
+     * `variable_is_undefined` where the PHP target refuses, so the obvious next thought is that these rules
+     * already emit there. They do not: `Foreach_` and `For_` are `phpOnly` hooks, so the analyzer refuses for
+     * the opposite reason -- it has the answer and no hook where the PHP target has the hook and no answer,
+     * and `DisallowedImplicitArrayCreationRule` refuses on `Stmt_While` before reaching either. Adding the
+     * hooks would emit Rust nothing here can run: `variable_is_undefined` is not in mago's own source, this
+     * package ships no `.rs` beyond expected-output fixtures, and the fires gate covers the PHP target only.
+     * Two targets each holding exactly the half the other lacks reads as an opportunity until both halves
+     * are checked.
+     *
      * **Two other routes to the same outcome were checked before calling it absent**, because an absence
      * claim resting on one measurement is a fact about where the measurement was taken. There is no scope or
      * variable-by-name API to fall back on: a plugin's surface is `FileAnalysis::getExpressionType(Node|Span)`
