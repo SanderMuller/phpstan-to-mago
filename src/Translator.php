@@ -12652,12 +12652,26 @@ final readonly class Translator
      * means pinning a dev ref, which changes a constraint every downstream consumer inherits and is not a
      * decision this file gets to make.
      *
-     * The map when it lands: `hasVariableType($name)->yes()` is
-     * `getVariableDefinedness($name) === VariableDefinedness::Defined`, one to one. **`null` means
-     * unavailable, not undefined**, and reading it as undefined inverts `OverwriteVariablesWithForeachRule`
-     * -- that rule reports when the variable *is* already defined, so a null read would report on every
-     * fresh loop variable. `TypeFlags::$possiblyUndefined` is a different mechanism and unblocks none of
-     * these three.
+     * **The map, read from the shipped source at `dev-main` rather than taken on report.** Installed in a
+     * scratch project so this repository's constraint is untouched; the SDK surface is verifiable that way
+     * and the analyzer is not, because the composer package fetches a released binary by tag and a dev ref
+     * has no release artefact. So what follows is read, not run.
+     *
+     * `hasVariableType($name)->yes()` is `getVariableDefinedness($name) === VariableDefinedness::Defined`,
+     * one to one. The method's own docblock says it answers whether a local variable exists *immediately
+     * before the target node executes*, which is the pre-scope question the rule asks and the reason the
+     * analyzer target needs the pre hook.
+     *
+     * **`null` cannot occur in a generated plugin, which is narrower than "null means unavailable".** The
+     * body is `if ($this->variableDefinedness === null) return null;` and then
+     * `$definedness[$variable] ?? VariableDefinedness::Undefined`. So a *missing name* answers `Undefined`,
+     * and `null` answers only that the plugin did not declare `FileAnalysisRequirement::VariableDefinedness`.
+     * A plugin that declares it never sees null, so the hazard is closed by construction rather than by a
+     * guard -- and the guard would have been the wrong shape anyway: reading null as undefined inverts
+     * `OverwriteVariablesWithForeachRule`, which reports when the variable *is* already defined, so it would
+     * report on every fresh loop variable.
+     *
+     * `TypeFlags::$possiblyUndefined` is a different mechanism and unblocks none of these three.
      *
      * **Two other routes to the same outcome were checked before calling it absent**, because an absence
      * claim resting on one measurement is a fact about where the measurement was taken. There is no scope or
