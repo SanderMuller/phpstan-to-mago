@@ -12640,7 +12640,16 @@ final readonly class Translator
      *
      * That distinction decides what would unblock this. Not a definedness API, which now exists, but a
      * span-keyed type at the loop variable. Worth saying in those terms if this is ever raised upstream
-     * again: the previous framing asks for a capability that shipped and would read as already done. Without this the php target built the Rust call
+     * again: the previous framing asks for a capability that shipped and would read as already done.
+     *
+     * **Two other routes to the same outcome were checked before calling it absent**, because an absence
+     * claim resting on one measurement is a fact about where the measurement was taken. There is no scope or
+     * variable-by-name API to fall back on: a plugin's surface is `FileAnalysis::getExpressionType(Node|Span)`
+     * and `getMultipleExpressionTypes()`, both span-keyed, with `ReferenceRegistry` a write path rather than
+     * a query. And the *absence* of a type is not itself the signal -- the probe fixture defines `$k` before
+     * its loop and leaves `$j` undefined before its own, and both answer "no type", so nothing distinguishes
+     * them. That pair is the control: had absence tracked definedness, reading it would have been the route
+     * and no upstream change would be needed. Without this the php target built the Rust call
      * anyway and refused two layers later naming a leaked Rust operand, so the census recorded a downstream
      * shape as the obstacle for a rule whose real blocker is its first guard.
      *
