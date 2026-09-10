@@ -66,7 +66,7 @@ final class Cli
 
         if (! Transpiler::$survey && Transpiler::$target === 'linter') {
             self::writeLintModule($rules, $outDir);
-            echo "\nemitted: " . count($rules) . ', refused: ' . count($refused) . ' (target: ' . Transpiler::$target . ")\n";
+            echo "\n" . self::tally($rules, $refused);
 
             return $refused === [] ? 0 : 1;
         }
@@ -87,7 +87,7 @@ final class Cli
             }
         }
 
-        echo "\nemitted: " . count($rules) . ', refused: ' . count($refused) . ' (target: ' . Transpiler::$target . ")\n";
+        echo "\n" . self::tally($rules, $refused);
 
         // What a refusal is the scope of, printed where the refusal is read. A survey prints the *first*
         // obstacle a rule hit and nothing about the rest of its body, and sizing work from that alone has
@@ -257,7 +257,15 @@ final class Cli
                 }
 
                 $rules[] = $rule;
-                echo "  EMIT    $name\n";
+
+                // **A survey row is spelled differently from a result, in the row rather than in a banner.**
+                // The banner above already names the mode and it was read past three times in one session:
+                // a survey saying 4 where a real run said 3, a survey saying 15 where a real run said 2, and
+                // four `AttributesCheck` rules read as ported when the real run refuses all four on a missing
+                // hook. Each was caught by a different act of discipline, and a banner scrolls away while a
+                // row is what gets grepped. `grep EMIT` over a survey now finds nothing, so the mistake is
+                // unavailable rather than merely detectable.
+                echo Transpiler::$survey ? "  WOULD   $name\n" : "  EMIT    $name\n";
             } catch (Throwable $e) {
                 echo "  REFUSE  $name: {$e->getMessage()}\n";
                 $refused[] = $name;
@@ -265,6 +273,25 @@ final class Cli
         }
 
         return [$rules, $refused];
+    }
+
+    /**
+     * The closing count, spelled for the mode that produced it.
+     *
+     * `would-emit` rather than `emitted` under `--survey`, for the reason the row above carries: a survey
+     * relaxes two checks, so its count is an upper bound and has been read as a result three times. A reader
+     * grepping `emitted:` over a survey now finds nothing.
+     *
+     * @param list<array{name: string, trait: string, node: string|null, kind: string, module: string, rust: string, identifier: string|null, identifiers: list<string>, arguments: array<string, mixed>, messages: list<string>}> $rules
+     * @param list<string>                                                                                                                                                                                                        $refused
+     */
+    private static function tally(array $rules, array $refused): string
+    {
+        $verb = Transpiler::$survey ? 'would-emit' : 'emitted';
+        $mode = Transpiler::$survey ? 'survey, target: ' : 'target: ';
+
+        return $verb . ': ' . count($rules) . ', refused: ' . count($refused)
+            . ' (' . $mode . Transpiler::$target . ")\n";
     }
 
     /**

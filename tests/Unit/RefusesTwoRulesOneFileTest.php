@@ -37,7 +37,7 @@ final class RefusesTwoRulesOneFileTest extends TestCase
         $output = $this->cli(['--survey', self::PACKAGE], expected: 1);
 
         $this->assertSame(2, substr_count($output, 'two rules would be written to NamedConstantRule.php'), $output);
-        $this->assertStringContainsString('emitted: 0, refused: 2', $output);
+        $this->assertStringContainsString('would-emit: 0, refused: 2 (survey', $output);
     }
 
     /**
@@ -59,8 +59,12 @@ final class RefusesTwoRulesOneFileTest extends TestCase
     {
         $output = $this->cli(['--survey', self::ALONE]);
 
-        $this->assertStringContainsString('EMIT    NamedConstantRule', $output);
-        $this->assertStringContainsString('emitted: 1, refused: 0', $output);
+        // The *survey* spellings, which are deliberately not the result spellings. A survey relaxes two
+        // checks, so its count is an upper bound; asserting `EMIT` and `emitted:` here would pin the
+        // conflation that let three survey figures be read as results in one session.
+        $this->assertStringContainsString('WOULD   NamedConstantRule', $output);
+        $this->assertStringContainsString('would-emit: 1, refused: 0 (survey', $output);
+        $this->assertStringNotContainsString('EMIT ', $output);
     }
 
     /**
@@ -71,7 +75,7 @@ final class RefusesTwoRulesOneFileTest extends TestCase
     {
         $output = $this->cli([self::PACKAGE], expected: 1);
 
-        $this->assertStringContainsString('emitted: 0, refused: 2', $output);
+        $this->assertStringContainsString('emitted: 0, refused: 2 (target', $output);
     }
 
     /**

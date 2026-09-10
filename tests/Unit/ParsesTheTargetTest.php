@@ -37,12 +37,17 @@ final class ParsesTheTargetTest extends TestCase
 
     public function test_names_the_target_it_was_given_with_no_flag(): void
     {
-        $this->assertStringContainsString('(target: php)', $this->cli(['--survey', self::RULE]));
+        // `survey, target:` under `--survey`: the tally names the mode as well as the target, so a survey
+        // count cannot be grepped as a result.
+        $this->assertStringContainsString('(survey, target: php)', $this->cli(['--survey', self::RULE]));
     }
 
     public function test_selects_a_named_target(): void
     {
-        $this->assertStringContainsString('(target: analyzer)', $this->cli(['--survey', '--target=analyzer', self::RULE]));
+        $this->assertStringContainsString(
+            '(survey, target: analyzer)',
+            $this->cli(['--survey', '--target=analyzer', self::RULE]),
+        );
         $this->assertSame('analyzer', Transpiler::$target);
     }
 
@@ -55,7 +60,10 @@ final class ParsesTheTargetTest extends TestCase
 
     public function test_names_the_target_alongside_every_count(): void
     {
-        $this->assertMatchesRegularExpression('/emitted: \d+, refused: \d+ \(target: \w+\)/', $this->cli(['--survey', self::RULE]));
+        $this->assertMatchesRegularExpression(
+            '/would-emit: \d+, refused: \d+ \(survey, target: \w+\)/',
+            $this->cli(['--survey', self::RULE]),
+        );
     }
 
     /**
