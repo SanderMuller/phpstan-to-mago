@@ -72,6 +72,21 @@ final class BacklogRow
      *
      * A measured zero is evidence the rule is not worth porting. An unmeasured rule is evidence of nothing,
      * so it sorts above the zeros and below anything known to fire.
+     *
+     * **The four in that state are doubly unmeasurable on the corpora this tool uses, which was checked
+     * rather than assumed.** Their identifiers are known by reading the collaborators that build them --
+     * `phpunit.attributeRequiresPhpVersion`, four `phpunit.dataProvider*`, six `hihaho.database.*` -- so the
+     * join could be bypassed by counting them in a PHPStan baseline directly. Done, over four vendored
+     * trees: 3757 entries, `cast.useless` at 125 as a positive leg, and **no `phpunit.*` identifier
+     * anywhere**. Eight files in those trees extend `TestCase`. So the zero is a fact about the corpus, not
+     * about the rules -- a vendored package ships source and not its tests -- which is the caveat
+     * `run-refusal-yield.php` prints as "a zero belongs to these trees". `SlowMigrationDdlRule` is the same
+     * shape for a different reason: it is inert until `outlierTables` is configured, and nothing configures
+     * it here.
+     *
+     * Measuring them means a corpus that carries test suites and Laravel migrations, which is a different
+     * configuration and so a different set of counts. Ranking them above the measured zeros is the most this
+     * axis can honestly say.
      */
     /**
      * How the row opens: a count, or that no count could be joined.
