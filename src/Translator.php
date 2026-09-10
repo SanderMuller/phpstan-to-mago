@@ -5196,6 +5196,14 @@ final readonly class Translator
             return true;
         }
 
+        // A branch before the report, translated by the ordinary statement path. Sound for the reason
+        // {@see isNestedConditionalReport()} gives: `translateConditionalReport()` emits a real
+        // `if-open`/`block-close`, so what follows the branch still runs -- unlike a fold into the guard
+        // chain, which is what `NonTerminalReportBranchRule`'s docblock was written against.
+        if (! $last && $statement instanceof If_) {
+            return true;
+        }
+
         if (! $statement instanceof Expression || ! $statement->expr instanceof Assign) {
             return false;
         }

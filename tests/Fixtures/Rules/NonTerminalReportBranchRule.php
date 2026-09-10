@@ -19,8 +19,20 @@ use PHPStan\Rules\RuleErrorBuilder;
  *
  * Here something does follow it. Folded anyway, the second check below would never run: the plugin would
  * return on every call whose name is not `first`, and a reader of the emitted file would see a guard chain
- * that looks exactly like a correct one. So the port refuses instead, and this rule is the record that it
- * does — no corpus rule has this shape, so without it the precondition is a branch nothing takes.
+ * that looks exactly like a correct one.
+ *
+ * **The port refused for that reason and now emits, because the fold is no longer the only handling.**
+ * `translateConditionalReport()` emits a real `if-open`/`block-close` with the branch's own exit inside it,
+ * so what follows the branch still runs -- which is the soundness argument `isNestedConditionalReport()`
+ * already carried for a nested report and which reaches this shape once a branch is accepted before the
+ * report. The superseded sentence is kept above rather than edited away: it was true of the only translation
+ * available when it was written, and the reason it stopped being true is the point.
+ *
+ * So this rule now pins the emission rather than the refusal, and the pair is what makes that a measurement
+ * instead of a reading. `BadBothBranches.php` calls both `->first()` and `->second()`: PHPStan reports one
+ * finding from each branch, and the port agrees, so the second check is reachable. One finding there is what
+ * a lost per-branch block looks like, and agreement on one finding would pass a comparison while the second
+ * check was gone -- which is why the count is checked and not only the agreement.
  *
  * @implements Rule<MethodCall>
  */
