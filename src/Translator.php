@@ -12638,9 +12638,26 @@ final readonly class Translator
      * the iterated expression and **no type at all** for the key or value variable — `$rows` answers `array`
      * while `$k`, `$v`, `$j` and `$w` answer nothing. So the flag has nothing to attach to.
      *
-     * That distinction decides what would unblock this. Not a definedness API, which now exists, but a
-     * span-keyed type at the loop variable. Worth saying in those terms if this is ever raised upstream
-     * again: the previous framing asks for a capability that shipped and would read as already done.
+     * **That reading was wrong too, and the correction is the operative fact: the capability is implemented
+     * and unreleased.** `#2334` closed as completed on 2026-09-07 by `90d64baf9`, "feat(extension): expose
+     * variable definedness to analyzer hooks", adding `FileAnalysisRequirement::VariableDefinedness`,
+     * `NodeAnalysisContext::getVariableDefinedness(string)` and a `Undefined | PossiblyDefined | Defined`
+     * enum. It is keyed by **variable name**, not by span -- which is why the probe above could not see it
+     * and why "a span-keyed type at the loop variable" was the wrong thing to ask for. The probe requested
+     * four requirements and `VariableDefinedness` was not among them, correctly: it does not exist in the
+     * installed SDK.
+     *
+     * So this is a version boundary and not a ceiling. 1.47.6 of 2026-09-04 is still the newest release as
+     * of 2026-09-10 -- checked, not assumed -- so nothing a consumer can install carries it. Reaching it
+     * means pinning a dev ref, which changes a constraint every downstream consumer inherits and is not a
+     * decision this file gets to make.
+     *
+     * The map when it lands: `hasVariableType($name)->yes()` is
+     * `getVariableDefinedness($name) === VariableDefinedness::Defined`, one to one. **`null` means
+     * unavailable, not undefined**, and reading it as undefined inverts `OverwriteVariablesWithForeachRule`
+     * -- that rule reports when the variable *is* already defined, so a null read would report on every
+     * fresh loop variable. `TypeFlags::$possiblyUndefined` is a different mechanism and unblocks none of
+     * these three.
      *
      * **Two other routes to the same outcome were checked before calling it absent**, because an absence
      * claim resting on one measurement is a fact about where the measurement was taken. There is no scope or
