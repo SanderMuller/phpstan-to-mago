@@ -1652,6 +1652,22 @@ final class Support
     }
 
     /**
+     * The cases a `switch` writes, one `SwitchCase` each.
+     *
+     * @return list<Part>
+     */
+    public static function switchCasesOf(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        return Switches::switchCasesOf($context, $subject);
+    }
+
+    /** The expression a `switch` case matches on, or null for `default`. */
+    public static function switchCaseCondition(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        return Switches::switchCaseCondition($context, $subject);
+    }
+
+    /**
      * Every node of the given kinds anywhere below this one, which is php-parser's `NodeFinder::findInstanceOf()`.
      *
      * Recurses blindly, including into nested closures and functions, because php-parser does: a rule counting

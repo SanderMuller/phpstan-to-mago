@@ -454,8 +454,8 @@ EMIT    DynamicCallOnStaticMethodsRule
 EMIT    IllegalConstructorMethodCallRule
 EMIT    IllegalConstructorStaticCallRule
 REFUSE  MatchingTypeInSwitchCaseConditionRule
-        no mapping for ->cases on a hook-node
-        needs-at-least: no iteration mapped for ->cases, which resolved to a expr
+        ->isSuperTypeOf()->no(), for which no `no`-direction helper exists: it is not `! ->yes()`, because PHPStan answers Maybe for a type that is partly this and partly not. A helper for this one query would carry it, the way `hasVariableType()` already does — reducing a union and an intersection the way PHPStan does, which are not the same quantifier
+        needs-at-least: ->isSuperTypeOf()->no(), for which no `no`-direction helper exists: it is not `! ->yes()`, because PHPStan answers Maybe for a type that is partly this and partly not
         floor: 7 statements stepped over, 2 further refusals suppressed as artefacts, so the list above is a floor
 EMIT    OperandInArithmeticPostDecrementRule
 EMIT    OperandInArithmeticPostIncrementRule

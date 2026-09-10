@@ -193,6 +193,29 @@ final readonly class Translator
     }
 
     /**
+     * What a loop variable is bound to, including the node kind its items are known to have.
+     *
+     * Two sources for that kind, and they are not the same fact. A list of *found* nodes carries `as` when
+     * the search was for a single kind, so the answer comes from the caller. A navigated child list knows it
+     * by construction -- `$node->cases` holds `SwitchCase` whatever the caller wanted -- so the answer comes
+     * from the vocabulary. Without either, a field read off the loop variable misses `FIELDS` entirely and
+     * falls to the generic path, which is how `$case->cond` resolved to a bare `node.cond`.
+     *
+     * Its own method because `translateForeach()` reached the cognitive-complexity limit with it inline.
+     *
+     * @param array{iter: string, item: string, itemAs?: string, phpIter?: string} $iterable
+     * @param Descriptor                                                           $subject
+     *
+     * @return Descriptor
+     */
+    private function loopItem(string $variable, array $iterable, array $subject): array
+    {
+        $as = $subject['as'] ?? $iterable['itemAs'] ?? null;
+
+        return ['rust' => $variable, 'kind' => $iterable['item']] + ($as === null ? [] : ['as' => $as]);
+    }
+
+    /**
      * Why a `foreach` cannot be translated, naming what the rule wrote rather than what it resolved to.
      *
      * The message used to be "no iteration mapped for a {kind}", where the kind is this transpiler's internal
@@ -1049,6 +1072,22 @@ final readonly class Translator
         if ($subject['kind'] === 'subtree') {
             if (Transpiler::$target !== 'php') {
                 throw new Refusal('a body test, which only the PHP target carries', $line);
+            }
+
+            return $this->operand($subject) . ' === null';
+        }
+
+        // `$case->cond === null` on a switch case is *whether it is the `default`*. php-parser spells the
+        // default that way and {@see Runtime\Switches::switchCaseCondition()} answers the same null, because
+        // a `SwitchDefaultCase` has no `Expression` child at all -- measured with the syntax probe rather
+        // than assumed from the kind list.
+        //
+        // Gated on the base being a switch case, for the reason the arm below gives: most navigations that
+        // resolve to an `expr` always find something, and letting every `expr` compare to null would emit a
+        // guard that can never hold.
+        if ($subject['kind'] === 'expr' && str_contains($subject['php'] ?? '', 'switchCaseCondition')) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a switch-case default test, which only the PHP target carries', $line);
             }
 
             return $this->operand($subject) . ' === null';
@@ -9985,11 +10024,7 @@ final readonly class Translator
 
         $savedCaches = $this->context->caches;
         $savedLoop = $this->context->inLoop;
-        $this->context->locals[$stmt->valueVar->name] = ['rust' => $variable, 'kind' => $iterable['item']];
-        if (isset($subject['as'])) {
-            // Every item of a list of found nodes is of the kind that was searched for.
-            $this->context->locals[$stmt->valueVar->name]['as'] = $subject['as'];
-        }
+        $this->context->locals[$stmt->valueVar->name] = $this->loopItem($variable, $iterable, $subject);
 
         if (Transpiler::$target === 'php') {
             $this->context->locals[$stmt->valueVar->name]['php'] = '$' . $variable;

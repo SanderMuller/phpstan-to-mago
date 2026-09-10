@@ -340,7 +340,18 @@ final class Vocabulary
         'IfStatementBodyElseIfClause' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
         'While' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
         'DoWhile' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
-        'Switch' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
+        'Switch' => [
+            'cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
+            // php-parser hangs the cases off `->cases`; mago puts them three levels down, under a
+            // `SwitchBody` and then a delimited body. {@see Runtime\Switches::switchCasesOf()} carries the
+            // descent and the measurement behind it.
+            'cases' => [self::PHP_ONLY, 'switch-cases', 'Support::switchCasesOf($context, {base})'],
+        ],
+        // One `case` of a switch. `cond` is null for `default`, which is how php-parser spells it and how a
+        // rule tests it -- there is no `Expression` child under a `SwitchDefaultCase` at all.
+        'switch-case' => [
+            'cond' => [self::PHP_ONLY, 'expr', 'Support::switchCaseCondition($context, {base})'],
+        ],
         // The expression an expression-statement wraps. Same shape as the conditions above — the wrapper's
         // only expression child — which is why it reads through the same helper rather than a new one.
         'ExpressionStatement' => ['expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
@@ -590,7 +601,11 @@ final class Vocabulary
     public const string PHP_ONLY = '/* PHP target only */';
 
     /**
-     * @var array<string, array{iter: string, item: string, phpIter?: string}>
+     * `itemAs` is the node kind every item of the list has, where the list knows it by construction. A field
+     * read off the loop variable finds `FIELDS[<itemAs>]`, which keys on a descriptor's `as` rather than on
+     * its `kind` -- so without it a navigated child list's items answer field reads from the generic path.
+     *
+     * @var array<string, array{iter: string, item: string, itemAs?: string, phpIter?: string}>
      */
     public const array ITERABLES = [
         // A configured list of strings, carried by the generated plugin's constructor. An iterable in both
@@ -613,6 +628,14 @@ final class Vocabulary
         // exactly this meaning: three rules write that loop and each then searches *inside* the statement it
         // was handed. Flattening would make the outer loop visit nodes the rule never sees.
         'subtree' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => 'Support::statementsOf($context, {rust})'],
+        // `foreach ($node->cases as $case)` — the cases of a switch, one `SwitchCase` each. The item is its
+        // own kind rather than `expr`, because what a rule asks of a case is its condition and its line, and
+        // both are answered off the case rather than off an expression.
+        // `itemAs` because a field read off the loop variable has to find `FIELDS['switch-case']`, and that
+        // lookup keys on the descriptor's `as` rather than on its `kind`. Every item of this list is a
+        // `SwitchCase`, which is exactly the condition `as` records -- the same fact `found-nodes` carries
+        // when a subtree search was for one kind.
+        'switch-cases' => ['iter' => self::PHP_ONLY, 'item' => 'switch-case', 'itemAs' => 'switch-case', 'phpIter' => '{rust}'],
         // The method declarations of a class-like body, one `method-decl` each.
         'method-members' => ['iter' => self::PHP_ONLY, 'item' => 'method-decl', 'phpIter' => '{rust}'],
         // Every member of a class-like body, one `class-member` each, in source order. Kept apart from
