@@ -20904,7 +20904,33 @@ collaborator is its own port: this repository reproduced `CoversHelper::processC
 `Runtime\CoversTargets` to emit one rule, and core delegates to dozens of distinct checkers. So the
 conclusion holds and the reason is sharper: not breadth of *obstacles* but breadth of *collaborators*.
 
-**And a distribution with no head is the signature of a conjunction**, which is the transferable part. A
+**Superseded twice more, and the flat reading was right.** The 17.6% above came from a grep matching any
+refusal that *mentions* a collaborator, which is not the same as a rule that delegates its output to one.
+Classifying the rules instead gave 89 delegating and a 23.2% head -- also wrong, because that regex matched
+any `return $this->x->y(...)` anywhere in the body, and `PossiblyImpureTipHelper`'s nineteen rules have
+bodies of 34 to 131 lines. They end with a delegated return; they are not delegations.
+
+The defensible figure is the strict shape -- a `processNode()` whose whole body is one delegated return --
+which is 19 of 355, independently counted here and by the peer session. That is 5.6% of the 340 refusals, so
+there is no head, and the flat reading this entry started with was correct. Two successive merges each
+produced a head by widening the pattern rather than by finding a shape.
+
+**A lever candidate that came out of the same investigation was a survey artefact.** `AttributesCheck` looked
+already ported: four of its rules showed EMITTED, each with a two-line body, and `ClassConstantAttributesRule`
+has a body byte-identical to `EnumCaseAttributesRule`'s -- so one field mapping looked like it would carry a
+fifth rule. All four "emitters" were survey rows. The real run refuses every one with `no hook mapping for
+node type`, for `InClosureNode`, `InFunctionNode`, `InArrowFunctionNode` and `EnumCase`. Nothing in that
+family is ported, and the cost is four virtual-node hooks rather than one field.
+
+That is the third time in one session that a survey figure was read as a result, and the only one caught
+before work started rather than after. The check is one command: read the real run's list, not the survey's.
+
+**And a distribution with no head is the signature of a conjunction**, which is the transferable part -- with
+the precondition the peer session supplied after this entry was first written. A flat tail is evidence of a
+conjunction only once the labels sit at the granularity of *mechanism* rather than symptom, and a check that
+reads labels cannot detect mislabelling: it is downstream of exactly the failure that produces a false flat
+reading. So the companion is to read one bucket's rules by hand and confirm the label means what it says.
+Here that companion is what showed the two merges were pattern-widening rather than mechanism-finding. A
 dependency that genuinely gated a corpus would show a spike -- one bucket holding a third or a half. A flat
 tail says no single fix moves the total, because each rule clearing its first obstacle meets its own second.
 That is one query to run on any new corpus before choosing a lever, and it is what four rankings in this
