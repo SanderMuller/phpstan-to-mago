@@ -82,6 +82,7 @@ use PhpParser\Node\UnionType;
 use PhpParser\NodeFinder;
 use PHPStan\Reflection\ClassReflection;
 use PHPStan\Type\ObjectType;
+use Sandermuller\PhpstanToMago\Runtime\Truthiness;
 
 /**
  * Statement and expression translation: two of `Transpiler`'s four jobs, and they cannot be separated.
@@ -12535,12 +12536,84 @@ final readonly class Translator
      *
      * @var array<string, array{0: string, 1: string}>
      */
+    /**
+     * The definite-truthiness tails, by the PHPStan query that asks them, to the runtime helper.
+     *
+     * A map rather than a pair of comparisons so the arm reading it is one lookup: this method is in the
+     * baseline for cognitive complexity, and an `||` here costs more than the table does.
+     */
+    private const array TRUTHINESS_TAILS = [
+        'isTrue' => 'type_is_definitely_truthy',
+        'isFalse' => 'type_is_definitely_falsy',
+    ];
+
     private const array TYPE_SHAPE_QUERIES = [
         'isBoolean' => ['type_is_boolean', 'boolean-type'],
         'isLiteralString' => ['type_is_literal_string', 'literal-string'],
         'isObject' => ['type_is_object', 'object-type'],
         'canCallMethods' => ['type_can_call_methods', 'method-callable-type'],
     ];
+
+    /**
+     * `->isTrue()` or `->isFalse()` on the *boolean cast* of a type, which is one question about the type.
+     *
+     * Mago has no boolean cast of a type -- only `MixedType` carries truthiness -- so it is computed from the
+     * atomics in {@see Truthiness}, and `->toBoolean()` resolves to a
+     * `boolean-cast` marker carrying its receiver rather than to a boolean object.
+     *
+     * **This is the one predicate in this class whose error direction is inverted, and that class is worth
+     * reading before changing this.** Its consumer stays quiet only when every union member is definitely
+     * truthy or definitely falsy and both occur, so answering "cannot tell" makes the rule *report*.
+     * Under-detecting is the unsafe direction, which is the opposite of every other refusal here.
+     *
+     * Reading the descriptor rather than the call chain is what carries the local: `ArrayFilterStrictRule`
+     * writes `$booleanType = $innerType->toBoolean();` and asks the question a statement later, so a
+     * chain-shaped match sees `->isTrue()` on a variable and refuses.
+     *
+     * @param string $helper the runtime helper, from {@see TRUTHINESS_TAILS}
+     * @param string $name    the PHPStan query, for the refusal to name
+     */
+    private function definiteTruthinessTest(Expr $receiver, string $helper, string $name, int $line): string
+    {
+        $of = $this->resolve($receiver, $line);
+        if ($of['kind'] !== 'boolean-cast') {
+            throw new Refusal(
+                "->{$name}() on a {$of['kind']} rather than on the boolean cast of a type, which is the only "
+                . 'receiver a definite-truthiness helper can answer for',
+                $line,
+            );
+        }
+
+        if (Transpiler::$target !== 'php') {
+            throw new Refusal('a definite-truthiness test, which only the PHP target carries', $line);
+        }
+
+        return $this->context->backend->call($helper, [$this->operand($of)]);
+    }
+
+    /**
+     * `<a type>->toBoolean()` as a marker carrying its receiver, rather than as a boolean.
+     *
+     * PHPStan answers this with a boolean *type* -- `true`, `false`, or the undecided `bool` -- and mago has
+     * no equivalent: a boolean cast of a type is not in the SDK's model, and only `MixedType` carries
+     * truthiness at all.
+     *
+     * So nothing is computed here and the question is asked at the `->isTrue()` / `->isFalse()` tail that
+     * reads this kind. That keeps the undecided third state out of the port entirely, which is the same
+     * reason `->no()` is refused: `bool` as a *value* has nowhere to live here, while "definitely true" and
+     * "definitely false" are each one predicate.
+     *
+     * @return Descriptor
+     */
+    private function booleanCastOf(Expr $receiver, int $line): array
+    {
+        $of = $this->resolve($receiver, $line);
+        if (! in_array($of['kind'], ['type', 'type-without-null'], true)) {
+            throw new Refusal("toBoolean() of a {$of['kind']} rather than of an inferred type", $line);
+        }
+
+        return ['rust' => self::PHP_ONLY, 'kind' => 'boolean-cast', 'php' => $this->operand($of)];
+    }
 
     private function trinaryTailPredicate(MethodCall $inner, string $tail, int $line): string
     {
@@ -12659,6 +12732,14 @@ final readonly class Translator
                     '$context',
                     $this->operand($this->resolve($inner->var, $line)),
                 ]),
+            );
+        }
+
+        $truthiness = self::TRUTHINESS_TAILS[$name] ?? null;
+        if ($truthiness !== null && $args === []) {
+            return $this->negateUnless(
+                $tail === 'yes',
+                $this->definiteTruthinessTest($inner->var, $truthiness, $name, $line),
             );
         }
 
@@ -14510,6 +14591,16 @@ final readonly class Translator
             }
 
             return ['rust' => self::PHP_ONLY, 'kind' => 'type-without-null', 'php' => $this->operand($of)];
+        }
+
+        // `<a type>->toBoolean()`, which PHPStan answers with a boolean *type* -- `true`, `false`, or the
+        // undecided `bool` -- and mago has no equivalent for. {@see booleanCastOf()} for why it carries the
+        // receiver rather than computing anything here.
+        if ($expr instanceof MethodCall
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'toBoolean'
+            && $expr->getArgs() === []
+        ) {
+            return $this->booleanCastOf($expr->var, $line);
         }
 
         // `->getValue()` on a constant-string type — the literal behind it.

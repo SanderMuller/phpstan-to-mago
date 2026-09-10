@@ -410,10 +410,9 @@ EMIT    FunctionLikeCognitiveComplexityRule
 ## phpstan/phpstan-strict-rules — 37 of 45 portable rules the package registers emit, 0 covered by the engine, 8 refuse, 0 unportable in principle, 0 it registers nowhere
 
 REFUSE  ArrayFilterStrictRule
-        assignment value outside the vocabulary: access path outside the vocabulary: ->toBoolean()
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: ->toBoolean()
-        needs-at-least: if statement that is not a single-statement guard, but a chain of 2 elseif
+        statement outside the vocabulary: Stmt_Break
         needs-at-least: statement outside the vocabulary: Stmt_Break
+        needs-at-least: if statement that is not a single-statement guard, but a chain of 2 elseif
         needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $scope->getNativeType()
         needs-at-least: a value bound by a branch, which this carries as text only: cannot read a type as a name
         needs-at-least: if statement that is not a single-statement guard, but 4 statements: Stmt_Expression + Stmt_Expression + Stmt_If + Stmt_Return
@@ -421,7 +420,7 @@ REFUSE  ArrayFilterStrictRule
         needs-at-least: sprintf() format is not a literal or a class constant
         needs-at-least: guard body is neither `return []` nor `continue`, but Stmt_Expression
         needs-at-least: statement outside the vocabulary: Stmt_Expression
-        floor: 17 statements stepped over, 3 further refusals suppressed as artefacts, so the list above is a floor
+        floor: 17 statements stepped over, 4 further refusals suppressed as artefacts, so the list above is a floor
 EMIT    BooleanInBooleanAndRule
 EMIT    BooleanInBooleanNotRule
 EMIT    BooleanInBooleanOrRule

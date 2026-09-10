@@ -1677,6 +1677,23 @@ final class Support
         return Switches::switchCasesOf($context, $subject);
     }
 
+    /**
+     * Whether every atomic in a type is definitely truthy, which is `->toBoolean()->isTrue()->yes()`.
+     *
+     * {@see Truthiness} for why this one is complete rather than conservative -- the consumer reports when
+     * the answer is "cannot tell", so under-detecting here reports where PHPStan is quiet.
+     */
+    public static function typeIsDefinitelyTruthy(?Type $type): bool
+    {
+        return Truthiness::typeIsDefinitelyTruthy($type);
+    }
+
+    /** Whether every atomic in a type is definitely falsy, which is `->toBoolean()->isFalse()->yes()`. */
+    public static function typeIsDefinitelyFalsy(?Type $type): bool
+    {
+        return Truthiness::typeIsDefinitelyFalsy($type);
+    }
+
     /** The expression a `switch` case matches on, or null for `default`. */
     public static function switchCaseCondition(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
