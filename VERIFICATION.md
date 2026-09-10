@@ -20945,10 +20945,21 @@ reasoning: porting only the reachable half is a partial port, and this repositor
 
 That reasoning was never priced. Measured now, and the price is zero.
 
-**`ArrayFilterStrictRule`, 90 findings on four vendored trees, split by message:**
+**`ArrayFilterStrictRule`, split by message on the six trees the yield figure came from:**
 
-    'requires parameter #2 to be passed to avoid loose comparison semantics'   90
-    'Parameter #2 of array_filter() cannot be null (%s given)'                  0
+    'requires parameter #2 to be passed to avoid loose comparison semantics'   133
+    'Parameter #2 of array_filter() cannot be null (%s given)'                   0
+
+**Two numbers for one measurement, reconciled rather than chosen between.** A first pass over four trees
+counted 90 by grepping `identifier: arrayFilter.strict`, against the yield instrument's 133, and the obvious
+reading was that 90 is the four-tree subset of a six-tree total. It is not. On the same six trees the entry
+count is 93 and the occurrence count is 133: a baseline entry carries a `count:` field, and
+`run-refusal-yield.php` sums it where a grep counts entries. So 93 and 133 are both right and measure
+different things -- entries and findings -- and the tree count explains none of the gap.
+
+Resolved by reading the parser rather than by re-running: `preg_match_all('/identifier: (\S+)\n\s+count:
+(\d+)/')` at `run-refusal-yield.php:133`. A peer session asked which figure carried before either of us
+quoted one, which is what stopped a subset story being written down.
 
 The first is the one-argument path, which never reaches `getNativeType()`. The second is the two-argument
 path, which is the only reader of it, and it fires nowhere -- it needs a call that passes `null` explicitly
