@@ -18,6 +18,9 @@ use Mago\Sdk\Syntax\NodeKind;
  */
 final class Calls
 {
+    /** The category nodes mago wraps a concrete call or member access in, each holding exactly one child. */
+    private const array CATEGORY_WRAPPERS = [NodeKind::Call, NodeKind::Access];
+
     /**
      * The node kinds a *written* member name is spelled with, as opposed to a computed one.
      *
@@ -48,7 +51,7 @@ final class Calls
      */
     public static function nthExpression(NodeAnalysisContext $context, Part|Node|null $subject, int $index): ?Part
     {
-        $node = self::throughTheCallWrapper($context, $subject);
+        $node = self::throughTheCategoryWrapper($context, $subject);
         if (! $node instanceof Node) {
             return null;
         }
@@ -69,6 +72,32 @@ final class Calls
         }
 
         return null;
+    }
+
+    /**
+     * An array element's key, or null when it is written without one.
+     *
+     * php-parser gives every element an `ArrayItem` with a nullable `key`, and Mago splits the two shapes
+     * into `KeyValueArrayElement` and `ValueArrayElement` under the `ArrayElement` category node. So the
+     * question "does this element have a key" is the element's own kind here, and the key itself is the
+     * first of the two `Expression` children.
+     */
+    public static function arrayElementKey(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        $node = Tree::node($subject);
+        if (! $node instanceof Node) {
+            return null;
+        }
+
+        foreach ($context->source->getChildren($node) as $child) {
+            if ($child->kind === NodeKind::KeyValueArrayElement) {
+                return self::nthExpression($context, Tree::part($context, $child), 0);
+            }
+        }
+
+        return $node->kind === NodeKind::KeyValueArrayElement
+            ? self::nthExpression($context, $subject, 0)
+            : null;
     }
 
     /** The class side of a class-constant access or static call. */
@@ -109,7 +138,7 @@ final class Calls
     /** The member selector of a method call: `->expects(..)` gives `expects`. */
     public static function selector(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $node = self::throughTheCallWrapper($context, $subject);
+        $node = self::throughTheCategoryWrapper($context, $subject);
         if (! $node instanceof Node) {
             return null;
         }
@@ -127,7 +156,7 @@ final class Calls
 
     public static function argumentList(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
     {
-        $node = self::throughTheCallWrapper($context, $subject);
+        $node = self::throughTheCategoryWrapper($context, $subject);
         if (! $node instanceof Node) {
             return null;
         }
@@ -176,18 +205,6 @@ final class Calls
     }
 
     /**
-     * Whether a node names its member dynamically — computed at runtime rather than written out.
-     *
-     * The question `! $node->name instanceof Expr` asks, inverted: php-parser gives an `Identifier` for a
-     * written name and an expression for anything else. Mago has no such split, so the answer comes from the
-     * spelling: a selector holding a variable or a braced expression is dynamic, a bare word is not.
-     */
-    public static function hasDynamicName(NodeAnalysisContext $context, Part|Node|null $subject): bool
-    {
-        return ! self::isWrittenName(self::namePart($context, $subject));
-    }
-
-    /**
      * Whether a name part is written out rather than computed.
      *
      * Structural, not textual: a static property's *written* name is `$prop`, so a leading `$` proves nothing.
@@ -223,46 +240,6 @@ final class Calls
         $inner = $part->children()[0] ?? null;
 
         return in_array(($inner instanceof Part ? $inner : $part)->kind, self::WRITTEN_NAME_KINDS, true);
-    }
-
-    /**
-     * Whether a unary prefix expression's operator is the one written.
-     *
-     * `!` and `-` and `+` are one `UnaryPrefix` kind with the operator as a child, the same shape as a binary
-     * one — so a hook for `BooleanNot` registers `UnaryPrefix` and gates on the token. Probed: the operator is
-     * the first child and the operand the second.
-     */
-    public static function unaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
-    {
-        $node = Tree::node($subject);
-        if (! $node instanceof Node) {
-            return false;
-        }
-
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind === NodeKind::UnaryPrefixOperator) {
-                return trim($context->source->getText($child)) === $operator;
-            }
-        }
-
-        return false;
-    }
-
-    /** Whether a binary expression's operator is the one written, which Mago keeps in a child node. */
-    public static function binaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
-    {
-        $node = Tree::node($subject);
-        if (! $node instanceof Node) {
-            return false;
-        }
-
-        foreach ($context->source->getChildren($node) as $child) {
-            if ($child->kind === NodeKind::BinaryOperator) {
-                return trim($context->source->getText($child)) === $operator;
-            }
-        }
-
-        return false;
     }
 
     /** The selector's own name, which is case sensitive in PHP as method names are compared. */
@@ -320,20 +297,25 @@ final class Calls
     }
 
     /**
-     * The call node itself, through the `Call` category node mago wraps a *nested* call in.
+     * The concrete node, through the category wrapper mago puts around a call or a member access.
      *
      * The hook's own node is the concrete `MethodCall`, so navigating from it needs no unwrap and none of
-     * these helpers had one. A call the rule reached through a field is not: measured on
-     * `$routes->import('..')->prefix('/x')`, where the receiver of `prefix` arrives as `Call` with a single
-     * `MethodCall` child. `isMethodCall()` already went through the wrapper — that is what
-     * {@see concreteCall()} does — so the kind test said yes and every navigation off the same part then
-     * searched the wrapper's children, found none, and answered null. The guard chain read as a rule that
-     * simply never matched.
+     * these helpers had one. A node the rule reached through a field or an argument is not.
+     *
+     * Both wrappers were found the same way, and both by a rule that read as never matching. `Call` came
+     * from `$routes->import('..')->prefix('/x')`, where the receiver of `prefix` arrives as `Call` with a
+     * single `MethodCall` child. `Access` came from `$services->set(Widget::class, Widget::class)`, where
+     * the argument arrives as `Access` with a single `ClassConstantAccess` child — measured in
+     * `internal/probe-service-name-guards.php`, which prints `a0='Access' isCca=true classPartKind=NULL`.
+     *
+     * In both cases the *predicate* already went through the wrapper — {@see concreteCall()} and
+     * {@see concreteMemberAccess()} do that — so the kind test said yes while every navigation off the same
+     * part searched the wrapper's children, found none, and answered null.
      */
-    private static function throughTheCallWrapper(NodeAnalysisContext $context, Part|Node|null $subject): ?Node
+    private static function throughTheCategoryWrapper(NodeAnalysisContext $context, Part|Node|null $subject): ?Node
     {
         $node = Tree::node($subject);
-        if (! $node instanceof Node || $node->kind !== NodeKind::Call) {
+        if (! $node instanceof Node || ! in_array($node->kind, self::CATEGORY_WRAPPERS, true)) {
             return $node;
         }
 
@@ -380,6 +362,12 @@ final class Calls
     public static function isArrayDimFetch(?Part $part): bool
     {
         return $part instanceof Part && $part->kind === NodeKind::ArrayAccess;
+    }
+
+    /** `$a = $b`, and every compound spelling of it — Mago gives them all one kind and puts the operator in a child. */
+    public static function isAssignment(?Part $part): bool
+    {
+        return $part instanceof Part && $part->kind === NodeKind::Assignment;
     }
 
     /** @return list<Part> the positional arguments, in source order */

@@ -24,6 +24,25 @@ final class Names
     private const array NAME_KINDS = [NodeKind::Identifier, NodeKind::Keyword, NodeKind::LocalIdentifier];
 
     /**
+     * The segments of a qualified name — what `Name::getParts()` hands a rule.
+     *
+     * A rule asking whether a class sits under a named namespace tests membership of these, so the class's
+     * own short name is a segment too: php-parser's `getParts()` includes it, and dropping it would make
+     * `App\Entity` and `App\Entity\Thing` answer differently for the wrong reason. An empty segment cannot
+     * occur in a resolved name and is dropped rather than compared against.
+     *
+     * @return list<string>
+     */
+    public static function nameParts(?string $name): array
+    {
+        if ($name === null) {
+            return [];
+        }
+
+        return array_values(array_filter(explode('\\', ltrim($name, '\\')), static fn (string $part): bool => $part !== ''));
+    }
+
+    /**
      * The fully-qualified name a written name means, which is what `$scope->resolveName()` answers.
      *
      * Mago resolves a written name against the file's imports and namespace and hands back the result, so an
@@ -52,9 +71,26 @@ final class Names
         if ($node->kind === NodeKind::Keyword) {
             $keyword = strtolower(trim($context->source->getText($node)));
 
-            return $keyword === 'self' || $keyword === 'static'
-                ? Declares::enclosingClassName($context, $node)
-                : null;
+            if ($keyword === 'self' || $keyword === 'static') {
+                return Declares::enclosingClassName($context, $node);
+            }
+
+            // `parent` denotes the nearest parent of the enclosing declaration, which is what
+            // `$scope->resolveName()` answers for it. Read from the same list a membership test against the
+            // parents reads, so the two cannot disagree: `IllegalConstructorStaticCallRule` asks whether the
+            // resolved name is among the parents, and `parent::` is that name whenever there is one.
+            //
+            // Inside a trait the list is the union over the using classes ({@see
+            // Inheritance::parentClassNames()} carries the measurement and the bound), so this answers one
+            // user's parent where PHPStan would answer each user's own. A membership test against the same
+            // union is then true whenever *any* user has a parent, which under-reports rather than
+            // over-reports -- the direction the fold is chosen for. It would print one user's name in a
+            // message, and no rule does that with it today.
+            if ($keyword === 'parent') {
+                return Inheritance::parentClassNames($context, $node)[0] ?? null;
+            }
+
+            return null;
         }
 
         $resolved = $context->source->getResolvedName($node);
@@ -70,6 +106,67 @@ final class Names
         }
 
         return $subject->text;
+    }
+
+    /**
+     * The name php-parser hands a rule for a node, after PHPStan has resolved the file's names.
+     *
+     * `NamingHelper::getName()` reads `->toString()` off a name, and by the time a rule sees the tree that
+     * name is resolved: the class side of `Widget::class` answers `Examples\Wiring\Widget`. So a rule
+     * comparing two of them compares fully-qualified names, and an alias or a leading backslash on one side
+     * changes nothing — measured, the original reports
+     * `set(Widget::class, \Examples\Wiring\Widget::class)` as a duplicate.
+     *
+     * Two exceptions, both measured rather than reasoned about: the three special class names stay as
+     * written, and a subject that is not a name at all falls back to {@see self::writtenName()} — a
+     * variable's own name is what php-parser gives there, and no resolution applies to it.
+     */
+    public static function nameAfterResolution(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        $part = $subject instanceof Node ? Tree::part($context, $subject) : $subject;
+
+        // `self`, `static` and `parent` stay as php-parser spells them. PHPStan's name resolution leaves
+        // those three alone, so a rule comparing `self::class` against `Thing::class` sees `self` against
+        // `Thing` and declines — measured on the pair, where resolving the keyword to the enclosing class
+        // made the port report a duplicate PHPStan says nothing about. {@see self::resolvedName()} maps them
+        // to the class on purpose, for the questions that are about the class rather than the spelling.
+        if ($part instanceof Part && $part->kind === NodeKind::Keyword) {
+            return self::textOf($part);
+        }
+
+        return self::isName($part) ? self::resolvedName($context, $part) : self::writtenName($context, $part);
+    }
+
+    /**
+     * The name a node *writes*, which is php-parser's `$node->name` on a variable and `->toString()` on a
+     * name or an identifier.
+     *
+     * `NamingHelper::getName()` in `symplify/phpstan-rules` is exactly these three cases and a null for
+     * everything else, and the null matters: three rules test `is_string()` on the answer and decline when it
+     * is not. So this answers null for any other node rather than falling back to its source text — a
+     * navigated part always has text, and returning that would turn "not a name" into a name nobody wrote.
+     *
+     * Kept apart from {@see self::resolvedName()}, which answers what the *file* resolves a name to — and
+     * that is what a *name* position needs, because PHPStan resolves names before a rule sees the tree. This
+     * one is for the positions where php-parser hands back the spelling itself: a variable's own name is what
+     * `$node->name` holds, and no resolution applies to it.
+     *
+     * Written `self::` rather than as a bare reference because `ResolvedName` is also an imported class here,
+     * and a formatter reading the docblock capitalised the reference into it.
+     */
+    public static function writtenName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        $variable = self::directVariableName($context, $subject);
+        if ($variable !== null) {
+            return $variable;
+        }
+
+        $part = $subject instanceof Node ? Tree::part($context, $subject) : $subject;
+        if (! $part instanceof Part) {
+            return null;
+        }
+
+        return self::isName($part) || self::selectorIsIdentifier($part) ? self::textOf($part) : null;
     }
 
     /** Whether a navigated part is `__DIR__`, which php-parser models as its own node class. */
@@ -126,6 +223,30 @@ final class Names
     public static function selectorIsIdentifier(?Part $part): bool
     {
         return $part instanceof Part && in_array($part->kind, self::NAME_KINDS, true);
+    }
+
+    /**
+     * Whether a name resolves to the fully qualified one written, following the file's own imports.
+     *
+     * `nameEquals()` compares the text as written, which is right for a bare name and wrong for a namespaced
+     * literal: `use function Symfony\...\param;` then `param(..)` is written `param`, and PHPStan resolves the
+     * import before comparing. So a rule asking whether a call *is* a namespaced function was silent on every
+     * imported spelling -- the form anybody writes -- and matched only the fully qualified one.
+     *
+     * `getResolvedName()` is what mago answers that with, and it is the same call
+     * {@see ConfigClosures::calleeName()} already makes. Falls back to the written text when nothing resolves,
+     * so a name mago cannot place still compares the way it used to rather than answering false.
+     */
+    public static function resolvedNameEquals(NodeAnalysisContext $context, ?Part $part, string $literal): bool
+    {
+        if (! $part instanceof Part) {
+            return false;
+        }
+
+        $resolved = $context->source->getResolvedName($part->node);
+        $name = $resolved instanceof ResolvedName && $resolved->name !== '' ? $resolved->name : $part->text;
+
+        return strcasecmp(ltrim($name, '\\'), ltrim($literal, '\\')) === 0;
     }
 
     /**
@@ -239,6 +360,46 @@ final class Names
      * What `$reflectionProvider->getFunction($name, $scope)->getName()` gives a rule: the *resolved* name, so
      * a rule comparing it against `request` sees through a namespaced call that falls back to the global one.
      */
+    /**
+     * The declared name of the function a *call* names — `$reflectionProvider->getFunction()->getName()`.
+     *
+     * PHP resolves a call by how it is written, and both halves are needed to say which. Taken from the node
+     * rather than from a name, because the written spelling and the resolved one answer different halves and
+     * neither is recoverable from the other.
+     *
+     * - **Unqualified** — `ini_get()` inside `namespace App` means `App\ini_get()` *if that is declared*, and
+     *   the global `ini_get()` otherwise. Probed, and the reason this cannot be done from the text alone:
+     *   Mago resolves the name to `App\ini_get` **whether or not it exists**, so the resolved name is the
+     *   namespaced candidate and the fallback is still this function's to apply. Reading only the text got
+     *   the other error — it tried the global name first and never saw a namespaced declaration shadowing it.
+     * - **Qualified or fully qualified** — `Other\ini_get()` and `\ini_get()` get no fallback: each is the
+     *   function it names or nothing. Mago resolves the first to `App\Other\ini_get` and the second to
+     *   `ini_get`, both of which are exactly PHP's answer.
+     */
+    public static function calledFunctionName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        $written = self::writtenName($context, $subject);
+        if ($written === null || $written === '') {
+            return null;
+        }
+
+        $candidate = self::resolvedName($context, $subject) ?? ltrim($written, '\\');
+        $declared = $context->codebase->getFunction($candidate);
+        if ($declared instanceof FunctionLikeMetadata) {
+            return $declared->originalName;
+        }
+
+        // The global fallback, which only an unqualified call gets. A separator in the *written* name is what
+        // rules it out — the resolved name has one either way.
+        if (str_contains(ltrim($written, '\\'), '\\')) {
+            return null;
+        }
+
+        $global = $context->codebase->getFunction(ltrim($written, '\\'));
+
+        return $global instanceof FunctionLikeMetadata ? $global->originalName : null;
+    }
+
     public static function functionName(NodeAnalysisContext $context, ?string $name): ?string
     {
         if ($name === null || $name === '') {
@@ -308,10 +469,30 @@ final class Names
      */
     public static function enclosingNamespace(NodeAnalysisContext $context): ?string
     {
-        if (preg_match('/^\\s*namespace\\s+([^;{\\s]+)\\s*[;{]/m', $context->source->contents, $matches) !== 1) {
-            return null;
+        // Memoised per file, because the answer is a property of the file and the question is asked per node.
+        // It runs a multiline regex over the whole file's contents, and the emitted corpus asks it 33 times
+        // more than it needs to even within single `analyze()` bodies -- a rule that guards on the namespace
+        // and then interpolates it scans the file twice for one node. Bounded for the reason
+        // {@see Tree::$trees} is, and generously, because an entry is one short string.
+        //
+        // `array_key_exists` rather than `isset`, so a file with no namespace caches its null instead of
+        // rescanning on every node.
+        /** @var array<string, string|null> $memo */
+        static $memo = [];
+
+        $path = $context->source->path;
+        if (array_key_exists($path, $memo)) {
+            return $memo[$path];
         }
 
-        return trim($matches[1], '\\');
+        if (count($memo) >= 512) {
+            unset($memo[array_key_first($memo)]);
+        }
+
+        if (preg_match('/^\\s*namespace\\s+([^;{\\s]+)\\s*[;{]/m', $context->source->contents, $matches) !== 1) {
+            return $memo[$path] = null;
+        }
+
+        return $memo[$path] = trim($matches[1], '\\');
     }
 }

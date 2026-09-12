@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Sandermuller\PhpstanToMago\Tests\Support\CorpusDifferential;
 
@@ -20,6 +21,7 @@ use Sandermuller\PhpstanToMago\Tests\Support\CorpusDifferential;
  * that gained the finding reads as agreeing and the one that lost it reads as under-reporting, and neither
  * says anything is wrong.
  */
+#[Group('engine')]
 final class AttributesAFindingToTheRightRuleTest extends TestCase
 {
     /** @var list<string> */

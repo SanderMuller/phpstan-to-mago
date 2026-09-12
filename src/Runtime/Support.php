@@ -60,6 +60,12 @@ final class Support
         return Reflect::namedClassIsAbstract($context, $name);
     }
 
+    /** {@see Reflect::namedClassIsSubclassOf()} */
+    public static function namedClassIsSubclassOf(NodeAnalysisContext $context, ?string $name, ?string $ancestor): bool
+    {
+        return Reflect::namedClassIsSubclassOf($context, $name, $ancestor);
+    }
+
     /** The direct parent of a class named by a value. {@see Reflect::parentClassName} */
     public static function parentClassName(NodeAnalysisContext $context, ?string $name): ?string
     {
@@ -67,6 +73,16 @@ final class Support
     }
 
     /** Whether a class named by a value is one PHP itself ships. {@see Reflect::namedClassIsBuiltin} */
+    /**
+     * Whether the class around this node extends one that declares a constructor.
+     *
+     * The question `fast_has_parent_constructor($scope)` asks. See {@see Reflect::parentHasConstructor()}.
+     */
+    public static function parentHasConstructor(NodeAnalysisContext $context, Part|Node|null $node): bool
+    {
+        return Reflect::parentHasConstructor($context, $node);
+    }
+
     public static function namedClassIsBuiltin(NodeAnalysisContext $context, ?string $name): bool
     {
         return Reflect::namedClassIsBuiltin($context, $name);
@@ -159,6 +175,12 @@ final class Support
      * `getDeclaringMethod()` hands back the method, not the class that declares it, so the class is found by
      * asking each ancestor in turn which one declares it directly.
      */
+    /** Whether a class declares this method natively, mixins excluded. {@see Reflect::nativeMethodExists} */
+    public static function nativeMethodExists(NodeAnalysisContext $context, ?string $class, ?string $method): bool
+    {
+        return Reflect::nativeMethodExists($context, $class, $method);
+    }
+
     /**
      * Whether a named class declares or inherits a method, which is `ClassReflection::hasMethod()`.
      *
@@ -180,6 +202,24 @@ final class Support
     public static function nthExpression(NodeAnalysisContext $context, Part|Node|null $subject, int $index): ?Part
     {
         return Calls::nthExpression($context, $subject, $index);
+    }
+
+    /** An array element's key, or null when it is written without one. */
+    public static function arrayElementKey(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        return Calls::arrayElementKey($context, $subject);
+    }
+
+    /** A foreach's key variable, or null when it binds none. */
+    public static function foreachKey(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        return Loops::foreachKey($context, $subject);
+    }
+
+    /** A foreach's value variable. */
+    public static function foreachValue(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        return Loops::foreachValue($context, $subject);
     }
 
     /** The class side of a class-constant access or static call. */
@@ -251,6 +291,18 @@ final class Support
     public static function isFunctionDeclaration(Part|Node|null $subject): bool
     {
         return Members::isFunctionDeclaration($subject);
+    }
+
+    /** Whether the node is a constant declaration inside a class-like. */
+    public static function isClassConstantDeclaration(Part|Node|null $subject): bool
+    {
+        return Members::isClassConstantDeclaration($subject);
+    }
+
+    /** Whether the node is a property declaration inside a class-like. */
+    public static function isPropertyDeclaration(Part|Node|null $subject): bool
+    {
+        return Members::isPropertyDeclaration($subject);
     }
 
     public static function declarationKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool
@@ -342,6 +394,17 @@ final class Support
     }
 
     /**
+     * Every name in a list, folded to lower case.
+     *
+     * @param list<string> $names
+     * @return list<string>
+     */
+    public static function loweredNames(array $names): array
+    {
+        return Text::loweredNames($names);
+    }
+
+    /**
      * Whether the enclosing declaration has a method of this name, anywhere in its hierarchy.
      *
      * Answered through the same declaring-class lookup a rule reading that class uses, so the two cannot
@@ -391,9 +454,9 @@ final class Support
     /**
      * The name of the function or method the node sits in, or null outside one.
      *
-     * What `$scope->getFunctionName()` gives a rule. A closure and an arrow function are anonymous, so a node
-     * inside one has no enclosing *name* — the walk stops there rather than continuing to the method around it,
-     * which is what PHPStan answers too.
+     * What `$scope->getFunctionName()` gives a rule, which is the *named* function a node sits in however many
+     * closures deep. {@see Declares::enclosingFunctionName()} cites the two lines of `MutatingScope` that say
+     * so; this facade carried the opposite claim for as long as the walk did.
      */
     public static function enclosingFunctionName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
@@ -407,9 +470,9 @@ final class Support
      * rather than a `CallableType`, so it is matched by name — that is the shape `Closure::fromCallable()` and a
      * closure literal both produce.
      */
-    public static function typeIsCallable(?Type $type): bool
+    public static function typeIsCallable(NodeAnalysisContext $context, ?Type $type): bool
     {
-        return Types::typeIsCallable($type);
+        return Types::typeIsCallable($context, $type);
     }
 
     /**
@@ -455,18 +518,6 @@ final class Support
     }
 
     /**
-     * Whether a node names its member dynamically — computed at runtime rather than written out.
-     *
-     * The question `! $node->name instanceof Expr` asks, inverted: php-parser gives an `Identifier` for a
-     * written name and an expression for anything else. Mago has no such split, so the answer comes from the
-     * spelling: a selector holding a variable or a braced expression is dynamic, a bare word is not.
-     */
-    public static function hasDynamicName(NodeAnalysisContext $context, Part|Node|null $subject): bool
-    {
-        return Calls::hasDynamicName($context, $subject);
-    }
-
-    /**
      * Whether a name part is written out rather than computed.
      *
      * Structural, not textual: a static property's *written* name is `$prop`, so a leading `$` proves nothing.
@@ -491,13 +542,178 @@ final class Support
     /** Whether a unary prefix expression's operator is the one written. {@see Calls::unaryOperatorIs} */
     public static function unaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
     {
-        return Calls::unaryOperatorIs($context, $subject, $operator);
+        return Operators::unaryOperatorIs($context, $subject, $operator);
+    }
+
+    /** Whether a postfix expression's operator is the one written — `$x++` rather than `++$x`. */
+    public static function postfixOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
+    {
+        return Operators::postfixOperatorIs($context, $subject, $operator);
+    }
+
+    /**
+     * Whether a computed list holds the exact string named. {@see Text::listContains}
+     *
+     * @param list<string> $values
+     */
+    public static function listContains(array $values, ?string $needle): bool
+    {
+        return Text::listContains($values, $needle);
+    }
+
+    /**
+     * The segments of a qualified name — `Name::getParts()`. {@see Names::nameParts}
+     *
+     * @return list<string>
+     */
+    public static function nameParts(?string $name): array
+    {
+        return Names::nameParts($name);
+    }
+
+    /** The declared name of the function a call names. {@see Names::calledFunctionName} */
+    public static function calledFunctionName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        return Names::calledFunctionName($context, $subject);
+    }
+
+    /** What follows the last occurrence of a needle, or null. {@see Text::afterLast} */
+    public static function afterLast(?string $subject, string $needle): ?string
+    {
+        return Text::afterLast($subject, $needle);
+    }
+
+    /** The analysed PHP version, in PHPStan's encoding. {@see Versions::phpstanVersionId} */
+    public static function phpstanVersionId(NodeAnalysisContext $context): int
+    {
+        return Versions::phpstanVersionId($context);
     }
 
     /** Whether a binary expression's operator is the one written, which Mago keeps in a child node. */
     public static function binaryOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
     {
-        return Calls::binaryOperatorIs($context, $subject, $operator);
+        return Operators::binaryOperatorIs($context, $subject, $operator);
+    }
+
+    /**
+     * The four boolean-operator narrowings PHPStan's virtual nodes carry.
+     *
+     * `BooleanAndNode` is declared `BooleanAnd|LogicalAnd` and `BooleanOrNode` `BooleanOr|LogicalOr` -- a
+     * closed set by type declaration rather than by reading branches. php-parser gives each spelling its own
+     * class, so the rules ask `instanceof BooleanAnd` to tell `&&` from `and`; mago has one `Binary` kind, so
+     * the same question is which operator is written. Case-insensitive for the keyword spellings, which PHP
+     * accepts in any case.
+     */
+    public static function isBooleanAndOperator(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Operators::binaryOperatorIsOneOf($context, $subject, ['&&']);
+    }
+
+    /** {@see isBooleanAndOperator()} */
+    public static function isLogicalAndOperator(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Operators::binaryOperatorIsOneOf($context, $subject, ['and']);
+    }
+
+    /** {@see isBooleanAndOperator()} */
+    public static function isBooleanOrOperator(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Operators::binaryOperatorIsOneOf($context, $subject, ['||']);
+    }
+
+    /** {@see isBooleanAndOperator()} */
+    public static function isLogicalOrOperator(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Operators::binaryOperatorIsOneOf($context, $subject, ['or']);
+    }
+
+    /**
+     * A binary expression's operator as written — the sigil `BooleanAndNode::getOperatorSigil()` answers.
+     *
+     * The *source spelling* rather than a canonical one, which is what the original prints: a rule reporting
+     * on `$a and $b` says `and` and one reporting on `$a && $b` says `&&`, and the message is compared
+     * character for character against PHPStan's. {@see Operators::operatorText()}
+     */
+    public static function operatorSigil(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        return Operators::operatorText($context, $subject);
+    }
+
+    /**
+     * {@see Operators::binaryOperatorIsOneOf()}
+     *
+     * @param list<string> $operators
+     */
+    public static function binaryOperatorIsOneOf(
+        NodeAnalysisContext $context,
+        Part|Node|null $subject,
+        array $operators,
+    ): bool {
+        return Operators::binaryOperatorIsOneOf($context, $subject, $operators);
+    }
+
+    /** {@see Operators::assignmentOperatorIs()} */
+    public static function assignmentOperatorIs(NodeAnalysisContext $context, Part|Node|null $subject, string $operator): bool
+    {
+        return Operators::assignmentOperatorIs($context, $subject, $operator);
+    }
+
+    /** Whether a method body calls `parent::<method>()` as one of its own statements. {@see Statements::callsParentMethod} */
+    public static function callsParentMethod(
+        NodeAnalysisContext $context,
+        Part|Node|null $subject,
+        ?string $method,
+    ): bool {
+        return Statements::callsParentMethod($context, $subject, $method);
+    }
+
+    /**
+     * Whether a statement a body yielded is an expression statement  `$stmt instanceof Stmt\Expression`.
+     */
+    public static function isExpressionStatement(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Statements::isExpressionStatement($context, $subject);
+    }
+
+    /** The expression a statement holds  `$stmt->expr`. */
+    public static function statementExpression(NodeAnalysisContext $context, Part|Node|null $subject): ?Part
+    {
+        return Statements::expressionOf($context, $subject);
+    }
+
+    /**
+     * Whether this node is an `instanceof` test — `$node instanceof PhpParser\Node\Expr\Instanceof_`.
+     *
+     * Mago has no node kind for it: an `instanceof` is a `Binary` like `+` and `.` are, and the operator child
+     * is the only thing that separates them. So the predicate a rule spells as a class test is an operator
+     * test here, the same conversion the loose-comparison predicates made. {@see StaticReflectionTypes}
+     * carries the measurement.
+     */
+    public static function isInstanceof(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        return Operators::binaryOperatorIs($context, $subject, 'instanceof');
+    }
+
+    /**
+     * The name a node *writes* — a variable's own name, or a name or identifier's text, or null.
+     *
+     * The question `NamingHelper::getName()` asks. Null for anything else, which is what the rules reading it
+     * test for. See {@see Names::writtenName()}.
+     */
+    public static function writtenName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        return Names::writtenName($context, $subject);
+    }
+
+    /**
+     * The name php-parser hands a rule for a node, after PHPStan has resolved the file's names.
+     *
+     * A resolved name for an ordinary one, the keyword itself for `self`, `static` and `parent`, and the
+     * written name for anything that is not a name. See {@see Names::nameAfterResolution()}.
+     */
+    public static function nameAfterResolution(NodeAnalysisContext $context, Part|Node|null $subject): ?string
+    {
+        return Names::nameAfterResolution($context, $subject);
     }
 
     /** Whether a navigated part is `__DIR__`, which php-parser models as its own node class. */
@@ -533,6 +749,12 @@ final class Support
     public static function nameEquals(?Part $part, string $literal): bool
     {
         return Names::nameEquals($part, $literal);
+    }
+
+    /** {@see Names::resolvedNameEquals()} */
+    public static function resolvedNameEquals(NodeAnalysisContext $context, ?Part $part, string $literal): bool
+    {
+        return Names::resolvedNameEquals($context, $part, $literal);
     }
 
     /** The selector's own name, which is case sensitive in PHP as method names are compared. */
@@ -583,6 +805,15 @@ final class Support
     public static function isMethodCall(?Part $part): bool
     {
         return Calls::isMethodCall($part);
+    }
+
+    /** {@see Chains::chainedCallNamed()} */
+    public static function chainedCallNamed(
+        NodeAnalysisContext $context,
+        Part|Node|null $subject,
+        string $method,
+    ): ?Part {
+        return Chains::chainedCallNamed($context, $subject, $method);
     }
 
     public static function isStaticCall(?Part $part): bool
@@ -637,6 +868,11 @@ final class Support
         return Calls::isArrayDimFetch($part);
     }
 
+    public static function isAssignment(?Part $part): bool
+    {
+        return Calls::isAssignment($part);
+    }
+
     public static function isInt(?Part $part): bool
     {
         return $part instanceof Part && preg_match('/^-?\d+$/', $part->text) === 1;
@@ -644,7 +880,11 @@ final class Support
 
     public static function intLiteralValue(?Part $part): ?int
     {
-        return self::isInt($part) ? (int) $part->text : null;
+        // The `instanceof` looks redundant beside `isInt()`, which tests it too, and it is what makes the
+        // guarantee local: a guard behind a call narrows nothing, so `$part->text` read as a property access
+        // on `Part|null` and sat in the baseline. Safe at runtime the whole time — `isInt()` cannot return
+        // true for null — which is why the fix is to make the check visible rather than to add one.
+        return $part instanceof Part && self::isInt($part) ? (int) $part->text : null;
     }
 
     /**
@@ -883,6 +1123,42 @@ final class Support
     }
 
     /**
+     * The value a lookup table holds for a key, or null when it holds none.
+     *
+     * {@see Text::lookupValue()} carries why this sits beside `lookupHas()`.
+     *
+     * @param array<string, string> $table
+     */
+    public static function lookupValue(array $table, ?string $key): ?string
+    {
+        return Text::lookupValue($table, $key);
+    }
+
+    /**
+     * Whether a lookup table holds this value, which is `in_array($x, $map)` over a map.
+     *
+     * {@see Text::lookupHasValue()}
+     *
+     * @param array<string, string> $table
+     */
+    public static function lookupHasValue(array $table, ?string $value): bool
+    {
+        return Text::lookupHasValue($table, $value);
+    }
+
+    /**
+     * Each constructor parameter of the service a `set()` call in this receiver chain names, against its type.
+     *
+     * {@see ConfigClosures::constructorParameterTypes()}
+     *
+     * @return array<string, string>
+     */
+    public static function constructorParameterTypes(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        return ConfigClosures::constructorParameterTypes($context, $subject);
+    }
+
+    /**
      * `array_any()` is PHP 8.4, and the generated rules should run on 8.1.
      *
      * Generic, because the body is: the emitter hands it a list of names from a configured list and a list of
@@ -1041,6 +1317,35 @@ final class Support
         return Names::selectorIsOneOf($part, $names);
     }
 
+    /**
+     * Whether one type contains another  `$container->isSuperTypeOf($input)->yes()`.
+     *
+     * **The `->yes()` polarity only.** PHPStan answers this with a `TrinaryLogic`, and the SDK's
+     * `TypeComparator::isContainedBy()` answers a plain `bool`, so `maybe` and `no` arrive here as the same
+     * `false`. That is exact for `->yes()`, which is what `SuperTypeGuardRule` asks and the only shape any
+     * consumer has needed. It is **not** an equivalent for `->no()`: a rule reporting when a type is
+     * *definitely not* contained would also report on `maybe`, which is wider than the rule.
+     * `MatchingTypeInSwitchCaseConditionRule` is the rule that asks the other way round, and this is one of
+     * the reasons it does not yet emit.
+     *
+     * The arguments are the other way round from the SDK's, so this reads the way the rules write it.
+     */
+    public static function typeIsSuperTypeOf(NodeAnalysisContext $context, ?Type $container, ?Type $input): bool
+    {
+        return Types::typeIsSuperTypeOf($context, $container, $input);
+    }
+
+    /** Whether methods can be called on every part of a type. {@see Types::typeCanCallMethods} */
+    public static function typeCanCallMethods(?Type $type): bool
+    {
+        return Types::typeCanCallMethods($type);
+    }
+
+    public static function typeIsObject(?Type $type): bool
+    {
+        return Types::typeIsObject($type);
+    }
+
     /** Whether every part of a type is a boolean, which is `Type::isBoolean()->yes()`. {@see Types::typeIsBoolean} */
     public static function typeIsBoolean(?Type $type): bool
     {
@@ -1060,6 +1365,12 @@ final class Support
      * that ask this question require exactly one object class reflection too, so refusing to answer for
      * a union matches the original rather than guessing at its intent.
      */
+    /** {@see AtomicShapes::typeIsWhollyArray()} */
+    public static function typeIsWhollyArray(?Type $type): bool
+    {
+        return AtomicShapes::typeIsWhollyArray($type);
+    }
+
     public static function typeIsInstanceOf(NodeAnalysisContext $context, ?Type $type, string $name): bool
     {
         return Types::typeIsInstanceOf($context, $type, $name);
@@ -1278,7 +1589,17 @@ final class Support
      */
     public static function classMethods(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        return Declares::classMethods($context, $subject);
+        return Bodies::classMethods($context, $subject);
+    }
+
+    /**
+     * Every member a class-like body writes, in source order — php-parser's `$classLike->stmts`.
+     *
+     * @return list<Part>
+     */
+    public static function classMembers(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        return Bodies::classMembers($context, $subject);
     }
 
     /**
@@ -1361,7 +1682,7 @@ final class Support
      */
     public static function methodNamed(NodeAnalysisContext $context, Part|Node|null $classLike, ?string $name): ?Part
     {
-        return Declares::methodNamed($context, $classLike, $name);
+        return Bodies::methodNamed($context, $classLike, $name);
     }
 
     /** A method declaration's own name. */
@@ -1411,7 +1732,7 @@ final class Support
      * rule's `isset($matches['x'])` cannot tell the two apart — so treating `''` as "not caught" matches what
      * the rule means. No pattern in the corpus has an optional group that can match empty.
      */
-    public static function captured(string $pattern, ?string $subject, string $group): ?string
+    public static function captured(string $pattern, ?string $subject, int|string $group): ?string
     {
         return Text::captured($pattern, $subject, $group);
     }
@@ -1428,16 +1749,38 @@ final class Support
         return Reflect::methodIsProtected($method);
     }
 
+    /**
+     * Whether a class-like member is written `protected`, wherever that member keeps its modifiers.
+     *
+     * A property keeps them one level down, so this is not {@see methodIsProtected()}.
+     */
+    public static function memberIsProtected(?Part $member): bool
+    {
+        return Reflect::memberIsProtected($member);
+    }
+
     /** Whether the codebase's method is public. A method that is not found is not public. */
+    /** Whether the codebase's method is static. {@see ReflectedMethods::reflectedMethodIsStatic} */
+    public static function reflectedMethodIsStatic(NodeAnalysisContext $context, ?string $class, ?string $method): bool
+    {
+        return ReflectedMethods::reflectedMethodIsStatic($context, $class, $method);
+    }
+
+    /** The canonical name the codebase declares a method under. {@see ReflectedMethods::reflectedMethodName} */
+    public static function reflectedMethodName(NodeAnalysisContext $context, ?string $class, ?string $method): ?string
+    {
+        return ReflectedMethods::reflectedMethodName($context, $class, $method);
+    }
+
     public static function reflectedMethodIsPublic(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
-        return Members::reflectedMethodIsPublic($context, $class, $method);
+        return ReflectedMethods::reflectedMethodIsPublic($context, $class, $method);
     }
 
     /** Whether the codebase's method is private. */
     public static function reflectedMethodIsPrivate(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
-        return Members::reflectedMethodIsPrivate($context, $class, $method);
+        return ReflectedMethods::reflectedMethodIsPrivate($context, $class, $method);
     }
 
     public static function methodIsStatic(?Part $method): bool
@@ -1607,6 +1950,23 @@ final class Support
         return Calls::arrayElements($context, $array);
     }
 
+    /** {@see Tree::arrayItemValue()} */
+    public static function arrayItemValue(NodeAnalysisContext $context, ?Part $item): ?Part
+    {
+        return Tree::arrayItemValue($item);
+    }
+
+    /**
+     * Whether the part is a string concatenation.
+     *
+     * Asked of the operator rather than of the node kind: mago has no `Concat` kind, and `Binary` covers every
+     * arithmetic and comparison operator too, so a kind test would answer true for `$a + $b`.
+     */
+    public static function isConcatenation(NodeAnalysisContext $context, Part|Node|null $part): bool
+    {
+        return Operators::binaryOperatorIs($context, $part, '.');
+    }
+
     /** Two written names compared the way PHP compares them: case-insensitively, and null matching nothing. */
     public static function nameIs(?string $written, string $name): bool
     {
@@ -1640,6 +2000,23 @@ final class Support
 
         $start = $node->span->start;
 
+        // Memoised per declaration, because the scan is over *every* comment in the file and the question is
+        // asked per declaration per rule: two rules reading one class's docblock scanned the whole trivia
+        // list twice, and a rule that guards on the text and then interpolates it scanned it twice by itself
+        // -- `docblockText` is one of the four calls the emitted corpus repeats most. `array_key_exists`, so
+        // a declaration with no docblock caches that instead of rescanning.
+        /** @var array<string, string|null> $memo */
+        static $memo = [];
+
+        $key = $context->source->path . ':' . $start;
+        if (array_key_exists($key, $memo)) {
+            return $memo[$key];
+        }
+
+        if (count($memo) >= 2048) {
+            unset($memo[array_key_first($memo)]);
+        }
+
         foreach ($context->source->getTrivia() as $trivia) {
             if ($trivia->kind !== TriviaKind::DocBlockComment || $trivia->span->end > $start) {
                 continue;
@@ -1653,10 +2030,10 @@ final class Support
                 continue;
             }
 
-            return $context->source->getText($trivia->span);
+            return $memo[$key] = $context->source->getText($trivia->span);
         }
 
-        return null;
+        return $memo[$key] = null;
     }
 
     /**
@@ -1666,7 +2043,7 @@ final class Support
      */
     public static function classProperties(NodeAnalysisContext $context, Part|Node|null $subject): array
     {
-        return Declares::classProperties($context, $subject);
+        return Bodies::classProperties($context, $subject);
     }
 
     public static function fileEndsWith(NodeAnalysisContext $context, string $suffix): bool
@@ -1705,6 +2082,21 @@ final class Support
     }
 
     /**
+     * The analysed file's name without a suffix — `basename($scope->getFile(), $suffix)`.
+     *
+     * Unaffected by the divergence {@see fileDirectory()} records: mago's `source->path` is workspace-relative
+     * where PHPStan's `getFile()` is absolute, and a basename is the same either way. Checked rather than
+     * assumed, because that docblock's neighbour needed a `realpath()` for exactly this reason and this one
+     * does not.
+     *
+     * The suffix is stripped only when the name ends with it, which is what `basename()` itself does.
+     */
+    public static function fileBaseName(NodeAnalysisContext $context, string $suffix = ''): string
+    {
+        return basename($context->source->path, $suffix);
+    }
+
+    /**
      * Whether a path a rule built exists on disk.
      *
      * A plugin is PHP, so it can ask the filesystem the same question the rule asks. Null-tolerant because the
@@ -1718,18 +2110,6 @@ final class Support
     public static function fileContains(NodeAnalysisContext $context, string $needle): bool
     {
         return str_contains($context->source->path, $needle);
-    }
-
-    /** @param list<string> $suffixes */
-    public static function fileEndsWithAny(NodeAnalysisContext $context, array $suffixes): bool
-    {
-        foreach ($suffixes as $suffix) {
-            if (str_ends_with($context->source->path, $suffix)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -1791,6 +2171,22 @@ final class Support
         return Declares::enclosingClassName($context, $subject);
     }
 
+    /**
+     * The suffix the enclosing class owes its nearest listed ancestor, or null when it owes none.
+     *
+     * {@see Inheritance::missingAncestorSuffix()} carries why the walk stops at the first ancestry match and
+     * why the table's order is the caller's.
+     *
+     * @param array<string, string> $table ancestor class or interface name => the suffix it requires
+     */
+    public static function missingAncestorSuffix(
+        NodeAnalysisContext $context,
+        Part|Node|null $node,
+        array $table,
+    ): ?string {
+        return Inheritance::missingAncestorSuffix($context, $node, $table);
+    }
+
     /** Whether the nearest class-like around a node is a trait. {@see Reflect::isInTrait} */
     public static function isInTrait(NodeAnalysisContext $context, Part|Node|null $node): bool
     {
@@ -1811,6 +2207,28 @@ final class Support
     public static function enclosingClassIs(NodeAnalysisContext $context, Part|Node|null $node, string $name): bool
     {
         return Declares::enclosingClassIs($context, $node, $name);
+    }
+
+    /**
+     * Whether the class-like around this node is of one kind — `getClassReflection()->isClass()` and friends.
+     *
+     * {@see declarationKindIs()} is the question about the node a hook was handed. The two coincide only for
+     * a class-like declaration hook; {@see Declares::enclosingClassKindIs()} says what asking the wrong one
+     * from a member hook costs.
+     */
+    public static function enclosingClassKindIs(NodeAnalysisContext $context, Part|Node|null $node, string $kind): bool
+    {
+        return Declares::enclosingClassKindIs($context, $node, $kind);
+    }
+
+    /**
+     * Every interface a named class implements, transitively. {@see Inheritance::interfaceNames}
+     *
+     * @return list<string>
+     */
+    public static function interfaceNames(NodeAnalysisContext $context, ?string $class): array
+    {
+        return Inheritance::interfaceNames($context, $class);
     }
 
     /**

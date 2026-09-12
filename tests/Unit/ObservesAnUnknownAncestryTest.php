@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Sandermuller\PhpstanToMago\Tests\Support\HierarchyKnowledge;
 
@@ -29,6 +30,7 @@ use Sandermuller\PhpstanToMago\Tests\Support\HierarchyKnowledge;
  * the original would have reported. Every three-valued answer has to read `hasIncompleteHierarchy()`, not just
  * the list.
  */
+#[Group('engine')]
 final class ObservesAnUnknownAncestryTest extends TestCase
 {
     /** @var array<string, string>|null */

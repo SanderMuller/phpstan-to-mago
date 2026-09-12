@@ -51,7 +51,12 @@ final readonly class Hierarchy
         }
 
         foreach ($class->getMethods() as $candidate) {
-            if ($candidate->name->toString() === $method) {
+            // An abstract declaration is not an implementation, so the search keeps going. PHP resolves
+            // `$this->describeOperation()` to whichever class in the hierarchy has a body, and the four
+            // increment rules in `phpstan-strict-rules` are exactly that shape: the abstract parent holds
+            // the whole `processNode()` and each rule fills in two strings. Returning the abstract one gave
+            // a method with nothing to inline, and the refusal named the `sprintf` argument it fed.
+            if ($candidate->name->toString() === $method && $candidate->stmts !== null) {
                 return ['class' => $class, 'uses' => $uses, 'namespace' => $namespace];
             }
         }

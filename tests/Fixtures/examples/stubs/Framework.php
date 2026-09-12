@@ -25,6 +25,10 @@ abstract class AbstractController
     }
 }
 
+namespace Symfony\Component\Form;
+
+abstract class AbstractType {}
+
 namespace Symfony\Component\Console\Command;
 
 abstract class Command
@@ -61,6 +65,12 @@ abstract class Assert
 
 abstract class TestCase extends Assert
 {
+    /** Declared so `ShouldCallParentMethodsRule` has a parent method to find. */
+    protected function setUp(): void {}
+
+    /** The same, for the other half of the pair. */
+    protected function tearDown(): void {}
+
     public function createMock(string $class): MockObject
     {
         return new MockObject();
@@ -271,6 +281,21 @@ class Collection
     }
 }
 
+namespace Illuminate\Support\Facades;
+
+/**
+ * Laravel's facade base, for `CombinedStaticCallRule`'s facade branch.
+ *
+ * That branch is the one reached when a static debug call's declaring class is *not* under `Illuminate\`:
+ * the rule then asks whether the called class descends from this one. A facade declared in the analysed
+ * project is exactly that case, which is why the example subclasses this rather than using a Laravel facade
+ * — a real one would declare its method under `Illuminate\` and take the earlier branch instead.
+ */
+class Facade
+{
+    public static function dump(): void {}
+}
+
 namespace Illuminate\Http;
 
 /** The receiver the unsafe-request-data check requires, for the same reason. */
@@ -424,3 +449,106 @@ namespace Symfony\Component\Form\Event;
 
 /** A form event, whose parameter type is the last thing the rule accepts. */
 final class PreSubmitEvent {}
+
+namespace Symfony\Component\DependencyInjection\Loader\Configurator;
+
+/** The parameter type `SymfonyClosureDetector` looks for on a config closure's only argument. */
+final class ContainerConfigurator
+{
+    public function services(): ServicesConfigurator
+    {
+        return new ServicesConfigurator();
+    }
+}
+
+/** What `$containerConfigurator->services()` hands back, and `set()` is the call the rules read. */
+final class ServicesConfigurator
+{
+    public function set(string $id, ?string $class = null): self
+    {
+        return $this;
+    }
+
+    /** The call `PreferAutowireAttributeOverConfigParamRule` reads for a parameter reference. */
+    public function arg(string $key, mixed $value): self
+    {
+        return $this;
+    }
+
+    /** The call the duplicate-args rules read, whose array they compare against the constructor. */
+    public function args(array $args): self
+    {
+        return $this;
+    }
+
+    /** The call `ServicesExcludedDirectoryMustExistRule` checks against the disk. */
+    public function exclude(array $paths): self
+    {
+        return $this;
+    }
+}
+
+namespace Symfony\Component\EventDispatcher;
+
+/** The contract `NoStringInGetSubscribedEventsRule` narrows to. */
+interface EventSubscriberInterface
+{
+    /** @return array<string, string> */
+    public static function getSubscribedEvents(): array;
+}
+
+namespace Symfony\Component\Form;
+
+/** Named in the rule's own skip list, which the trailing `continue` makes unreachable. */
+final class FormEvents
+{
+    public const string PRE_SUBMIT = 'form.pre_submit';
+}
+
+namespace Doctrine\ORM\Mapping;
+
+/** The attribute `NoEntityMockingRule` reads through `DoctrineEntityDocumentAnalyser`. */
+#[\Attribute(\Attribute::TARGET_CLASS)]
+final class Entity
+{
+    public function __construct(public ?string $repositoryClass = null) {}
+}
+
+/** The second attribute `NoEntityOutsideEntityNamespaceRule` accepts, which is why its walk folds to two questions. */
+#[\Attribute(\Attribute::TARGET_CLASS)]
+final class Embeddable {}
+
+namespace Doctrine\ORM;
+
+/** The receiver `RequireQueryBuilderOnRepositoryRule` accepts, so its allow-list has a row that exercises it. */
+class EntityRepository
+{
+    public function createQueryBuilder(string $alias): object
+    {
+        return new \stdClass();
+    }
+}
+
+namespace Symfony\Component\DependencyInjection\Attribute;
+
+/** Its presence is what `PreferAutowireAttributeOverConfigParamRule` gates itself on. */
+final class Autowire
+{
+    public function __construct(?string $param = null) {}
+}
+
+namespace Symfony\Component\DependencyInjection\Loader\Configurator;
+
+/** The `param()` helper a config closure calls to reference a container parameter. */
+function param(string $name): string
+{
+    return '%' . $name . '%';
+}
+
+namespace Symfony\Component\DependencyInjection\Loader\Configurator;
+
+/** A service reference in a config closure, which the duplicate-args rules read the class out of. */
+function ref(string $id): string
+{
+    return $id;
+}

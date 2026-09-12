@@ -1,0 +1,154 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Sandermuller\PhpstanToMago\Tests\Unit;
+
+use PHPUnit\Framework\Attributes\CoversNothing;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\TestCase;
+use Sandermuller\PhpstanToMago\Tests\Support\DivergenceCases;
+use Sandermuller\PhpstanToMago\Tests\Support\LockedCorpus;
+
+/**
+ * What the two engines say about every recorded divergence, pinned to code this repository owns.
+ *
+ * A divergence found on a vendor tree lives in `VERIFICATION.md` as prose, and prose does not re-run. Two
+ * findings have already been lost that way — one whose cause is now permanently unknown because nobody
+ * captured the Laravel version it was found against, and one that appears at two different line numbers in
+ * two entries. A case here reproduces for as long as the case exists.
+ *
+ * The recorded file is the assertion, in the shape `census.md` uses: regenerate, diff, decide whether the new
+ * output is right *before* accepting it. A diff means an engine changed its mind, which is worth reading
+ * whichever direction it moved — a closed divergence reopening and an open one closing are the same alarm.
+ */
+#[CoversNothing]
+#[Group('engine')]
+final class RecordsDivergencesTest extends TestCase
+{
+    private const string RECORD = __DIR__ . '/../Fixtures/expected/divergences.md';
+
+    public function test_the_engines_still_say_what_the_record_says(): void
+    {
+        $cases = new DivergenceCases(dirname(__DIR__, 2));
+        $discovered = $cases->cases();
+
+        $this->assertNotSame([], $discovered, 'No divergence cases were found, so this asserts nothing.');
+
+        // The record names the two engine versions it was produced against, and the findings below are
+        // theirs rather than this port's. `phpstan/phpstan` is not a direct dependency here — it arrives
+        // through the rule packages — so a run resolving lowest gets an older PHPStan than the record names
+        // and fails on the header. That is a different engine, not a changed answer, which is the same
+        // distinction {@see LockedCorpus::mismatch()} draws for the rule corpus and honours the same
+        // deliberate-drift escape, so that the parity watch still asserts.
+        $versions = $cases->versions();
+        $recorded = $this->recordedVersions();
+        if ($recorded !== null && $recorded !== $versions && getenv(LockedCorpus::WATCHING) === false) {
+            self::markTestSkipped(sprintf(
+                'The installed engines are not the ones the record was produced against: %s against %s. '
+                . 'These cases describe what those engines report, so a different resolution is a different '
+                . 'pair of engines rather than a regression.',
+                $versions,
+                $recorded,
+            ));
+        }
+
+        $sandbox = $cases->sandbox($discovered);
+        $findings = $cases->findings($discovered, $sandbox);
+
+        $record = $this->render($discovered, $findings, $versions);
+
+        if ($record !== (string) file_get_contents(self::RECORD)) {
+            file_put_contents(self::RECORD . '.actual', $record);
+        }
+
+        $this->assertSame(
+            (string) file_get_contents(self::RECORD),
+            $record,
+            'An engine no longer says what the record says. The .actual file beside it holds the new output: '
+            . 'read the diff, decide whether the new behaviour is right, and only then replace the record — '
+            . 'the same discipline the census and the emitted snapshots hold to.',
+        );
+    }
+
+    /**
+     * A case recording nothing on either side is refused, not recorded.
+     *
+     * Two tools reporting nothing is equally consistent with "they agree" and "neither looked", and this
+     * project has already been caught by that once. A case that stops exercising its rule would otherwise go
+     * green for ever.
+     */
+    public function test_no_case_records_silence_on_both_sides(): void
+    {
+        $cases = new DivergenceCases(dirname(__DIR__, 2));
+        $discovered = $cases->cases();
+        $findings = $cases->findings($discovered, $cases->sandbox($discovered));
+
+        $silent = [];
+        foreach ($findings as $name => $sides) {
+            if ($sides['port'] === [] && $sides['original'] === []) {
+                $silent[] = $name;
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $silent,
+            "These cases record nothing on either side, so they prove agreement about nothing:\n  "
+            . implode("\n  ", $silent),
+        );
+    }
+
+    /**
+     * @param array<string, array{path: string, rule: string, namespace: string, ignore: list<string>}> $cases
+     * @param array<string, array{port: list<string>, original: list<string>}>    $findings
+     */
+    private function render(array $cases, array $findings, string $versions): string
+    {
+        $lines = [
+            '# Divergence cases',
+            '',
+            'GENERATED by tests/Unit/RecordsDivergencesTest.php. Do not edit by hand.',
+            '',
+            'Recorded against: ' . $versions,
+            '',
+            'One section per case under `tests/Fixtures/Divergence`. `AGREE` means both engines reported the',
+            'same findings, `DIVERGE` that they did not — and both are results. A diff here is an engine',
+            'changing its mind, in either direction: a divergence closing is as worth reading as one opening.',
+            '',
+            'Each case directory carries a `README.md` with the written cause, and a synthesised case names',
+            'the real finding it stands for rather than claiming to be it.',
+            '',
+        ];
+
+        foreach ($cases as $name => $case) {
+            $port = $findings[$name]['port'];
+            $original = $findings[$name]['original'];
+
+            $lines[] = sprintf('## %s  %s', $name, $port === $original ? 'AGREE' : 'DIVERGE');
+            $lines[] = '        rule: ' . $case['rule'];
+
+            foreach ($port === $original ? [['both', $port]] : [['port', $port], ['original', $original]] as [$side, $rows]) {
+                foreach ($rows === [] ? ['—'] : $rows as $row) {
+                    $lines[] = sprintf('        %-9s %s', $side, $row);
+                }
+            }
+
+            $lines[] = '';
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /** The engine versions the committed record names, or null when it names none. */
+    private function recordedVersions(): ?string
+    {
+        if (! is_file(self::RECORD)) {
+            return null;
+        }
+
+        $matched = preg_match('/^Recorded against: (.+)$/m', (string) file_get_contents(self::RECORD), $found);
+
+        return $matched === 1 ? trim($found[1]) : null;
+    }
+}

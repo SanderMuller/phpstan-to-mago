@@ -209,10 +209,19 @@ final class CorpusDifferential
             }
 
             if ($this->emitted === []) {
-                throw new RuntimeException(
-                    'The consumer has none of the configured rule packages installed, so there is nothing to '
-                    . 'transpile: ' . implode(', ', $this->packages),
-                );
+                // Both counts, because two different failures end here and the message used to name only
+                // one of them. Reading "the consumer has none of the configured rule packages installed"
+                // about `spaze/phpstan-disallowed-calls` — installed, 38 rules found, all 38 refused on a
+                // missing hook — sends a reader to check the vendor directory, which is fine, and then to
+                // doubt the path, which is not. Stating both is also one branch fewer than choosing between
+                // them, and this class sits one point under its complexity limit.
+                throw new RuntimeException(sprintf(
+                    'Nothing to transpile from %s: %d of them are not installed, and the rest yielded %d '
+                    . 'refusal(s) and no emission. Run the transpiler over the package to read them.',
+                    implode(', ', $this->packages),
+                    count($this->skipped),
+                    count($this->refused),
+                ));
             }
         } finally {
             Transpiler::$target = $target;
@@ -498,7 +507,7 @@ final class CorpusDifferential
      */
     private function analysedPaths(): array
     {
-        return array_map(fn (string $path): string => $this->absolute($path), $this->paths);
+        return array_map($this->absolute(...), $this->paths);
     }
 
     /**
@@ -730,10 +739,27 @@ final class CorpusDifferential
         $bySite = [];
         foreach ($findings as $finding) {
             $parts = explode(': ', $finding, 2);
-            $bySite[$parts[0]] = $parts[1] ?? '';
+            $bySite[$this->atLineOne($parts[0])] = $parts[1] ?? '';
         }
 
         return $bySite;
+    }
+
+    /**
+     * A site whose line is `-1` read as line 1, because `-1` is PHPStan saying it has no position.
+     *
+     * `DeclareCoverageRule` asks a question about the *file* — whether it opens with
+     * `declare(strict_types=1)` — so PHPStan reports it with no line and prints `-1`. A plugin has to anchor
+     * somewhere, and line 1 is where a whole-file finding belongs.
+     *
+     * Without this the two can never match: the run that first aligned the thresholds turned a
+     * `declareCoverage` block of 366 only-original and 0 only-port into 366 and 366 — the same 366 files,
+     * PHPStan at `-1` and the port at `1`, and no agreement anywhere. That is the comparison being unable to
+     * express the finding rather than the two engines disagreeing about one.
+     */
+    private function atLineOne(string $site): string
+    {
+        return str_ends_with($site, ':-1') ? substr($site, 0, -3) . ':1' : $site;
     }
 
     /**

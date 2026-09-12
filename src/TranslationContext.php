@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago;
 
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
@@ -100,6 +101,21 @@ final class TranslationContext
      */
     public bool $reportsThroughPass = false;
 
+    /**
+     * Names bound to a runtime *reporter*, as opposed to a finding this transpiler built.
+     *
+     * Deliberately not {@see $reportedErrors}, which holds every name an inlined error helper bound. A rule
+     * that guards `if ($x === null) { return; }` on one of those is protecting work that follows, and reading
+     * the two sets as one dropped that guard from eighteen emitted plugins  caught by the emit-all diff,
+     * which is the only thing that could have seen it.
+     *
+     * A name here is different: the reporter already reported, so every read of it is bookkeeping the
+     * original needs and the plugin does not.
+     *
+     * @var array<string, true>
+     */
+    public array $passReported = [];
+
     /** @var array<string, string> the rule's own string constants, by name */
     public array $constants = [];
 
@@ -115,6 +131,17 @@ final class TranslationContext
      * @var array<string, list<string>>
      */
     public array $constantKeys = [];
+
+    /**
+     * Constant maps the rule declares, by name, as the array node that declared them.
+     *
+     * `constantKeys` answers membership and is enough for a rule that only asks whether a key is there. A
+     * rule reading the *value* needs the map, and the plugin gets it by carrying the constant verbatim —
+     * which is why the node is kept rather than a resolved list.
+     *
+     * @var array<string, Array_>
+     */
+    public array $constantMaps = [];
 
     /**
      * String literals bound to a helper's parameters, by parameter name.
@@ -244,6 +271,19 @@ final class TranslationContext
      * @var array<string, string>
      */
     public array $unwired = [];
+
+    /**
+     * Constructor parameters two neons the package ships wire differently, by parameter name.
+     *
+     * A third answer beside {@see $unwired} and {@see $ruleIsUnregistered}, and it is not a gap: the value a
+     * consumer gets depends on which config file it includes, so there is no single value a generated plugin
+     * could carry. Recorded so that reading such a property says *that* rather than "the package's neon does
+     * not wire it", which is false — the wiring is in the package, in files `composer.json` does not
+     * auto-include. {@see PackageConfiguration::conflictingWirings()} carries the measurement.
+     *
+     * @var array<string, list<string>>
+     */
+    public array $conflicting = [];
 
     /**
      * Whether no neon the package ships names this rule at all.
@@ -455,6 +495,23 @@ final class TranslationContext
     /** Set once a report has been emitted inside the body; suppresses the trailing one. */
     public bool $reportedInline = false;
 
+    /**
+     * Whether the rule's body *ends* in a report, having already reported somewhere inside it.
+     *
+     * `$reportedInline` says a report was emitted where it was found, and the emitter reads it as "there is
+     * nothing left to say at the end". Those are the same thing only while the rule has one report. A rule
+     * that reports early for one case and falls through to a trailing report for another has both, and
+     * reading the first as the second dropped the trailing one — emitting a plugin silent on the case the
+     * rule mostly exists for.
+     */
+    public bool $tailReportPending = false;
+
+    /** Whether the emitter still owes the rule its trailing report. {@see $tailReportPending} */
+    public function owesATrailingReport(): bool
+    {
+        return ! $this->reportedInline || $this->tailReportPending;
+    }
+
     /** Current emission indentation, which a loop body increases. */
     public int $indent = 8;
 
@@ -577,6 +634,14 @@ final class TranslationContext
      */
     public array $hookKinds = [];
 
+    /**
+     * How many closure-filtered searches are open, so their locals do not collide.
+     *
+     * A filter may itself contain one, and both would otherwise bind `$found` — the same reason every
+     * other generated name here carries a counter.
+     */
+    public int $searchDepth = 0;
+
     /** The php-parser class the rule's `getNodeType()` names, which decides how many kinds the hook covers. */
     public string $nodeType = '';
 
@@ -668,6 +733,19 @@ final class TranslationContext
      * @var list<string>
      */
     public array $inlining = [];
+
+    /**
+     * Constructor properties holding a class *handle* rather than a service, by the class they name.
+     *
+     * `$this->facadeReflection = $provider->hasClass(Facade::class) ? $provider->getClass(Facade::class) :
+     * null;` — a `?ClassReflection` derived from an injected service, which {@see Transpiler::serviceBehind()}
+     * would otherwise record as the service itself, because the service appears in the expression. The handle
+     * is not the service: it is the class name, and every question the body asks of it is a question about
+     * that name.
+     *
+     * @var array<string, string>
+     */
+    public array $classHandles = [];
 
     /** @var array<string, array<string, array{0: string, 1: string, 2?: string}>> expression key -> refined fields */
     public array $refinements = [];

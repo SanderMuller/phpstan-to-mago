@@ -36,9 +36,11 @@ use Mago\Sdk\Syntax\Node;
  *   trait method. That is what makes a finding land where PHPStan puts it.
  * - **Method names in metadata are lowercased**, so any comparison has to fold case.
  *
- * One filter of the original is **not** reproduced: `ParamTypeDeclarationCollector` skips a function-like whose
- * docblock declares a `callable` parameter, which needs a docblock read this does not do. A project using that
- * shape will disagree, and it is a known gap rather than a silent one.
+ * One filter reads like a gap and is not: `ParamTypeDeclarationCollector` skips a function-like whose docblock
+ * declares a `callable` parameter, and {@see Declarations::declaresCallableParameter()} reproduces it from the
+ * trivia, matching the original's `'@param callable'` substring exactly — one space, so `@param  callable`
+ * fires in neither. The `docblock-callable` control pins it. This sentence said the opposite for as long as
+ * the filter has existed.
  */
 final readonly class TypeCoverage
 {
@@ -178,7 +180,7 @@ final readonly class TypeCoverage
                 }
 
                 $total += $times;
-                if ($method->declaredReturnType !== null) {
+                if ($method->declaredReturnType instanceof TypeMetadata) {
                     $typed += $times;
 
                     continue;
@@ -188,9 +190,20 @@ final readonly class TypeCoverage
                 // one error per (file, line, message) whatever the collector handed it. `DeclaredParameters`
                 // anchors the same way for the same reason.
                 //
-                // `nameLocation` is where the original anchors a missing return type, and it is nullable — a
-                // closure has no name to point at — so the declaration's own location stands in.
-                $missing[] = $method->nameLocation instanceof SourceLocation ? $method->nameLocation : $method->location;
+                // The declaration's own location, not the name's. `ReturnTypeDeclarationCollector` writes
+                // `$missingTypeLines[] = $node->getLine()` on the function-like, and php-parser's start line
+                // for an attributed method is the attribute's — `#[\Override]` sits a line above `public
+                // function`, and the two anchors coincide only where there is no attribute. That is why this
+                // read `nameLocation` for as long as it did: every fixture here writes plain methods.
+                //
+                // Measured on `Illuminate\Database\Eloquent`: 33 findings each way, and every pair exactly
+                // (n, n+1) with an attribute on n — `#[\Override]` on nine `Collection` methods and
+                // `#[Initialize]` on the `Concerns` traits. Anchoring on the declaration closes all 33 and
+                // brings the subtree to 1218 agreements with none either side.
+                //
+                // Nullability goes with it: `nameLocation` is null for a closure and needed a fallback, while
+                // a declaration always has a location.
+                $missing[] = $method->location;
             }
         }
 

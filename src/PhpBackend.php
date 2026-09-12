@@ -44,9 +44,9 @@ final class PhpBackend implements Backend
                 return "{$pad}if ({$this->checked($a['condition'])}) {\n{$pad}    {$a['exit']}\n{$pad}}\n\n";
             case 'bind-adapter':
                 // The PHP helpers navigate, so they need the context that Rust's adapters do not.
-                return $this->bind($pad, $a['bind'], $this->checked($this->call($a['adapter'], ['$context', $a['subject']])));
+                return $this->bind($pad, $a['bind'], $this->checked($this->call($a['adapter'], ['$context', $a['subject']])), $a['exit']);
             case 'bind-arg':
-                return $this->bind($pad, $a['bind'], $this->call('positional_arg_at', [$a['args'], $a['index']]));
+                return $this->bind($pad, $a['bind'], $this->call('positional_arg_at', [$a['args'], $a['index']]), $a['exit']);
             case 'if-open':
                 return "{$pad}if ({$this->checked($a['condition'])}) {\n";
             case 'else':
@@ -68,6 +68,10 @@ final class PhpBackend implements Backend
                 return "{$pad}\${$this->name($name)} = Support::collectedValue(\$item, {$a['index']});\n";
             case 'declare-list':
                 return "{$pad}\${$this->name($a['target'])} = [];\n";
+            case 'declare-null':
+                return "{$pad}\${$this->name($a['target'])} = null;\n";
+            case 'break':
+                return "{$pad}break;\n";
             case 'append':
                 return "{$pad}\${$this->name($a['target'])}[] = {$this->checked($a['value'])};\n";
             case 'check-call':
@@ -117,11 +121,11 @@ final class PhpBackend implements Backend
     }
 
     /** `$x = Support::f(..); if ($x === null) { return; }` stands in for Rust's let-else. */
-    private function bind(string $pad, string $bind, string $value): string
+    private function bind(string $pad, string $bind, string $value, string $exit): string
     {
         $name = $this->name($bind);
 
-        return "{$pad}\${$name} = {$value};\n{$pad}if (\${$name} === null) {\n{$pad}    {$this->bail()}\n{$pad}}\n\n";
+        return "{$pad}\${$name} = {$value};\n{$pad}if (\${$name} === null) {\n{$pad}    {$exit}\n{$pad}}\n\n";
     }
 
     /**
@@ -170,7 +174,7 @@ final class PhpBackend implements Backend
      */
     public function conditional(string $condition, string $then, string $otherwise): string
     {
-        $negated = self::withoutTheLeadingNot($condition);
+        $negated = $this->withoutTheLeadingNot($condition);
         if ($negated !== null && $then === 'false') {
             return '(' . $negated . ') && (' . $otherwise . ')';
         }
@@ -194,7 +198,7 @@ final class PhpBackend implements Backend
      * Balanced by depth, like `Translator::stripOuterParentheses()`, and conservative when it cannot tell:
      * answering null keeps the ternary, which is correct for every shape.
      */
-    private static function withoutTheLeadingNot(string $condition): ?string
+    private function withoutTheLeadingNot(string $condition): ?string
     {
         if (! str_starts_with($condition, '!(') || ! str_ends_with($condition, ')')) {
             return null;

@@ -4,14 +4,11 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Runtime;
 
+use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
-use Mago\Sdk\Analyzer\Type\AnyObjectType;
-use Mago\Sdk\Analyzer\Type\MixedType;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
 use Mago\Sdk\Analyzer\Type\ScalarType;
 use Mago\Sdk\Analyzer\Type\ScalarTypeKind;
-use Mago\Sdk\Analyzer\Type\SimpleAtomicType;
-use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
 
 /**
  * PHPStan's `RuleLevelHelper` semantics, ported rather than translated.
@@ -23,9 +20,9 @@ use Mago\Sdk\Analyzer\Type\SimpleAtomicTypeKind;
  * what makes them the smallest portable unit.
  *
  * Ported for the boolean-condition family. Not for the arithmetic one: this holds `passesAsBoolean` and
- * nothing else, and `OperatorRuleHelper::isValidForArithmeticOperation` is not ported anywhere. Said the
- * other way here until the census was read — those six rules also refuse on a shape, an `if`/`elseif` chain
- * binding two operands per branch, so they need two things rather than this one.
+ * nothing else. `OperatorRuleHelper::isValidForArithmeticOperation` is here too now, and its own docblock
+ * carries the table it was measured from; the six binary rules still refuse on a shape as well, an
+ * `if`/`elseif` chain binding two operands per branch, so the helper alone does not reach them.
  *
  * ## The flags are the behaviour, so they are arguments
  *
@@ -106,11 +103,11 @@ final class RuleLevel
         //
         // The subject is `$this` exactly where mago marks the atomic as such, rather than where its name
         // happens to match the enclosing class.
-        if ($checkThisOnly && ! self::isThis($type)) {
+        if ($checkThisOnly && ! AtomicShapes::isThis($type)) {
             return true;
         }
 
-        if (self::isMixed($type)) {
+        if (AtomicShapes::isMixed($type)) {
             return true;
         }
 
@@ -127,6 +124,323 @@ final class RuleLevel
     }
 
     /**
+     * The type `RuleLevelHelper::findTypeToCheck()` narrows a receiver to, or null where it answers `ErrorType`.
+     *
+     * The two `DynamicCallOnStaticMethods*` rules call `findTypeToCheck()` *directly* rather than through a
+     * helper that hardcodes its criteria, and they are the only rules in the corpus that do  the other two
+     * callers are `BooleanRuleHelper` and `OperatorRuleHelper`, both already ported above. So this is the
+     * public entry point for that shape, and {@see Translator} validates the criteria closure structurally
+     * before emitting a call to it.
+     *
+     * **The criteria closure is not applied here, and that is behaviour-preserving for these callers rather
+     * than a simplification.** PHPStan uses it to pick which member of a union to check; both callers then
+     * re-test `canCallMethods()` and `hasMethod()` on whatever came back, so a member this port picks
+     * differently is rejected one line later by the rule itself. A union receiver is where the two could
+     * still diverge, which is what the example pair carries a union row for.
+     *
+     * Null means *say nothing*, the same reading {@see passesAsBoolean()} gives `ErrorType`: the rules guard
+     * with `$type instanceof ErrorType` and return, so an unnarrowable receiver is silence, not a finding.
+     */
+    public static function narrowedReceiverType(
+        ?Type $type,
+        bool $checkNullables,
+        bool $checkUnionTypes,
+        bool $checkThisOnly,
+    ): ?Type {
+        if (! $type instanceof Type) {
+            return null;
+        }
+
+        // The same short-circuit its three siblings carry, and the same reason: `checkThisOnly` defaults
+        // *true* and turns off at level 2, so below that PHPStan silences every receiver that is not `$this`.
+        // Without it the port reports at a level where the original says nothing  and the fires gate runs at
+        // level 0, so this is the flag that decides whether the pair can agree at all.
+        if ($checkThisOnly && ! AtomicShapes::isThis($type)) {
+            return null;
+        }
+
+        return self::findTypeToCheck($type, $checkNullables, $checkUnionTypes);
+    }
+
+    /**
+     * Whether an expression's type is a valid arithmetic operand, the way `OperatorRuleHelper` decides it.
+     *
+     * The sibling of {@see passesAsBoolean()}, and a shorter port than the original reads, because two of
+     * PHPStan's four branches never engage. The whole answer was measured on a real PHPStan run over one
+     * operand of every shape. `internal/probe-arithmetic-atomics.php` runs both halves of that measurement —
+     * the atomics mago gives at the position the rule reads, and the real rule over the same file at each
+     * flag setting — and prints this:
+     *
+     * | operand                    | reports when                           |
+     * |:---------------------------|:---------------------------------------|
+     * | `bool`, `true`, `null`     | always                                 |
+     * | `int\|bool`                | `checkUnionTypes`                      |
+     * | `?int`                     | `checkNullables` and `checkUnionTypes` |
+     * | everything else measured   | never                                  |
+     *
+     * "Everything else" is `int`, `float`, `string`, `numeric-string`, `array`, a named object, a bare
+     * `object`, `mixed`, `int|string` and `int|float`. A literal `true` reports like any other boolean,
+     * because its atomic is a boolean scalar carrying a refinement rather than a kind of its own. `checkThisOnly` silences all of it, the same way it
+     * silences the boolean family, which is why the gate sets it false for both.
+     *
+     * ## Why two of the original's branches are not here
+     *
+     * - **`$type->toNumber() instanceof ErrorType` returns *true*, a pass** — the comment on it says "already
+     *   reported by PHPStan core". So every type that cannot coerce at all is silent, which is what makes
+     *   `string`, `array` and every object shape silent above. Here that is one test rather than a port of
+     *   `toNumber()`: a type is a candidate only where every atomic is `int`, `float`, `bool` or `null`.
+     * - **The operator-overloading branch is unreachable.** It asks whether an *object* type accepts `+ 1`,
+     *   and an object never gets past the branch above. Measured rather than reasoned: a named object and a
+     *   bare `object` are both silent on the real run, at every flag setting in the table.
+     *
+     * ## And why `numeric-string` needs no accessory type
+     *
+     * PHPStan accepts `string&numeric-string` and rejects a plain `string` — but it rejects it through
+     * `toNumber()`, so both are silent. Mago drops the accessory anyway: measured, a `numeric-string`
+     * parameter and the literal `'12'` both arrive as a bare `ScalarType(string)`. Treating every string as
+     * a non-candidate agrees with the original on both, and there is no third string to disagree about.
+     */
+    public static function isValidForArithmeticOperation(
+        ?Type $type,
+        bool $checkNullables,
+        bool $checkUnionTypes,
+        bool $checkThisOnly,
+    ): bool {
+        if (! $type instanceof Type || AtomicShapes::isMixed($type)) {
+            return true;
+        }
+
+        if (! AtomicShapes::everyAtomicCoercesToNumber($type)) {
+            return true;
+        }
+
+        // `findTypeToCheck`'s own short-circuit, which silences every subject that is not `$this` at levels 0
+        // and 1. Below the branch above rather than at the top, because the order is the original's: the
+        // coercion test runs before `isSubtypeOfNumber()` is reached, and only that call reads the flag.
+        if ($checkThisOnly && ! AtomicShapes::isThis($type)) {
+            return true;
+        }
+
+        return self::passesAsNumber($type, $checkNullables, $checkUnionTypes);
+    }
+
+    /**
+     * The object hierarchies `++` and `--` are defined for, with no extension installed.
+     *
+     * Read off `ObjectType::toNumber()` in phpstan-src rather than guessed: it names these two and answers
+     * `ErrorType` for every other object. {@see acceptsAnIncrementOperator()} carries the measured table.
+     *
+     * @var list<string>
+     */
+    private const array INCREMENTABLE_OBJECTS = ['GMP', 'SimpleXMLElement'];
+
+    /**
+     * Whether an expression's type is a valid increment or decrement operand.
+     *
+     * One function for both, and for `++` and `--` alike, because the port cannot separate them — see the
+     * divergence below. Measured the same way as its arithmetic sibling, by
+     * `internal/probe-increment-operands.php`, which runs all four rules over one operand of every shape at
+     * each flag setting and prints what reports:
+     *
+     * | operand                                   | reports when                           |
+     * |:------------------------------------------|:---------------------------------------|
+     * | `bool`, `null`, `array`, most named objects | always                               |
+     * | `GMP`, `SimpleXMLElement` and subclasses  | never — {@see acceptsAnIncrementOperator()} |
+     * | a bare `object`, `int\|bool`, `int\|string` | `checkUnionTypes`                      |
+     * | `?int`                                    | `checkNullables` and `checkUnionTypes` |
+     * | `int`, `float`, `numeric-string`, `mixed` | never                                  |
+     * | a plain `string`                          | `--` and `$x--` only, never `++`       |
+     *
+     * Note how much wider this is than the arithmetic family: an `array` and most objects report here at
+     * every setting, and they never report there. The original is why — `isValidForIncrement()` and
+     * `isValidForDecrement()` have no `toNumber()` pass, so nothing hands those shapes to PHPStan core.
+     * Reusing the arithmetic table would have silenced the largest part of this rule's population.
+     *
+     * ## The one divergence, and which direction it was chosen in
+     *
+     * `isValidForIncrement()` passes a string outright — its comment says `$a = 'a'; $a++;` is valid PHP —
+     * and `isValidForDecrement()` does not. So PHPStan reports `--$text` on a plain string and says nothing
+     * about `--$numeric` on a `numeric-string`, which `isSubtypeOfNumber()` accepts.
+     *
+     * Mago erases that distinction: measured in `internal/probe-arithmetic-atomics.php`, a `numeric-string`
+     * parameter arrives as a bare `ScalarType(string)`, the same atomic a plain `string` gives. So the port
+     * has to answer both the same way, and it passes them: a decrement of a plain string goes unreported,
+     * where the other choice would report every decrement of a numeric string. Under-reporting is the
+     * direction this repository picks when one has to be picked, because it surfaces as `only-original` in a
+     * differential rather than as a finding nobody can act on.
+     *
+     * The increment half is exact — PHPStan passes every string there too.
+     */
+    public static function isValidForIncrementOrDecrement(
+        ?NodeAnalysisContext $context,
+        ?Type $type,
+        bool $checkNullables,
+        bool $checkUnionTypes,
+        bool $checkThisOnly,
+    ): bool {
+        if (! $type instanceof Type || AtomicShapes::isMixed($type)) {
+            return true;
+        }
+
+        if (AtomicShapes::everyAtomicIsString($type)) {
+            return true;
+        }
+
+        if ($checkThisOnly && ! AtomicShapes::isThis($type)) {
+            return true;
+        }
+
+        if (self::passesAsNumber($type, $checkNullables, $checkUnionTypes)) {
+            return true;
+        }
+
+        // Last, because it is last in the original: the object branch sits below `isSubtypeOfNumber()`.
+        return self::acceptsAnIncrementOperator($context, $type);
+    }
+
+    /**
+     * Whether `++` and `--` are defined for this object type, which is the original's last branch.
+     *
+     * `isValidForIncrement()` and `isValidForDecrement()` each end by asking whether
+     * `$scope->getType(new Expr\PreInc($expr))` is an `ErrorType`. That node does not exist in the analysed
+     * file, and a plugin receives span-keyed inferred types for the positions it declared, so a node with no
+     * span has no type and the question cannot be asked. It can be *answered*, because the branch is reached
+     * only for objects and the set of objects it accepts is knowable by name.
+     *
+     * `ObjectType::toNumber()` answers `float|int` for the `SimpleXMLElement` and `GMP` hierarchies and
+     * `ErrorType` for every other object, and core's arithmetic typing reads it — so those two increment
+     * cleanly and nothing else does. By ancestry rather than by name: the original asks `isInstanceOf()`, so
+     * a subclass is covered, and a port comparing the two names exactly would report `SimpleXMLIterator`.
+     *
+     * Measured at the gate's own configuration — level 0 with `checkThisOnly` off — over both directions and
+     * both fixities, with `bool++` in the same run as a control that must fire:
+     *
+     * | operand              | `$x++` | `$x--` | `++$x` | `--$x` |
+     * |:---------------------|:-------|:-------|:-------|:-------|
+     * | `GMP`                | silent | silent | silent | silent |
+     * | `SimpleXMLElement`   | silent | silent | silent | silent |
+     * | `SimpleXMLIterator`  | silent | silent | silent | silent |
+     * | `stdClass`           | REPORTS| REPORTS| REPORTS| REPORTS|
+     *
+     * One accepting set serves both directions, which is why one function still serves both.
+     *
+     * ## The bound, which runs in both directions
+     *
+     * An earlier version of this docblock said the bound was one-directional, because an extension cannot
+     * change `toNumber()`. That reason is sound and it is the reason the **arithmetic** sibling needs no
+     * bound at all — every object there either fails the `toNumber()` gate and returns true two branches
+     * early, or is one of these two, and no extension can reach that gate. It does not hold here, because
+     * this half has no `toNumber()` gate: its only discriminator is the type of `expr + 1`, which is exactly
+     * what an extension reaches.
+     *
+     * So with a third-party `OperatorTypeSpecifyingExtension` installed, the two can disagree either way:
+     *
+     * - It can make `++` valid for some other class, where this port still reports. The direction already
+     *   stated.
+     * - It can make `GMP` or `SimpleXMLElement` **reported by PHPStan**, where this port is silent — a false
+     *   negative. `OperatorTypeSpecifyingExtensionRegistry` calls `specifyType()` on *every* extension whose
+     *   `isOperatorSupported()` matches and returns `TypeCombinator::union(...)` of all of them, picking no
+     *   winner. `ErrorType extends MixedType`, so it absorbs the union rather than being absorbed. Verified
+     *   here: `union(GMP, ErrorType)` is an `ErrorType` and `union(GMP, NeverType)` is the `ObjectType`. One
+     *   contributor returning `ErrorType` therefore decides the answer, and the built-in GMP extension cannot
+     *   outvote it.
+     *
+     * **The mechanism is verified; the trigger is hypothetical, and the difference is worth keeping.** It
+     * needs an extension whose `isOperatorSupported()` claims a GMP or `SimpleXMLElement` pair it does not
+     * understand *and* whose `specifyType()` then returns `ErrorType`. A code search for implementations
+     * finds exactly one outside phpstan's own source, docs, tests and vendored copies of it:
+     * `jbboehr/yumemi.php`. Its gate requires one of its own types on a side, so it never claims such a pair
+     * and cannot trigger this — though it does return `ErrorType`, so that half of the pattern is real. No
+     * known extension triggers the whole of it. The bound is stated because it is a correctness claim and
+     * costs a sentence, not because it has been seen.
+     *
+     * There is no tighter port. The discriminator is the type of a node that does not exist in the file, so
+     * the bound is the answer rather than a gap in this implementation.
+     */
+    private static function acceptsAnIncrementOperator(?NodeAnalysisContext $context, Type $type): bool
+    {
+        // Ancestry needs a codebase, and the unit test beside this class has no context to give: a
+        // `NodeAnalysisContext` is built from an `AfterFileAnalysisContext`, a `SourceFile`, a `Node` and a
+        // `NodeAnalysisData`, none of which a unit test holds. So a null context answers the *narrower*
+        // question — the two names exactly, no subclasses — rather than answering nothing.
+        //
+        // Deliberately narrower and not equivalent. Every emitted plugin passes a real context, because the
+        // vocabulary entry declares `'takes' => 'context'`, so nothing shipped takes this path. It is stated
+        // here rather than hidden because a fallback that silently answers a different question is how a port
+        // diverges without a test noticing.
+        if (! $context instanceof NodeAnalysisContext) {
+            foreach ($type->atomicTypes as $atomic) {
+                if ($atomic instanceof NamedObjectType
+                    && in_array(ltrim($atomic->name, '\\'), self::INCREMENTABLE_OBJECTS, true)
+                ) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        foreach (self::INCREMENTABLE_OBJECTS as $class) {
+            if (Types::typeIsInstanceOf($context, $type, $class)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * `findTypeToCheck` with the accepted type `int|float|numeric-string`, and the test that follows it.
+     *
+     * The narrowing is the same function the boolean family reaches, and the criteria is the difference: it
+     * keeps the union members that *satisfy* the accepted type, and where none does it keeps the whole union
+     * so the check sees what the rule was handed. That is what makes `int|bool` silent without
+     * `checkUnionTypes` — the `int` satisfies, so that is all the check looks at — and reporting with it.
+     */
+    private static function passesAsNumber(Type $type, bool $checkNullables, bool $checkUnionTypes): bool
+    {
+        if (! $checkNullables && ! AtomicShapes::isNullOnly($type)) {
+            $type = AtomicShapes::withoutNull($type);
+        }
+
+        // A bare `object` follows the same flag it follows for the boolean family, where PHPStan answers
+        // `ErrorType` and both callers read that as a pass. Measured here too: a bare `object` is silent
+        // without the flag and reports with it, while a *named* object reports either way.
+        if (! $checkUnionTypes && AtomicShapes::isBareObject($type)) {
+            return true;
+        }
+
+        return AtomicShapes::everyAtomicIsNumber(self::keepTheNumbersOf($type, $checkUnionTypes));
+    }
+
+    /**
+     * The members of a union that are numbers, or the whole type where none of them is.
+     *
+     * `filterUnion()` is the same shape for the boolean criteria. Kept apart rather than parameterised with
+     * a callable: these run inside every emitted plugin, and the two criteria are two tables of atomic
+     * kinds rather than two behaviours.
+     */
+    private static function keepTheNumbersOf(Type $type, bool $checkUnionTypes): Type
+    {
+        if ($checkUnionTypes || count($type->atomicTypes) < 2) {
+            return $type;
+        }
+
+        $kept = [];
+        foreach ($type->atomicTypes as $atomic) {
+            if ($atomic instanceof ScalarType && in_array($atomic->kind, AtomicShapes::NUMERIC, true)) {
+                $kept[] = $atomic;
+            }
+        }
+
+        return $kept === [] ? $type : Type::fromAtomics(...$kept);
+    }
+
+    /** Whether every part of a type is a string, which is `Type::isString()->yes()`. */
+
+    /** Whether every part of a type is `int` or `float`, which is what the accepted type covers. */
+
+    /**
      * The type `findTypeToCheck` narrows to, or null where it answers `ErrorType`.
      *
      * `ErrorType` is not an error to the callers: both read it as *pass*, so null here means "say nothing".
@@ -136,11 +450,11 @@ final class RuleLevel
         // `!$type->isNull()->yes()` guards PHPStan's own removal, so a subject that *is* null keeps its type
         // and reports. Stripping unconditionally silenced it instead -- an under-report measured against a
         // real run, where PHPStan reports `null given` at level 7.
-        if (! $checkNullables && ! self::isNullOnly($type)) {
-            $type = self::withoutNull($type);
+        if (! $checkNullables && ! AtomicShapes::isNullOnly($type)) {
+            $type = AtomicShapes::withoutNull($type);
         }
 
-        if (self::isMixed($type)) {
+        if (AtomicShapes::isMixed($type)) {
             return null;
         }
 
@@ -150,7 +464,7 @@ final class RuleLevel
         // reports where PHPStan is quiet, which is the direction that ships a finding nobody can act on, and
         // `phpstan-strict-rules` registers through its own config so a consumer can run these families at
         // level 5.
-        if (! $checkUnionTypes && self::isBareObject($type)) {
+        if (! $checkUnionTypes && AtomicShapes::isBareObject($type)) {
             return null;
         }
 
@@ -182,63 +496,8 @@ final class RuleLevel
     }
 
     /** Whether null is the whole type, which is what stops PHPStan removing it. */
-    private static function isNullOnly(Type $type): bool
-    {
-        foreach ($type->atomicTypes as $atomic) {
-            if (! $atomic instanceof SimpleAtomicType || $atomic->kind !== SimpleAtomicTypeKind::Null) {
-                return false;
-            }
-        }
-
-        return true;
-    }
 
     /** The type with its null member removed. Never called where null is all of it. */
-    private static function withoutNull(Type $type): Type
-    {
-        $kept = [];
-        foreach ($type->atomicTypes as $atomic) {
-            if ($atomic instanceof SimpleAtomicType && $atomic->kind === SimpleAtomicTypeKind::Null) {
-                continue;
-            }
-
-            $kept[] = $atomic;
-        }
-
-        return Type::fromAtomics(...$kept);
-    }
 
     /** Every member an object, and none of them named -- PHPStan's `isObject()->yes()` with no class names. */
-    private static function isBareObject(Type $type): bool
-    {
-        foreach ($type->atomicTypes as $atomic) {
-            if (! $atomic instanceof AnyObjectType) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static function isThis(Type $type): bool
-    {
-        foreach ($type->atomicTypes as $atomic) {
-            if ($atomic instanceof NamedObjectType && $atomic->isThis) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static function isMixed(Type $type): bool
-    {
-        foreach ($type->atomicTypes as $atomic) {
-            if ($atomic instanceof MixedType) {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }

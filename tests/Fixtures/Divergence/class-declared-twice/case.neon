@@ -1,0 +1,1 @@
+rule: Symplify\PHPStanRules\Rules\Explicit\NoProtectedClassStmtRule

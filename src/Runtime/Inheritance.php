@@ -111,23 +111,111 @@ final class Inheritance
     }
 
     /**
+     * The suffix the enclosing class owes its nearest listed ancestor, or null when it owes none.
+     *
+     * The walk is generic and the table is derived at transpile time: for each `ancestor => suffix` pair in
+     * written order, the first pair whose ancestor the class descends from decides and stops. That pair is
+     * satisfied when the class name already ends with the suffix, and reported otherwise. A class matching no
+     * pair owes nothing. `ClassNameRespectsParentSuffixRule` is the shape.
+     *
+     * Order is the caller's and it is load-bearing: the rule merges configured ancestors ahead of its own
+     * defaults, so whichever matches first chooses the message. A PHP array preserves insertion order, which
+     * is why the table arrives as one rather than as two lists.
+     *
+     * `namedClassIsSubclassOf()` is exclusive where PHPStan's `ClassReflection::is()` is inclusive, and the
+     * difference cannot be reached here: a class that *is* a listed ancestor already ends with that ancestor's
+     * own suffix, so both answer silence. It also folds in traits where `is()` does not, which is exact for a
+     * table of classes and interfaces and would be wider than the rule for a configured trait ancestor.
+     *
+     * @param array<string, string> $table ancestor class or interface name => the suffix it requires
+     */
+    public static function missingAncestorSuffix(
+        NodeAnalysisContext $context,
+        Part|Node|null $node,
+        array $table,
+    ): ?string {
+        $class = Declares::enclosingClassName($context, $node);
+        if ($class === null || $class === '') {
+            return null;
+        }
+
+        foreach ($table as $ancestor => $suffix) {
+            if (! Reflect::namedClassIsSubclassOf($context, $class, $ancestor)) {
+                continue;
+            }
+
+            return str_ends_with($class, $suffix) ? null : $suffix;
+        }
+
+        return null;
+    }
+
+    /**
+     * Every interface a named class implements, transitively  `ClassReflection::getInterfaces()`.
+     *
+     * `parentInterfaces`, not `directParentInterfaces`: PHPStan\'s `getInterfaces()` is the whole set, and a
+     * rule walking it to compare method names wants an interface an ancestor brought in as readily as one the
+     * class writes. {@see Declares} carries the other choice and the case that separates them.
+     *
+     * Names arrive lowercased from metadata, which is fine here  every consumer looks a method up by them
+     * rather than printing them.
+     *
+     * @return list<string>
+     */
+    public static function interfaceNames(NodeAnalysisContext $context, ?string $class): array
+    {
+        if ($class === null) {
+            return [];
+        }
+
+        $metadata = $context->codebase->getClassLike($class);
+
+        return $metadata instanceof ClassLikeMetadata ? array_values($metadata->parentInterfaces) : [];
+    }
+
+    /**
      * The classes the enclosing declaration extends, nearest first, as written.
      *
      * `ClassLikeMetadata->parentClasses` rather than `Codebase::getClassAncestors()`: that one folds in
      * interfaces and traits, and a rule walking parents to find an overridden method means parents. Names
      * arrive lowercased from metadata, which is fine for looking a class up again and wrong for printing.
      *
+     * Asked of {@see Declares::enclosingReflectionClassNames()} rather than of the enclosing class directly,
+     * so that a node inside a *trait* reads the parents of the classes using it. Measured: PHPStan analyses a
+     * trait body once per using class and `getClassReflection()->getParentClassesNames()` there answers that
+     * class's parents; the trait's own metadata carries none, so reading it left every parent test inside a
+     * trait false. That is the bad direction for a suppressing test -- it reports where PHPStan is quiet.
+     *
+     * The union under-reports for a trait used by several classes, and both callers can take it, for two
+     * different reasons rather than one:
+     *
+     * - `PreventParentMethodVisibilityOverrideRule` suppresses on a parent match, so a wider list can only
+     *   silence a finding -- the same bound {@see Declares::enclosingClassKindIs()} already states.
+     * - `ClassConstantIsAStringRule` *reports* on a parent match, where a wider list would over-report. It
+     *   cannot reach the fold: its only target is `NodeKind::Class_`, so the node it is handed is a class
+     *   declaration and the enclosing class-like is never a trait.
+     *
+     * A third caller has to be read the same way before it lands, and the question is which side of the guard
+     * the parent match sits on. A fold that widens an input is safe in a suppressing position and wrong in a
+     * reporting one.
+     *
      * @return list<string>
      */
     public static function parentClassNames(NodeAnalysisContext $context, Part|Node|null $node): array
     {
-        $className = Declares::enclosingClassName($context, $node);
-        if ($className === null) {
-            return [];
+        $names = [];
+
+        foreach (Declares::enclosingReflectionClassNames($context, $node) as $className) {
+            $metadata = $context->codebase->getClassLike($className);
+            if (! $metadata instanceof ClassLikeMetadata) {
+                continue;
+            }
+
+            foreach ($metadata->parentClasses as $parent) {
+                $names[strtolower($parent)] = $parent;
+            }
         }
 
-        $metadata = $context->codebase->getClassLike($className);
-
-        return $metadata instanceof ClassLikeMetadata ? array_values($metadata->parentClasses) : [];
+        return array_values($names);
     }
 }

@@ -10,6 +10,7 @@ use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
 use Mago\Sdk\Syntax\ResolvedName;
+use Mago\Sdk\Syntax\SourceFile;
 
 /**
  * What a class-like, a method, a property or a constant *declares* about itself.
@@ -30,14 +31,21 @@ final class Declares
      */
     private static array $satisfyingUsers = [];
 
-    /** How far below a class-like to look for its members: body, then member list. */
-    private const int MEMBER_DEPTH = 3;
-
     public static function declarationKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool
     {
         $node = Tree::node($subject);
+        if (! $node instanceof Node) {
+            return false;
+        }
 
-        return $node instanceof Node && $node->kind->value === $kind;
+        // `Class` answers for an anonymous one too, because the questions behind it are php-parser's
+        // `instanceof Stmt\Class_` and PHPStan's `ClassReflection::isClass()`, and an anonymous class is a
+        // `Stmt\Class_` with a null name in the first and not an interface, trait or enum in the second.
+        // Mago gives it a kind of its own, so comparing the kind text alone answered no and every rule
+        // narrowing to a class fell silent inside `new class { .. }`. Asking for `AnonymousClass` is still the
+        // narrow question, which is what `isAnonymous()` translates to.
+        return $node->kind->value === $kind
+            || ($kind === 'Class' && $node->kind === NodeKind::AnonymousClass);
     }
 
     /**
@@ -132,9 +140,17 @@ final class Declares
     /**
      * The name of the function or method the node sits in, or null outside one.
      *
-     * What `$scope->getFunctionName()` gives a rule. A closure and an arrow function are anonymous, so a node
-     * inside one has no enclosing *name* — the walk stops there rather than continuing to the method around it,
-     * which is what PHPStan answers too.
+     * What `$scope->getFunctionName()` gives a rule, which is the *named* function a node sits in however
+     * many closures deep.
+     *
+     * The walk used to stop at a closure, on the belief that PHPStan answers null there. It does not, and the
+     * source says so in two places: `MutatingScope::getFunctionName()` is `$this->function?->getName()`, and
+     * `enterAnonymousFunction()` builds the closure's scope by passing `$scope->getFunction()` straight
+     * through. So a closure inherits the enclosing function rather than replacing it.
+     *
+     * `NoDynamicNameRule` is where that cost a finding: it exempts a dynamic name whose enclosing function is
+     * `__get` or `__set`, and a closure written inside one was reported by the port and not by PHPStan. The
+     * pair under `examples/NoDynamicNameRule` holds that case.
      */
     public static function enclosingFunctionName(NodeAnalysisContext $context, Part|Node|null $subject): ?string
     {
@@ -146,10 +162,6 @@ final class Declares
         [$file, $located] = Tree::locate($context, $node);
 
         foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
-            if ($ancestor->kind === NodeKind::Closure || $ancestor->kind === NodeKind::ArrowFunction) {
-                return null;
-            }
-
             if ($ancestor->kind !== NodeKind::Method && $ancestor->kind !== NodeKind::Function) {
                 continue;
             }
@@ -162,41 +174,6 @@ final class Declares
         }
 
         return null;
-    }
-
-    /**
-     * The method declarations of a class-like body, in source order.
-     *
-     * Walked rather than read off one level, because a class-like's members sit inside its body node. This is
-     * php-parser's `$classLike->getMethods()`, so it is the methods *written here* — not the ones a trait brings
-     * in, and not the inherited ones a reflection lookup would add.
-     *
-     * @return list<Part>
-     */
-    public static function classMethods(NodeAnalysisContext $context, Part|Node|null $subject): array
-    {
-        $node = Tree::node($subject);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        $out = [];
-        $walk = function (Node $parent, int $depth) use (&$walk, $context, &$out): void {
-            foreach ($context->source->getChildren($parent) as $child) {
-                if ($child->kind === NodeKind::Method) {
-                    $out[] = Tree::part($context, $child);
-
-                    continue;
-                }
-
-                if ($depth < self::MEMBER_DEPTH) {
-                    $walk($child, $depth + 1);
-                }
-            }
-        };
-        $walk($node, 0);
-
-        return $out;
     }
 
     /** Whether a class-like declaration is written `abstract`, which is a modifier on it. */
@@ -214,55 +191,6 @@ final class Declares
         }
 
         return false;
-    }
-
-    /**
-     * One method declaration of a class-like body, by name, or null when it declares none.
-     *
-     * php-parser's `ClassLike::getMethod()`, which a rule uses to reach a method it learned the name of at
-     * analysis time — a data provider named in a docblock. Case insensitive, as PHP method names are.
-     */
-    public static function methodNamed(NodeAnalysisContext $context, Part|Node|null $classLike, ?string $name): ?Part
-    {
-        if ($name === null) {
-            return null;
-        }
-
-        foreach (self::classMethods($context, $classLike) as $method) {
-            if (strcasecmp((string) Members::methodName($method), $name) === 0) {
-                return $method;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * The property declarations of a class-like body.
-     *
-     * @return list<Part>
-     */
-    public static function classProperties(NodeAnalysisContext $context, Part|Node|null $subject): array
-    {
-        $node = Tree::node($subject);
-        if (! $node instanceof Node) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($context->source->getChildren($node) as $member) {
-            if ($member->kind !== NodeKind::ClassLikeMember) {
-                continue;
-            }
-
-            foreach ($context->source->getChildren($member) as $child) {
-                if (in_array($child->kind->value, ['Property', 'PlainProperty', 'HookedProperty'], true)) {
-                    $out[] = Tree::part($context, $child);
-                }
-            }
-        }
-
-        return $out;
     }
 
     /** The enclosing class-like declaration's name, or null at top level. */
@@ -299,9 +227,167 @@ final class Declares
         return null;
     }
 
+    /**
+     * The class-like names PHPStan's `$scope->getClassReflection()` would answer at this node.
+     *
+     * One name for a node inside a class, an interface or an enum. Inside a *trait* it is every class using
+     * the trait, because PHPStan analyses a trait body once per using class and hands each run that class --
+     * measured, on a trait whose constructor a using class aliases: the finding arrives keyed `(in context of
+     * class ...)` and `getParentClassesNames()` there is the *user's* parents, not the trait's (a trait has
+     * none). Mago fires once at the declaration instead, where the enclosing class-like is the trait, which
+     * is the same gap {@see enclosingClassKindIs()} documents and this answers the same way.
+     *
+     * The bound is the sibling's bound: exact for a trait used by one class, and a *union* for one used by
+     * several, so a question asked of the union under-reports rather than over-reports. That direction is
+     * deliberate -- {@see Inheritance::parentClassNames()} feeds `in_array()` tests, where a wider list can
+     * only silence a finding.
+     *
+     * @return list<string>
+     */
+    public static function enclosingReflectionClassNames(NodeAnalysisContext $context, Part|Node|null $subject): array
+    {
+        $name = self::enclosingClassName($context, $subject);
+        if ($name === null) {
+            return [];
+        }
+
+        if (! self::enclosingIsTrait($context, $subject)) {
+            return [$name];
+        }
+
+        return self::traitUsers($context, $name);
+    }
+
+    /** Whether the class-like *around* this node is the trait it is declared in. */
+    private static function enclosingIsTrait(NodeAnalysisContext $context, Part|Node|null $subject): bool
+    {
+        $node = Tree::node($subject);
+        if (! $node instanceof Node) {
+            return false;
+        }
+
+        [$file, $located] = Tree::locate($context, $node);
+
+        foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
+            if ($ancestor->kind === NodeKind::Trait) {
+                return true;
+            }
+
+            if (in_array($ancestor->kind->value, Tree::CLASS_LIKE_KINDS, true)
+                || $ancestor->kind === NodeKind::AnonymousClass
+            ) {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
     public static function isInClass(NodeAnalysisContext $context, Part|Node|null $node): bool
     {
         return self::enclosingClassName($context, $node) !== null;
+    }
+
+    /**
+     * Whether the class-like *around* this node is of one kind — `$scope->getClassReflection()->isClass()`.
+     *
+     * {@see declarationKindIs()} is the other question and answers about the node a hook was handed. The two
+     * coincide for a class-like declaration hook and not for any other, which is where this is needed: a rule
+     * registered for `ClassMethod` asks `isClass()` of the class the method sits in, and comparing the
+     * *method's* kind against `Class` is false for every method ever written. That is not a wrong answer a
+     * reader would notice — it is a guard that never passes, so the plugin loads, runs and reports nothing.
+     * `NativeReflectionHopRule`'s emitted plugin was silent that way, and `NoReturnSetterMethodRule` would
+     * have shipped the same.
+     *
+     * Read from the tree by the same walk as {@see enclosingClassName()}, and for the same two reasons: the
+     * node itself counts, because a rule may ask this from a declaration hook as well, and a node hook's
+     * `getAncestors()` is empty until {@see Tree::locate()} relocates the node into the whole file.
+     *
+     * `AnonymousClass` is a class, the equivalence {@see declarationKindIs()} carries and for the same
+     * reason — PHPStan's `isClass()` is true inside `new class { .. }`. It is in the walk rather than only in
+     * the comparison, so a method of an anonymous class declared inside a class is attributed to the
+     * anonymous one instead of falling through to the class around it.
+     */
+    public static function enclosingClassKindIs(NodeAnalysisContext $context, Part|Node|null $subject, string $kind): bool
+    {
+        $node = Tree::node($subject);
+        if (! $node instanceof Node) {
+            return false;
+        }
+
+        [$file, $located] = Tree::locate($context, $node);
+
+        foreach ([$located, ...$file->getAncestors($located)] as $ancestor) {
+            if (! in_array($ancestor->kind->value, Tree::CLASS_LIKE_KINDS, true)
+                && $ancestor->kind !== NodeKind::AnonymousClass
+            ) {
+                continue;
+            }
+
+            // A member declared in a trait, which is the same gap {@see enclosingClassIs()} documents and
+            // answers the same way. PHPStan analyses such a member once per *using* class and hands
+            // `getClassReflection()` that class, so `isClass()` there is a question about the users; mago
+            // fires once at the declaration, where the enclosing class-like is the trait itself. Measured:
+            // PHPStan reports a trait-declared setter once the trait is used and the port was silent.
+            //
+            // Answered as "any using class is of this kind", which is exact for a trait used by one class and
+            // under-reports for one used by several — the safe direction, and the same bound the sibling
+            // carries. The satisfying users are deliberately *not* recorded: {@see satisfyingUsers()} feeds
+            // `viaTraitUsers()`, which appends them to the message, and PHPStan's message for this question
+            // names no user. Recording them here would turn an agreeing finding into a differing string.
+            if ($ancestor->kind === NodeKind::Trait) {
+                return self::anyTraitUserKindIs($context, $file, $ancestor, $kind);
+            }
+
+            return $ancestor->kind->value === $kind
+                || ($kind === 'Class' && $ancestor->kind === NodeKind::AnonymousClass);
+        }
+
+        return false;
+    }
+
+    /** Whether any class using this trait is of the given kind, which is what PHPStan asks in its place. */
+    private static function anyTraitUserKindIs(
+        NodeAnalysisContext $context,
+        SourceFile $file,
+        Node $trait,
+        string $kind,
+    ): bool {
+        $name = Declarations::classLikeName($file, $trait);
+        if ($name === null) {
+            return false;
+        }
+
+        foreach (self::traitUsers($context, $name) as $user) {
+            $metadata = $context->codebase->getClassLike($user);
+            if (! $metadata instanceof ClassLikeMetadata) {
+                continue;
+            }
+
+            if (self::metadataKindName($metadata->kind) === $kind) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * What a `ClassLikeKind` case is called in the node-kind vocabulary the rest of this asks in.
+     *
+     * `ClassLikeKind` is a pure enum, so there is no backed value to read, and `Class_` is the case name PHP
+     * needs because `class` is reserved — every kind comparison here is spelled `Class`. A `match` rather
+     * than a lookup table so the mapping is exhaustive at analysis time: a case added upstream is an error
+     * here rather than an undefined key at run time, or a `?? null` the analyser proves dead.
+     */
+    private static function metadataKindName(ClassLikeKind $kind): string
+    {
+        return match ($kind) {
+            ClassLikeKind::Class_ => 'Class',
+            ClassLikeKind::Interface => 'Interface',
+            ClassLikeKind::Trait => 'Trait',
+            ClassLikeKind::Enum => 'Enum',
+        };
     }
 
     /**

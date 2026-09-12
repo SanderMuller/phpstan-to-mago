@@ -4,8 +4,10 @@ Both hold for every change to the transpiler. Weakening either has already shipp
 
 ## The emitted output is the contract, not the source
 
-Every target has a reviewed snapshot under `tests/Fixtures/expected` and `tests/Fixtures/expected-rust`, and
-`tests/Fixtures/expected/census.md` records what happens to all 129 rules in the four rule packages. A
+Every target has a reviewed snapshot under `tests/Fixtures/expected`, `tests/Fixtures/expected-rust` and
+`tests/Fixtures/expected-lint`, and `tests/Fixtures/expected/census.md` records what happens to every rule in
+the packages this repository installs — 190 of them across seven packages as it stands, and the file prints
+its own list of versions so the number can never be read without its corpus. A
 refactor that changes what is emitted fails those, which is the point: pint and rector have each rewritten
 `src/Transpiler.php` wholesale, and the snapshots proved the output was untouched.
 

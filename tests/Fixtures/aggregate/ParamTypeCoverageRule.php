@@ -16,14 +16,23 @@ use Mago\Sdk\Reporting\Level;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 
 /**
- * Over-counts the original by up to 1.11% on the two Laravel consumers it was measured on: +81 of 13694 and +37
- * of 11428. The collector skips a method whose name an ancestor has, and PHPStan answers that from reflection
- * extensions a Mago plugin cannot reproduce. It can also *under*-count, by a separate cause: a class declared
- * twice in one file behind a version guard is counted by PHPStan and by neither body here, which is -7 on
- * nikic/php-parser. Reproduce either with `php tests/Support/run-coverage-corpus.php <consumer-root>`.
+ * Over-counts the original by +1 of 17635 declarations on the 1694 files of laravel/framework's own
+ * `Illuminate`, and by 1.11% at most on the two Laravel *applications* it was measured on — +81 of 13694 and
+ * +37 of 11428, both measured before `@mixin` was followed and not re-measured since. The collector skips a
+ * method whose name an ancestor has, asking `ClassReflection::hasMethod()`, and two of the things that answer it
+ * are reproduced here: a `@method` line on an ancestor, and a `@mixin` on one, followed transitively. The mixin
+ * was +1310 on `Illuminate` by itself — +1190 of that in `Database`, +55 in `Redis`, +16 in `Pagination`, and
+ * the other 35 directories at zero. What remains is a mixin target whose metadata is missing a method the
+ * runtime has: `@mixin \Redis` on Illuminate\Redis\Connections\Connection, where mago carries `scan`, `sscan`
+ * and `zscan` and not `hscan`, so `PhpRedisConnection::hscan()` is the whole +1 — and, on an application,
+ * larastan's factory and auth extensions, which a Mago plugin cannot reproduce. Under-counts nothing measured.
+ * Reproduce with `php tests/Support/run-coverage-corpus.php <consumer-root>`.
  */
 final class ParamTypeCoverageRule implements AfterAnalysisHook, Plugin
 {
+    /**
+     * @param float $required PHPStan's `%type_coverage.param%` or `%type_coverage.param_type%`
+     */
     public function __construct(public readonly float $required = 99) {}
 
     public function getDefinition(): PluginDefinition

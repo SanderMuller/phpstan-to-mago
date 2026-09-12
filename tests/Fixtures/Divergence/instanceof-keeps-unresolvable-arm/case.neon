@@ -1,0 +1,2 @@
+rule: Symplify\PHPStanRules\Rules\NoDynamicNameRule
+ignore: class.notFound

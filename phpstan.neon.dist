@@ -67,6 +67,14 @@ parameters:
         # Anchors a finding on a loop item and returns it from outside the loop. Being wrong is the fixture: it
         # proves the transpiler refuses that instead of emitting a report on whatever PHP left in the variable.
         - tests/Fixtures/Rules/AnchorEscapesLoopRule.php
+        # Divergence-case subjects. Each one is code two engines are asked to disagree (or agree) about, and
+        # the unguarded call in the callable-string case is the control that must be reported — analysing it
+        # here reports the wrongness the case exists to pin.
+        - tests/Fixtures/Divergence
+        # Reads `$node->{'value'}` on a node with no such property. Being wrong is the fixture: a computed
+        # property name is what used to kill the transpiler inside `(string) $node->name`, and no rule in the
+        # corpus writes one, so this file is the only place that reaches those sites.
+        - tests/Fixtures/Rules/DynamicNameComparisonRule.php
         # Written with `instanceof ConstantStringType`, which PHPStan deprecates in favour of
         # `Type::getConstantStrings()`. Using the deprecated form is the fixture: three corpus rules write it,
         # and the shape being translated is the `?ClassReflection` helper around it.
@@ -125,10 +133,23 @@ parameters:
                 - tests/Support/run-render-census.php
                 - tests/Support/HierarchyKnowledge.php
                 - tests/Support/FiresGate.php
+                # And the divergence batch, which boots both engines once over every case for the same
+                # reason: what two engines say about code is a property of running them.
+                - tests/Support/DivergenceCases.php
+                # And the corpus sweep, which starts a differential per pinned tree. Reading what two
+                # engines say about a corpus is a property of running them, once more.
+                - tests/Support/run-corpus-sweep.php
+                # And a benchmark, for the same reason once more: what two engines cost is a property of running
+                # them, and no in-process check can time a binary.
+                - tests/Support/run-benchmark.php
                 - tests/Unit/AggregatesConstantCoverageTest.php
                 - tests/Unit/AggregatesDeclareCoverageTest.php
+                - tests/Unit/AggregatesReturnCoverageTest.php
                 - tests/Unit/AggregatesTypeCoverageTest.php
                 - tests/Unit/AnalysesTheEmittedPluginsTest.php
                 # The trait divergence is a fact about two engines, so measuring it means running both.
                 - tests/Unit/TraitMethodHookDivergesTest.php
+                # And what `is_callable()` narrowing sets on a type is a fact about the analyser, readable only
+                # from inside a plugin the analyser started.
+                - tests/Unit/ReadsTheCallableStringRefinementTest.php
             reportUnmatched: false

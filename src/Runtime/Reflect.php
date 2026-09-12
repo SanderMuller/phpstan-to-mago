@@ -16,12 +16,32 @@ use Mago\Sdk\Syntax\NodeKind;
 /**
  * What the codebase knows about a class, a method or a parameter.
  *
- * Metadata questions only: nothing here reads the CST. The distinction the group exists to keep is the one a
- * defect turned on — a class *declaring* a method and a class *having* one are different questions, and the
- * port answered the first where PHPStan asks the second.
+ * Metadata questions. The distinction the group exists to keep is the one a defect turned on — a class
+ * *declaring* a method and a class *having* one are different questions, and the port answered the first
+ * where PHPStan asks the second.
+ *
+ * **Every question here is bounded by what mago scanned.** PHPStan reflects whatever its autoloader can
+ * reach; mago knows the analysed paths, the resolution roots it is given, and the builtins. Where a consumer
+ * points mago at its whole `vendor` those two sets nearly coincide — probed under the corpus differential's
+ * own configuration, where another vendor package resolves and so does a builtin. What does not resolve is a
+ * class whose source is inside a **phar**, because mago scans `.php` files and a phar holds none.
+ *
+ * That is one measured divergence rather than a shape: on `rector/rector/src`, `SimpleStaticType extends
+ * PHPStan\Type\StaticType`, and `StaticType` lives only in `phpstan.phar`. PHPStan reports the constructor
+ * override; the port asks whether the parent declares `__construct`, gets nothing for a parent it cannot see,
+ * and stays silent. Nothing here can fix it — a plugin cannot read a phar — so it is named so the next
+ * differential run does not read it as a defect.
+ *
+ * One method reads the CST as well, and says why: {@see parentHasConstructor()} asks the declaration a node
+ * sits in before asking the codebase about its name, because a name can have two declarations and the
+ * metadata keeps one. That is not a crack in the grouping — it is the same distinction one level out, between
+ * what a *name* resolves to and what the analysed node is.
  */
 final class Reflect
 {
+    /** The property node kinds that hold a declaration's modifiers, one level below `Property`. */
+    private const array PROPERTY_VARIANTS = [NodeKind::PlainProperty, NodeKind::HookedProperty];
+
     /**
      * Whether the codebase knows a class-like of this name.
      *
@@ -56,6 +76,39 @@ final class Reflect
     }
 
     /**
+     * Whether a named class descends from another named class, which is `isSubclassOfClass()` in PHPStan.
+     *
+     * The sibling of {@see namedClassIsAbstract()} and asked the same way: both sides arrive as strings the
+     * plugin only holds while it runs — the class a static call names, and a class the rule's constructor
+     * took a reflection handle for — so the question goes to the codebase rather than to the tree.
+     *
+     * **Excludes the class itself**, which is what PHPStan's `isSubclassOf` family means: a class is not a
+     * subclass of itself. `getClassAncestors()` is the ancestry and does not include the subject, so the
+     * comparison needs no self-check — but it *does* fold in interfaces and traits, which is wider than
+     * "extends". That is correct for the question this ports: `isSubclassOfClass()` on a `ClassReflection`
+     * answers true for an implemented interface as well.
+     *
+     * Compared case-insensitively, because `getClassAncestors()` answers in lowercase — a fact this runtime
+     * has already been bitten by once, where an exclusion list compared against it silently matched nothing.
+     *
+     * An unknown class answers false, the same way the rules that ask this guard with `hasClass()` first.
+     */
+    public static function namedClassIsSubclassOf(NodeAnalysisContext $context, ?string $name, ?string $ancestor): bool
+    {
+        if ($name === null || $name === '' || $ancestor === null || $ancestor === '') {
+            return false;
+        }
+
+        foreach ($context->codebase->getClassAncestors($name) as $known) {
+            if (strcasecmp($known, $ancestor) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The class a named class extends, or null when it extends nothing the codebase knows.
      *
      * `ClassReflection::getParentClass()` in PHPStan, which answers the *direct* parent — so it reads
@@ -70,6 +123,42 @@ final class Reflect
         $metadata = $name === null || $name === '' ? null : $context->codebase->getClassLike($name);
 
         return $metadata instanceof ClassLikeMetadata ? $metadata->directParentClass : null;
+    }
+
+    /**
+     * Whether the class around this node extends one that declares a constructor.
+     *
+     * `fast_has_parent_constructor($scope)` in `symplify/phpstan-rules`, which is three questions in one:
+     * the scope is in a class-like, that class is not anonymous, and its parent declares `__construct`.
+     *
+     * The anonymous case answers false rather than being skipped, because the original returns false there
+     * with a comment saying so — and here it comes for free: mago models an anonymous class as its own node
+     * kind, so the enclosing-class read answers nothing for one. Measured on the pair, where an anonymous
+     * class overriding a parent constructor is silent on both sides.
+     *
+     * The parent's *own* declaration is not the question, and `getDeclaringMethod()` walks the hierarchy —
+     * measured, not read off the SDK: a class whose *grandparent* declares the constructor reports on both
+     * sides. That is what `ClassReflection::hasConstructor()` does on PHPStan's side, since it asks the
+     * parent's reflection and a reflection inherits.
+     */
+    public static function parentHasConstructor(NodeAnalysisContext $context, Part|Node|null $node): bool
+    {
+        // The declaration is asked before the name is. PHPStan reads the parent off the class the *scope* is
+        // in; asking the codebase for a name instead answers about whichever declaration the metadata kept,
+        // and a name can have more than one. `nikic/php-parser` writes two `TokenPolyfill` classes in one
+        // file under a `PHP_VERSION_ID` guard — the first extends `PhpToken`, the second extends nothing —
+        // and the port reported the second's constructor as overriding the first's parent. One disagreement
+        // against 111 agreements, found by the corpus differential and not by reading.
+        //
+        // Only a narrowing guard: where one name has one declaration the two answers agree, and where they
+        // do not, the node is the one PHPStan is looking at.
+        if (! Inheritance::hasExtends($context, $node)) {
+            return false;
+        }
+
+        $parent = self::parentClassName($context, Declares::enclosingClassName($context, $node));
+
+        return self::methodExists($context, $parent, '__construct');
     }
 
     /**
@@ -146,6 +235,20 @@ final class Reflect
      *
      * The distinction a rule cares about: a first-party class inheriting a vendor method should be judged on
      * where the method *comes from*, not on the receiver. `getDeclaringMethod()` answers exactly that.
+     *
+     * **`getMethod()` is not a shorter spelling of this.** It answers about the class's own declarations only,
+     * and the difference is silent — a null, not an error. Probed over one class with an inherited method, a
+     * trait method and an interface method:
+     *
+     *     Child::ownMethod       getDeclaringMethod found   getMethod found
+     *     Child::fromBase        getDeclaringMethod found   getMethod null
+     *     Child::fromTrait       getDeclaringMethod found   getMethod null
+     *     Helper::fromTrait      getDeclaringMethod found   getMethod found
+     *
+     * So `getMethod()` is right only where the class asked *is* the one that writes the method — which is
+     * true of both places the runtime calls it, because each reads a method declaration the hook is sitting
+     * on, and the last row is why a method written in a trait is one of those rather than an exception.
+     * Anything asking "does this class have this method" wants this function instead.
      */
     public static function declaringClassOfMethod(NodeAnalysisContext $context, ?string $class, ?string $method): ?string
     {
@@ -206,7 +309,7 @@ final class Reflect
             return null;
         }
 
-        $declared = $context->codebase->getDeclaringMethod($class, $method);
+        $declared = Mixins::declaringMethod($context->codebase, $class, $method);
         if (! $declared instanceof FunctionLikeMetadata) {
             return null;
         }
@@ -222,8 +325,33 @@ final class Reflect
      * `getDeclaringMethod()` answers for the whole hierarchy, which is what PHPStan's question means — a class
      * that inherits a method has it. Null-tolerant because the class name comes from
      * {@see self::resolvedName()}, which answers null for `parent` and for a variable class name.
+     *
+     * The walk is the hierarchy's, and it is measured rather than assumed: `getDeclaringMethod()` answers for
+     * a method a *grandparent* declares, which is what makes this match PHPStan's `hasMethod()` on a parent
+     * reflection. Two shipped rules rest on it — the constructor-override one reports a class whose
+     * grandparent declares the constructor, and the protected-member one skips an override of a method a
+     * grandparent declares — and both agree with the original on the pair.
      */
     public static function methodExists(NodeAnalysisContext $context, ?string $class, ?string $method): bool
+    {
+        if ($class === null || $method === null || $class === '' || $method === '') {
+            return false;
+        }
+
+        return Mixins::declaringMethod($context->codebase, $class, $method) instanceof FunctionLikeMetadata;
+    }
+
+    /**
+     * Whether a class declares this method natively  `ClassReflection::hasNativeMethod()`.
+     *
+     * The sibling of {@see methodExists()} and deliberately not the same: that one goes through
+     * {@see Mixins::declaringMethod()}, so it answers yes for a method an `@mixin` supplies, which is what
+     * `hasMethod()` does. `hasNativeMethod()` asks only about a real declaration, and the rules that ask it
+     * go on to read the declaration  a magic method has none to read.
+     *
+     * Inherited counts: `getDeclaringMethod()` resolves the hierarchy, and PHPStan\'s native lookup does too.
+     */
+    public static function nativeMethodExists(NodeAnalysisContext $context, ?string $class, ?string $method): bool
     {
         if ($class === null || $method === null || $class === '' || $method === '') {
             return false;
@@ -384,6 +512,46 @@ final class Reflect
     public static function methodIsStatic(?Part $method): bool
     {
         return in_array('static', self::methodModifiers($method), true);
+    }
+
+    /**
+     * Whether a class-like member is written `protected`, wherever that member keeps its modifiers.
+     *
+     * A method and a constant carry their `Modifier` children directly, and a property does not: measured in
+     * `internal/probe-class-members.php`, `protected int $p = 2;` is a `Property` wrapping a `PlainProperty`
+     * whose child the modifier is. Reading the outer node alone answers "not protected" for every protected
+     * property, which is a rule reporting nothing where the original reports.
+     *
+     * Kept apart from {@see methodIsProtected()} rather than replacing it: that one is asked of a method
+     * declaration a hook received, and every emitted plugin calling it stays on it.
+     */
+    public static function memberIsProtected(?Part $member): bool
+    {
+        return in_array('protected', self::memberModifiers($member), true);
+    }
+
+    /**
+     * A class-like member's modifiers, including the ones a property keeps one level down.
+     *
+     * Both levels are read rather than one or the other, because which level holds them is a fact about the
+     * member kind and a union needs no branch on it.
+     *
+     * @return list<string>
+     */
+    private static function memberModifiers(?Part $member): array
+    {
+        if (! $member instanceof Part) {
+            return [];
+        }
+
+        $modifiers = self::methodModifiers($member);
+        foreach ($member->children() as $child) {
+            if (in_array($child->kind, self::PROPERTY_VARIANTS, true)) {
+                $modifiers = [...$modifiers, ...self::methodModifiers($child)];
+            }
+        }
+
+        return $modifiers;
     }
 
     /** @return list<string> */

@@ -4,13 +4,33 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago;
 
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Attribute;
 use PhpParser\Node\AttributeGroup;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\AssignOp\Div as AssignOpDiv;
+use PhpParser\Node\Expr\AssignOp\Minus as AssignOpMinus;
+use PhpParser\Node\Expr\AssignOp\Mod as AssignOpMod;
+use PhpParser\Node\Expr\AssignOp\Mul as AssignOpMul;
+use PhpParser\Node\Expr\AssignOp\Plus as AssignOpPlus;
+use PhpParser\Node\Expr\AssignOp\Pow as AssignOpPow;
+use PhpParser\Node\Expr\BinaryOp;
+use PhpParser\Node\Expr\BinaryOp\BooleanAnd as BinaryOpBooleanAnd;
+use PhpParser\Node\Expr\BinaryOp\BooleanOr as BinaryOpBooleanOr;
 use PhpParser\Node\Expr\BinaryOp\Concat;
+use PhpParser\Node\Expr\BinaryOp\Div as BinaryOpDiv;
+use PhpParser\Node\Expr\BinaryOp\Equal;
+use PhpParser\Node\Expr\BinaryOp\LogicalAnd as BinaryOpLogicalAnd;
+use PhpParser\Node\Expr\BinaryOp\LogicalOr as BinaryOpLogicalOr;
+use PhpParser\Node\Expr\BinaryOp\Minus as BinaryOpMinus;
+use PhpParser\Node\Expr\BinaryOp\Mod as BinaryOpMod;
+use PhpParser\Node\Expr\BinaryOp\Mul as BinaryOpMul;
+use PhpParser\Node\Expr\BinaryOp\NotEqual;
+use PhpParser\Node\Expr\BinaryOp\Plus as BinaryOpPlus;
+use PhpParser\Node\Expr\BinaryOp\Pow as BinaryOpPow;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
@@ -18,14 +38,21 @@ use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Empty_;
 use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\PostDec;
+use PhpParser\Node\Expr\PostInc;
+use PhpParser\Node\Expr\PreDec;
+use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\ShellExec;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\StaticPropertyFetch;
 use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\UnaryMinus;
+use PhpParser\Node\Expr\UnaryPlus;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Name;
@@ -39,6 +66,8 @@ use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Const_;
 use PhpParser\Node\Stmt\Do_;
 use PhpParser\Node\Stmt\ElseIf_;
+use PhpParser\Node\Stmt\Expression;
+use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Function_;
 use PhpParser\Node\Stmt\If_;
@@ -48,6 +77,8 @@ use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\Trait_;
 use PhpParser\Node\Stmt\While_;
+use PHPStan\Node\BooleanAndNode;
+use PHPStan\Node\BooleanOrNode;
 use PHPStan\Node\CollectedDataNode;
 use PHPStan\Node\FileNode;
 use PHPStan\Node\InClassMethodNode;
@@ -153,10 +184,6 @@ final class Vocabulary
         // file, which is what a rule asking a question about the file as a whole needs. PHP target only, like
         // the other kinds whose Rust trait nothing in the corpus has pinned down.
         FileNode::class => ['trait' => 'ProgramHook', 'method' => 'after_program', 'node' => 'Program', 'kind' => 'Program', 'phpOnly' => true],
-        // String concatenation. Mago has one `Binary` kind for every binary operator rather than a node class
-        // per operator, so the hook fires for arithmetic and comparison too and the operator itself is a child
-        // node — which is why `left`/`right` here are the operands *of a concatenation*, and a rule reaching
-        // them is asking about one only after the operator has been checked.
         // An array literal. A rule reaching one asks about its elements' inferred types, which a node hook can
         // request; the elements themselves are wrapped in an `ArrayElement` category node, and the type is
         // available at both that level and the `ValueArrayElement` beneath it.
@@ -170,6 +197,7 @@ final class Vocabulary
         // below answer for every one of them, which is what makes one `kind` enough: `->name` is a selector
         // under five and the called expression under `FunctionCall`, and `namePart()` covers both.
         Expr::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'Expr', 'phpOnly' => true],
+        BinaryOp::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'Binary', 'phpOnly' => true],
         // `CallLike` is `FuncCall`, `MethodCall`, `NullsafeMethodCall`, `StaticCall` and `New_`, and a rule
         // asking for it narrows in its own body. Registered for every call kind it covers rather than for the
         // ones a given rule keeps, for the reason {@see HOOK_KINDS} gives: what a node type covers is a fact
@@ -193,9 +221,27 @@ final class Vocabulary
         ElseIf_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'IfStatementBodyElseIfClause', 'phpOnly' => true],
         While_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'While', 'phpOnly' => true],
         Do_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'DoWhile', 'phpOnly' => true],
+        For_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'For', 'phpOnly' => true],
         Switch_::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'Switch', 'phpOnly' => true],
+        // An expression used as a statement — `$a = $b;`, `foo();`. Mago spells it `ExpressionStatement`, and
+        // the wrapper is what a rule registered for it receives: `NoJustPropertyAssignRule` takes it to reach
+        // `->expr` and ask whether the statement is an assignment. PHP target only, like every other row on
+        // this trait — the Rust `StatementHook` exists, but which kinds `after_statement` is dispatched for
+        // there is not something this repository has read.
+        Expression::class => ['trait' => 'StatementHook', 'method' => 'after_statement', 'node' => 'Statement', 'kind' => 'ExpressionStatement', 'phpOnly' => true],
         Ternary::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'Conditional', 'phpOnly' => true],
         BooleanNot::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '!')", 'phpOnly' => true],
+        // The other two prefix operators a rule hooks by itself. Mago spells all of them `UnaryPrefix`, so the
+        // operator is the gate rather than the node kind — the same shape `BooleanNot` above already takes.
+        UnaryPlus::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '+')", 'phpOnly' => true],
+        UnaryMinus::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '-')", 'phpOnly' => true],
+        // The increment and decrement spellings. Mago keeps the prefix and postfix forms as different node
+        // kinds and the operator in a child of each, so the kind picks the side and the gate picks the
+        // operator. `phpstan-strict-rules` has one rule per cell of that grid.
+        PreInc::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '++')", 'phpOnly' => true],
+        PreDec::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPrefix', 'gate' => "Support::unaryOperatorIs(\$context, \$node, '--')", 'phpOnly' => true],
+        PostInc::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPostfix', 'gate' => "Support::postfixOperatorIs(\$context, \$node, '++')", 'phpOnly' => true],
+        PostDec::class => ['trait' => 'ExpressionHook', 'method' => 'after_expression', 'node' => 'Expression', 'kind' => 'UnaryPostfix', 'gate' => "Support::postfixOperatorIs(\$context, \$node, '--')", 'phpOnly' => true],
         // A variable, in the three shapes Mago gives one. `$x` is a `DirectVariable`; `$$n` is a
         // `NestedVariable` holding one, and `${expr}` an `IndirectVariable` — probed, with `$$n` producing a
         // `NestedVariable` and then a `DirectVariable` for the inner `$n`. All three registered, because the
@@ -207,9 +253,25 @@ final class Vocabulary
             'trait' => 'AttributeListHook', 'method' => 'after_attribute_list', 'node' => 'AttributeList',
             'kind' => 'AttributeList', 'phpOnly' => true,
         ],
+        // String concatenation. Mago has one `Binary` kind for every binary operator rather than a node class
+        // per operator, so the hook fires for arithmetic and comparison too and the operator itself is a child
+        // node — which is why `left`/`right` here are the operands *of a concatenation*, and a rule reaching
+        // them is asking about one only after the operator has been checked.
         Concat::class => [
             'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
             'gate' => "Support::binaryOperatorIs(\$context, \$node, '.')", 'phpOnly' => true,
+        ],
+        // PHPStan's two *virtual* boolean nodes. Each wraps two php-parser classes -- `BooleanAnd` for `&&`
+        // and `LogicalAnd` for `and` -- which is why the rules behind them read `getOperatorSigil()` and pick
+        // `booleanAnd` or `logicalAnd` from what they find. Mago has one `Binary` kind, so the gate carries
+        // the operator *set* and the rule's own branch still picks the identifier.
+        BooleanAndNode::class => [
+            'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
+            'gate' => "Support::binaryOperatorIsOneOf(\$context, \$node, ['&&', 'and'])", 'phpOnly' => true,
+        ],
+        BooleanOrNode::class => [
+            'trait' => 'BinaryHook', 'method' => 'after_binary', 'node' => 'Binary', 'kind' => 'Binary',
+            'gate' => "Support::binaryOperatorIsOneOf(\$context, \$node, ['||', 'or'])", 'phpOnly' => true,
         ],
     ];
 
@@ -232,6 +294,11 @@ final class Vocabulary
         FuncCall::class => ['FunctionCall'],
         New_::class => ['Instantiation'],
         String_::class => ['LiteralString'],
+        // An array literal's elements. `ArrayElement` is the category node, and searching for it rather than
+        // for the keyed and unkeyed variants beneath keeps one search where php-parser has one class:
+        // `NoStringInGetSubscribedEventsRule` walks every element of a `getSubscribedEvents()` return and
+        // asks each whether it has a key.
+        ArrayItem::class => ['ArrayElement'],
         ClassLike::class => ['Class', 'Interface', 'Trait', 'Enum'],
     ];
 
@@ -264,19 +331,36 @@ final class Vocabulary
      * @var array<string, array<string, array{0: string, 1: string, 2?: string}>>
      */
     public const array FIELDS = [
-        'If' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
-        'IfStatementBodyElseIfClause' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
-        'While' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
-        'DoWhile' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
-        'Switch' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        'If' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
+        'IfStatementBodyElseIfClause' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
+        'While' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
+        'DoWhile' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
+        'Switch' => ['cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
+        // The expression an expression-statement wraps. Same shape as the conditions above — the wrapper's
+        // only expression child — which is why it reads through the same helper rather than a new one.
+        'ExpressionStatement' => ['expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)']],
+        // `keyVar` is nullable on php-parser's `Foreach_` and the null is the whole question two rules ask, so
+        // the helper answers it from mago's own kinds rather than from a position. {@see Runtime\Calls::foreachKey}.
+        'Foreach' => [
+            'keyVar' => [self::PHP_ONLY, 'expr', 'Support::foreachKey($context, {base})'],
+            'valueVar' => [self::PHP_ONLY, 'expr', 'Support::foreachValue($context, {base})'],
+        ],
         // `if` is php-parser's name for the middle arm, which an elvis does not have. Not `nthExpression(.., 1)`:
         // that is the middle arm of a full ternary and the *else* arm of an elvis, so the two would be
         // indistinguishable and the null test the rule opens with could never hold.
         'Conditional' => [
-            'cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
-            'if' => [self::PHP_ONLY, 'expr', 'Support::conditionalThen($context, $node)'],
+            'cond' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
+            'if' => [self::PHP_ONLY, 'expr', 'Support::conditionalThen($context, {base})'],
         ],
-        'UnaryPrefix' => ['expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)']],
+        // `->expr` and `->var` are the same child under two php-parser names: `UnaryPlus` calls it `expr`
+        // and `PreInc` calls it `var`, and both are the one expression the operator applies to.
+        'UnaryPrefix' => [
+            'expr' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
+            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
+        ],
+        'UnaryPostfix' => [
+            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
+        ],
         // `$node->name` on a constant read is the node itself here. php-parser hangs a `Name` off the fetch;
         // mago's `ConstantAccess` *is* the name, and every question asked of it — does the codebase know it,
         // is it deprecated — is answered from the node by {@see Constants::constantMetadata()}, which has to
@@ -297,7 +381,7 @@ final class Vocabulary
             'name' => [self::PHP_ONLY, 'name-selector', 'Support::selector($context, {base})'],
         ],
         'FunctionCall' => [
-            'name' => ['node.function', 'name-expr', 'Support::nthExpression($context, $node, 0)'],
+            'name' => ['node.function', 'name-expr', 'Support::nthExpression($context, {base}, 0)'],
         ],
         'StaticMethodCall' => [
             'class' => ['node.class', 'name-expr', 'Support::classPart($context, {base})'],
@@ -322,7 +406,7 @@ final class Vocabulary
             'name' => [self::PHP_ONLY, 'name-part', 'Support::namePart($context, {base})'],
         ],
         'MethodPartialApplication' => [
-            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, $node, 0)'],
+            'var' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
             'name' => [self::PHP_ONLY, 'name-selector', 'Support::selector($context, {base})'],
         ],
         'StaticMethodPartialApplication' => [
@@ -331,8 +415,14 @@ final class Vocabulary
         ],
         'Assignment' => [
             // Both sides are an `Expression` child, told apart only by position.
-            'var' => ['node.lhs', 'expr', 'Support::nthExpression($context, $node, 0)'],
-            'expr' => ['node.rhs', 'expr', 'Support::nthExpression($context, $node, 1)'],
+            //
+            // `{base}` rather than `$node`, which they hard-coded until an assignment could be reached from
+            // another node. While `Assign` was only ever the hook node the two spellings agreed; once
+            // `Stmt\Expression` gained a hook, `$stmt->expr->var` navigated from the *statement* and the
+            // emitted plugin tested the assignment where it meant to test its left side. It emitted rather
+            // than refusing, which is the shape the refusal invariant exists to prevent.
+            'var' => ['node.lhs', 'expr', 'Support::nthExpression($context, {base}, 0)'],
+            'expr' => ['node.rhs', 'expr', 'Support::nthExpression($context, {base}, 1)'],
         ],
         'Class' => [
             'extends' => ['node', 'extends'],
@@ -363,6 +453,12 @@ final class Vocabulary
         // this is the same navigation from the node the hook fired for.
         'AttributeList' => [
             'attrs' => [self::PHP_ONLY, 'attributes', 'Support::attributesOf(Support::asPart($context, {base}))'],
+        ],
+        // `->key` is nullable where `->class` and `->var` are not, and that changes what `instanceof Expr`
+        // asks of it: on a `Name|Expr` field it asks "is this dynamic", on a `?Expr` field it asks "is there
+        // one at all". So the kind says which, the way `hint-option` already does for a nullable hint.
+        'ArrayElement' => [
+            'key' => [self::PHP_ONLY, 'expr-option', 'Support::arrayElementKey($context, {base})'],
         ],
         'Binary' => [
             'left' => [self::PHP_ONLY, 'expr', 'Support::nthExpression($context, {base}, 0)'],
@@ -445,6 +541,9 @@ final class Vocabulary
         'const-item' => [
             'value' => [self::PHP_ONLY, 'expr', 'Support::constantItemValue($context, {base})'],
         ],
+        'array-item' => [
+            'value' => [self::PHP_ONLY, 'expr', 'Support::arrayItemValue($context, {base})'],
+        ],
         'attr-group' => [
             'attrs' => [self::PHP_ONLY, 'attributes', 'Support::attributesOf({base})'],
         ],
@@ -507,6 +606,10 @@ final class Vocabulary
         'subtree' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => 'Support::statementsOf($context, {rust})'],
         // The method declarations of a class-like body, one `method-decl` each.
         'method-members' => ['iter' => self::PHP_ONLY, 'item' => 'method-decl', 'phpIter' => '{rust}'],
+        // Every member of a class-like body, one `class-member` each, in source order. Kept apart from
+        // `method-members` because the list is mixed: a rule walking it asks each member what kind it is, and
+        // narrowing to a method is one of the answers rather than the shape of the list.
+        'class-members' => ['iter' => self::PHP_ONLY, 'item' => 'class-member', 'phpIter' => '{rust}'],
         // The parameters a declaration writes, one `param-decl` each. The list was produced and asked for its
         // emptiness before it was iterable: `NoControllerMethodInjectionRule` walks a controller's methods and
         // then each method's parameters, and the second loop is the one that had no reading.
@@ -527,7 +630,8 @@ final class Vocabulary
         // match a written attribute name as it stands.
         'attribute-names' => ['iter' => self::PHP_ONLY, 'item' => 'bytes', 'phpIter' => '{rust}'],
         // The elements of an array literal, one wrapped element each.
-        'array-items' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => '{rust}'],
+        'array-items' => ['iter' => self::PHP_ONLY, 'item' => 'array-item', 'phpIter' => '{rust}'],
+        'array-item' => ['iter' => self::PHP_ONLY, 'item' => 'expr', 'phpIter' => '{rust}'],
         // Every literal string a type names, which is PHPStan's `getConstantStrings()`. A union of them names
         // more than one, and the rules that walk it act per element — so this is the list rather than the
         // single reduction `constantStringOf()` gives. The item stays a *type* rather than becoming text,
@@ -592,8 +696,72 @@ final class Vocabulary
      * constructor parameters on the emitted plugin.
      *
      * @var array<string, array{helper: string, kind: string, takes: string, arguments: list<int>,
-     *      types?: list<int>, flags?: list<string>, receiverType?: bool}>
+     *      types?: list<int>, flags?: list<string>, receiverType?: bool, expressionTypes?: bool}>
      */
+    /**
+     * Collaborator methods this transpiler may *call* at transpile time to fold a literal into a literal.
+     *
+     * Opt-in by fully qualified name, and deliberately not a predicate over "looks pure". The entry says
+     * three things have been checked: the class constructs without arguments, the method is a pure function
+     * of its string argument, and it reaches nothing outside itself. Executing installed vendor code is not
+     * something to infer, so nothing lands here without reading the body.
+     *
+     * Calling the real method rather than re-implementing it is what makes the fold *exact*: the table a rule
+     * is emitted with is by construction the table PHPStan computes, so upstream changing the resolver changes
+     * both together instead of leaving a re-implementation silently behind. That is the one case where running
+     * the code beats recognising it.
+     *
+     * @var array<string, true>
+     */
+    public const array PURE_STRING_RESOLVERS = [
+        // `ClassToSuffixResolver::resolveFromClass()` — 48 lines of string manipulation over a class name,
+        // no constructor, no PHPStan API, and it reads nothing but its argument. It maps an ancestor to the
+        // suffix a descendant owes it, which `ClassNameRespectsParentSuffixRule` asks once per table entry
+        // and always for a name known at transpile time.
+        'Symplify\PHPStanRules\Naming\ClassToSuffixResolver::resolveFromClass' => true,
+    ];
+
+    /**
+     * Predicates on the rule itself that no analysis mago performs can satisfy, by fully qualified name.
+     *
+     * Not an approximation and not a shortcut: each row is a question about PHPStan's *analysis model* rather
+     * than about PHP, and the answer is fixed because the state the question asks about cannot arise. A row
+     * costs no agreement, which is what separates it from dropping a guard -- and it is also the easiest kind
+     * of row to write wrongly, because a declaration here reads exactly like a measurement of the engine it
+     * describes. So each carries what was measured, on both sides.
+     *
+     * Opt-in by fully qualified name, like {@see PURE_STRING_RESOLVERS}: a method with a plausible name is
+     * not enough, because the reasoning is about one body.
+     *
+     * @var array<string, false>
+     */
+    public const array MODEL_UNSATISFIABLE_PREDICATES = [
+        // `IllegalConstructorStaticCallRule::isInRenamedTraitConstructor()` is reached only when the enclosing
+        // function's name is not `__construct`, and returns true only when that name is an alias of *this
+        // trait's* `__construct` -- `$traitAliases[$fnName] === "{$trait}::__construct"` pins both halves.
+        //
+        // PHPStan side, measured twice, once here and once by a peer session: it analyses a trait body once
+        // per using class -- the findings arrive keyed `(in context of class ...)`, one per user -- and inside
+        // a trait whose constructor a using class aliases, `$scope->getFunction()->getName()` is the *alias*.
+        // A probe on `trait T { public function __construct() }` aliased by one class answered
+        // `function=initialise trait=T class=UsesAliased aliases=[initialise=>T::__construct]`, against a
+        // control in the same file using an unaliased trait, which answered `function=__construct`. One axis,
+        // two rows. So the branch exists to undo the renaming that per-using-class analysis introduces.
+        //
+        // Mago side: it fires once at the declaration, where the enclosing class-like is the trait itself
+        // ({@see Runtime\Declares::enclosingClassKindIs()} records that measurement), so the name a hook can
+        // read is the declared one. The alias lives in the using class's file and never reaches the trait's.
+        //
+        // Which leaves two rows rather than the one the story needs, and they agree for different reasons:
+        // on an aliased trait constructor PHPStan takes the branch and stays quiet while mago reads
+        // `__construct`, fails the outer guard and stays quiet; on a plain trait method holding
+        // `parent::__construct()` PHPStan reaches the branch, `array_key_exists()` fails, and it reports --
+        // where mago has no branch and reports too. The second row agrees by the branch never mattering. Both
+        // are fixtures, because if mago ever answered an alias the first row would flip and the second
+        // would not.
+        'PHPStan\Rules\Methods\IllegalConstructorStaticCallRule::isInRenamedTraitConstructor' => false,
+    ];
+
     public const array COLLABORATOR_CALLS = [
         // `kind: 'reports'` is the one entry that is not an answer. `AnnotationHelper::processDocComment()`
         // decides *and* builds the findings, and a rule returning that has nothing for this transpiler to
@@ -610,6 +778,18 @@ final class Vocabulary
         // names flattened and resolved, so answering `->attrs` and `->name` from that list would be three
         // mappings pretending the tree has a shape it does not. The *question* maps exactly instead, and the
         // two Symfony rules that reach the finder through `SymfonyControllerAnalyzer` get it.
+        // `ClassConstructorTypesResolver::resolveClassConstructorNamesToTypes()` walks a receiver chain to
+        // the `set()` that named a service, reads that class's constructor through PHPStan's reflection, and
+        // keeps the parameters whose type is an object. Three steps mago answers directly, so the *question*
+        // maps rather than the collaborator -- the same choice the `AttributeFinder` row below records.
+        // `lookup` because the two rules reading it ask `isset($map[$name])` and then `$map[$name]`, which is
+        // what {@see Support::lookupHas()} and {@see Support::lookupValue()} answer.
+        'Symplify\\PHPStanRules\\Symfony\\Reflection\\ClassConstructorTypesResolver::resolveClassConstructorNamesToTypes' => [
+            'helper' => 'Support::constructorParameterTypes',
+            'kind' => 'lookup',
+            'takes' => 'context',
+            'arguments' => [0],
+        ],
         'Symplify\PHPStanRules\NodeAnalyzer\AttributeFinder::hasAttribute' => [
             'helper' => 'Support::hasAttributeNamed',
             'kind' => 'bool',
@@ -679,6 +859,135 @@ final class Vocabulary
             'flags' => ['checkNullables', 'checkUnionTypes', 'checkThisOnly'],
         ],
 
+        // The arithmetic counterpart, reaching the same `findTypeToCheck` one level down. Same three flags,
+        // because the same function reads them; {@see Runtime\RuleLevel::isValidForArithmeticOperation()}
+        // carries the measured table of what reports under each.
+        // Both increment helpers reach one port. `isValidForIncrement()` passes a string and
+        // `isValidForDecrement()` does not, and mago erases the numeric-string that distinction turns on —
+        // {@see Runtime\RuleLevel::isValidForIncrementOrDecrement()} states which direction that was
+        // resolved in, and the table it was measured from.
+        'PHPStan\Rules\Operators\OperatorRuleHelper::isValidForIncrement' => [
+            'helper' => 'RuleLevel::isValidForIncrementOrDecrement',
+            'kind' => 'bool',
+            'takes' => 'context',
+            'arguments' => [],
+            'types' => [1],
+            'flags' => ['checkNullables', 'checkUnionTypes', 'checkThisOnly'],
+        ],
+        'PHPStan\Rules\Operators\OperatorRuleHelper::isValidForDecrement' => [
+            'helper' => 'RuleLevel::isValidForIncrementOrDecrement',
+            'kind' => 'bool',
+            'takes' => 'context',
+            'arguments' => [],
+            'types' => [1],
+            'flags' => ['checkNullables', 'checkUnionTypes', 'checkThisOnly'],
+        ],
+
+        'PHPStan\Rules\Operators\OperatorRuleHelper::isValidForArithmeticOperation' => [
+            'helper' => 'RuleLevel::isValidForArithmeticOperation',
+            'kind' => 'bool',
+            'takes' => 'none',
+            'arguments' => [],
+            'types' => [1],
+            'flags' => ['checkNullables', 'checkUnionTypes', 'checkThisOnly'],
+        ],
+
+        // `DoctrineEntityDocumentAnalyser::isEntityClass()`, ported because half of it cannot be asked:
+        // metadata carries a class's attributes and not its docblock. {@see Runtime\DoctrineEntities} states
+        // which half and which direction the divergence goes.
+        'Symplify\PHPStanRules\Doctrine\DoctrineEntityDocumentAnalyser::isEntityClass' => [
+            'helper' => 'DoctrineEntities::isEntityClass',
+            'kind' => 'bool',
+            'takes' => 'context',
+            'arguments' => [0],
+        ],
+
+        // `NoReturnSetterMethodRule::hasReturnReturnFunctionLike()`, which runs a php-parser `NodeTraverser`
+        // over the method it was handed. A traverser and a visitor are four statements that mean nothing
+        // apart — `new NodeTraverser()` has no answer in it — so the *question* maps rather than the walk,
+        // the same way the attribute finder does above. {@see Runtime\Returns} carries the two halves and the
+        // three CST shapes that were measured before either was written; two of the three do not translate
+        // the way mago's kind names read.
+        'Symplify\PHPStanRules\Rules\NoReturnSetterMethodRule::hasReturnReturnFunctionLike' => [
+            'helper' => 'Returns::hasReturnValueOrYield',
+            'kind' => 'bool',
+            'takes' => 'context',
+            'arguments' => [0],
+        ],
+
+        // `ShouldCallParentMethodsRule::hasParentClassCall()`, a walk over a method's own statements looking
+        // for `parent::<name>()`. Ported rather than inlined because it opens with an early `return false`
+        // on a null statement list, which the boolean inliner has no shape for.
+        // {@see Runtime\Statements::callsParentMethod()} records that the walk is top level only — the
+        // original does not descend, so a call inside an `if` does not count.
+        'PHPStan\Rules\PHPUnit\ShouldCallParentMethodsRule::hasParentClassCall' => [
+            'helper' => 'Support::callsParentMethod',
+            'kind' => 'bool',
+            'takes' => 'context',
+            'arguments' => [0, 1],
+        ],
+
+        // `WrongCaseOfInheritedMethodRule::findMethod()`, which builds its finding rather than answering a
+        // question — ported as a reporter, the shape `AnnotationHelper::processDocComment()` established.
+        // {@see Runtime\Members::reportInheritedCaseMismatch()} states why it reads the native declaration.
+        'PHPStan\Rules\Methods\WrongCaseOfInheritedMethodRule::findMethod' => [
+            'helper' => 'InheritedNames::reportInheritedCaseMismatch',
+            'kind' => 'reports',
+            'takes' => 'context',
+            'arguments' => [0, 1, 2],
+        ],
+
+        // `RequireQueryBuilderOnRepositoryRule::isValidRepositoryObjectType()`, which recurses over a union
+        // and answers about the receiver's inferred type. `types` because that is what it reads.
+        // {@see Runtime\DoctrineEntities::isValidQueryBuilderReceiver()} carries the quirk it preserves:
+        // the union branch changes nothing, because a `UnionType` also satisfies the `! instanceof
+        // ObjectType` escape below it, so every union answers true either way.
+        'Symplify\PHPStanRules\Rules\Doctrine\RequireQueryBuilderOnRepositoryRule::isValidRepositoryObjectType' => [
+            'helper' => 'DoctrineEntities::isValidQueryBuilderReceiver',
+            'kind' => 'bool',
+            'takes' => 'context',
+            'arguments' => [],
+            'types' => [0],
+        ],
+
+        // `RepeatedServiceAdderCallNameFinder::find()`, a static finder over one statement's call chain that
+        // counts `->call(<name>, [<service reference>])` and answers the first name repeated three times.
+        // Ported rather than translated for the same reason as the walk below it, plus a threshold and a
+        // per-name count the vocabulary has no shape for. {@see Runtime\ConfigClosures} states which
+        // spellings of `ref()` and `service()` were measured, and why the resolved name is what it reads.
+        'Symplify\PHPStanRules\Symfony\NodeFinder\RepeatedServiceAdderCallNameFinder::find' => [
+            'helper' => 'ConfigClosures::repeatedAdderCallName',
+            'kind' => 'bytes',
+            'takes' => 'context',
+            'arguments' => [0],
+        ],
+
+        // `FileNameMatchesExtensionRule::findExtensionName()`, a `NodeFinder` walk whose answer is a captured
+        // variable the callback mutates before returning `STOP_TRAVERSAL` — a side effect rather than a
+        // value, which the vocabulary has no statements for. {@see Runtime\ConfigClosures} carries the three
+        // ways the callback is odd, all ported as written: the stop fires whether or not a name was found,
+        // the last string argument of that one call wins, and the walk descends into nested closures.
+        'Symplify\PHPStanRules\Rules\Symfony\ConfigClosure\FileNameMatchesExtensionRule::findExtensionName' => [
+            'helper' => 'ConfigClosures::extensionName',
+            'kind' => 'bytes',
+            'takes' => 'context',
+            'arguments' => [0],
+        ],
+
+        // `NoInstanceOfStaticReflectionRule::resolveExprStaticType()`, which reads a different field for each
+        // of the two kinds its union guard admits. That is the one shape
+        // `internal/handoff-multi-kind-hook-is-not-a-redesign.md` tells the inliner not to learn, so the
+        // helper is ported whole and the rule body stays a guard chain. `expressionTypes` because the
+        // helper asks for an inferred type at a position the translator never sees — it is inside the
+        // port — so the requirement cannot be registered where the read is emitted.
+        'Symplify\PHPStanRules\Rules\Rector\NoInstanceOfStaticReflectionRule::resolveExprStaticType' => [
+            'helper' => 'StaticReflectionTypes::subjectType',
+            'kind' => 'type',
+            'takes' => 'context',
+            'arguments' => [0],
+            'expressionTypes' => true,
+        ],
+
         // Every rule in `phpstan-deprecation-rules` opens with this, so that deprecated code using
         // deprecated things does not warn. The helper is a loop over injected `DeprecatedScopeResolver`s and
         // the package ships exactly one, which asks whether the enclosing class, trait or function carries a
@@ -742,9 +1051,17 @@ final class Vocabulary
      * The divergence a mapped aggregate is emitted *with*, where it does not reach exact agreement.
      *
      * The parameter metric agreed exactly on a small fixture, then disagreed on a 585-file dependency tree,
-     * and was withheld while the gap was traced. Every remaining part of the gap has the same cause and that
-     * cause is not portable, so the honest outcome is a bound rather than a refusal — refusing forever on
-     * something the port cannot close blocks the rule permanently for nothing.
+     * and was withheld while the gap was traced. The remaining gap has one cause and that cause is not
+     * portable, so the honest outcome is a bound rather than a refusal — refusing forever on something the
+     * port cannot close blocks the rule permanently for nothing.
+     *
+     * **"Not portable" has been wrong once, and the wrong part was the largest part.** The bound read 1.11%
+     * for two years' worth of application measurements and 7.4% on a vendor tree, and the vendor figure was
+     * attributed to the same unportable reflection. It was `@mixin`: PHPStan's own
+     * `MixinMethodsClassReflectionExtension`, in core rather than in larastan, answers `hasMethod()` for
+     * every method a mixin target has, and mago publishes `ClassLikeMetadata->mixins`. Following it took
+     * `Illuminate` from +1310 to +1. So a cause named unportable is a claim about the SDK as well as about
+     * PHPStan, and it is worth re-asking whenever the number is large.
      *
      * **The measurement, and what it is against.** `php tests/Support/run-coverage-corpus.php <consumer-root>`
      * on two Laravel consumers. On hihaho (2933 files) PHPStan counts 13694 parameters where this counts
@@ -790,12 +1107,20 @@ final class Vocabulary
     public const array ACCEPTED_DIVERGENCE = [
         'parameters' => [
             'ceiling' => 0.0111,
-            'note' => 'Over-counts the original by up to 1.11% on the two Laravel consumers it was measured '
-                . 'on: +81 of 13694 and +37 of 11428. The collector skips a method whose name an ancestor has, '
-                . 'and PHPStan answers that from reflection extensions a Mago plugin cannot reproduce. It can '
-                . 'also *under*-count, by a separate cause: a class declared twice in one file behind a version '
-                . 'guard is counted by PHPStan and by neither body here, which is -7 on nikic/php-parser. '
-                . 'Reproduce either with `php tests/Support/run-coverage-corpus.php <consumer-root>`.',
+            'note' => 'Over-counts the original by +1 of 17635 declarations on the 1694 files of '
+                . "laravel/framework's own `Illuminate`, and by 1.11% at most on the two Laravel "
+                . '*applications* it was measured on — +81 of 13694 and +37 of 11428, both measured before '
+                . '`@mixin` was followed and not re-measured since. The collector skips a method whose name an '
+                . 'ancestor has, asking `ClassReflection::hasMethod()`, and two of the things that answer it '
+                . 'are reproduced here: a `@method` line on an ancestor, and a `@mixin` on one, followed '
+                . 'transitively. The mixin was +1310 on `Illuminate` by itself — +1190 of that in `Database`, '
+                . '+55 in `Redis`, +16 in `Pagination`, and the other 35 directories at zero. What remains is '
+                . 'a mixin target whose metadata is missing a method the runtime has: `@mixin \\Redis` on '
+                . 'Illuminate\\Redis\\Connections\\Connection, where mago carries `scan`, `sscan` and '
+                . '`zscan` and not `hscan`, so `PhpRedisConnection::hscan()` is the whole +1 — and, on an '
+                . "application, larastan's factory and auth extensions, which a Mago plugin cannot "
+                . 'reproduce. Under-counts nothing measured. Reproduce with '
+                . '`php tests/Support/run-coverage-corpus.php <consumer-root>`.',
         ],
         'constants' => [
             'ceiling' => 0.0,
@@ -813,11 +1138,11 @@ final class Vocabulary
             'note' => 'Counted exactly on the two Laravel consumers it was measured on: 18307 of 18307 and '
                 . '8526 of 8526, agreeing on the percentage as well as the count. A zero ceiling is the '
                 . 'measurement rather than an absence of one. Four things had to hold and each was measured '
-                . 'first: a trait\'s methods are counted once for every class that reaches them and not once '
+                . "first: a trait's methods are counted once for every class that reaches them and not once "
                 . 'each, with a class reaching a trait through two traits counting twice; a class that '
-                . 'declares the method itself does not reach the trait\'s, and a `@method` docblock takes no '
-                . 'name away from it; magic methods are skipped by php-parser\'s list of seventeen names and '
-                . 'not by mago\'s flag; and neither a `@method` entry nor an enum\'s `cases()`, `from()` and '
+                . "declares the method itself does not reach the trait's, and a `@method` docblock takes no "
+                . "name away from it; magic methods are skipped by php-parser's list of seventeen names and "
+                . "not by mago's flag; and neither a `@method` entry nor an enum's `cases()`, `from()` and "
                 . '`tryFrom()` is a declaration the collector can see. Reproduce with '
                 . '`php tests/Support/run-coverage-corpus.php <consumer-root> --metric=returns`.',
         ],
@@ -826,7 +1151,7 @@ final class Vocabulary
             'note' => 'Counted exactly on the two Laravel consumers it was measured on: 866 of 866 and 1443 '
                 . 'of 1443, agreeing on the percentage as well as the count. A zero ceiling is the '
                 . 'measurement rather than an absence of one. Four things had to hold together and each was '
-                . 'measured before it was relied on: a trait\'s properties are counted zero times, unlike '
+                . "measured before it was relied on: a trait's properties are counted zero times, unlike "
                 . 'its methods; a promoted property is not counted at all; a property is typed when it is '
                 . 'written with a type, when a parent class declares it, or when its docblock mentions '
                 . '`callable` or `resource`; and a declaration is taken where it is written, which '
@@ -892,11 +1217,23 @@ final class Vocabulary
      * @var array<class-string, list<string>>
      */
     public const array HOOK_KINDS = [
-        Expr::class => ['ClassConstantAccess', 'StaticPropertyAccess', 'MethodCall', 'StaticMethodCall', 'FunctionCall', 'PropertyAccess'],
+        // `Assignment` is here for the compound operators — `$a /= 2` is an `AssignOp\Div` to php-parser and
+        // an `Assignment` here, and the six arithmetic rules read both spellings in one dispatch. It was added
+        // once before and reverted for buying nothing while three rules declined it; it earns its place now
+        // that a rule reads it, which is the bar this row's other entries were added under.
+        // `Binary` is every operator PHPStan spells as a `BinaryOp` subclass plus `instanceof`, which has no
+        // kind of its own here — so one entry registers what php-parser splits over two dozen classes, and
+        // the rule's own `instanceof` guard declines the operators it does not read, the way every other
+        // kind in this list is already declined. Widening it moves the `getTargets()` line of the two rules
+        // that emit on this hook and nothing else: both open each branch with an explicit kind test, so a
+        // `Binary` node reaches neither report. Checked, because a target a guard fails to decline is a
+        // finding the original does not make.
+        Expr::class => ['ClassConstantAccess', 'StaticPropertyAccess', 'MethodCall', 'StaticMethodCall', 'FunctionCall', 'PropertyAccess', 'Binary', 'Assignment'],
         // The three call kinds share their children exactly — `Expression`, `ClassLikeMemberSelector`,
         // `ArgumentList`, in that order, probed on all of them — which is why one body reads all three
         // without rebinding. A first-class callable is a *different* kind (`MethodPartialApplication`), so a
         // hook on these never sees one, and `isFirstClassCallable()` cannot hold under these targets.
+        BinaryOp::class => ['Binary'],
         CallLike::class => ['MethodCall', 'StaticMethodCall', 'NullSafeMethodCall', 'FunctionCall'],
         // All four, not the two a given rule narrows to: the kinds a node type *covers* are a fact about the
         // type, and letting a rule's own `instanceof` decide the registration would make the targets depend on
@@ -920,6 +1257,96 @@ final class Vocabulary
         Variable::class => ['DirectVariable', 'IndirectVariable', 'NestedVariable'],
     ];
 
+    /**
+     * php-parser's operator classes, which Mago spells as one node kind carrying the operator's own text.
+     *
+     * Separate from {@see EXPRESSION_KINDS} because that maps a class to a single kind and these need a kind
+     * *and* a token: `BinaryOp\Div` and `AssignOp\Div` are two classes, and in Mago they are a `Binary` and
+     * an `Assignment` told apart by the operator child each carries. Separate from {@see NODE_PREDICATES}
+     * for the same reason — its values are one predicate name per class, with nowhere to put the token.
+     *
+     * The emitted test is the operator alone, with no node-kind test beside it, and that is exact rather than
+     * a shortcut: {@see Runtime\Operators::operatorIs()} matches a child of a named `NodeKind` and compares
+     * its text, so `binaryOperatorIs()` is false for an `Assignment` (it has no `BinaryOperator` child) and
+     * `assignmentOperatorIs()` is false for a `Binary`. One call decides both the kind and the token.
+     *
+     * All six arithmetic operators, each in both spellings. `DisallowedLooseComparisonRule` wants `Equal` and
+     * `NotEqual` from the same table and is blocked on other things, so those rows are not here: a row
+     * nothing reads is vocabulary this repository reverts — see the `Expr` widening in `VERIFICATION.md`,
+     * added, reverted for buying nothing, and added back once a rule read it.
+     *
+     * The third element is the Mago kind the arm narrows the hook node to, so a dispatch arm can be
+     * translated with that kind in scope and `->left` or `->var` resolves through {@see REFINEMENTS}.
+     *
+     * @var array<string, array{string, string, string}>
+     */
+    /**
+     * PHPStan *core* container parameters whose default a generated plugin can carry, with that default.
+     *
+     * A `%parameter%` the rule's own package does not declare normally has no value this transpiler can read,
+     * and the fallback would take the parameter's *name* as the default — the comment at the refusal in
+     * `Transpiler` records `universalObjectCratesClasses` nearly producing a rule that iterated the
+     * characters of its own parameter name.
+     *
+     * **That case stays refused, and not because the parameter has no written default.** It has one:
+     * `conf/config.neon` inside the installed phar declares `universalObjectCratesClasses: [stdClass]`, and
+     * `UniversalObjectCratesClassReflectionExtension` consumes it verbatim through an autowired parameter. So
+     * a reader checking the declaration alone concludes the default is carryable — this docblock said
+     * "PHPStan builds the list at analysis time", which is loose enough to invite exactly that check, and one
+     * session spent an hour on it.
+     *
+     * What settles it is the *injected* value beside the declared one. A probe rule taking the parameter and
+     * printing it, run in this repository, answers
+     * `[stdClass, Pest\Support\HigherOrderTapProxy, Pest\Expectation]` — the extra two come from pest's
+     * own PHPStan extension, auto-included here.
+     *
+     * So the reason is **provenance, not timing**. This first said PHPStan assembles the list when it builds
+     * the container, which sounds like the answer and is refutable in one grep: `Container::getParameter()`
+     * exists and a `Container` is injectable into a rule — `src/Rules/Playground/PromoteParameterRule.php`
+     * takes one — so a PHPStan rule *can* read an assembled parameter during analysis. Verified here in the
+     * installed phar rather than taken on report. What holds instead is that the value is a function of which
+     * PHPStan extensions the analysed project installs. A mago plugin has no PHPStan container to query and
+     * no installed-extension set to assemble from, so there is nothing to read at any time and nothing
+     * correct to bake in. Timing was refutable; provenance is not.
+     *
+     * And the direction matters: `VariablePropertyFetchRule` *suppresses* on a crate, so a plugin carrying
+     * `[stdClass]` would suppress less than PHPStan and report where PHPStan is quiet. Reading the
+     * declaration was a correct instrument answering a narrower question than the one being decided — the
+     * `PHPVersion::$id` shape, and only a probe puts the two numbers side by side.
+     *
+     * A feature toggle is different, and only because its default is written down. Read out of the phar
+     * rather than assumed: `conf/config.neon` declares `featureToggles: bleedingEdge: false` and
+     * `conf/bleedingEdge.neon` sets it `true`, so `false` is what a stock install has. The generated plugin
+     * carries a constructor bool defaulting to `false`, exactly as it carries a package's own default, and a
+     * consumer on bleeding edge sets it — the convention `FiresGate::REGISTRATION` already follows for the
+     * two loop rules this same toggle gates.
+     *
+     * Narrow on purpose: an entry here asserts a value about someone else's configuration, so each one names
+     * the file it was read from and nothing goes in unread.
+     *
+     * @var array<string, bool>
+     */
+    public const array CORE_PARAMETER_DEFAULTS = [
+        'featureToggles.bleedingEdge' => false,
+    ];
+
+    public const array OPERATOR_KINDS = [
+        Equal::class => ['binary_operator_is', '==', 'Binary'],
+        NotEqual::class => ['binary_operator_is', '!=', 'Binary'],
+        BinaryOpDiv::class => ['binary_operator_is', '/', 'Binary'],
+        AssignOpDiv::class => ['assignment_operator_is', '/=', 'Assignment'],
+        BinaryOpPlus::class => ['binary_operator_is', '+', 'Binary'],
+        AssignOpPlus::class => ['assignment_operator_is', '+=', 'Assignment'],
+        BinaryOpMinus::class => ['binary_operator_is', '-', 'Binary'],
+        AssignOpMinus::class => ['assignment_operator_is', '-=', 'Assignment'],
+        BinaryOpMul::class => ['binary_operator_is', '*', 'Binary'],
+        AssignOpMul::class => ['assignment_operator_is', '*=', 'Assignment'],
+        BinaryOpMod::class => ['binary_operator_is', '%', 'Binary'],
+        AssignOpMod::class => ['assignment_operator_is', '%=', 'Assignment'],
+        BinaryOpPow::class => ['binary_operator_is', '**', 'Binary'],
+        AssignOpPow::class => ['assignment_operator_is', '**=', 'Assignment'],
+    ];
+
     public const array EXPRESSION_KINDS = [
         ClassConstFetch::class => 'ClassConstantAccess',
         StaticPropertyFetch::class => 'StaticPropertyAccess',
@@ -941,14 +1368,38 @@ final class Vocabulary
         FuncCall::class => 'is_function_call',
         ClassConstFetch::class => 'is_class_constant_access',
         Array_::class => 'is_array',
+        // The four boolean operator spellings. php-parser gives each its own class and PHPStan's virtual
+        // nodes are declared over pairs of them -- `BooleanAnd|LogicalAnd`, `BooleanOr|LogicalOr` -- so a
+        // rule asks `instanceof BooleanAnd` to tell `&&` from `and`. Mago has one `Binary` kind, so each
+        // predicate is an operator test rather than a kind test.
+        BinaryOpBooleanAnd::class => 'is_boolean_and_operator',
+        BinaryOpLogicalAnd::class => 'is_logical_and_operator',
+        BinaryOpBooleanOr::class => 'is_boolean_or_operator',
+        BinaryOpLogicalOr::class => 'is_logical_or_operator',
         Int_::class => 'is_int',
         // Declaration kinds a rule narrows a function-like hook to. Answered from the node's own kind, which
         // is what makes the same predicate serve every kind the hook registers.
         ClassMethod::class => 'is_method_declaration',
         Function_::class => 'is_function_declaration',
+        // The other two kinds a class-like member can be. Both read the member's own node kind, so both are
+        // PHP-target only, like the member list they are asked of.
+        ClassConst::class => 'is_class_constant_declaration',
+        Property::class => 'is_property_declaration',
         ArrayDimFetch::class => 'is_array_dim_fetch',
+        // `$stmt->expr instanceof Assign`, which is how a rule hooked on an expression-statement asks whether
+        // the statement is an assignment. Mago gives every compound spelling the one `Assignment` kind.
+        Assign::class => 'is_assignment',
         // Both PHP-target only, and both take the context because the answer is a node kind rather than
         // anything readable from the part alone.
+        // An `instanceof` test asked of a node the hook fired for. Mago files it under `Binary` with every
+        // other operator, so this is an operator comparison rather than a kind comparison — see
+        // {@see Support::isInstanceof()}.
+        // `$stmt instanceof Stmt\Expression`, asked of an item a body's statement list yielded. Mago wraps
+        // each item in a `Statement` category node, so the comparison is one level down and not on the
+        // item's own kind — {@see Runtime\Statements} carries the measurement.
+        Expression::class => 'is_expression_statement',
+        Instanceof_::class => 'is_instanceof',
+        Concat::class => 'is_concatenation',
         Dir::class => 'is_dir_constant',
         String_::class => 'is_literal_string',
     ];
@@ -959,7 +1410,7 @@ final class Vocabulary
      * node's properties the binding then stands for.
      */
     /**
-     * @var array<class-string, array{adapter: string, field?: string, fields?: array<string, array{0: string, 1: string, 2?: string}>}>
+     * @var array<class-string, array{adapter: string, field?: string, fields?: array<string, array{0: string, 1: string, 2: string}>}>
      */
     public const array REFINEMENTS = [
         // adapter yields the node itself, so its fields are reachable

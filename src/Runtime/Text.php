@@ -14,6 +14,41 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 final class Text
 {
     /**
+     * What follows the last occurrence of a needle, or null when there is none — Nette's
+     * `Strings::after($subject, $needle, -1)`.
+     *
+     * Written rather than answered with {@see Names::lastNameSegment()}, which the shape invites: that one
+     * hands back the *whole* string where there is no separator and this hands back null. A rule guarding
+     * `str_contains(..)` first cannot tell the two apart, and one that does not would take the wrong branch —
+     * read out of `Strings::after()`, whose `pos()` returns null and short-circuits before the `substr`.
+     */
+    public static function afterLast(?string $subject, string $needle): ?string
+    {
+        if ($subject === null || $needle === '') {
+            return null;
+        }
+
+        $position = strrpos($subject, $needle);
+
+        return $position === false ? null : substr($subject, $position + strlen($needle));
+    }
+
+    /**
+     * Whether a list the plugin computed holds the exact string a rule names.
+     *
+     * The case-sensitive counterpart of `namesContain()`, and the difference is where the list came from.
+     * Metadata lowercases the names it holds, so a comparison against one has to fold case; a list read off
+     * the CST — a qualified name's own segments, say — keeps the spelling its author wrote, and folding case
+     * there would answer wider than the `true` the rule was given.
+     *
+     * @param list<string> $values
+     */
+    public static function listContains(array $values, ?string $needle): bool
+    {
+        return $needle !== null && in_array($needle, $values, true);
+    }
+
+    /**
      * Whether a list of names holds one, folding case.
      *
      * The list comes from metadata, which lowercases; the name comes from configuration or from the analysed
@@ -34,6 +69,22 @@ final class Text
         }
 
         return false;
+    }
+
+    /**
+     * Every name in a list, folded to lower case.
+     *
+     * A rule folds a name list before a membership test, which {@see namesContain()} would answer without the
+     * fold -- it compares with `strcasecmp()`. The fold is carried anyway rather than dropped as redundant:
+     * whether it is redundant depends on what the *consumer* does, and a list handed to a message rather than
+     * to a comparison would print differently. Two lines here cost less than a claim about every consumer.
+     *
+     * @param list<string> $names
+     * @return list<string>
+     */
+    public static function loweredNames(array $names): array
+    {
+        return array_map(strtolower(...), $names);
     }
 
     /**
@@ -116,6 +167,34 @@ final class Text
     public static function lookupHas(array $table, ?string $key): bool
     {
         return $key !== null && isset($table[$key]);
+    }
+
+    /**
+     * The value a lookup table holds for a key, or null when it holds none.
+     *
+     * The read beside {@see lookupHas()}: a rule that tests `isset($map[$k])` and then reads `$map[$k]` asks
+     * two questions of one table, and the second had no rendering until a rule needed the value in its own
+     * message rather than only in a condition.
+     *
+     * @param array<string, string> $table
+     */
+    public static function lookupValue(array $table, ?string $key): ?string
+    {
+        return $key === null ? null : ($table[$key] ?? null);
+    }
+
+    /**
+     * Whether a lookup table holds this value, which is `in_array($x, $map)` over a map.
+     *
+     * The values, not the keys: `isset($map[$k])` is the key question and {@see lookupHas()} answers it.
+     * Compared with `===` because both sides are class names a rule read as written, so folding case would be
+     * wider than the comparison the original makes.
+     *
+     * @param array<string, string> $table
+     */
+    public static function lookupHasValue(array $table, ?string $value): bool
+    {
+        return $value !== null && in_array($value, $table, true);
     }
 
     /**
@@ -233,8 +312,11 @@ final class Text
      * An empty capture reads as null here. `preg_match()` fills an unmatched optional group with `''`, and a
      * rule's `isset($matches['x'])` cannot tell the two apart — so treating `''` as "not caught" matches what
      * the rule means. No pattern in the corpus has an optional group that can match empty.
+     *
+     * The group is a name or an offset, because a rule writes whichever the pattern gives it: `$matches[1]`
+     * on `#\*\s(@var)\b#mi` is the tag it captured.
      */
-    public static function captured(string $pattern, ?string $subject, string $group): ?string
+    public static function captured(string $pattern, ?string $subject, int|string $group): ?string
     {
         if ($subject === null || preg_match($pattern, $subject, $matches) !== 1) {
             return null;

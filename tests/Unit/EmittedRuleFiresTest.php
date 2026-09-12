@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Sandermuller\PhpstanToMago\Tests\Support\FiresGate;
 use Sandermuller\PhpstanToMago\Tests\Support\LockedCorpus;
@@ -23,6 +24,7 @@ use Throwable;
  * It is red on purpose for the rules that cannot fire yet. That is the point: they were emitted and
  * counted for a long time while reporting nothing, and no static check noticed.
  */
+#[Group('engine')]
 final class EmittedRuleFiresTest extends TestCase
 {
     private const string EXAMPLES = __DIR__ . '/../Fixtures/examples';
@@ -296,11 +298,16 @@ final class EmittedRuleFiresTest extends TestCase
         // — by emitting, once a record folded across a loop became locals rather than expressions. Their
         // pairs had been running nothing until then, which is what this check exists to say out loud.
         //
-        // What is left was written before the rule that would use it, and is still waiting: the arithmetic
-        // family needs the operand-binding shape as well as the ported helper.
-        $expected = [
-            'OperandsInArithmeticDivisionRule',
-        ];
+        // `OperandsInArithmeticDivisionRule` was the last entry and it left the same way the two above did,
+        // by emitting. The three blockers this comment tracked are all closed: the operand-binding shape
+        // dissolved (a `Binary` and an `Assignment` hold their operands in the same two positions), mago's
+        // reporting of a compound assignment's right-hand operand was fixed upstream in 1.47.6, and the
+        // dispatch itself is now translated — `Translator::translatesAnOperatorDispatch()` proves the arms
+        // bind the same descriptors and then emits one operator guard with the bindings once.
+        //
+        // The list is empty, which is the state to keep it in: an example pair with no emitting rule is a
+        // pair running nothing, and this check exists to say so out loud rather than let it pass as green.
+        $expected = [];
         sort($orphaned);
 
         $this->assertSame(
@@ -365,11 +372,11 @@ final class EmittedRuleFiresTest extends TestCase
     {
         $proven = [
             'Mago parses `f(...)` as a partial application, which never reaches a call hook',
-            'an anonymous class is a separate node kind, so the class declaration hook never fires for one',
             // Same proof, one hook wider: `ExplicitClassPrefixSuffixRule` registers all four class-like kinds,
             // and `NodeKind::AnonymousClass` is none of them. `GoodNames.php` holds one, so the silence is
-            // measured rather than argued.
-            'an anonymous class is a separate node kind, so this hook only fires for a named class-like',
+            // measured — though only as an outcome: that example stays silent even with the kind registered
+            // and the name guard neutered, because an anonymous class is never abstract and its empty name
+            // matches no suffix. {@see tests/Fixtures/examples/ExplicitClassPrefixSuffixRule/GoodNames.php}.
             'the class declaration hook fires for classes, never for an interface',
             'a class-like found by a subtree search is always named: Mago models an anonymous class as its own '
             . 'node kind, which a search for classes, interfaces, traits and enums never returns',
@@ -381,6 +388,16 @@ final class EmittedRuleFiresTest extends TestCase
             // PHP only lets exist inside a class-like. A function, closure or arrow function is deliberately
             // not among them, because those genuinely may sit outside one.
             'this hook fires only on a class-like or one of its members, so the scope it carries is always in a class',
+            // The reflection-side twin of the entry above, and the same proof by construction reached
+            // through `getClassReflection() === null` rather than through `isInClass()`.
+            // `ShouldCallParentMethodsRule` is the first rule in the corpus to reach it. In code the drop
+            // is gated on `everyHookKindIsInAClass()`, which requires *every* kind the hook registers to
+            // be one of `HOOK_KINDS_ALWAYS_IN_A_CLASS`, which is exactly `Class`, `Interface`, `Trait`,
+            // `Enum`, `Method` and `AnonymousClass`. PHP has no method outside a class-like, so no example
+            // can hold the filtered case, exactly as for its neighbour. A function, closure or arrow
+            // function is deliberately absent from that list, because those may genuinely sit outside one.
+            'this hook fires on a class-like or on one of its members, so the scope it carries always has '
+            . 'a class reflection',
             // The guards ahead of it establish the index; the good examples hold each case they filter — a
             // named argument, a spread, a non-bool, a call past the end of the parameter list.
             'an index produced behind guards is never null once those guards have run',
@@ -391,6 +408,15 @@ final class EmittedRuleFiresTest extends TestCase
             // reported, so both sides of the loop the fold sits in are measured against real PHPStan.
             'every name in this list arrived resolved: the codebase resolved it, and PHPStan resolves names '
             . 'before a rule sees the tree, so there is no unresolved spelling for the loop to skip',
+            // Measured rather than argued. `FormTypeClassNameRule` returns early when `namespacedName` is
+            // null, which PHPStan only does for an anonymous class; the class declaration hook does not
+            // register `NodeKind::AnonymousClass`, so the case cannot reach the plugin at all.
+            // `GoodFormNames.php` holds an anonymous class extending the form base — the one shape that
+            // would be reported if the drop were wrong — and both engines stay silent on it.
+            // {@see tests/Fixtures/examples/FormTypeClassNameRule/GoodFormNames.php}.
+            'a class-like declaration reaching this hook always has a qualified name: PHPStan leaves it null '
+            . 'only for an anonymous class, and Mago gives those their own node kind, which this hook does '
+            . 'not register',
         ];
 
         $unproven = [];

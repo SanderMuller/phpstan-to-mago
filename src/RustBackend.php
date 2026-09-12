@@ -52,9 +52,9 @@ final class RustBackend implements Backend
             case 'guard':
                 return "{$pad}if {$a['condition']} {\n{$pad}    {$a['exit']}\n{$pad}}\n\n";
             case 'bind-adapter':
-                return "{$pad}let Some({$a['bind']}) = support::{$a['adapter']}({$a['subject']}) else {\n{$pad}    return Ok({BAIL});\n{$pad}};\n\n";
+                return "{$pad}let Some({$a['bind']}) = support::{$a['adapter']}({$a['subject']}) else {\n{$pad}    {$a['exit']}\n{$pad}};\n\n";
             case 'bind-arg':
-                return "{$pad}let Some({$a['bind']}) = support::positional_arg_at({$a['args']}, {$a['index']}) else {\n{$pad}    return Ok({BAIL});\n{$pad}};\n\n";
+                return "{$pad}let Some({$a['bind']}) = support::positional_arg_at({$a['args']}, {$a['index']}) else {\n{$pad}    {$a['exit']}\n{$pad}};\n\n";
             case 'if-open':
                 return "{$pad}if {$a['condition']} {\n";
             case 'else':

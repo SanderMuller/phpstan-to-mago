@@ -9,10 +9,12 @@ use Sandermuller\PhpstanToMago\Cli;
 use Sandermuller\PhpstanToMago\InstalledRulePackages;
 use Sandermuller\PhpstanToMago\Options;
 use Sandermuller\PhpstanToMago\PackageCoverage;
+use Sandermuller\PhpstanToMago\RecommendedIncludes;
 use Sandermuller\PhpstanToMago\Refusal;
 use Sandermuller\PhpstanToMago\RuleOutcome;
 use Sandermuller\PhpstanToMago\StatusPage;
 use Sandermuller\PhpstanToMago\StatusReport;
+use Sandermuller\PhpstanToMago\Tests\Support\LockedCorpus;
 use Sandermuller\PhpstanToMago\Transpiler;
 use Sandermuller\PhpstanToMago\WorkerScaffold;
 
@@ -170,6 +172,51 @@ final class ReportsInstalledCoverageTest extends TestCase
         // paste from, and it says so.
         $this->assertStringContainsString('does not edit that file', $snippet);
         $this->assertStringContainsString('[extension-hosts.transpiled]', $snippet);
+
+        // And it says where a consumer's run time goes, because this snippet is the only mago configuration
+        // this tool writes. Measured: the engine alone is 3.92s with `vendor`, `src` and `tests` included and
+        // 0.17s with nothing included, so most of a run is the index rather than the rules. Pinned because
+        // the advice is the load-bearing half -- *narrow*, never *remove*: without an include a rule cannot
+        // reach a vendored parent and goes quiet rather than failing.
+        $this->assertStringContainsString('includes', $snippet);
+        $this->assertStringContainsString('a missing entry is silent', $snippet);
+    }
+
+    public function test_the_snippet_carries_the_includes_the_rules_need(): void
+    {
+        // Derived by reflecting each named class's full ancestry, so the list is what mago has to index and
+        // no more. Measured: 14,805 files of `vendor`, `src` and `tests` index in 3.98s against 6,344 in
+        // 0.95s, while mago analyses the benchmark corpus in 0.12s -- so the index was most of a run.
+        //
+        // A stand-in for an emitted plugin rather than a committed snapshot: what the deriver reads is the
+        // namespaced string literals a plugin compares against, and no snapshot in the corpus happens to
+        // name an installed vendored class. Three literals, one per behaviour that matters.
+        $source = tempnam(sys_get_temp_dir(), 'emitted') . '.php';
+        file_put_contents($source, implode("\n", [
+            '<?php',
+            // Installed, so its package is what mago has to index.
+            "Support::extendsIs(\$context, \$node, 'PhpParser\\\\NodeVisitorAbstract');",
+            // Reachable only inside phpstan.phar, so there is no directory to index.
+            "Support::extendsIs(\$context, \$node, 'PHPStan\\\\Rules\\\\Rule');",
+            // Not installed here at all, so it needs no include.
+            "Support::extendsIs(\$context, \$node, 'Nothing\\\\Installed\\\\AtAll');",
+        ]));
+
+        $includes = RecommendedIncludes::forEmitted([$source]);
+        unlink($source);
+
+        // Package directories rather than the exact files: including only the files behind the names is
+        // faster still -- 0.11s against 0.95s -- and lost a finding, because mago resolves the *analysed*
+        // code's ancestry and that reaches files no rule names.
+        $this->assertSame(
+            [dirname(__DIR__, 2) . '/vendor/nikic/php-parser'],
+            $includes,
+            'One package for the installed name; the phar-internal and uninstalled names contribute nothing.',
+        );
+
+        $snippet = WorkerScaffold::configSnippet('/tmp/out/worker.php', 'transpiled', $includes);
+        $this->assertStringContainsString('[source]', $snippet);
+        $this->assertStringContainsString($includes[0], $snippet);
     }
 
     public function test_a_worker_with_no_rules_refuses_rather_than_writing_an_empty_one(): void
@@ -246,5 +293,57 @@ final class ReportsInstalledCoverageTest extends TestCase
             // one invites exactly the sizing the verdict exists to prevent.
             $this->assertSame([], $outcome->needs, $outcome->name . ' carries needs it can never use');
         }
+    }
+
+    /**
+     * A refusal that ends the pass is a need too, and it used to be the one kind that never appeared.
+     *
+     * The needs pass collects what a body takes by stepping over each refusing statement and translating on,
+     * then catching whatever finally stops it. Everything it *steps over* is recorded; the one that stops it
+     * was discarded. So a rule whose body translates cleanly and then fails on something at the end — the
+     * message lookup is the case — reported an empty needs list, and an empty list reads as "nothing else
+     * needed" rather than as "the instrument cannot see this".
+     *
+     * That mattered because the needs list exists to stop work being sized off first blockers. Across the
+     * corpus `could not find the reported message` was the largest single first-blocker family after the two
+     * vocabulary ones and appeared as a need exactly zero times, so the one instrument built to size it was
+     * the one instrument blind to it.
+     *
+     * `ClassAttributeRequiresPhpVersionRule` is the corpus rule with that shape. Asserted by name rather than
+     * by scanning for any empty list, because a rule legitimately reaching no needs at all is possible and
+     * this test should fail when the terminal refusal goes missing, not when the corpus shifts.
+     */
+    public function test_a_refusal_that_ends_the_pass_is_listed_as_a_need(): void
+    {
+        // The docblock above says this should fail when the terminal refusal goes missing, "not when the
+        // corpus shifts" — and without this guard it does the second: `phpstan/phpstan-phpunit` is
+        // `require-dev: ^2.0`, and the rule named below does not exist at 2.0.0, so the CI leg resolving
+        // lowest failed on a rule that was simply not written yet. The same guard the census assertion uses,
+        // for the same reason and honouring the same deliberate-drift escape.
+        $mismatch = LockedCorpus::mismatch();
+        if ($mismatch !== null) {
+            self::markTestSkipped($mismatch);
+        }
+
+        $coverage = PackageCoverage::forPackage(
+            'phpstan/phpstan-phpunit',
+            self::ROOT . '/vendor/phpstan/phpstan-phpunit',
+        );
+
+        $outcome = null;
+        foreach ($coverage->outcomes as $candidate) {
+            if ($candidate->name === 'ClassAttributeRequiresPhpVersionRule') {
+                $outcome = $candidate;
+            }
+        }
+
+        $this->assertInstanceOf(RuleOutcome::class, $outcome, 'The rule this asserts on is no longer in the package.');
+        $this->assertSame(RuleOutcome::REFUSE, $outcome->verdict);
+        $this->assertContains(
+            'could not find the reported message',
+            $outcome->needs,
+            'The refusal that ended the needs pass is missing from the list it produced, so this rule reports '
+            . 'no needs while having one.',
+        );
     }
 }
