@@ -176,9 +176,13 @@ the one to beat. Measure your own.
 ## Requirements
 
 PHP 8.4 for the transpiler, the floor the rule packages set. A generated plugin depends on this package and
-on `carthage-software/mago`, and needs Mago 1.47.6 or later:
-that is where a compound assignment's operands started reporting their own type, and a plugin reading one is
-silently wrong on anything earlier.
+on `carthage-software/mago`, and needs **Mago 1.48.1 or later**: that is where
+`FileAnalysisRequirement::VariableDefinedness` arrived, and a plugin that asks whether a variable is defined
+declares it. On 1.47.6 that constant does not exist, so such a plugin dies with a fatal the moment Mago
+builds it — loudly, rather than answering wrongly.
+
+1.47.6 was the previous floor for a quieter reason worth keeping: that is where a compound assignment's
+operands started reporting their own type, and a plugin reading one is silently wrong on anything earlier.
 
 ## Contributing
 
