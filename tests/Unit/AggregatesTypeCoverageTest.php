@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use RuntimeException;
@@ -39,6 +40,7 @@ use Sandermuller\PhpstanToMago\Vocabulary;
  * the magic-method skip, the variadic skip and a dedup all left it green. Each of those now changes the total
  * and breaks the comparison, which is the only reason to trust that the filters are doing anything.
  */
+#[Group('engine')]
 final class AggregatesTypeCoverageTest extends TestCase
 {
     private const string FIXTURE = __DIR__ . '/../Fixtures/aggregate';
@@ -154,7 +156,15 @@ final class AggregatesTypeCoverageTest extends TestCase
         $this->assertStringContainsString("'typeCoverage.paramTypeCoverage'", $emitted);
         $this->assertStringContainsString('Out of %d possible param types', $emitted);
 
-        $this->assertStringContainsString('Over-counts the original by up to 1.11%', $emitted);
+        // Both figures, because one of them alone is what a reader would take as a bound. +1 of 17635 is
+        // `laravel/framework`'s own `Illuminate` as it stands; 1.11% is the two Laravel applications, and it
+        // is the older of the two — measured before `@mixin` was followed and not re-measured since, which
+        // the note has to keep saying or the smaller vendor figure reads as covering an application too.
+        $this->assertStringContainsString('+1 of 17635 declarations', $emitted);
+        $this->assertStringContainsString('1.11% at most on the two Laravel *applications*', $emitted);
+        $this->assertStringContainsString('not re-measured since', $emitted);
+        // And what the +1 is, by name. A residue nobody can name is how +1 becomes +1310 again unnoticed.
+        $this->assertStringContainsString('PhpRedisConnection::hscan()', $emitted);
         $this->assertStringContainsString('run-coverage-corpus.php', $emitted);
     }
 

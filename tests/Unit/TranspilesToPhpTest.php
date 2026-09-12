@@ -76,6 +76,47 @@ final class TranspilesToPhpTest extends TestCase
         // for, so the Rust targets refuse this rule rather than emitting a call that cannot compile.
         yield 'gated on the declared namespace' => ['NamespacePrefixRule'];
         yield 'membership in a constant set' => ['ConstantSetRule'];
+        // A rule constant written as `Foo::class` rather than as a quoted string. PHP resolves it at compile
+        // time, so it *is* a string constant, and the transpiler refused it as one until the collector learned
+        // to. Snapshotted because the interesting part is the value: the short name is resolved through the
+        // rule file's own `use` map, and getting that wrong emits a comparison against a name no class has —
+        // a plugin that loads, runs and matches nothing.
+        yield 'a rule constant written as a ::class fetch' => ['ClassConstantIsAStringRule'];
+        // A guard whose body throws. `throw` is an expression in PHP 8, so php-parser wraps it in a
+        // `Stmt_Expression` and the refusal named the wrapper. Snapshotted for what is *absent*: the guard
+        // takes the same exit `return []` does, and then the impossible-condition drop removes it, so the
+        // emitted plugin carries no trace of an assertion the dispatch already guarantees.
+        yield 'a guard whose body throws' => ['ThrowingAssertionGuardRule'];
+        // A rule hooked on the statement wrapper rather than the expression inside it. Snapshotted because
+        // three additions meet here and the emitted navigation is where a mistake in any of them shows: the
+        // `ExpressionStatement` hook, `->expr` on the wrapper, and `instanceof Assign`. The nested
+        // `nthExpression(nthExpression(..))` is the assignment's left side reached through the statement —
+        // one level flatter and the plugin tests the assignment where it means to test its target.
+        yield 'a rule hooked on an expression statement' => ['AssignmentStatementRule'];
+        // `$type->isObject()->yes()`, the union question asked of a whole type. Snapshotted for the operand
+        // it lands on: `nthExpression(nthExpression($node, 0), 1)` is the assignment's *right* side reached
+        // through the statement, and index 0 there would type the target instead.
+        yield 'a whole-type object test' => ['ObjectTypedAssignRule'];
+        // `isSuperTypeOf`, which the SDK spells `isContainedBy` with the arguments the other way round.
+        // Snapshotted for the argument order: container first in the rule, input first in the SDK, and the
+        // two `nthExpression` chains are the assignment's target and its value in that order.
+        yield 'a supertype comparison between two types' => ['SuperTypeGuardRule'];
+        // A name compared against a literal through a local. Snapshotted because the emitted comparison is
+        // byte-identical to the inline spelling's — the cast and the binding both have nothing to do at
+        // runtime, and an emission that differed would mean one of them had been given work.
+        yield 'a name compared through a bound local' => ['BoundNameComparisonRule'];
+        // A rule that reports early for one case and at the end for another. Snapshotted for the *second*
+        // report: the emitter read one flag as "nothing left to say at the end", which is true only while a
+        // rule has one report, and no corpus rule wrote this shape until now.
+        yield 'an early report and a trailing one' => ['EarlyThenTailReportRule'];
+        // The attribute walk written with the answer inverted. Snapshotted for the ternary around the folded
+        // condition: the fold hands back one question and the caller wraps it in the literal the guard
+        // returned, so a fold that assumed `true` would emit this rule reporting where it stays silent.
+        yield 'an attribute walk answering false on a match' => ['InvertedAttributeWalkRule'];
+        // A class reflection reached through PHPStan's native-reflection hatch. Snapshotted because what the
+        // hop emits is nothing: `declarationKindIs` is what the same question asks without it, so an emission
+        // carrying any trace of the hop would mean it had been given work it does not have.
+        yield 'a class reflection through the native hatch' => ['NativeReflectionHopRule'];
         yield 'a report code carrying a classification' => ['ClassifiedCodeRule'];
         yield 'a loop inside an inlined predicate helper' => ['AnyConstantHelperRule'];
         yield 'a reflection question answered by the codebase' => ['AsksTheCodebaseRule'];
@@ -200,14 +241,26 @@ final class TranspilesToPhpTest extends TestCase
      * sandbox flattened its examples and its guard tests the file's path. The gate copies directories now, so that
      * second hole is closed too — but this check is the one that does not depend on anybody writing an example.
      *
-     * Cheap enough to run over the whole corpus: this transpiles, it does not analyse.
+     * Cheap enough to run over the whole corpus: this transpiles, it does not analyse. And it *is* the whole
+     * corpus — every installed package's `src`, rather than the one package the glob used to name.
      */
     public function test_every_helper_the_corpus_calls_exists(): void
     {
-        $rules = glob(dirname(__DIR__, 2) . '/vendor/symplify/phpstan-rules/src/Rules/{,*/,*/*/}*Rule.php', GLOB_BRACE);
+        // Every installed package, not one of them. The docblock above has said "the whole corpus" since
+        // this check was written and the glob named `symplify` alone, so a missing helper emitted by a
+        // `hihaho`, `phpstan-*` or `tomasvotruba` rule went unchecked — a claim wider than the code, which
+        // is the failure this repository's log is largely made of. Found while a broken plugin of my own
+        // referenced `Support::namedClassIsInstanceOf()` after the helper had been reverted from under it.
+        $roots = glob(dirname(__DIR__, 2) . '/vendor/*/*/src', GLOB_ONLYDIR);
+        $rules = [];
+        foreach ($roots === false ? [] : $roots as $root) {
+            $found = glob($root . '/{,*/,*/*/,*/*/*/}*Rule.php', GLOB_BRACE);
+            $rules = [...$rules, ...($found === false ? [] : $found)];
+        }
+
         $emitted = 0;
 
-        foreach ($rules === false ? [] : $rules as $file) {
+        foreach ($rules as $file) {
             try {
                 $plugin = (new Transpiler($file))->transpile()['rust'];
             } catch (Refusal) {
@@ -262,6 +315,42 @@ final class TranspilesToPhpTest extends TestCase
         $this->expectExceptionMessage('anchored on a loop item');
 
         $this->transpile(self::RULES . '/AnchorEscapesLoopRule.php');
+    }
+
+    /**
+     * Attribute-name guards that answer differently are refused, and by the guard that already existed.
+     *
+     * The walk folds several names into one question, which is right while every guard answers the same
+     * way. This rule writes `true` for one name and `false` for the other, so no single answer fits — and
+     * the inliner says so in its own terms rather than the fold adding a second check. Measured: removing
+     * the fold's multi-guard reading does not change this outcome, which is why there is no check to remove.
+     */
+    public function test_refuses_attribute_name_guards_that_answer_differently(): void
+    {
+        $this->expectException(Refusal::class);
+        $this->expectExceptionMessage('returning both booleans');
+
+        $this->transpile(self::RULES . '/DisagreeingAttributeWalkRule.php');
+    }
+
+    /**
+     * A computed property name refuses by naming the construct, not by dying in a cast.
+     *
+     * `$node->name` is `Identifier|Expr`, and sixteen comparisons in the translator read it as
+     * `(string) $node->name`. An `Identifier` has `__toString()` and an `Expr` does not, so this fixture used
+     * to surface as `Object of class PhpParser\Node\Scalar\String_ could not be converted to string` — a PHP
+     * type error where the refusal should name the shape the rule used.
+     *
+     * The assertion is the *message*, because the outcome was a refusal either way and only its text says
+     * which one. Both figures were checked by running it: the cast reaches this line, and no rule in the four
+     * corpus packages does, which is why sixteen sites carried a latent fault nothing exercised.
+     */
+    public function test_refuses_a_computed_property_name_by_naming_the_construct(): void
+    {
+        $this->expectException(Refusal::class);
+        $this->expectExceptionMessage('numeric comparison outside the vocabulary');
+
+        $this->transpile(self::RULES . '/DynamicNameComparisonRule.php');
     }
 
     /**

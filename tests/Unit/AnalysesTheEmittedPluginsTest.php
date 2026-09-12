@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
 use FilesystemIterator;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -31,6 +32,7 @@ use SplFileInfo;
  * project's own house style. Five of the seventeen first findings were `type_coverage` and cognitive
  * complexity, which would have buried the four that mattered.
  */
+#[Group('engine')]
 final class AnalysesTheEmittedPluginsTest extends TestCase
 {
     /** Everything under a directory, so no stale result survives to answer for a file that changed. */

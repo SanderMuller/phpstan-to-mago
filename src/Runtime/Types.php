@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Runtime;
 
+use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Analyzer\Type;
+use Mago\Sdk\Analyzer\Type\AnyObjectType;
 use Mago\Sdk\Analyzer\Type\CallableType;
 use Mago\Sdk\Analyzer\Type\ClassLikeStringType;
 use Mago\Sdk\Analyzer\Type\ClassLikeStringVariant;
+use Mago\Sdk\Analyzer\Type\EnumType;
 use Mago\Sdk\Analyzer\Type\NamedObjectType;
+use Mago\Sdk\Analyzer\Type\ObjectShapeType;
+use Mago\Sdk\Analyzer\Type\ObjectWithMethodType;
+use Mago\Sdk\Analyzer\Type\ObjectWithPropertyType;
 use Mago\Sdk\Analyzer\Type\ScalarType;
 use Mago\Sdk\Analyzer\Type\ScalarTypeKind;
 use Mago\Sdk\Analyzer\Type\SimpleAtomicType;
@@ -32,24 +38,164 @@ final class Types
      * Mago models a type as its atomic parts, and a callable is one of them. A closure object is a named object
      * rather than a `CallableType`, so it is matched by name — that is the shape `Closure::fromCallable()` and a
      * closure literal both produce.
+     *
+     * **Every atomic except null, and at least one.** Not the union rule {@see typeIsBoolean} follows, and the
+     * difference is the caller's: `CallableTypeAnalyzer::isClosureOrCallableType()` runs
+     * `TypeCombinator::removeNull()` over the type *before* asking `isCallable()->yes()`. So a null in the
+     * union is discarded and anything else in it is not.
+     *
+     * Both halves were measured, in opposite directions, and one reading of this satisfied neither:
+     *
+     * - *Any* atomic was too loose. `nesbot/carbon`'s `Rounding.php` declares
+     *   `callable|string $function = 'round'` and calls `$function(..)`. `removeNull` takes nothing away,
+     *   `callable|string` is `maybe`, and the rule reports; answering on the first callable atomic stayed
+     *   silent.
+     * - *Every* atomic was too strict. Seven Laravel sites call a `?Closure` with no null guard —
+     *   `Builder::findOr()` is one — so mago's type is `Closure|null` where PHPStan's, after `removeNull`,
+     *   is `Closure`. Counting the null made the port report where the rule does not.
      */
-    public static function typeIsCallable(?Type $type): bool
+    public static function typeIsCallable(NodeAnalysisContext $context, ?Type $type): bool
     {
-        if (! $type instanceof Type) {
+        if (! $type instanceof Type || $type->atomicTypes === []) {
             return false;
         }
 
+        $callable = false;
         foreach ($type->atomicTypes as $atomic) {
-            if ($atomic instanceof CallableType) {
-                return true;
+            if ($atomic instanceof SimpleAtomicType && $atomic->kind === SimpleAtomicTypeKind::Null) {
+                continue;
             }
 
-            if ($atomic instanceof NamedObjectType && strcasecmp(ltrim($atomic->name, '\\'), 'Closure') === 0) {
-                return true;
+            if (! self::isCallableAtomic($context, $atomic)) {
+                return false;
             }
+
+            $callable = true;
         }
 
-        return false;
+        return $callable;
+    }
+
+    /** A closure object is a named object rather than a `CallableType`, which is what both spellings produce. */
+    private static function isCallableAtomic(NodeAnalysisContext $context, object $atomic): bool
+    {
+        return $atomic instanceof CallableType
+            || ($atomic instanceof NamedObjectType && strcasecmp(ltrim($atomic->name, '\\'), 'Closure') === 0)
+            || self::objectDeclaresInvoke($context, $atomic)
+            || self::stringIsRefinedToCallable($atomic)
+            || self::literalNamesACallable($context, self::literalStringOfAtomic($atomic));
+    }
+
+    /**
+     * An object whose class declares `__invoke`, which PHP calls and PHPStan reports as callable.
+     *
+     * Mago types `(callable)|Processor` and `(callable)|Plain` identically — `NamedObjectType | CallableType`
+     * either way — so the type alone cannot say whether the object arm is invokable. The codebase can, and
+     * `Reflect::methodExists()` is the same lookup the mixin walk already uses, so an inherited or trait
+     * `__invoke` answers here too.
+     *
+     * Found by the corpus sweep on `monolog`, whose processors are
+     * `array<(callable(LogRecord): LogRecord)|ProcessorInterface>` and whose `ProcessorInterface` declares
+     * `__invoke`. Three sites, and the port reported all three while PHPStan exempted them.
+     *
+     * `Closure` is still matched by name above rather than through this: it is the one class where the answer
+     * is a language fact rather than a codebase lookup, and a corpus that cannot resolve `Closure` would
+     * otherwise silently start reporting every closure call.
+     */
+    private static function objectDeclaresInvoke(NodeAnalysisContext $context, object $atomic): bool
+    {
+        return $atomic instanceof NamedObjectType
+            && Reflect::methodExists($context, $atomic->name, '__invoke');
+    }
+
+    /**
+     * A `callable-string`, which is what `is_callable()` narrowing produces for a string it cannot resolve.
+     *
+     * PHPStan spells it `CallableStringType` and answers `isCallable()` yes for it. Mago spells it as a
+     * `ScalarType` of kind `String` carrying `callable: true` on its `StringType` refinement, and
+     * `ScalarType::__toString()` renders only the kind — so a `callable-string` and a plain `string` render
+     * identically, and the flag is the only thing that distinguishes them.
+     *
+     * Measured rather than inferred, because a probe reading the rendering said the opposite.
+     * `ReadsTheCallableStringRefinementTest` asserts the flag at six starting types, with `is_string` as the
+     * row where it must stay false.
+     */
+    private static function stringIsRefinedToCallable(object $atomic): bool
+    {
+        if (! $atomic instanceof ScalarType || $atomic->kind !== ScalarTypeKind::String) {
+            return false;
+        }
+
+        return $atomic->refinement instanceof StringType && $atomic->refinement->callable;
+    }
+
+    /**
+     * Whether a literal string is one PHP could call, which is what `ConstantStringType::isCallable()` says.
+     *
+     * A string is not a shape the rule's exemption looked at until a corpus said otherwise: Laravel's
+     * `Pluralizer` loops `['mb_strtolower', 'mb_strtoupper', 'ucfirst', 'ucwords']` and calls `$function(..)`,
+     * where PHPStan's type is a union of four constant strings, every one of them callable, so
+     * `isCallable()->yes()` and the rule declines. The port answered no for a string and reported both calls.
+     *
+     * The clauses are the original's, read out of `phpstan.phar` rather than inferred from the name, because
+     * only its `Yes` exempts and it has three ways of not saying yes:
+     *
+     * - a function name, which is a plain existence check
+     * - `Class::method` where the class is known and the method exists — and, from PHP 8.0, only when that
+     *   method is static. `supportsCallableInstanceMethods()` is `versionId < 80000`, so on anything this
+     *   package supports `'Widget::instanceMethod'` is *not* callable
+     * - anything else is `No`, or `Maybe` for an unknown class or a missing method on a non-final one, and a
+     *   maybe reports
+     *
+     * `Mixins::declaringMethod()` answers the method half, because PHPStan asks `hasMethod()` here too and a
+     * `@mixin` on the named class supplies methods for it as much as anywhere else.
+     */
+    /**
+     * The literal behind one string atomic, or null when it is not one literal string.
+     *
+     * A literal string is not a `StringType` beside the others: it is a `ScalarType` of kind `String` whose
+     * *refinement* is the `StringType` carrying the value, and the type renders as plain `string` either way.
+     * Testing `$atomic instanceof StringType` therefore matched nothing at all — measured, because the clause
+     * written that way changed no finding on a probe holding four shapes it should have closed.
+     *
+     * {@see constantStringsOf()} reads the same structure for a whole type; this is the one-atomic form,
+     * because the callable question is asked per atomic and a union has to answer for each.
+     */
+    private static function literalStringOfAtomic(object $atomic): ?string
+    {
+        if (! $atomic instanceof ScalarType || $atomic->kind !== ScalarTypeKind::String) {
+            return null;
+        }
+
+        $refinement = $atomic->refinement;
+
+        return $refinement instanceof StringType && is_string($refinement->literalValue) ? $refinement->literalValue : null;
+    }
+
+    private static function literalNamesACallable(NodeAnalysisContext $context, ?string $literal): bool
+    {
+        if ($literal === null || $literal === '') {
+            return false;
+        }
+
+        if ($context->codebase->functionExists($literal)) {
+            return true;
+        }
+
+        // The original's own pattern, which is stricter than `str_contains($literal, '::')`: one identifier,
+        // then `::`, then one identifier, and nothing else. `'Widget::a::b'` and `'$var::method'` are not
+        // callable spellings and must not be read as one.
+        if (preg_match('#^([a-zA-Z_\x7f-\xff\\\\][a-zA-Z0-9_\x7f-\xff\\\\]*)::([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*)$#', $literal, $matches) !== 1) {
+            return false;
+        }
+
+        $method = Mixins::declaringMethod($context->codebase, $matches[1], $matches[2]);
+
+        // `FunctionLikeMetadata->static`, not `flags->contains(MetadataFlags::STATIC)`. The flag exists and
+        // is documented and reads false for a `public static function` — probed on this control, where the
+        // method was found and the bit was not set. Reaching for the bit is the obvious move and it would
+        // have made every `'Class::staticMethod'` report.
+        return $method instanceof FunctionLikeMetadata && $method->static;
     }
 
     /**
@@ -132,6 +278,83 @@ final class Types
         }
 
         return $names;
+    }
+
+    /**
+     * Whether methods can be called on every part of a type — PHPStan's `Type::canCallMethods()->yes()`.
+     *
+     * Answered as "is it an object", which is what PHPStan answers `yes` for and nothing else does: a scalar,
+     * an array and `null` are all `no` there, and `mixed` is `Maybe` rather than `yes`. So the two questions
+     * coincide at the `yes()` tail, which is the only tail {@see Translator} lets through.
+     *
+     * Kept as its own name rather than aliased onto {@see typeIsObject()} because the two are not the same
+     * question and only happen to share an answer here: `canCallMethods()` is about what you may do with a
+     * type and `isObject()` about what it is. Aliasing them would hide the divergence recorded below the next
+     * time one of them moves.
+     */
+    public static function typeCanCallMethods(?Type $type): bool
+    {
+        return self::typeIsObject($type);
+    }
+
+    /**
+     * Whether every part of a type is an object — PHPStan's `Type::isObject()->yes()`.
+     *
+     * Every atomic has to be one, which is what `yes` means: `Foo|null` is a `maybe` there and is not one
+     * here either, and an empty type is not an object.
+     *
+     * **`ReferenceType` is deliberately not one of them, and that is a divergence.** PHPStan gives an
+     * `ObjectType` for a class name it cannot resolve, so it answers `yes`; this answers `no`. The reason is
+     * that a reference is not known to be a class: `ReferenceTypeKind` is `Symbol`, `Member` or `Global`, so
+     * the same atomic stands for a global constant's type as for a class-like's, and reading it as an object
+     * would be reading a kind it does not carry. The direction is under-reporting — a rule gated on this
+     * declines where PHPStan proceeds — which is the direction this repository takes when one must be chosen.
+     */
+    public static function typeIsObject(?Type $type): bool
+    {
+        if (! $type instanceof Type || $type->atomicTypes === []) {
+            return false;
+        }
+
+        foreach ($type->atomicTypes as $atomic) {
+            if (! $atomic instanceof AnyObjectType
+                && ! $atomic instanceof NamedObjectType
+                && ! $atomic instanceof EnumType
+                && ! $atomic instanceof ObjectShapeType
+                && ! $atomic instanceof ObjectWithMethodType
+                && ! $atomic instanceof ObjectWithPropertyType
+            ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * `$container->isSuperTypeOf($input)->yes()`, which the SDK spells the other way round.
+     *
+     * `TypeComparator::isContainedBy($input, $container)` is the same question with the arguments flipped, and
+     * it is reachable from a node hook because `NodeAnalysisContext extends LifecycleContext`, which declares
+     * `public readonly TypeComparator $types`. Probed rather than read: `int` inside `int|string` is true,
+     * `int|string` inside `int` is false, and `Plain` inside `object` is true.
+     *
+     * **Only the `yes` half is expressible.** PHPStan's `isSuperTypeOf()` is a trinary and this is a bool, so
+     * `->no()` is not the negation of it — `!isContainedBy()` is *maybe or no*, and answering `no` with it
+     * would claim a proof the comparator never gave. The translator refuses the other tails rather than
+     * approximating them.
+     *
+     * Each call is an RPC to the host, memoised per distinct pair, and the SDK caps a run at
+     * `MAXIMUM_COMPARISONS = 65_536`. A rule asking this inside a loop does not cost what PHPStan's in-process
+     * comparison costs, which is worth knowing before one is written.
+     */
+    public static function typeIsSuperTypeOf(NodeAnalysisContext $context, ?Type $container, ?Type $input): bool
+    {
+        if (! $container instanceof Type || ! $input instanceof Type) {
+            return false;
+        }
+
+        return $context->types->isContainedBy($input, $container);
     }
 
     /**
@@ -242,7 +465,13 @@ final class Types
     {
         $className = self::namedObjectName($type, false);
 
-        return $className !== null && $context->codebase->methodExists($className, $method);
+        // Through `@mixin` as well, because `$type->hasMethod()` is answered by the same core extension that
+        // answers `ClassReflection::hasMethod()`. Controlled on `ForbiddenArrayMethodCallRule`, which reports
+        // `[$object, 'method']` when the method *exists*: with the name coming from a mixin on the class,
+        // PHPStan reported and the port was silent, and `[$object, 'ownMethod']` and
+        // `[$object, 'noSuchMethod']` agreed either way. A false negative, and the third of this shape —
+        // {@see Mixins} carries the other two.
+        return $className !== null && Mixins::declaringMethod($context->codebase, $className, $method) instanceof FunctionLikeMetadata;
     }
 
     /**

@@ -36,7 +36,7 @@ final class CompoundClassGuardRule implements Plugin, NodeAnalysisHook
 
     public function getTargets(): array
     {
-        return [NodeKind::Class_, NodeKind::Enum, NodeKind::Interface];
+        return [NodeKind::Class_, NodeKind::Enum, NodeKind::Interface, NodeKind::AnonymousClass];
     }
 
     public function getRequirements(): array

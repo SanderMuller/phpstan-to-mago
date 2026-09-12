@@ -55,7 +55,7 @@ final readonly class PackageCoverage
                 verdict: $verdict,
                 reason: $reason,
                 registered: isset($registered[$name]),
-                // No `needs:` under an unportable one. That list is what a rule's body would take, and this
+                // No `needs-at-least:` under an unportable one. That list is what a rule's body would take, and this
                 // rule's body is not the obstacle — collecting it would invite exactly the sizing the verdict
                 // exists to prevent.
                 needs: $verdict === RuleOutcome::REFUSE ? self::needs($file) : [],
@@ -149,9 +149,9 @@ final readonly class PackageCoverage
      * navigation where it needs that *and* the renderer, and a whole corpus looked absent because the walk
      * that would have read it stopped for an unrelated reason.
      *
-     * A lower bound, and the shape of the collection is why: a statement that refuses is stepped over and
-     * the next one translated, so obstacles in *different* statements all appear, and a second obstacle
-     * inside one statement does not.
+     * A lower bound, and the shape of the collection is why: a statement that refuses is stepped over, the
+     * statements it encloses are read in its place, and the next one is translated. So obstacles in
+     * different statements all appear, and a second obstacle inside one *expression* does not.
      *
      * @return list<string>
      */
@@ -165,10 +165,13 @@ final readonly class PackageCoverage
         try {
             $transpiler = new Transpiler($file);
 
+            $terminal = null;
+
             try {
                 $transpiler->transpile();
-            } catch (Refusal) {
-                // The verdict is the caller's; this pass is only here for the list it collected on the way.
+            } catch (Refusal $refusal) {
+                // The verdict is the caller's. The message is kept for the one case below.
+                $terminal = $refusal->getMessage();
             }
 
             $needs = array_map(
@@ -176,13 +179,40 @@ final readonly class PackageCoverage
                 $transpiler->needs(),
             );
 
-            // `unknown local $x` is not a capability the rule needs; it is what stepping over the statement
-            // that bound `$x` produces. Keeping those would make every skipped assignment cost two lines and
-            // read as two gaps.
+            // Two artefacts of stepping over a statement, rather than capabilities a rule needs.
+            //
+            // `unknown local $x` is what a skipped assignment produces: the name is in the source and not in
+            // the translated state. Matched anywhere in the line rather than at its start, because the
+            // descent into a refusing statement reaches the same name one label deeper — `assignment value
+            // outside the vocabulary: unknown local $stmt` is the identical gap with a prefix on it.
+            //
+            // `outside a loop` is the same thing for a `continue`. A `continue` outside a loop is a fatal
+            // error in PHP, so no rule holds one; the message means `inLoop` is false, which after a
+            // `foreach` refuses at its iterable it always is. Measured: the phrase appears nowhere in the
+            // census this descent was added to, and 28 times in the one it produced.
             $needs = array_filter(
                 $needs,
-                static fn (string $need): bool => ! str_starts_with($need, 'unknown local $'),
+                static fn (string $need): bool => ! str_contains($need, 'unknown local $')
+                    && ! str_contains($need, 'outside a loop'),
             );
+
+            // The refusal that *ended* the pass, and only where the pass stepped over nothing.
+            //
+            // A third artefact of stepping over a statement, and the reason this is conditional rather than
+            // unconditional. Whatever finally stops the pass is discarded, so a rule whose body translates
+            // and then fails at the end reported an empty list — and an empty list reads as "nothing else
+            // needed" rather than as "this cannot be seen from here". `could not find the reported message`
+            // is that case, and across the corpus it was the largest first-blocker family after the two
+            // vocabulary ones while appearing as a need exactly zero times.
+            //
+            // Recording it unconditionally is wrong, and measured to be: the message is built by a statement,
+            // so any rule with a stepped-over statement reaches the end without one and terminates on the
+            // same refusal. That added the label to most refused rules in the corpus and would have inflated
+            // the family it exists to size. Where nothing was stepped over, nothing can have removed the
+            // message, and the refusal is the rule's own.
+            if ($needs === [] && $terminal !== null) {
+                $needs = [trim((string) preg_replace('/ \(line \d+\)/', '', $terminal))];
+            }
 
             // First sentence only. A needs entry is a *label* for sizing, and one refusal's full text runs to
             // a paragraph — repeated across the 27 rules that share it, a report would be mostly that

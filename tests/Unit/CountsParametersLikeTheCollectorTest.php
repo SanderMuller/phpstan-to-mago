@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 use Sandermuller\PhpstanToMago\Tests\Support\ControlMethodsExtension;
@@ -24,6 +25,7 @@ use Sandermuller\PhpstanToMago\Vocabulary;
  *
  * @see TypeCoverage::timesCounted()
  */
+#[Group('engine')]
 final class CountsParametersLikeTheCollectorTest extends TestCase
 {
     private const string CONTROLS = __DIR__ . '/../Fixtures/aggregate/controls';
@@ -79,6 +81,24 @@ final class CountsParametersLikeTheCollectorTest extends TestCase
         // The same path counting, shared through `TraitUsers`: a class reaching one trait through two has
         // that trait's body analysed twice.
         yield 'a class reaching one trait through two' => ['trait-diamond', 2];
+        // A `@mixin` on the *parent* puts the mixin target's methods on it, and PHPStan's own
+        // `MixinMethodsClassReflectionExtension` answers `hasMethod()` for them — so the guard skips the
+        // subclass's declaration. The mixin target's own two parameters count, and `plain()`'s one.
+        yield 'a method the parent mixes in' => ['mixin-on-ancestor', 3];
+        // The same control with the `@mixin` line taken out, which is what makes the row above a cause
+        // rather than a coincidence: all five parameters count.
+        yield 'the same control without the mixin' => ['mixin-absent', 5];
+        // `hasMethod()` answers for a `@method` line too, and the mixin target then has no declaration of
+        // its own to count. Only `plain()`.
+        yield 'a method the parent mixes in by docblock' => ['documented-mixin', 1];
+        // `hasMethod()` recurses through the mixin's own mixin, which is the shape `laravel/framework`
+        // writes: `Relation` is `@mixin Builder` and `Builder` is `@mixin Query\Builder`. Following one
+        // link and stopping counted 5.
+        yield 'a two-link mixin chain' => ['mixin-chain', 3];
+        // And a mixin naming a class nothing resolves locks nothing: the same five as the row above, with
+        // the `@mixin` line present. This was the first hypothesis for Laravel's `@mixin \Predis\Client`,
+        // where predis is not installed, and it is here because the control refuted it.
+        yield 'a mixin nothing resolves' => ['mixin-unresolvable', 5];
     }
 
     #[DataProvider('controls')]
@@ -119,23 +139,55 @@ final class CountsParametersLikeTheCollectorTest extends TestCase
      *
      * `ACCEPTED_DIVERGENCE` said the port over-counts and *never* under-counts. That was true of the two Laravel
      * consumers it was measured on and false in general: `nikic/php-parser` — a tree in this repository's own
-     * vendor directory — comes out at -7, and the whole -7 is one file.
+     * vendor directory — came out at -7, and the whole -7 was one file.
      *
      * `Internal/TokenPolyfill.php` declares `TokenPolyfill` twice, the first inside
      * `if (\PHP_VERSION_ID >= 80000)` which then returns. PHPStan counts what the file *writes*, so the second
-     * body contributes; the port reads metadata keyed by class name, gets one entry for the name, and counts
-     * neither body. Exactly the seven parameters of `__construct` (4), `is` (1) and `tokenize` (2).
+     * body contributes. Exactly the seven parameters of `__construct` (4), `is` (1) and `tokenize` (2).
      *
-     * Asserted as a *zero* on the port's side rather than as the first declaration's count, because "counts one
-     * of the two" and "counts neither" are different defects and the fix for one is not the fix for the other.
+     * **The cause this test used to state was wrong, and the correction is the fix.** It said the port reads
+     * metadata keyed by class name and counts neither body. Probed: the CST holds both declarations and both
+     * bodies, and the walk reaches them. What lost them was the LSP guard — `ancestorsOf()` asked the codebase
+     * for the *name*, and the metadata for a twice-declared name keeps one entry, here the first, whose parent
+     * is `PhpToken`. Every method the second body declares that `PhpToken` also declares then read as locked
+     * by an ancestor and was skipped. Reading the clauses off the declaration instead answers about the body
+     * being counted, and the two engines agree.
      *
      * @see Vocabulary::ACCEPTED_DIVERGENCE
      */
-    public function test_a_class_declared_twice_in_one_file_is_counted_by_neither_body(): void
+    public function test_a_class_declared_twice_in_one_file_is_counted_from_the_body_being_read(): void
     {
         [$original, $port] = (new CoverageControl(self::CONTROLS . '/conditionally-redeclared'))->totals();
 
         $this->assertSame(3, $original, 'The real rule no longer counts the redeclared class body.');
-        $this->assertSame(0, $port, 'The port now counts something for a class declared twice, which changes what the bound has to say.');
+        $this->assertSame($original, $port, 'The port no longer counts the second declaration, so the -7 on nikic/php-parser is back.');
+    }
+
+    /**
+     * The one over-count a mixin cannot close, and the reason the bound is not zero on a vendor tree.
+     *
+     * Following `@mixin` through the ancestry took `laravel/framework`'s parameter over-count from +1310 to
+     * +1: `Illuminate/Database` +1190, `Redis` +55 and `Pagination` +16 all went to zero, and the 35 other
+     * directories were already there. What is left is one declaration.
+     *
+     * `Illuminate\Redis\Connections\Connection` is `@mixin \Redis`. PHPStan answers `hasMethod()` from the
+     * loaded extension, and mago carries `\Redis` as well — controlled name by name, it knows `scan`,
+     * `sscan` and `zscan` and not `hscan`. So `PhpRedisConnection::hscan()` is skipped by the original and
+     * counted here, and its three parameters are the whole residue.
+     *
+     * Skipped rather than adapted where ext-redis is absent: without it PHPStan resolves nothing for `\Redis`
+     * and skips nothing, and this control would then be measuring the mixin-unresolvable row instead. That
+     * makes the corpus figure machine-specific in a way worth stating rather than hiding.
+     */
+    public function test_a_mixin_target_missing_a_method_from_its_metadata_is_the_remaining_divergence(): void
+    {
+        if (! extension_loaded('redis')) {
+            self::markTestSkipped('Without ext-redis, PHPStan resolves no `\Redis` and the guard has nothing to fire on.');
+        }
+
+        [$original, $port] = (new CoverageControl(self::CONTROLS . '/mixin-extension-stub'))->totals();
+
+        $this->assertSame(1, $original, 'The real rule no longer skips the method ext-redis declares.');
+        $this->assertSame(4, $port, 'Mago now carries `hscan`, so the last parameter over-count on laravel/framework is closed.');
     }
 }

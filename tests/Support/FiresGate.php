@@ -132,19 +132,6 @@ final readonly class FiresGate
         NEON;
 
     /**
-     * Configured values a rule needs before it can report at all, per rule.
-     *
-     * A package may ship a parameter empty and expect each project to fill it: `traitRequiresInterface` has no
-     * default pairs, so a plugin carrying the package default reports nothing. Both tools would then be silent,
-     * and two tools agreeing on nothing is the one result this gate must never accept.
-     *
-     * So the values are supplied here, to *both* sides, and the pair proves the rule fires when configured. The
-     * emitted plugin still carries the package default — a consumer overrides it in its own worker, which is
-     * what the constructor parameters are for.
-     *
-     * @var array<string, array<string, mixed>>
-     */
-    /**
      * Rules whose configuration comes from a project rather than from the package that ships them.
      *
      * The package registers these nowhere, so there is no neon to read their wiring from and the transpiler
@@ -157,6 +144,19 @@ final readonly class FiresGate
         'ConfiguredByTheProjectRule' => __DIR__ . '/../Fixtures/RegisteredProject',
     ];
 
+    /**
+     * Configured values a rule needs before it can report at all, per rule.
+     *
+     * A package may ship a parameter empty and expect each project to fill it: `traitRequiresInterface` has no
+     * default pairs, so a plugin carrying the package default reports nothing. Both tools would then be silent,
+     * and two tools agreeing on nothing is the one result this gate must never accept.
+     *
+     * So the values are supplied here, to *both* sides, and the pair proves the rule fires when configured. The
+     * emitted plugin still carries the package default — a consumer overrides it in its own worker, which is
+     * what the constructor parameters are for.
+     *
+     * @var array<string, array<string, mixed>>
+     */
     private const array CONFIGURED = [
         // PHPStan's side only, for a rule in {@see FROM_PROJECT}. The plugin is deliberately given nothing:
         // its constructor defaults are what the project's container supplied, and whether those are right is
@@ -177,17 +177,6 @@ final readonly class FiresGate
     ];
 
     /**
-     * PHPStan service arguments a rule needs, per rule, for the PHPStan side only.
-     *
-     * Separate from {@see CONFIGURED} because a service is not a configured value: it goes to PHPStan as a
-     * container reference and has no counterpart on the plugin, whose whole point is that it asks Mago the
-     * same question without the service. `CombinedMethodCallRule` takes `PHPStan\Parser\Parser` so it can
-     * parse the file another class is declared in; without it PHPStan cannot construct the rule at all, and
-     * the pair would look like a rule that reports nothing.
-     *
-     * @var array<string, array<string, string>>
-     */
-    /**
      * Neon *parameters* a rule needs, per rule, for the PHPStan side.
      *
      * Distinct from {@see CONFIGURED}, which passes constructor arguments. A rule taking a package value object
@@ -206,9 +195,35 @@ final readonly class FiresGate
         'BooleanInIfConditionRule' => ['checkThisOnly' => false],
         'BooleanInElseIfConditionRule' => ['checkThisOnly' => false],
         'BooleanInBooleanNotRule' => ['checkThisOnly' => false],
+        'BooleanInBooleanAndRule' => ['checkThisOnly' => false],
+        'BooleanInBooleanOrRule' => ['checkThisOnly' => false],
         'BooleanInWhileConditionRule' => ['checkThisOnly' => false],
         'BooleanInDoWhileConditionRule' => ['checkThisOnly' => false],
         'BooleanInTernaryOperatorRule' => ['checkThisOnly' => false],
+        // The same flag for the arithmetic family, and for the same reason: `checkThisOnly` silences every
+        // subject that is not `$this` at this gate's level, so both sides would agree on zero.
+        // The six binary arithmetic rules follow the same flag as their unary siblings, and for the same
+        // reason: at the level-0 default `checkThisOnly` silences every subject that is not `$this`, so both
+        // tools would agree on zero. Measured — with the flag off and nothing else changed, `bool / 2` and
+        // `bool /= 2` both report, so one flag reaches both arms of the rule's operator dispatch.
+        'OperandsInArithmeticAdditionRule' => ['checkThisOnly' => false],
+        'OperandsInArithmeticDivisionRule' => ['checkThisOnly' => false],
+        'OperandsInArithmeticSubtractionRule' => ['checkThisOnly' => false],
+        'OperandsInArithmeticMultiplicationRule' => ['checkThisOnly' => false],
+        'OperandsInArithmeticModuloRule' => ['checkThisOnly' => false],
+        'OperandsInArithmeticExponentiationRule' => ['checkThisOnly' => false],
+        'OperandInArithmeticUnaryPlusRule' => ['checkThisOnly' => false],
+        'OperandInArithmeticUnaryMinusRule' => ['checkThisOnly' => false],
+        'OperandInArithmeticPreIncrementRule' => ['checkThisOnly' => false],
+        'OperandInArithmeticPreDecrementRule' => ['checkThisOnly' => false],
+        'OperandInArithmeticPostIncrementRule' => ['checkThisOnly' => false],
+        'OperandInArithmeticPostDecrementRule' => ['checkThisOnly' => false],
+        // And once more for the dynamic-call rule: at level 0 `checkThisOnly` short-circuits every receiver
+        // that is not `$this` to `ErrorType`, so PHPStan reports nothing on a fixture calling a static
+        // method through a parameter — measured, the same fixture reports twice at level 9.
+        'DynamicCallOnStaticMethodsCallableRule' => ['checkThisOnly' => false],
+        // The same flag, for the same reason, for the plain-call sibling.
+        'DynamicCallOnStaticMethodsRule' => ['checkThisOnly' => false],
         'ClassLikeCognitiveComplexityRule' => [
             'cognitive_complexity' => ['class' => 3],
         ],
@@ -236,7 +251,28 @@ final readonly class FiresGate
         'BooleanInDoWhileConditionRule' => ['strictRules' => ['booleansInLoopConditions' => true]],
     ];
 
+    /**
+     * PHPStan service arguments a rule needs, per rule, for the PHPStan side only.
+     *
+     * Separate from {@see CONFIGURED} because a service is not a configured value: it goes to PHPStan as a
+     * container reference and has no counterpart on the plugin, whose whole point is that it asks Mago the
+     * same question without the service. `CombinedMethodCallRule` takes `PHPStan\Parser\Parser` so it can
+     * parse the file another class is declared in; without it PHPStan cannot construct the rule at all, and
+     * the pair would look like a rule that reports nothing.
+     *
+     * @var array<string, array<string, string>>
+     */
     private const array SERVICES = [
+        // `CombinedStaticCallRule` takes `ReflectionProvider` so it can resolve the class a static call
+        // names and ask whether that class descends from Laravel's facade base. Without it PHPStan cannot
+        // construct the rule at all, and the pair would read as a rule that reports nothing.
+        // The standalone form of the same check, wired the same way and for the same reason.
+        'StaticChainedNoDebugInNamespaceRule' => [
+            'reflectionProvider' => '@reflectionProvider',
+        ],
+        'CombinedStaticCallRule' => [
+            'reflectionProvider' => '@reflectionProvider',
+        ],
         'CombinedMethodCallRule' => [
             'parser' => '@defaultAnalysisParser',
         ],

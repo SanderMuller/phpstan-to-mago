@@ -67,7 +67,7 @@ jobs:
         id: tests
         env:
           WATCH_CORPUS_DRIFT: '1'
-        run: vendor/bin/pest --ci
+        run: composer test-full
 
       # The census writes what it actually saw beside itself when it disagrees, which is the readable form of
       # the drift. Both the diff and the file are carried out of the run, so the issue says what moved rather

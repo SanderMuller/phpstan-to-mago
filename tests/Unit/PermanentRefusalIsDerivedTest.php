@@ -56,20 +56,14 @@ final class PermanentRefusalIsDerivedTest extends TestCase
     {
         $collector = $this->package(reportingConsumer: false);
 
-        self::assertTrue(
-            AggregateRule::onlyFeedsAWriter($collector),
-            'A collector consumed only by a writer is no longer read as feeding one.',
-        );
+        $this->assertTrue(AggregateRule::onlyFeedsAWriter($collector), 'A collector consumed only by a writer is no longer read as feeding one.');
     }
 
     public function test_adding_a_consumer_that_reports_takes_the_mark_away(): void
     {
         $collector = $this->package(reportingConsumer: true);
 
-        self::assertFalse(
-            AggregateRule::onlyFeedsAWriter($collector),
-            'A collector gained a consumer that builds a rule error, and the permanent mark did not lift.',
-        );
+        $this->assertFalse(AggregateRule::onlyFeedsAWriter($collector), 'A collector gained a consumer that builds a rule error, and the permanent mark did not lift.');
     }
 
     /** A minimal package tree: one collector, one writer consuming it, optionally one that reports. */

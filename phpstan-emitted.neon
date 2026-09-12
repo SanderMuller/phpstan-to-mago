@@ -12,7 +12,12 @@
 # Its own config rather than a path added to the main one, because the main one carries this project's house
 # style and generated code should not answer for it. Only the checks that say the emission is *wrong* are on.
 parameters:
-    tmpDir: .cache/phpstan-emitted
+    # Nested under the main cache rather than beside it. `lean-package-validator` builds the expected
+    # `.gitattributes` from the directories that exist one level down from an ignored root, so a sibling
+    # `.cache/phpstan-emitted/` becomes an entry the boost-managed block does not carry — and running this
+    # very script turned `composer qa-check` red. One level deeper is invisible to that enumeration, and the
+    # cache is still this config's own.
+    tmpDir: .cache/phpstan/emitted
 
     paths:
         - tests/Fixtures/expected

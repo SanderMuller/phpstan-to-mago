@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sandermuller\PhpstanToMago\Tests\Support\PhpstanReport;
@@ -27,6 +28,7 @@ use Sandermuller\PhpstanToMago\Vocabulary;
  * not `strict_types`, and one with `strict_types=0`. The last is what makes the `=1` load-bearing —
  * matching `strict_types` alone takes the count from 1 typed of 4 to 2, and this comparison fails on it.
  */
+#[Group('engine')]
 final class AggregatesDeclareCoverageTest extends TestCase
 {
     private const string FIXTURE = __DIR__ . '/../Fixtures/aggregate/project-declares';
@@ -135,8 +137,8 @@ final class AggregatesDeclareCoverageTest extends TestCase
         // file rather than a position in one, and mago has no way to report a finding without a span, so the
         // port anchors on the file's first node. That is a rendering difference and not a disagreement.
         $this->assertSame(
-            array_map(static fn (array $lines): array => array_values($lines), $original),
-            array_map(static fn (array $lines): array => array_values($lines), $port),
+            array_map(array_values(...), $original),
+            array_map(array_values(...), $port),
         );
     }
 

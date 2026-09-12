@@ -1,92 +1,25 @@
 parameters:
 	ignoreErrors:
 		-
-			rawMessage: 'Only booleans are allowed in &&, bool|string given on the left side.'
-			identifier: booleanAnd.leftNotBoolean
-			count: 1
-			path: src/Emitter.php
-
-		-
-			rawMessage: 'Parameter #3 $subject of function str_replace expects array<string>|string, bool|string given.'
-			identifier: argument.type
-			count: 1
-			path: src/Emitter.php
-
-		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\ExampleReader::forRule()" is 36, keep it under 20'
-			identifier: complexity.functionLike
-			count: 1
-			path: src/ExampleReader.php
-
-		-
-			rawMessage: 'Offset ''file'' might not exist on array{file: string, header: list<string>, lines: list<string>, open: int}|array{lines: non-empty-list<string>}.'
-			identifier: offsetAccess.notFound
-			count: 1
-			path: src/ExampleReader.php
-
-		-
-			rawMessage: 'Parameter #2 $array of function implode expects array, mixed given.'
-			identifier: argument.type
-			count: 2
-			path: src/ExampleReader.php
-
-		-
-			rawMessage: 'Parameter #2 $times of function str_repeat expects int, mixed given.'
-			identifier: argument.type
-			count: 1
-			path: src/ExampleReader.php
-
-		-
-			rawMessage: 'Part $rule[''module''] (mixed) of encapsed string cannot be cast to string.'
-			identifier: encapsedStringPart.nonString
-			count: 4
-			path: src/ModuleEmitter.php
-
-		-
-			rawMessage: 'Part $rule[''name''] (mixed) of encapsed string cannot be cast to string.'
-			identifier: encapsedStringPart.nonString
-			count: 4
-			path: src/ModuleEmitter.php
-
-		-
-			rawMessage: Possibly invalid array key type mixed.
-			identifier: offsetAccess.invalidOffset
-			count: 1
-			path: src/ModuleEmitter.php
-
-		-
-			rawMessage: Cannot access property $text on Sandermuller\PhpstanToMago\Runtime\Part|null.
-			identifier: property.nonObject
-			count: 1
-			path: src/Runtime/Support.php
-
-
-		-
-			rawMessage: Cannot cast PhpParser\Node\Expr|PhpParser\Node\Identifier to string.
-			identifier: cast.string
-			count: 16
-			path: src/Translator.php
-
-		-
-			rawMessage: 'Class cognitive complexity is 2205, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 2829, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 74, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::bindLocal()" is 95, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::equality()" is 59, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::equality()" is 57, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::functionPredicate()" is 44, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::functionPredicate()" is 56, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
@@ -98,97 +31,50 @@ parameters:
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::instanceofPredicate()" is 102, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::instanceofPredicate()" is 131, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::methodPredicate()" is 108, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::methodPredicate()" is 122, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::trinaryTailPredicate()" is 35, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::trinaryTailPredicate()" is 33, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveDescriptor()" is 89, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveDescriptor()" is 125, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveReflection()" is 357, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::resolveReflection()" is 464, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::translateIf()" is 29, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::predicateFromStatements()" is 37, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::predicateFrom()" is 34, keep it under 20'
+			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::translateStatement()" is 78, keep it under 20'
 			identifier: complexity.functionLike
 			count: 1
 			path: src/Translator.php
 
 		-
-			rawMessage: 'Cognitive complexity for "Sandermuller\PhpstanToMago\Translator::translateStatement()" is 76, keep it under 20'
-			identifier: complexity.functionLike
-			count: 1
-			path: src/Translator.php
-
-		-
-			rawMessage: 'Method Sandermuller\PhpstanToMago\Translator::inlineMethod() has parameter $uses with no value type specified in iterable type array.'
-			identifier: missingType.iterableValue
-			count: 1
-			path: src/Translator.php
-
-		-
-			rawMessage: 'Offset 2 on array{''&{bind}.method'', ''name-selector'', ''Support::selector(…''}|array{''{bind}.object'', ''expr'', ''Support:…''} in isset() always exists and is not nullable.'
-			identifier: isset.offset
-			count: 1
-			path: src/Translator.php
-
-		-
-			rawMessage: 'Parameter #1 $name of static method Sandermuller\PhpstanToMago\Emitter::snake() expects string, mixed given.'
-			identifier: argument.type
-			count: 1
-			path: src/Translator.php
-
-		-
-			rawMessage: 'Parameter #3 $args of method Sandermuller\PhpstanToMago\Translator::inlineMethod() expects list<PhpParser\Node\Arg>, array<PhpParser\Node\Arg> given.'
-			identifier: argument.type
-			count: 2
-			path: src/Translator.php
-
-		-
-			rawMessage: Possibly invalid array key type PhpParser\Node\Expr|string.
-			identifier: offsetAccess.invalidOffset
-			count: 4
-			path: src/Translator.php
-
-		-
-			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$lines (list<Sandermuller\PhpstanToMago\Stm>) does not accept non-empty-list<Sandermuller\PhpstanToMago\Stm|(literal-string&non-falsy-string)>.'
-			identifier: assign.propertyType
-			count: 1
-			path: src/Translator.php
-
-		-
-			rawMessage: 'Property Sandermuller\PhpstanToMago\TranslationContext::$useMap (array<string, string>) does not accept array.'
-			identifier: assign.propertyType
-			count: 1
-			path: src/Translator.php
-
-		-
-			rawMessage: 'Class cognitive complexity is 179, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 211, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Transpiler.php
+

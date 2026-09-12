@@ -52,6 +52,11 @@ final class RefusesAWriterTest extends TestCase
     {
         // The check has to be about what the consumer does, not about being a collector. type-coverage's
         // collectors feed rules that report, so they must not be caught by it.
+        //
+        // This asserted on `reports nothing` as a proxy and the proxy stopped holding: the subsumption
+        // refusal these collectors now carry ends "and a collector reports nothing", which is true and is a
+        // different reason. Pinned on the writer-specific phrase instead, and on the reason that *should*
+        // be there, so the test says what it means rather than sharing a substring with its opposite.
         $message = '';
 
         try {
@@ -62,8 +67,9 @@ final class RefusesAWriterTest extends TestCase
             $message = $refusal->getMessage();
         }
 
-        // Either it emits or it refuses for something else. What it must not say is that it feeds a writer.
-        $this->assertStringNotContainsString('reports nothing', $message);
+        // What it must not say is that it feeds a writer.
+        $this->assertStringNotContainsString('reports nothing: it writes a file', $message);
         $this->assertStringNotContainsString('every rule that consumes this collector', $message);
+        $this->assertStringContainsString('this collector has nothing to emit as', $message);
     }
 }

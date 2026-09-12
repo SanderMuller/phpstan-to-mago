@@ -15,7 +15,11 @@ final class GoodMagicAccessorIsExempt
 
     public function __get(string $name): mixed
     {
-        return $this->data[$name];
+        $read = function () use ($name): mixed {
+            return $this->$name;
+        };
+
+        return $read();
     }
 
     public function __set(string $name, mixed $value): void

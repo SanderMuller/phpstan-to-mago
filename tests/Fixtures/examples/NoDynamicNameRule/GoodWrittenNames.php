@@ -21,6 +21,11 @@ function helper(): int
  */
 final class GoodWrittenNames
 {
+    private function nullableClosure(): ?\Closure
+    {
+        return static fn (): int => 1;
+    }
+
     public function everyKind(Holder $subject, callable $callable, \Closure $closure): mixed
     {
         $constant = Holder::FIXED;
@@ -43,6 +48,31 @@ final class GoodWrittenNames
         $viaCallable = $callable(1);
         $viaClosure = $closure(1);
 
-        return [$constant, $staticProperty, $property, $method, $staticMethod, $name, $bare, $qualified, $namespaced, $viaCallable, $viaClosure];
+        // A nullable closure called with no null guard. The rule runs `TypeCombinator::removeNull()` over the
+        // type before asking `isCallable()->yes()`, so `Closure|null` is exempt exactly as `Closure` is —
+        // seven Laravel sites are this shape, `Builder::findOr()` among them.
+        $viaNullable = $this->nullableClosure()();
+
+        // A *literal string* naming a function. PHPStan's type here is a constant string, and
+        // `ConstantStringType::isCallable()` says yes for a name the reflection provider has — so the rule
+        // declines and the port reported, on every dispatch table there is. Laravel's `Pluralizer` loops
+        // four of these and calls each.
+        $one = 'strtolower';
+        $viaLiteral = $one('A');
+
+        // The union of them, which is what a `foreach` over a literal list produces: four atomics, each its
+        // own constant string, and the exemption has to answer for every one of them.
+        $viaUnion = '';
+        foreach (['strtolower', 'strtoupper'] as $function) {
+            $viaUnion = $function('A');
+        }
+
+        // `Class::method` as a string, where the method is *static*. From PHP 8.0 that is the only form of it
+        // PHP can call, which is what `supportsCallableInstanceMethods()` decides in the original — so the
+        // instance-method spelling belongs in the bad example rather than here.
+        $two = 'Examples\\Dynamic\\Holder::make';
+        $viaStaticMethodString = $two();
+
+        return [$constant, $staticProperty, $property, $method, $staticMethod, $name, $bare, $qualified, $namespaced, $viaCallable, $viaClosure, $viaLiteral, $viaUnion, $viaStaticMethodString];
     }
 }

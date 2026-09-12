@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Runtime;
 
-use Mago\Sdk\Analyzer\Metadata\FunctionLikeMetadata;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
-use Mago\Sdk\Analyzer\Type\Visibility;
 use Mago\Sdk\Syntax\Node;
 use Mago\Sdk\Syntax\NodeKind;
 
@@ -109,6 +107,35 @@ final class Members
         $node = Tree::node($subject);
 
         return $node instanceof Node && $node->kind === NodeKind::Function;
+    }
+
+    /**
+     * Whether the node is a constant declaration inside a class-like.
+     *
+     * The counterpart to {@see isPropertyDeclaration()} and {@see isMethodDeclaration()}, for a rule walking
+     * a class-like's members and branching on the kind of each. `ClassLikeConstant` is the declaration —
+     * `protected const string A = 'a';` — and it holds one `ClassLikeConstantItem` per name it declares,
+     * which is the level php-parser calls `$classConst->consts`.
+     */
+    public static function isClassConstantDeclaration(Part|Node|null $subject): bool
+    {
+        $node = Tree::node($subject);
+
+        return $node instanceof Node && $node->kind === NodeKind::ClassLikeConstant;
+    }
+
+    /**
+     * Whether the node is a property declaration inside a class-like.
+     *
+     * `Property` is the outer node a class-like member holds, and the plain, hooked and promoted variants sit
+     * below it. Answering from the outer kind is what matches php-parser's `instanceof Property`, which is
+     * true for all three.
+     */
+    public static function isPropertyDeclaration(Part|Node|null $subject): bool
+    {
+        $node = Tree::node($subject);
+
+        return $node instanceof Node && $node->kind === NodeKind::Property;
     }
 
     /**
@@ -226,6 +253,18 @@ final class Members
             return [];
         }
 
+        // Through a `MethodBody`, which wraps a `Block` rather than holding statements itself. A closure\'s
+        // body *is* the `Block`, so this only bites on a method  — and it bit silently: the statement list
+        // came back empty, so a rule walking a method body found nothing and reported every subject as
+        // though the body were bare. Measured with a probe printing the body kind beside the count.
+        foreach ($context->source->getChildren($node) as $child) {
+            if ($child->kind === NodeKind::Block) {
+                $node = $child;
+
+                break;
+            }
+        }
+
         $statements = [];
         foreach ($context->source->getChildren($node) as $child) {
             if ($child->kind === NodeKind::Statement) {
@@ -241,6 +280,14 @@ final class Members
         $node = Tree::node($subject);
         if (! $node instanceof Node) {
             return null;
+        }
+
+        // A body is its own body. `ITERABLES['subtree']` renders as `statementsOf(bodyOf($node))` and
+        // `statementsOf()` calls this itself, so the composition asked for a body *inside* a `Block` and
+        // yielded nothing  a `foreach` over a closure's statements that ran, found no statements and reported
+        // nothing. No emitted rule had reached that composition before, which is why it stayed silent.
+        if (in_array($node->kind->value, self::BODY_KINDS, true)) {
+            return Tree::part($context, $node);
         }
 
         foreach ($context->source->getChildren($node) as $child) {
@@ -318,29 +365,6 @@ final class Members
      * `ABSTRACT` and `FINAL` and no visibility at all, so a flags check would answer every method the same.
      * Null when the method is not found, so each predicate below decides for itself what absence means.
      */
-    private static function reflectedMethodVisibility(NodeAnalysisContext $context, ?string $class, ?string $method): ?Visibility
-    {
-        if ($class === null || $method === null) {
-            return null;
-        }
-
-        $declaring = $context->codebase->getDeclaringMethod($class, $method);
-
-        return $declaring instanceof FunctionLikeMetadata ? $declaring->visibility : null;
-    }
-
-    /** Whether the codebase's method is public. A method that is not found is not public. */
-    public static function reflectedMethodIsPublic(NodeAnalysisContext $context, ?string $class, ?string $method): bool
-    {
-        return self::reflectedMethodVisibility($context, $class, $method) === Visibility::Public;
-    }
-
-    /** Whether the codebase's method is private. */
-    public static function reflectedMethodIsPrivate(NodeAnalysisContext $context, ?string $class, ?string $method): bool
-    {
-        return self::reflectedMethodVisibility($context, $class, $method) === Visibility::Private;
-    }
-
     /**
      * The items of a property declaration: `protected $a = 1, $b = 2;` has two.
      *

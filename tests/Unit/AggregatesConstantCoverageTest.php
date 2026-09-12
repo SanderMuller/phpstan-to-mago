@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Sandermuller\PhpstanToMago\Tests\Support\PhpstanReport;
@@ -29,6 +30,7 @@ use Sandermuller\PhpstanToMago\Vocabulary;
  * over three lines with a brace inside its first default, and one that redeclares a parent's constant and is
  * therefore counted without ever being reported.
  */
+#[Group('engine')]
 final class AggregatesConstantCoverageTest extends TestCase
 {
     private const string FIXTURE = __DIR__ . '/../Fixtures/aggregate/project-constants';

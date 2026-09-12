@@ -103,18 +103,47 @@ final class WorkerScaffold
      *
      * Written to its own file rather than into `mago.toml`. See the class docblock: this tool does not edit
      * a config it does not own.
+     *
+     * @param list<string> $includes the package directories these rules need indexed
+     *
+     * It carries a note about `[source] includes` because that is where a consumer's run time goes, and this
+     * snippet is the only mago configuration this tool writes. Measured on a 270-file corpus: the engine with
+     * no plugins takes 3.92s with `includes` covering `vendor`, `src` and `tests`, and **0.17s with
+     * `includes = []`** -- about 96% of the floor is indexing that tree, before any rule runs. The transpiled
+     * rules themselves add 1.07s wall on top.
+     *
+     * The note says *narrow*, not *remove*, and the distinction is load-bearing: without the includes mago
+     * cannot walk into a vendored parent, so a rule asking about one goes silently narrow rather than
+     * failing. This repository's own test configuration names packages instead of the whole tree for exactly
+     * that reason, and records the suite going from 346s to 115s on the change.
      */
-    public static function configSnippet(string $workerPath, string $identifier): string
+    public static function configSnippet(string $workerPath, string $identifier, array $includes = []): string
     {
+        $recommended = $includes === []
+            ? ''
+            : "\n[source]\n# Derived from the class names these rules compare against, by reflecting each name's\n"
+                . "# full ancestry -- see the note above for what it does and does not cover.\nincludes = [\n"
+                . implode('', array_map(static fn (string $path): string => "    \"{$path}\",\n", $includes))
+                . "]\n";
+
         return <<<TOML
             # Paste this into your mago.toml. phpstan-to-mago does not edit that file.
             #
             # A generated plugin lives in the `Transpiled` namespace and is enabled by default, so
             # `analyzer.plugins` needs no entry. Findings report under `{$identifier}/<rule>/<phpstan-identifier>`.
+            #
+            # `[source] includes` is where a run's time goes. Mago indexes every file under it; measured on a
+            # 270-file corpus, indexing `vendor`, `src` and `tests` -- 14,805 files -- costs 3.98s, while mago
+            # analyses the 270 files in 0.12s. The block below is the same rules over 6,344 files instead, at
+            # 0.95s, and it reproduced every finding on the corpus this tool tests itself against.
+            #
+            # It is derived from what these rules name, so it does not know what *your* code inherits from. If
+            # a class of yours extends a package that is not listed, add it -- an unreachable parent makes a
+            # rule report nothing rather than fail, so a missing entry is silent.
 
             [extension-hosts.transpiled]
             command = ["php", "{$workerPath}"]
-
+            {$recommended}
             TOML;
     }
 

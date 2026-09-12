@@ -7,6 +7,7 @@ namespace Sandermuller\PhpstanToMago\Runtime;
 use LogicException;
 use Mago\Sdk\Analyzer\NodeAnalysisContext;
 use Mago\Sdk\Syntax\Node;
+use Mago\Sdk\Syntax\NodeKind;
 use Mago\Sdk\Syntax\SourceFile;
 
 /**
@@ -85,17 +86,67 @@ final class Tree
     }
 
     /**
-     * The full tree of the file being analysed, and its nodes indexed by kind and span.
+     * The expression an array element holds, with the element wrappers taken off.
      *
-     * One file, not a map of them: `getSourceFile()` is a host round-trip on first call and `getNodes()`
-     * walks the whole tree, and a node hook asks per node, so calling them per question cost 6.4s wall and
-     * 12.8s CPU on a 676-file corpus against 0.89s / 0.77s without. Memoising the current file brings that
-     * back to 0.99s / 1.05s. A single slot keeps a long-lived worker bounded; hooks arrive grouped per
-     * file, so a second file simply replaces the first.
+     * Three wrappers deep, measured with a probe plugin rather than reasoned about: an `ArrayElement` holds a
+     * `ValueArrayElement` (or a `KeyValueArrayElement`), which holds an `Expression`, which holds the
+     * expression itself. Stopping at any level above the last leaves a node whose own children are wrappers,
+     * and every predicate then answers false -- the port emitted, loaded and reported nothing through two
+     * wrong guesses at the depth. {@see Constants::constantItemValue()} descends the `Expression` for the
+     * same reason.
      *
-     * @var array{string, SourceFile, array<string, Node>}|null
+     * The *last* child at each level, so a keyed element answers with its value rather than its key.
+     *
+     * Not the identity, though several helpers make it look like one: `expressionType()` and
+     * `constantStringAt()` descend on their own, so passing either the element itself works. A predicate does
+     * not -- `binaryOperatorIs()` looks for a `BinaryOperator` among its subject's own children.
      */
-    private static ?array $tree = null;
+    public static function arrayItemValue(?Part $item): ?Part
+    {
+        $wrappers = [
+            NodeKind::ArrayElement,
+            NodeKind::ValueArrayElement,
+            NodeKind::KeyValueArrayElement,
+            NodeKind::Expression,
+        ];
+
+        while ($item instanceof Part && in_array($item->kind, $wrappers, true)) {
+            $children = $item->children();
+            if ($children === []) {
+                return $item;
+            }
+
+            $item = $children[count($children) - 1];
+        }
+
+        return $item;
+    }
+
+    /**
+     * The full tree of each recently analysed file, and its nodes indexed by kind and span.
+     *
+     * Memoised because `getSourceFile()` is a host round-trip on first call and `getNodes()` walks the whole
+     * tree, and a node hook asks per node: calling them per question cost 6.4s wall and 12.8s CPU on a
+     * 676-file corpus against 0.89s / 0.77s without, and memoising brought that back to 0.99s / 1.05s.
+     *
+     * **A map of files rather than one slot, and the single slot was chosen on a claim that measurement
+     * refutes.** It read "hooks arrive grouped per file, so a second file simply replaces the first". They
+     * do not, for every worker: instrumented over the 270-file benchmark corpus, mago pooled six workers and
+     * two of them interleaved files badly -- one rebuilt 61 of its 64 files for 585 index builds, another 26
+     * of 46 for 205. Three workers were clean at 32 builds over 32 files. Across the pool that is 918 index
+     * builds where 250 file-visits would do, each one walking every node in a file to build a string key.
+     *
+     * Bounded rather than unbounded, because the entry is a whole file's node index and a worker on a large
+     * project sees far more files than this corpus's 64. Eight is enough to absorb the interleaving measured
+     * here -- the two thrashing workers alternated between a handful of files at a time -- and small enough
+     * that the memory is a handful of trees rather than a project's worth.
+     *
+     * @var array<string, array{SourceFile, array<string, Node>}>
+     */
+    private static array $trees = [];
+
+    /** How many files' indexes one worker keeps. {@see $trees} carries why it is bounded and why eight. */
+    private const int REMEMBERED_TREES = 8;
 
     /**
      * The whole file, and this node's counterpart inside it.
@@ -114,7 +165,7 @@ final class Tree
     public static function locate(NodeAnalysisContext $context, Node $node): array
     {
         $path = $context->source->path;
-        if (self::$tree === null || self::$tree[0] !== $path) {
+        if (! isset(self::$trees[$path])) {
             $file = $context->analysis->getSourceFile();
             $index = [];
             foreach ($file->getNodes() as $candidate) {
@@ -129,10 +180,15 @@ final class Tree
                 $index[$key] = $candidate;
             }
 
-            self::$tree = [$path, $file, $index];
+            self::$trees[$path] = [$file, $index];
+
+            // Oldest out first. Insertion order is PHP's array order, so the eviction is the first key.
+            if (count(self::$trees) > self::REMEMBERED_TREES) {
+                unset(self::$trees[array_key_first(self::$trees)]);
+            }
         }
 
-        [, $file, $index] = self::$tree;
+        [$file, $index] = self::$trees[$path];
         $key = $node->kind->value . ':' . $node->span->start . ':' . $node->span->end;
         $matches = isset($index[$key]) ? [$index[$key]] : [];
 

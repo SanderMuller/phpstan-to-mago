@@ -36,7 +36,7 @@ final class EveryExpressionRule implements Plugin, NodeAnalysisHook
 
     public function getTargets(): array
     {
-        return [NodeKind::ClassConstantAccess, NodeKind::StaticPropertyAccess, NodeKind::MethodCall, NodeKind::StaticMethodCall, NodeKind::FunctionCall, NodeKind::PropertyAccess];
+        return [NodeKind::ClassConstantAccess, NodeKind::StaticPropertyAccess, NodeKind::MethodCall, NodeKind::StaticMethodCall, NodeKind::FunctionCall, NodeKind::PropertyAccess, NodeKind::Binary, NodeKind::Assignment];
     }
 
     public function getRequirements(): array

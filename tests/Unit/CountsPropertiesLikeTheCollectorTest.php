@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sandermuller\PhpstanToMago\Tests\Unit;
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 use Sandermuller\PhpstanToMago\Tests\Support\CoverageControl;
@@ -22,6 +23,7 @@ use Sandermuller\PhpstanToMago\Tests\Support\CoverageControl;
  *
  * @see TypeCoverage::properties()
  */
+#[Group('engine')]
 final class CountsPropertiesLikeTheCollectorTest extends TestCase
 {
     private const string CONTROLS = __DIR__ . '/../Fixtures/aggregate/controls';

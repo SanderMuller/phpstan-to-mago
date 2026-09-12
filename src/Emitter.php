@@ -25,6 +25,24 @@ final readonly class Emitter
     public function __construct(private TranslationContext $context) {}
 
     /**
+     * The rule's own constants, declared on the plugin so a copied expression has something to refer to.
+     *
+     * Written with the rule's name and values, because what reads them is copied verbatim — a threshold
+     * table stays the rule's data rather than becoming this transpiler's.
+     */
+    private function carriedConstants(): string
+    {
+        $constants = '';
+        foreach ($this->context->carriedConstants as $name => $value) {
+            $constants .= "\n" . "    /** Carried from the rule, whose derivation names it. */\n"
+                . '    private const array ' . $name . ' = '
+                . (new Standard(['shortArraySyntax' => true]))->prettyPrintExpr($value) . ";\n";
+        }
+
+        return $constants;
+    }
+
+    /**
      * The generated plugin's constructor, or nothing when the rule reads no configured value.
      *
      * Each parameter carries the rule package's own default, so a worker that constructs the plugin with no
@@ -32,26 +50,35 @@ final readonly class Emitter
      * worker — from `[extension-hosts.<name>.environment]` or argv — which is what keeps the generated file
      * free of any one project's configuration.
      */
+    /**
+     * A rule reading its own constant but taking no configured value gets the constants and no constructor;
+     * PHP supplies the one it does not need.
+     */
     private function emitConstructor(): string
     {
+        // A carried constant is enough on its own, and is all a rule that takes no configured value has.
+        // Gating the constants on configuration too emitted a plugin naming `self::DEPRECATED_OPTIONS`
+        // without declaring it — valid PHP that fatals on the first file it matches, which is the shape this
+        // repository refuses rather than ships. PHP supplies the constructor such a plugin does not need.
         if (! $this->context->usesConfiguration) {
-            return '';
+            return $this->carriedConstants();
         }
 
-        $derived = [];
+        $derived = '';
         $assignments = [];
         foreach ($this->context->pure as $property => $expression) {
             // Typed, because the generated plugin is analysed and a bare `array` fails at level 8. Every
             // producer the vocabulary allows here builds a set keyed by the names the rule listed —
             // `array_fill_keys([..], true)` and `array_flip([..])` — so the value type is what a membership
             // test reads, and `isset()` is the only thing that ever reads it.
-            $derived[] = '    /** @var array<string, mixed> */';
-            $derived[] = '    private readonly array $' . $property . ';';
+            $derived .= "    /** @var array<string, mixed> */\n"
+                . '    private readonly array $' . $property . ";\n";
             $assignments[] = '        $this->' . $property . ' = '
                 . (new Standard(['shortArraySyntax' => true]))->prettyPrintExpr($expression) . ';';
         }
 
         $parameters = [];
+        $origins = [];
         foreach ($this->context->configured as $property => $configured) {
             $type = match ($configured['kind']) {
                 'config-list' => 'array',
@@ -62,28 +89,28 @@ final readonly class Emitter
 
             $parameters[] = '        public readonly ' . $type . ' $' . $property
                 . ' = ' . $this->phpDefault($configured['default']) . ',';
+
+            // Which PHPStan parameter the value came from, kept with the argument that carries it. A reader
+            // of the generated plugin has no other way to learn that `$required` is `%type_coverage.declare%`
+            // — the default is the *package's*, and a consumer running at their own threshold has to pass it
+            // here. `tests/Support/ConsumerParameters` reads these lines for the same reason: without them a
+            // differential run compares the consumer's configured original against a port at package
+            // defaults, which is a difference in configuration reported as a disagreement.
+            $origins[] = '     * @param ' . $type . ' $' . $property
+                . " PHPStan's `%" . $configured['parameter'] . '%`';
         }
 
         // A derived property is assigned in the body, from the parameters above. The rule's own parameter
         // names are kept, which is what lets the derivation be copied rather than rewritten.
         $body = $assignments === [] ? ' {}' : " {\n" . implode("\n", $assignments) . "\n    }";
 
-        // A constant the derivation names, declared here so the copy has something to refer to. Written with
-        // the rule's own name and values, because the derivation is copied verbatim.
-        $constants = [];
-        foreach ($this->context->carriedConstants as $name => $value) {
-            $constants[] = '    /** Carried from the rule, whose derivation names it. */';
-            $constants[] = '    private const array ' . $name . ' = '
-                . (new Standard(['shortArraySyntax' => true]))->prettyPrintExpr($value) . ';';
-            $constants[] = '';
-        }
-
-        $properties = implode("\n", $constants) . ($derived === [] ? '' : implode("\n", $derived) . "\n");
+        $properties = ltrim($this->carriedConstants(), "\n") . $derived;
         // A rule may derive a property without taking any configured value, and an empty parameter list read
         // as a formatting accident rather than as "this takes nothing".
         $signature = $parameters === []
             ? '    public function __construct()'
-            : "    public function __construct(\n" . implode("\n", $parameters) . "\n    )";
+            : "    /**\n" . implode("\n", $origins) . "\n     */\n"
+                . "    public function __construct(\n" . implode("\n", $parameters) . "\n    )";
 
         return "\n" . $properties . "\n" . $signature . $body . "\n";
     }
@@ -145,7 +172,7 @@ final readonly class Emitter
         $kind = (string) $hook['kind'];
 
         return ($hook['classOnly'] ?? false) === true
-            ? [$kind, 'Enum', 'Interface']
+            ? [$kind, 'Enum', 'Interface', 'AnonymousClass']
             : [$kind];
     }
 
@@ -291,7 +318,7 @@ final readonly class Emitter
         }
 
         $this->context->reportSpan = 'node.span()';
-        $body = $this->renderAll() . ($this->context->reportedInline ? '' : $this->reportStatement());
+        $body = $this->renderAll() . ($this->context->owesATrailingReport() ? $this->reportStatement() : '');
         foreach (self::LINT_BLOCKED as $helper => $reason) {
             if (str_contains($body, "support::{$helper}(")) {
                 throw new Refusal("needs {$reason} (support::{$helper})");
@@ -578,20 +605,20 @@ PHP;
         // member's line silently got the class's span instead, through a path that looked right. Refused rather
         // than substituted, for the same reason the comment above gives: PHP leaves the loop variable set, so the
         // wrong answer would look plausible.
-        if ($this->context->anchorNeedsLoop && ! $this->context->reportedInline) {
+        if ($this->context->anchorNeedsLoop && $this->context->owesATrailingReport()) {
             throw new Refusal(
                 'a report anchored on a loop item but emitted after the loop, where the item is no longer bound',
             );
         }
 
-        $trailingReport = $this->context->reportedInline ? '' : strtr(<<<'REPORT'
+        $trailingReport = $this->context->owesATrailingReport() ? strtr(<<<'REPORT'
         $context->report(
             Level::Error,
             {CODE},
             Issue::new(Support::viaTraitUsers($context, $node, {MESSAGE}), {ANCHOR}, 'here'),
         );
 
-REPORT, ['{ANCHOR}' => $this->context->anchor ?? $this->defaultAnchor()]);
+REPORT, ['{ANCHOR}' => $this->context->anchor ?? $this->defaultAnchor()]) : '';
         $message = $isFormatted ? $reported : $this->context->backend->bytes(substr($reported, 1, -1));
         // A rule that classifies what it found reports under a code decided at analysis time, so the code is
         // an expression there; quoting it would report under the source text of the interpolation.
@@ -730,7 +757,14 @@ PHP;
     }
 
     /**
-     * @param array<string, string>|array<string, null>|array<string, bool> $hook
+     * The hook row this rule was matched to, which is one value of {@see Vocabulary::HOOKS}.
+     *
+     * Typed as that shape rather than as a bag of strings. The lossy spelling it carried before —
+     * `array<string, string>|array<string, null>|array<string, bool>` — made `$hook['extra'] ?? ''` and
+     * `$hook['classOnly'] ?? false` read as `bool|string`, which is two of this file's baseline entries and
+     * neither is a fault in the code.
+     *
+     * @param array{trait: string, method: string, node: string|null, kind: string, adapter?: string, extra?: string, classFrom?: string, classOnly?: bool, each?: string, phpOnly?: bool, gate?: string} $hook
      */
     public function emit(string $className, array $hook): string
     {
@@ -773,7 +807,7 @@ PHP;
 
         $report = $this->context->isCollector ? '' : null;
         $this->context->reportSpan = 'node.span()';
-        $report ??= $this->context->reportedInline
+        $report ??= ! $this->context->owesATrailingReport()
             ? ''
             : ($each === null
                 ? $this->reportStatement()
@@ -795,6 +829,17 @@ PHP;
         $body = str_replace('{BAIL}', $bail, $body);
 
         // The whole-run hook has no node to be handed, and a context of its own.
+        //
+        // **No rule in the installed corpus reaches this branch, and a change to it is invisible to the whole
+        // suite.** Measured: replacing the `"generated"` literal below leaves all 943 tests passing, while the
+        // same edit to the node-hook scaffold underneath fails every analyzer snapshot. The five aggregates
+        // never arrive here — `Transpiler::aggregate()` builds a PHP template of its own and returns it under
+        // the `rust` key — and the three other `CollectedDataNode` rules refuse on a Rust target for reasons
+        // that have nothing to do with this scaffold: `->isEnabled`, an unknown local, and an access path.
+        //
+        // So it is dead in practice rather than dead by construction, and the thing that would make it live
+        // is one of those three refusals being closed. The census is what says so: a `CollectedDataNode` rule
+        // moving REFUSE to EMIT is the signal to give this branch a snapshot before trusting it.
         if ($trait === 'AnalysisHook') {
             $body = str_replace('{BAIL}', $bail, $prologue . $this->renderAll());
 

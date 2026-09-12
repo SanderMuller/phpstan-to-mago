@@ -89,6 +89,32 @@ final class Cli
 
         echo "\nemitted: " . count($rules) . ', refused: ' . count($refused) . ' (target: ' . Transpiler::$target . ")\n";
 
+        // What a refusal is the scope of, printed where the refusal is read. A survey prints the *first*
+        // obstacle a rule hit and nothing about the rest of its body, and sizing work from that alone has
+        // been wrong repeatedly here — the census carries the same warning in its header and the same
+        // mistake was made anyway, because the header is thirty lines from the data and a reader who greps
+        // never sees it. So the line goes next to the count rather than in a document about the count.
+        //
+        // The precedent is the target above: a number means nothing without the configuration it belongs to,
+        // and naming it at the point of use is what stops it being read as something it is not.
+        // The same treatment for the other half of the count, and for the same reason. An emit means the
+        // generator produced a file and the backend rendered every operand it was handed; it does not mean
+        // the plugin loads, or that it reports anything. This repository's own most-repeated finding is that
+        // ten rules once emitted where six did not parse and two parsed while still containing Rust, and the
+        // check that closes the gap is `EmittedRuleFiresTest` running the real engine against real PHPStan.
+        //
+        // Printed here because this line is the route a reader actually takes: the warning has been in the
+        // guidelines throughout and was read past anyway, which is what the survey line above records.
+        if ($rules !== [] && ! Transpiler::$survey) {
+            echo 'an emit means the file was generated and every operand rendered — not that the plugin '
+                . "loads or reports; the fires gate is what establishes that\n";
+        }
+
+        if ($refused !== [] && Transpiler::$survey) {
+            echo 'each REFUSE is the first obstacle only, not what the rule needs — see `needs-at-least:` '
+                . "in tests/Fixtures/expected/census.md for the rest of a body\n";
+        }
+
         return $refused === [] ? 0 : 1;
     }
 
@@ -333,9 +359,18 @@ final class Cli
         $directory = basename($options->outDir($outRoot));
         $worker = $outRoot . '/' . WorkerScaffold::WORKER;
         file_put_contents($worker, WorkerScaffold::worker($registered, $directory, 'transpiled', $autoload));
+        // The include set the emitted rules actually need, so a consumer does not have to point mago at all
+        // of `vendor` and pay for indexing it on every run. {@see RecommendedIncludes} carries the measurement
+        // and the bound.
+        $emitted = glob($outRoot . '/' . $directory . '/*.php');
+
         file_put_contents(
             $outRoot . '/' . WorkerScaffold::CONFIG_SNIPPET,
-            WorkerScaffold::configSnippet($worker, 'transpiled'),
+            WorkerScaffold::configSnippet(
+                $worker,
+                'transpiled',
+                RecommendedIncludes::forEmitted($emitted === false ? [] : $emitted),
+            ),
         );
 
         echo "\n  WORKER  ", $worker, "\n  CONFIG  ", $outRoot, '/', WorkerScaffold::CONFIG_SNIPPET, "\n";

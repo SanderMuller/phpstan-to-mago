@@ -57,3 +57,9 @@ phpstan.neon
 .github/prompts/
 # <<< boost (managed) <<<
 .DS_Store
+
+# What `--status` writes when it is run here with no `--out`. The command is in the README, so a
+# contributor following it should not get two untracked files. Named rather than the directory, because a
+# future page in the same place is a file we own too and should be listed on its own.
+/phpstan-to-mago/index.md
+/phpstan-to-mago/index.html
