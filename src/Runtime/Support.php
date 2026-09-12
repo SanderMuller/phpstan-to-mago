@@ -1678,6 +1678,28 @@ final class Support
     }
 
     /**
+     * `$scope->hasVariableType($name)->yes()` — the variable certainly exists before the node runs.
+     *
+     * {@see Definedness} for why the three tails are three helpers rather than one negated.
+     */
+    public static function variableIsDefined(NodeAnalysisContext $context, ?string $name): bool
+    {
+        return Definedness::variableIsDefined($context, $name);
+    }
+
+    /** `$scope->hasVariableType($name)->no()` — the variable certainly does not exist. */
+    public static function variableIsUndefined(NodeAnalysisContext $context, ?string $name): bool
+    {
+        return Definedness::variableIsUndefined($context, $name);
+    }
+
+    /** `$scope->hasVariableType($name)->maybe()` — defined on some paths reaching the node and not others. */
+    public static function variableIsPossiblyDefined(NodeAnalysisContext $context, ?string $name): bool
+    {
+        return Definedness::variableIsPossiblyDefined($context, $name);
+    }
+
+    /**
      * Whether every atomic in a type is definitely truthy, which is `->toBoolean()->isTrue()->yes()`.
      *
      * {@see Truthiness} for why this one is complete rather than conservative -- the consumer reports when

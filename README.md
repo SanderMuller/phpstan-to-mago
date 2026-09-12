@@ -101,7 +101,7 @@ Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and r
 
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
-| `symplify/phpstan-rules` | 89 | 73 | 15 | 1 |
+| `symplify/phpstan-rules` | 89 | 74 | 15 | 0 |
 | `hihaho/phpstan-rules` | 8 | 7 | 1 | 0 |
 | `tomasvotruba/type-coverage` | 5 | 5 | 0 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
@@ -109,7 +109,7 @@ Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and r
 | `phpstan/phpstan-phpunit` | 13 | 7 | 6 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 2 | 0 | 0 |
 
-`--status` counts 133 of 231 here and writes a page under `--out`. The denominator includes three more
+`--status` counts 134 of 231 here and writes a page under `--out`. The denominator includes three more
 installed packages that emit nothing. Run it on your own project.
 
 <details>
@@ -139,7 +139,7 @@ Three things run, and each records rather than asserts:
 | | |
 |:--|:--|
 | **per rule** | CI runs the real `mago` against real PHPStan over one example pair, comparing line and message. A rule that emits and reports nothing fails. |
-| **per divergence** | a cause investigated is pinned as a minimal case, so it survives the corpus moving on — seven so far, four of which have since closed. [The record](tests/Fixtures/expected/divergences.md) goes red in either direction. The sweep's occurrences below are not individually mapped onto them. |
+| **per divergence** | a cause investigated is pinned as a minimal case, so it survives the corpus moving on — seven so far, five of which have since closed. [The record](tests/Fixtures/expected/divergences.md) goes red in either direction. The sweep's occurrences below are not individually mapped onto them. |
 | **per corpus** | `run-corpus-sweep.php` reads seven trees this package installs, so `composer install` reproduces it: **11327 agreeing against 31 divergences**, [each listed](tests/Fixtures/expected/corpus-sweep.md). |
 
 Size does not predict agreement: 1003 files of PHPUnit carry no divergence, while 367 files of Laravel's

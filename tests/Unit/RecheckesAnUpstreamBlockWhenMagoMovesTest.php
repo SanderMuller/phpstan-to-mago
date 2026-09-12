@@ -16,46 +16,47 @@ use PHPUnit\Framework\TestCase;
  * the work that would falsify it, so it produces no gate to fail and no differential to disagree -- nobody
  * probes a capability their own docblock says is absent.
  *
- * One did survive that way. `Translator::definednessTest()` refused the PHP target on
- * `carthage-software/mago#2334`, and the issue had been closed as completed for three days: the API shipped,
- * name-keyed, and three rules worth 147 findings sat behind a sentence that was true when written. Nothing in
- * this repository could have noticed. What noticed was a closure date sitting beside a pinned version and not
- * lining up.
+ * **The mechanism has now fired once, which is the only evidence that it works.**
+ * `Translator::definednessTest()` refused the PHP target on `carthage-software/mago#2334`, and the issue had
+ * been closed as completed for three days: the API shipped, name-keyed, and three rules sat behind a sentence
+ * that was true when written. Nothing else in this repository could have noticed -- the emit diff saw no
+ * change, the census recorded the refusal as settled, and the suite was green. This test failed on the bump
+ * to 1.48.1, named the capability and the rules, and the port was built the same day. It is kept, repointed,
+ * rather than retired with the claim it caught.
  *
- * So the trigger is mechanical rather than remembered: the version the claim was measured against, asserted
- * against the version actually installed. A bump makes this fail and names what to re-run. That is the only
- * check that reaches a claim which suppresses its own evidence.
+ * So the trigger is mechanical rather than remembered: the version the claims were measured against,
+ * asserted against the version actually installed. A bump makes this fail and names what to re-run.
  *
- * @see Translator::definednessTest() for the claim, the probe and the map it produced
+ * @see Runtime\Describe::list() for the claim this now guards
+ * @see Runtime\Definedness for the one it caught, and the port that replaced it
  */
 #[CoversNothing]
 final class RecheckesAnUpstreamBlockWhenMagoMovesTest extends TestCase
 {
     /**
-     * The mago the definedness refusal was measured against.
+     * The mago the live claims below were measured against.
      *
-     * Probed on this version: a `Foreach` hook requesting every type requirement gets no type at the loop
-     * variable, so the refusal held. The capability that lifts it is name-keyed and arrived after this
-     * release.
+     * Bump this only with the re-probe done, never to make the suite green: the whole point is that nothing
+     * else here can notice when an engine-blaming sentence stops being true.
      */
-    private const string MEASURED_AGAINST = '1.47.6';
+    private const string MEASURED_AGAINST = '1.48.1';
 
-    public function test_the_definedness_block_is_rechecked_when_mago_moves(): void
+    public function test_an_engine_blaming_refusal_is_rechecked_when_mago_moves(): void
     {
         $installed = $this->installedMago();
 
         $this->assertSame(
             self::MEASURED_AGAINST,
             $installed,
-            'mago moved from ' . self::MEASURED_AGAINST . " to {$installed}, and this repository carries a "
-            . 'refusal measured against the older one. `Translator::definednessTest()` refuses the PHP target '
-            . 'on carthage-software/mago#2334, which is closed as completed: '
-            . '`FileAnalysisRequirement::VariableDefinedness` and '
-            . '`NodeAnalysisContext::getVariableDefinedness(string)` are implemented and were unreleased at '
-            . self::MEASURED_AGAINST . '. Re-probe before trusting that refusal: it blocks '
-            . 'OverwriteVariablesWithForeachRule, DisallowedImplicitArrayCreationRule and '
-            . 'OverwriteVariablesWithForLoopInitRule, worth 147 findings on the corpus this tool measures. '
-            . 'If the capability is now present, update the refusal and this constant together.',
+            'mago moved from ' . self::MEASURED_AGAINST . " to {$installed}, and this repository carries "
+            . 'claims about what the engine cannot do that were measured against the older one. Re-probe each '
+            . 'before trusting it:'
+            . "\n\n  Runtime\\Describe::list() drops a `list<mixed>` parameter because `MixedType` carries "
+            . '`issetFromLoop`, `nonNull`, `empty` and `truthiness` and nothing separating an *explicit* mixed '
+            . 'from an inferred one, where PHPStan branches on `isExplicitMixed()`. A new field there closes '
+            . 'the gap and makes the current behaviour a trade that no longer needs making.'
+            . "\n\nIf a capability is now present, update the claim and this constant together. This test has "
+            . 'already caught one such sentence: the definedness refusal, lifted at 1.48.1.',
         );
     }
 

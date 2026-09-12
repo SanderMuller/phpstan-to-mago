@@ -12521,11 +12521,6 @@ final readonly class Translator
     }
 
     /**
-     * A trinary-logic tail: `->yes()` or `->no()` on a type or scope query.
-     *
-     * @param 'no'|'yes' $tail
-     */
-    /**
      * The whole-type shape tests, by the PHPStan query that asks them.
      *
      * Each is the union rule PHPStan's `yes` means: every atomic has to qualify, so `bool|null` is a `maybe`
@@ -12615,6 +12610,18 @@ final readonly class Translator
         return ['rust' => self::PHP_ONLY, 'kind' => 'boolean-cast', 'php' => $this->operand($of)];
     }
 
+    /**
+     * A trinary-logic tail: `->yes()`, `->no()` or `->maybe()` on a type or scope query.
+     *
+     * `maybe` reaches here only for `hasVariableType`, which is the one query carrying a third state of its
+     * own; every other query refuses it below, because the arms here render a tail as `yes` or its negation.
+     *
+     * This docblock used to sit two members up, above `TYPE_SHAPE_QUERIES`, where it annotated a constant
+     * that has no `$tail`. Narrowing the parameter is what surfaced that: PHPStan read the tail as a bare
+     * `string` and rejected the call, which is the only reason anyone looked.
+     *
+     * @param 'maybe'|'no'|'yes' $tail
+     */
     private function trinaryTailPredicate(MethodCall $inner, string $tail, int $line): string
     {
         $name = $this->memberName($inner->name, $line);
@@ -12624,8 +12631,15 @@ final readonly class Translator
         // answers `Maybe` for. Measured on a real corpus: of 243822 inferred types, 4.23 % would make an
         // `isNull()` a `Maybe` and 0.88 % an `isBoolean()` — so the third state is reachable, not theoretical.
         //
-        // Refused rather than emitted, and it costs nothing today: 86 of the 93 trinary tails in the installed
-        // packages are `->yes()`, six are `->no()`, one is `->maybe()`, and **no emitting rule uses `->no()`**.
+        // Refused rather than emitted, and it costs nothing today. Counted by grep over the seven corpus
+        // packages the census names -- which is the configuration, because a wider checkout answers
+        // differently -- there are 90 trinary tails: 83 `->yes()`, six `->no()`, one `->maybe()`. Every rule
+        // using either of the latter two refuses or is not a census rule at all, checked rule by rule rather
+        // than asserted, so **no emitting rule uses `->no()` or `->maybe()`**.
+        //
+        // The figure this replaces said 86 of 93 and could not be re-derived from any package set in the
+        // checkout. It is restated rather than carried, because a count nobody can reproduce is not evidence.
+        //
         // What this stops is the next one arriving quietly and reporting where the original stays silent.
         //
         // `hasVariableType()->no()` is exempt below, because that one is not a collapse: it maps onto a helper
@@ -12650,6 +12664,20 @@ final readonly class Translator
         // So the refusal names the missing helper rather than the target's limits, and names it for the one
         // query. It is still a refusal, and deliberately: writing `! ->yes()` here is the collapse the
         // paragraph above measures.
+        // `->maybe()` reaches this method only because `hasVariableType` needs it, and every arm below was
+        // written for a two-valued tail: they end in `negateUnless($tail === 'yes', ..)`, which renders a
+        // `maybe` as the negation of `yes` — that is `no`-or-`maybe`, the exact collapse the refusal below
+        // exists to stop. No rule in the corpus asks a `maybe` of anything else today, so the emit diff
+        // cannot catch this one; it is refused rather than left for the next rule to trip over.
+        if ($tail === 'maybe' && $name !== 'hasVariableType') {
+            throw new Refusal(
+                "->{$name}()->maybe(), which no helper answers: the arms here render a tail as `yes` or its "
+                . 'negation, and `maybe` is neither. A helper for this one query would carry it, the way '
+                . '`hasVariableType()` does with a third state of its own',
+                $line,
+            );
+        }
+
         if ($tail === 'no' && $name !== 'hasVariableType') {
             throw new Refusal(
                 "->{$name}()->no(), for which no `no`-direction helper exists: it is not `! ->yes()`, because "
@@ -12882,32 +12910,103 @@ final readonly class Translator
      * anyway and refused two layers later naming a leaked Rust operand, so the census recorded a downstream
      * shape as the obstacle for a rule whose real blocker is its first guard.
      *
-     * **That issue is now closed as completed, and the refusal is a version boundary rather than a
-     * ceiling.** Closed 2026-09-07; the newest release is 1.47.6 of 2026-09-04, which this package
-     * requires and which therefore does not carry it. The sentence above is true of every mago a
-     * consumer can install today and false of the next one, so it is kept rather than rewritten — the
-     * reason a rule refuses is what the census records, and replacing it before the capability ships
-     * would date the file forward.
+     * **The boundary was crossed at mago 1.48.1, and everything above is kept as the probe record rather
+     * than as a live refusal.** The issue closed 2026-09-07 and the capability shipped in the release of
+     * 2026-09-12; the map above -- run on a `cargo`-built dev binary before any release carried it -- is now
+     * what licenses the implementation rather than what documented its absence. It is kept in full because it
+     * is the only measurement of what `getVariableDefinedness()` answers at a `foreach`, and because the
+     * control it names (absence of a type not tracking definedness) is why no cheaper route was taken.
      *
-     * Three rules turn on this: `OverwriteVariablesWithForeachRule` and
-     * `DisallowedImplicitArrayCreationRule` name it in the census, and
-     * `OverwriteVariablesWithForLoopInitRule` reaches the same guard behind an `->init` iteration the
-     * pass stops at first — which is why its census line names something else.
+     * Nothing here noticed the crossing. The emit diff saw no change, the census recorded the refusal as
+     * settled, and the suite was green; a claim of absence suppresses the work that would falsify it.
+     * `RecheckesAnUpstreamBlockWhenMagoMovesTest` is what fired, by pinning the version the claim was
+     * measured against.
+     *
+     * **The PHP target now answers all three tails and the analyzer target still answers two.** That
+     * asymmetry is deliberate: the analyzer branch is left byte-for-byte as it was, because
+     * `variable_is_undefined` is not in mago's own source, this package ships no `.rs` beyond fixtures, and
+     * the fires gate covers the PHP target only -- so widening it would emit Rust nothing here can run.
+     *
+     * Three rules turn on this, and **lifting it made none of them emit**, which the paragraphs above
+     * predicted. Each carries a further, unrelated obstacle and each recorded needs list was a *floor*:
+     * `OverwriteVariablesWithForeachRule` now stops at a `Stmt_Foreach` guard body,
+     * `DisallowedImplicitArrayCreationRule` at `Stmt_While`, and `OverwriteVariablesWithForLoopInitRule` at
+     * the `->init` iteration that always hid its definedness guard. The 147 findings they are worth is what
+     * they pay when they port, not what this lifted.
      */
+    /**
+     * The three `hasVariableType()` tails, by the runtime helper each one is.
+     *
+     * Three entries rather than one negated, because the tails are not negations of each other: a variable
+     * defined on one branch and not another answers `Maybe` to all of `yes`, `no` and `maybe` being false for
+     * the other two. `DisallowedImplicitArrayCreationRule` is the rule that needs the distinction kept --
+     * it reports "does not exist" for `no` and "might not exist" for `maybe`, so a collapse mislabels rather
+     * than merely widens.
+     */
+    private const array DEFINEDNESS_TAILS = [
+        'yes' => 'variable_is_defined',
+        'no' => 'variable_is_undefined',
+        'maybe' => 'variable_is_possibly_defined',
+    ];
+
+    /** @param 'maybe'|'no'|'yes' $tail */
     private function definednessTest(Expr $argument, string $tail, int $line): string
     {
-        if (Transpiler::$target === 'php') {
-            throw new Refusal(
-                'a definedness test, which the PHP target has no way to answer: a plugin receives '
-                . 'span-keyed types and no definedness (carthage-software/mago#2334)',
-                $line,
-            );
+        if (Transpiler::$target !== 'php') {
+            // The analyzer target has carried this since before the PHP one could, through a helper that
+            // answers the `no` direction and a negation for `yes`. Left exactly as it was: `maybe` was never
+            // reachable there, and widening it would move emitted Rust this repository cannot run.
+            if ($tail === 'maybe') {
+                throw new Refusal('a `maybe` definedness tail, which only the PHP target carries', $line);
+            }
+
+            $this->context->readsPriorScope = true;
+
+            return $this->negateUnless($tail === 'no', 'support::variable_is_undefined(context, '
+                . $this->variableNameExpression($argument, $line) . ')');
         }
 
-        $this->context->readsPriorScope = true;
+        return $this->definednessOfName($this->phpVariableName($argument, $line), $tail);
+    }
 
-        return $this->negateUnless($tail === 'no', 'support::variable_is_undefined(context, '
-            . $this->variableNameExpression($argument, $line) . ')');
+    /**
+     * The same test with the name already rendered, for a trinary the rule bound to a local first.
+     *
+     * Setting the requirement flag here rather than at each call site is what keeps the two in step: a
+     * plugin that asks the question without declaring `VariableDefinedness` reads `null` for every name and
+     * goes silent, which is a failure no test would show as anything but a missing finding.
+     *
+     * @param string             $name a PHP expression producing the variable's name; it may *evaluate* to
+     *                                 null, which the helpers answer false for rather than coercing to `''`
+     * @param 'maybe'|'no'|'yes' $tail
+     */
+    private function definednessOfName(string $name, string $tail): string
+    {
+        $this->context->usesVariableDefinedness = true;
+
+        return $this->context->backend->call(self::DEFINEDNESS_TAILS[$tail], ['$context', $name]);
+    }
+
+    /**
+     * The name of the variable a definedness test asks about, as a PHP expression.
+     *
+     * The Rust twin is {@see variableNameExpression()}. Separate rather than target-branched inside it,
+     * because the PHP side reaches a different helper and may answer null, which the Rust side cannot.
+     *
+     * It carries only the `<node>->name` shape. The twin also has a branch for a local of kind
+     * `variable-name`, which was copied here and then removed: nothing in `src/` ever *writes* that kind, so
+     * both branches are unreachable. The twin's is left alone as pre-existing rather than widened into.
+     */
+    private function phpVariableName(Expr $expr, int $line): string
+    {
+        if ($expr instanceof PropertyFetch && $this->memberName($expr->name, $expr->getStartLine()) === 'name') {
+            return $this->context->backend->call('direct_variable_name', [
+                '$context',
+                $this->operand($this->resolve($expr->var, $line)),
+            ]);
+        }
+
+        throw new Refusal('variable name outside the vocabulary', $line);
     }
 
     private function superTypeQuery(MethodCall $inner, Expr $argument, string $tail, int $line): string
@@ -13089,8 +13188,21 @@ final readonly class Translator
         $method = $this->memberName($expr->name, $expr->getStartLine());
         $args = $expr->getArgs();
 
-        if (($method === 'yes' || $method === 'no') && $expr->var instanceof MethodCall) {
+        if (in_array($method, ['yes', 'no', 'maybe'], true) && $expr->var instanceof MethodCall) {
             return $this->trinaryTailPredicate($expr->var, $method, $expr->getStartLine());
+        }
+
+        // A trinary the rule bound to a local first. `DisallowedImplicitArrayCreationRule` writes
+        // `$certainty = $scope->hasVariableType($node->name);` and asks two questions of it in separate
+        // statements, so a chain-shaped match sees `->no()` on a variable and refuses. Narrowed to a local
+        // already carrying a definedness descriptor, so no other receiver changes shape.
+        if (in_array($method, ['yes', 'no', 'maybe'], true) && $expr->var instanceof Variable
+            && is_string($expr->var->name)
+        ) {
+            $local = $this->context->locals[$expr->var->name] ?? null;
+            if (($local['kind'] ?? null) === 'definedness' && isset($local['php'])) {
+                return $this->definednessOfName($local['php'], $method);
+            }
         }
 
         if ($method === 'isInClass' && $expr->var instanceof Variable && $expr->var->name === 'scope') {
@@ -14591,6 +14703,26 @@ final readonly class Translator
             }
 
             return ['rust' => self::PHP_ONLY, 'kind' => 'type-without-null', 'php' => $this->operand($of)];
+        }
+
+        // `$scope->hasVariableType(<name>)` held as a value rather than asked immediately.
+        // `DisallowedImplicitArrayCreationRule` binds the trinary to `$certainty` and then asks it twice, for
+        // two different messages, so the tail never sees the call. Carries the rendered name; the question is
+        // asked at the `->no()` / `->maybe()` tail that reads this kind.
+        if ($expr instanceof MethodCall
+            && $expr->var instanceof Variable && $expr->var->name === 'scope'
+            && $this->memberName($expr->name, $expr->getStartLine()) === 'hasVariableType'
+            && count($expr->getArgs()) === 1
+        ) {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('a definedness value held in a local, which only the PHP target carries', $line);
+            }
+
+            return [
+                'rust' => self::PHP_ONLY,
+                'kind' => 'definedness',
+                'php' => $this->phpVariableName($expr->getArgs()[0]->value, $line),
+            ];
         }
 
         // `<a type>->toBoolean()`, which PHPStan answers with a boolean *type* -- `true`, `false`, or the

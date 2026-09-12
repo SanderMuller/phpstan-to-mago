@@ -516,23 +516,24 @@ RUST;
      * fired on, which `ExpressionTypes` also carries but at the cost of every type in the file. Asked for
      * separately so a rule reading only its own node's type does not pay for the rest.
      *
-     * Split from {@see emitPhp()} because adding the fourth flag took that method past its complexity limit,
-     * and a new per-function baseline entry is the one thing this repository's baseline discipline forbids.
+     * Split from {@see emitPhp()} because adding a flag took that method past its complexity limit, and a
+     * new per-function baseline entry is the one thing this repository's baseline discipline forbids. The
+     * body is a filtered table for the same reason, one flag later: four branches took the *class* past it.
      */
     private function requirements(): string
     {
-        $requirements = ['TargetSubtree', 'SourceText'];
-        if ($this->context->usesReceiverType) {
-            $requirements[] = 'ReceiverType';
-        }
+        // A table filtered rather than four `if`s, because the fourth flag took this class past the
+        // cognitive-complexity limit and a *new* baseline entry is the one thing the baseline discipline
+        // here forbids. `array_filter()` preserves key order, so the emitted list is byte-identical to what
+        // the branches produced -- which the snapshots check rather than this comment asserting it.
+        $optional = [
+            'ReceiverType' => $this->context->usesReceiverType,
+            'ExpressionTypes' => $this->context->usesExpressionTypes,
+            'TargetExpressionTypes' => $this->context->usesTargetExpressionTypes,
+            'VariableDefinedness' => $this->context->usesVariableDefinedness,
+        ];
 
-        if ($this->context->usesExpressionTypes) {
-            $requirements[] = 'ExpressionTypes';
-        }
-
-        if ($this->context->usesTargetExpressionTypes) {
-            $requirements[] = 'TargetExpressionTypes';
-        }
+        $requirements = ['TargetSubtree', 'SourceText', ...array_keys(array_filter($optional))];
 
         return implode(', ', array_map(
             static fn (string $requirement): string => 'FileAnalysisRequirement::' . $requirement,

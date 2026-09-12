@@ -128,7 +128,7 @@ have already been quoted as the other one here — a synthesised-node call was r
 ceiling when it sat in a branch guarding an operator-overloading tail. Expect them to diverge, and
 say which one a number is.
 
-## symplify/phpstan-rules — 73 of 89 portable rules the package registers emit, 1 covered by the engine, 15 refuse, 0 unportable in principle, 8 it registers nowhere
+## symplify/phpstan-rules — 74 of 89 portable rules the package registers emit, 0 covered by the engine, 15 refuse, 0 unportable in principle, 8 it registers nowhere
 
 REFUSE  AlreadyRegisteredAutodiscoveryServiceRule
         assignment value outside the vocabulary: statement outside the vocabulary: Stmt_Expression
@@ -222,7 +222,7 @@ REFUSE  NoJustPropertyAssignRule
         floor: 1 statement stepped over, so the list above is a floor
 EMIT    NoLeadingBackslashInNameRule
 EMIT    NoListenerWithoutContractRule
-ENGINE  NoMissingVariableDimFetchRule  (mago reports undefined-variable)
+EMIT    NoMissingVariableDimFetchRule
 EMIT    NoMissnamedDocTagRule
 EMIT    NoMockObjectAndRealObjectPropertyRule
 EMIT    NoMockOnlyTestRule
@@ -440,10 +440,7 @@ EMIT    DisallowedEmptyRule
 REFUSE  DisallowedImplicitArrayCreationRule
         statement outside the vocabulary: Stmt_While
         needs-at-least: statement outside the vocabulary: Stmt_While
-        needs-at-least: assignment value outside the vocabulary: access path outside the vocabulary: $scope->hasVariableType()
-        needs-at-least: method call outside the vocabulary ->no()
-        needs-at-least: method call outside the vocabulary ->maybe()
-        floor: 5 statements stepped over, 1 further refusal suppressed as an artefact, so the list above is a floor
+        floor: 1 statement stepped over, so the list above is a floor
 EMIT    DisallowedLooseComparisonRule
 EMIT    DisallowedShortTernaryRule
 EMIT    DynamicCallOnStaticMethodsCallableRule
@@ -471,9 +468,9 @@ REFUSE  OverwriteVariablesWithForLoopInitRule
         needs-at-least: no iteration mapped for ->init, which resolved to a expr
         floor: 5 statements stepped over, 3 further refusals suppressed as artefacts, so the list above is a floor
 REFUSE  OverwriteVariablesWithForeachRule
-        a definedness test, which the PHP target has no way to answer: a plugin receives span-keyed types and no definedness (carthage-software/mago#2334)
-        needs-at-least: a definedness test, which the PHP target has no way to answer: a plugin receives span-keyed types and no definedness (carthage-software/mago#2334)
-        floor: 3 statements stepped over, 1 further refusal suppressed as an artefact, so the list above is a floor
+        guard body is neither `return []` nor `continue`, but Stmt_Foreach
+        needs-at-least: guard body is neither `return []` nor `continue`, but Stmt_Foreach
+        floor: 2 statements stepped over, 1 further refusal suppressed as an artefact, so the list above is a floor
 EMIT    RequireParentConstructCallRule
 EMIT    StrictFunctionCallsRule
 REFUSE  UselessCastRule

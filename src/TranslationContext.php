@@ -65,6 +65,17 @@ final class TranslationContext
      */
     public bool $usesTargetExpressionTypes = false;
 
+    /**
+     * Whether the rule asks whether a local variable exists before the hooked node runs.
+     *
+     * `FileAnalysisRequirement::VariableDefinedness`, which arrived in mago 1.48.1. Opt-in like the type
+     * requirements above, and here the opt-in is what closes the null case rather than merely paying for it:
+     * `getVariableDefinedness()` returns null **only** when the plugin did not declare this, and otherwise
+     * answers `Undefined` for a name it has never seen. So a plugin that sets this flag cannot observe null,
+     * and the helpers reading it need no null branch.
+     */
+    public bool $usesVariableDefinedness = false;
+
     /** The Rust expression producing the reported message, from the report site. */
     public ?string $message = null;
 
