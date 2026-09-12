@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Sandermuller\PhpstanToMago\PackageCoverage;
 use Sandermuller\PhpstanToMago\ReportedIdentifiers;
 use Sandermuller\PhpstanToMago\RuleOutcome;
+use Sandermuller\PhpstanToMago\Tests\Support\LockedCorpus;
 use Sandermuller\PhpstanToMago\Transpiler;
 
 /**
@@ -156,6 +157,15 @@ final class MarksARefusalAlreadyCoveredTest extends TestCase
 
     private function outcome(string $rule): RuleOutcome
     {
+        // A `--prefer-lowest` leg installs older rule packages whose rules differ, so a row naming a rule
+        // that does not exist there is a fact about the corpus rather than a stale assertion. The same guard
+        // `ReportsInstalledCoverageTest` and the census assertion use, honouring the same deliberate-drift
+        // escape.
+        $mismatch = LockedCorpus::mismatch();
+        if ($mismatch !== null) {
+            self::markTestSkipped($mismatch);
+        }
+
         $outcomes = $this->outcomes();
         if (! isset($outcomes[$rule])) {
             self::fail("{$rule} is no longer in the package, so this row is stale.");
