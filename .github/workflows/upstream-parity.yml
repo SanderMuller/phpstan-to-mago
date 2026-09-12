@@ -38,7 +38,7 @@ jobs:
     name: P8.4 - corpus ${{ matrix.leg }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
