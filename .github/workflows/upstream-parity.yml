@@ -151,3 +151,28 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ steps.lookup.outputs.issue_number }}
         run: gh issue comment "$ISSUE_NUMBER" --body-file /tmp/drift-body.md
+
+      # The other half of the alarm. Without it a tracking issue outlives the drift that filed it: these two
+      # sat open for nine days after their census diff had been absorbed, and by then their bodies described
+      # drift that no longer existed while the run was failing on something else entirely. An alarm nobody
+      # can tell is stale is one nobody reads.
+      #
+      # Looked up separately from the failure path rather than reusing `steps.lookup`, which is gated on
+      # `failure()` and so never runs on a green leg.
+      - name: Close the tracking issue when the leg is green
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          issue_number=$(gh issue list --state open \
+            --search 'in:title "Upstream corpus drift (${{ matrix.leg }})"' \
+            --json number --jq '.[0].number // empty')
+          if [ -z "$issue_number" ]; then
+            echo "No open tracking issue for the ${{ matrix.leg }} leg."
+            exit 0
+          fi
+          gh issue close "$issue_number" --comment \
+            "The \`${{ matrix.leg }}\` corpus leg is green again as of [this run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) on \`${{ github.sha }}\`.
+
+          Closed by the workflow that filed it. If the drift returns, the next failing run opens a fresh issue rather than reviving this one, so the diff in a tracking issue always belongs to the run that wrote it."
+
