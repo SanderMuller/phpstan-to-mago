@@ -53,13 +53,30 @@ final class RecheckesAnUpstreamBlockWhenMagoMovesTest extends TestCase
      */
     private const string MEASURED_AGAINST = '1.49.0';
 
+    /**
+     * Only a *newer* mago needs a re-probe, which is what makes this survive `--prefer-lowest`.
+     *
+     * The first version asserted equality and was wrong in a way that stayed hidden while the constant and
+     * the `composer.json` floor happened to be the same number. They diverged the moment a claim was probed
+     * at 1.49.0 while the floor correctly stayed at `^1.48.1` -- the emitted plugins need 1.48.1 and nothing
+     * newer -- and the lowest leg then failed reporting that "mago moved from 1.49.0 to 1.48.1". That leg
+     * installs the declared floor on purpose; it is the constraint working, not drift.
+     *
+     * **An absence claim verified at version N holds for every version below it**, because a capability that
+     * is missing at N was missing earlier too -- engines add them going forward. So an older install cannot
+     * falsify one of these sentences and has nothing to re-probe.
+     *
+     * The converse, a capability being *removed* upstream, would pass this silently. That is deliberate and
+     * cheap to justify: nothing here claims a capability is present except the code that calls it, and a
+     * removal breaks that loudly -- `Runtime\Definedness` would fatal on a missing enum case the way every
+     * emitted plugin did on 1.47.6, which is a failure no alarm has to predict.
+     */
     public function test_an_engine_blaming_refusal_is_rechecked_when_mago_moves(): void
     {
         $installed = $this->installedMago();
 
-        $this->assertSame(
-            self::MEASURED_AGAINST,
-            $installed,
+        $this->assertFalse(
+            version_compare($installed, self::MEASURED_AGAINST, '>'),
             'mago moved from ' . self::MEASURED_AGAINST . " to {$installed}, and this repository carries "
             . 'claims about what the engine cannot do that were measured against the older one. Re-probe each '
             . 'before trusting it:'
@@ -69,6 +86,29 @@ final class RecheckesAnUpstreamBlockWhenMagoMovesTest extends TestCase
             . 'the gap and makes the current behaviour a trade that no longer needs making.'
             . "\n\nIf a capability is now present, update the claim and this constant together. This test has "
             . 'already caught one such sentence: the definedness refusal, lifted at 1.48.1.',
+        );
+    }
+
+    /**
+     * The control pair for the direction, which is the part the `--prefer-lowest` leg got wrong.
+     *
+     * One row that must alarm and one beside it that must not, varying only which side of the pin the
+     * installed version falls. An assertion that fired on any difference passed the first and failed the
+     * second, which is exactly what shipped.
+     */
+    public function test_it_alarms_only_upward(): void
+    {
+        $this->assertTrue(version_compare('1.50.0', self::MEASURED_AGAINST, '>'), 'A newer mago must alarm.');
+
+        $this->assertFalse(
+            version_compare('1.48.1', self::MEASURED_AGAINST, '>'),
+            'The declared floor must not alarm: `--prefer-lowest` installs it deliberately, and an absence '
+            . 'claim verified higher up already covers it.',
+        );
+
+        $this->assertFalse(
+            version_compare(self::MEASURED_AGAINST, self::MEASURED_AGAINST, '>'),
+            'The probed version itself must not alarm.',
         );
     }
 
