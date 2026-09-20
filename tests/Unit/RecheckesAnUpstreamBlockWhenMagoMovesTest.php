@@ -38,8 +38,20 @@ final class RecheckesAnUpstreamBlockWhenMagoMovesTest extends TestCase
      *
      * Bump this only with the re-probe done, never to make the suite green: the whole point is that nothing
      * else here can notice when an engine-blaming sentence stops being true.
+     *
+     * **Re-probed at each bump, and the answer is recorded here so a later reader can tell a checked claim
+     * from a carried one.** The two look identical in a diff that only moves the version string.
+     *
+     * | version | `Describe::list()`'s explicit-mixed claim |
+     * |:--|:--|
+     * | 1.48.1  | holds — `MixedType` carries `issetFromLoop`, `nonNull`, `empty`, `truthiness` |
+     * | 1.49.0  | holds — same four fields, and `explicit` appears nowhere in the SDK |
+     *
+     * The 1.49.0 row was read off the installed tree and confirmed against the released source at the tag,
+     * searching for the *capability* rather than for a field name: a separator could have arrived under any
+     * spelling, so the check is that nothing in `Sdk/` mentions an explicit mixed at all.
      */
-    private const string MEASURED_AGAINST = '1.48.1';
+    private const string MEASURED_AGAINST = '1.49.0';
 
     public function test_an_engine_blaming_refusal_is_rechecked_when_mago_moves(): void
     {
