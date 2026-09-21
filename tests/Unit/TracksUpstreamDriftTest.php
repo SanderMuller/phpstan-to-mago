@@ -206,7 +206,7 @@ final class TracksUpstreamDriftTest extends TestCase
             '',
             'One line per rule in the seven packages listed below, and under a refused one the reason. Those',
             'seven are the corpus — installed to be read rather than run — and not every rule package a',
-            "checkout has: `--status` counts 231 portable rules here against this file's 192. The other",
+            "checkout has: `--status` counts 258 portable rules here against this file's __ROW_TOTAL__. The other",
             'three arrived for other reasons. `spaze/phpstan-disallowed-calls` is a dev dependency this',
             'project runs on *itself*, through the neons `phpstan.neon.dist` includes; `composer/pcre` ships',
             'two rules and is here only because `composer/xdebug-handler` requires it; `larastan/larastan`',
@@ -404,7 +404,16 @@ final class TracksUpstreamDriftTest extends TestCase
             }
         }
 
-        return implode("\n", $lines) . "\n";
+        $census = implode("\n", $lines) . "\n";
+
+        // The header states this file's own rule total, and `CensusAccountsForEveryRowTest` asserts the rows
+        // sum to it. Derived here rather than written into the prose: it was a literal, and sixteen rules
+        // arriving upstream in one release made it wrong -- which is the third time a hand-written figure in
+        // a *generated* file has broken a run. The `--status` denominator beside it stays a stated number
+        // because it counts packages this file does not read, and the header says so.
+        $rows = preg_match_all('/^(?:EMIT|REFUSE|NEVER|ENGINE|UNPORTABLE) /m', $census);
+
+        return str_replace('__ROW_TOTAL__', (string) $rows, $census);
     }
 
     /**

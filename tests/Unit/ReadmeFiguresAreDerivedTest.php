@@ -75,11 +75,22 @@ final class ReadmeFiguresAreDerivedTest extends TestCase
         $registered = (int) preg_match_all('/^EMIT /m', $census)
             - (int) preg_match_all('/^EMIT .*\(the package registers it nowhere\)/m', $census);
 
+        // The denominator counts packages the census does not read, so it cannot be derived from the rows.
+        // It is read off the census header instead of repeated here: it used to be a literal in this test
+        // *and* a literal in the generated header, and sixteen rules arriving upstream made both wrong at
+        // once while only one of them was anywhere near a failing assertion. One stated figure, two readers.
+        $this->assertSame(
+            1,
+            preg_match('/`--status` counts (\d+) portable rules here/', $census, $total),
+            'The census header no longer states the `--status` denominator, which this reads rather than '
+            . 'repeats.',
+        );
+
         $this->assertStringContainsString(
-            "`--status` counts {$registered} of 231 here",
+            "`--status` counts {$registered} of {$total[1]} here",
             (string) file_get_contents(self::README),
-            "The README's --status figure is not the census's registered-and-emitting count, which is "
-            . "{$registered}. The 231 denominator is `--status`'s own and is not derivable here.",
+            "The README's --status figure does not match the census: the registered-and-emitting count is "
+            . "{$registered} and the census header states a denominator of {$total[1]}.",
         );
     }
 

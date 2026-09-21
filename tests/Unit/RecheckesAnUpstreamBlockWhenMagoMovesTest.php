@@ -46,12 +46,13 @@ final class RecheckesAnUpstreamBlockWhenMagoMovesTest extends TestCase
      * |:--|:--|
      * | 1.48.1  | holds — `MixedType` carries `issetFromLoop`, `nonNull`, `empty`, `truthiness` |
      * | 1.49.0  | holds — same four fields, and `explicit` appears nowhere in the SDK |
+     * | 1.50.0  | holds — unchanged again, by the same two checks |
      *
      * The 1.49.0 row was read off the installed tree and confirmed against the released source at the tag,
      * searching for the *capability* rather than for a field name: a separator could have arrived under any
      * spelling, so the check is that nothing in `Sdk/` mentions an explicit mixed at all.
      */
-    private const string MEASURED_AGAINST = '1.49.0';
+    private const string MEASURED_AGAINST = '1.50.0';
 
     /**
      * Only a *newer* mago needs a re-probe, which is what makes this survive `--prefer-lowest`.
@@ -98,10 +99,20 @@ final class RecheckesAnUpstreamBlockWhenMagoMovesTest extends TestCase
      */
     public function test_it_alarms_only_upward(): void
     {
-        $this->assertTrue(version_compare('1.50.0', self::MEASURED_AGAINST, '>'), 'A newer mago must alarm.');
+        // Derived from the constant rather than written as a literal. The first version of this row said
+        // `1.50.0`, which was newer right up until the constant was bumped to 1.50.0 and the row began
+        // asserting that a version alarms against itself. A control pinned to a literal expires silently the
+        // next time the thing it controls for moves.
+        [$major, $minor] = array_map(intval(...), explode('.', self::MEASURED_AGAINST) + [1 => '0']);
+        $newer = $major . '.' . ($minor + 1) . '.0';
+
+        $this->assertTrue(
+            version_compare($newer, self::MEASURED_AGAINST, '>'),
+            "A newer mago ({$newer}) must alarm.",
+        );
 
         $this->assertFalse(
-            version_compare('1.48.1', self::MEASURED_AGAINST, '>'),
+            version_compare($this->declaredFloor(), self::MEASURED_AGAINST, '>'),
             'The declared floor must not alarm: `--prefer-lowest` installs it deliberately, and an absence '
             . 'claim verified higher up already covers it.',
         );
@@ -110,6 +121,25 @@ final class RecheckesAnUpstreamBlockWhenMagoMovesTest extends TestCase
             version_compare(self::MEASURED_AGAINST, self::MEASURED_AGAINST, '>'),
             'The probed version itself must not alarm.',
         );
+    }
+
+    /**
+     * The floor `composer.json` declares, which is what `--prefer-lowest` installs.
+     *
+     * Read rather than repeated: this row exists because the floor and the probed version are allowed to
+     * differ, so hard-coding either one here would re-create the coupling the row is testing for.
+     */
+    private function declaredFloor(): string
+    {
+        $manifest = json_decode((string) file_get_contents(dirname(__DIR__, 2) . '/composer.json'), true);
+        self::assertIsArray($manifest);
+        $dev = $manifest['require-dev'] ?? [];
+        self::assertIsArray($dev);
+        $constraint = $dev['carthage-software/mago'] ?? '';
+        self::assertIsString($constraint);
+        self::assertSame(1, preg_match('/(\d+\.\d+\.\d+)/', $constraint, $match));
+
+        return $match[1];
     }
 
     private function installedMago(): string
