@@ -12471,6 +12471,34 @@ final readonly class Translator
                 : 'false';
         }
 
+        // `$args[0] ?? null` then `! $firstArg instanceof Arg`, which is a null-guard wearing a type test:
+        // php-parser's `getArgs()` yields `Arg` objects, so the class is never in question and the only
+        // thing the test can decide is whether an argument was there. `NoGetRepositoryOutsideServiceRule`
+        // was rewritten into this shape upstream and stopped emitting on it.
+        //
+        // Faithful for both producers of this kind, which is why it reads the *kind* rather than the source
+        // expression: `Support::argumentAt()` answers `?Part`, null exactly when the index is absent, and an
+        // element of an `args` iteration is never null, where the original is tautologically true as well.
+        //
+        // **Named unsafe cell, and deliberately unpriced: first-class callable syntax.** `foo(...)` makes
+        // php-parser return a `VariadicPlaceholder`, so the original answers *false* while this answers
+        // whatever mago's argument list does there. An example line was added to price it and does not:
+        // `NoGetRepositoryOutsideServiceRule` treats "no argument" and "an argument that is not a literal
+        // class name" as the same dynamic case, so both engines stay silent whichever way mago answers, and
+        // the gate passing over that line is agreement on zero rather than evidence. Settling it needs a
+        // rule that reports on the no-argument branch; no rule in the corpus has one.
+        //
+        // Gated on this one class and this one kind. The contrast is in the same upstream release:
+        // `NoReturnSetterMethodRule` asks `instanceof Identifier` of a `returnType`, where the class really
+        // is the question, and a widened arm would collapse it to a presence test that is always true.
+        if ($wanted === Arg::class && $subject['kind'] === 'argument') {
+            if (Transpiler::$target !== 'php') {
+                throw new Refusal('an argument-presence test, which only the PHP target carries', $expr->getStartLine());
+            }
+
+            return $this->operand($subject) . ' !== null';
+        }
+
         if (! isset(Vocabulary::NODE_PREDICATES[$wanted])) {
             $impossible = $this->impossibleNodePredicate($wanted, $expr->getStartLine());
             if ($impossible !== null) {

@@ -101,7 +101,7 @@ Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and r
 
 | package | portable | emit | refused | covered by the engine |
 |:--|--:|--:|--:|--:|
-| `symplify/phpstan-rules` | 105 | 74 | 31 | 0 |
+| `symplify/phpstan-rules` | 103 | 71 | 32 | 0 |
 | `hihaho/phpstan-rules` | 8 | 7 | 1 | 0 |
 | `tomasvotruba/type-coverage` | 5 | 5 | 0 | 0 |
 | `tomasvotruba/cognitive-complexity` | 3 | 2 | 1 | 0 |
@@ -109,7 +109,7 @@ Seven packages, pinned rule by rule in `tests/Fixtures/expected/census.md` and r
 | `phpstan/phpstan-phpunit` | 13 | 7 | 6 | 0 |
 | `phpstan/phpstan-deprecation-rules` | 2 | 2 | 0 | 0 |
 
-`--status` counts 134 of 258 here and writes a page under `--out`. The denominator includes three more
+`--status` counts 131 of 256 here and writes a page under `--out`. The denominator includes three more
 installed packages that emit nothing. Run it on your own project.
 
 <details>

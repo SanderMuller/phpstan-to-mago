@@ -311,9 +311,18 @@ final class EmittedRuleFiresTest extends TestCase
         // dispatch itself is now translated — `Translator::translatesAnOperatorDispatch()` proves the arms
         // bind the same descriptors and then emits one operator guard with the bindings once.
         //
-        // The list is empty, which is the state to keep it in: an example pair with no emitting rule is a
-        // pair running nothing, and this check exists to say so out loud rather than let it pass as green.
-        $expected = [];
+        // **Two entries returned on 2026-09-22, and by the opposite route to every departure above.** The
+        // three rules before this left by starting to emit; these two stopped. `symplify/phpstan-rules`
+        // 14.15.0 to 14.15.3 rewrote them into shapes the vocabulary does not carry -- `->returnType` on a
+        // hook node, and a `->getVariants()` iteration inside an inlined helper -- so their pairs run
+        // nothing today.
+        //
+        // Kept rather than deleted, which is the difference between these and the two pairs removed in the
+        // same commit. `NoControllerMethodInjectionRule` and `RequireInvokableControllerRule` were deleted
+        // from the package outright and have no rule to come back to; these two still exist upstream, and
+        // their pairs are the fixture waiting for the vocabulary to reach them. An entry leaving this list
+        // by emitting is the outcome to want.
+        $expected = ['NoReturnSetterMethodRule', 'RequireAttributeNameRule'];
         sort($orphaned);
 
         $this->assertSame(
