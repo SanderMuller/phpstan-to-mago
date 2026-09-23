@@ -120,10 +120,19 @@ final class AnnotationTagsAreNotInheritedTest extends TestCase
             self::fail("PHPStan produced no JSON, so nothing was measured:\n" . substr($output, 0, 2000));
         }
 
+        // Only `phpunit.*` findings, because every assertion here is about one, the two null rows included:
+        // they mean "no phpunit covers finding on this line". The sandbox gets whatever rules
+        // `extension-installer` registers, so an unrelated rule reporting on the same line used to overwrite
+        // the one under test. symplify's `main` did that by adding `naming-rules.neon` to its includes:
+        // `phpunit.coversClass` read back as `symplify.explicitAbstractPrefixName`, and the null row fired
+        // with a message blaming inheritance for a naming rule.
         $findings = [];
         foreach ($decoded['files'] ?? [] as $file) {
             foreach ($file['messages'] as $message) {
-                $findings[$message['line']] = (string) ($message['identifier'] ?? '');
+                $identifier = (string) ($message['identifier'] ?? '');
+                if (str_starts_with($identifier, 'phpunit.')) {
+                    $findings[$message['line']] = $identifier;
+                }
             }
         }
 

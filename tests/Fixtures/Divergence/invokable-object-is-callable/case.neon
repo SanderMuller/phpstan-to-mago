@@ -1,1 +1,3 @@
 rule: Symplify\PHPStanRules\Rules\NoDynamicNameRule
+ignore: symplify.explicitInterfaceSuffixName
+ignore: symplify.requiredInterfaceContractNamespace
