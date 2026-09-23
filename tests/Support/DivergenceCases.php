@@ -236,7 +236,7 @@ final readonly class DivergenceCases
             '{plugins}' => implode(', ', $plugins),
         ]));
         file_put_contents($sandbox . '/mago.toml', self::MAGO_CONFIG);
-        file_put_contents($sandbox . '/phpstan.neon', strtr(self::PHPSTAN_CONFIG, [
+        file_put_contents($sandbox . '/phpstan.neon', LockedCorpus::serviceIncludes($this->root) . strtr(self::PHPSTAN_CONFIG, [
             '{services}' => implode(PHP_EOL, $services),
             '{ignores}' => $ignores === [] ? '' : PHP_EOL . '    ignoreErrors:' . PHP_EOL . implode(PHP_EOL, $ignores),
         ]));
@@ -351,9 +351,15 @@ final readonly class DivergenceCases
             $sandbox,
         );
 
-        /** @var array{files?: array<string, array{messages: list<array{line: int, identifier?: string}>}>} $decoded */
-        $decoded = json_decode($output, true) ?? [];
+        // A crash produces no JSON, and reading that as an empty result recorded every symplify case as
+        // `original —` the day the services it needs stopped loading. The fires gate already fails here, so
+        // this does too: a run that analysed nothing must not look like a run that found nothing.
+        $decoded = json_decode($output, true);
+        if (! is_array($decoded) || ! isset($decoded['totals'])) {
+            throw new RuntimeException("PHPStan produced no JSON for the divergence cases:\n" . substr($output, 0, 2000));
+        }
 
+        /** @var array{files?: array<string, array{messages: list<array{line: int, identifier?: string}>}>} $decoded */
         $found = [];
         foreach ($decoded['files'] ?? [] as $file => $info) {
             foreach ($info['messages'] as $message) {

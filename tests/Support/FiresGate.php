@@ -448,7 +448,7 @@ final readonly class FiresGate
         ]));
         file_put_contents($sandbox . '/mago.toml', strtr(self::MAGO_CONFIG, ['{ROOT}' => $this->repositoryRoot]) . "\n");
         file_put_contents($sandbox . '/bootstrap.php', self::PHPSTAN_BOOTSTRAP . "\n");
-        file_put_contents($sandbox . '/phpstan.neon', strtr(self::PHPSTAN_CONFIG, [
+        file_put_contents($sandbox . '/phpstan.neon', LockedCorpus::serviceIncludes($this->repositoryRoot) . strtr(self::PHPSTAN_CONFIG, [
             '{class}' => $ruleClass,
             '{arguments}' => $this->arguments($ruleFile),
             '{parameters}' => $this->parameters($ruleFile),

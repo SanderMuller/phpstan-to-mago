@@ -112,7 +112,8 @@
         "phpstan/extension-installer": {
             "ignore": [
                 "hihaho/phpstan-rules",
-                "larastan/larastan"
+                "larastan/larastan",
+                "symplify/phpstan-rules"
             ]
         }
     }

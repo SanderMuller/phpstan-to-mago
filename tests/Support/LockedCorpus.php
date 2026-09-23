@@ -77,6 +77,35 @@ final class LockedCorpus
      * Explicit rather than inferred: nothing in a process can tell "installed differently on purpose" from
      * "installed differently by accident", and guessing would put the drift watch's usefulness on a heuristic.
      */
+    /**
+     * The configuration a sandbox needs to run a corpus rule, and none of the corpus's own rules.
+     *
+     * No corpus package is auto-registered: `composer.json` lists them under
+     * `extra."phpstan/extension-installer".ignore`, so their rules never run against this repository's own
+     * source. A sandbox that runs one corpus rule still needs the services that rule autowires, and those
+     * used to arrive with the package's auto-included neons. Without them PHPStan fails to build the
+     * container (`Resolver.php line 481`, a service not found) before it analyses anything.
+     *
+     * Both files register no rule. `phpstan-extensions.neon` adds four return-type extensions, each gated on
+     * a `symplify.*` parameter that defaults to false, plus the schema any `%symplify.*%` reference needs.
+     * `ctor-rules.neon` and `mock-rules.neon` are left out on purpose, because they register rules.
+     */
+    public const array SERVICE_CONFIGS = [
+        'vendor/symplify/phpstan-rules/config/services/services.neon',
+        'vendor/symplify/phpstan-rules/config/phpstan-extensions.neon',
+    ];
+
+    /** A neon `includes:` block for {@see SERVICE_CONFIGS}, rooted at the repository. */
+    public static function serviceIncludes(string $root): string
+    {
+        $lines = ['includes:'];
+        foreach (self::SERVICE_CONFIGS as $path) {
+            $lines[] = '    - ' . $root . '/' . $path;
+        }
+
+        return implode("\n", $lines) . "\n";
+    }
+
     public const string WATCHING = 'WATCH_CORPUS_DRIFT';
 
     /** A reason to skip, or null when the installed corpus is the one the census records. */
