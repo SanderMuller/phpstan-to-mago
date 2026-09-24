@@ -96,7 +96,7 @@ corpus on purpose, so skipping there would be the alarm going green having looke
     phpstan/phpstan-strict-rules              2.0.12
     symplify/phpstan-rules                    14.15.3
     tomasvotruba/cognitive-complexity         1.2.0
-    tomasvotruba/type-coverage                2.3.6
+    tomasvotruba/type-coverage                2.3.7
 
 The list is a **lower bound**, and where the bound now sits: a statement that refuses is stepped
 over, and the statements it *encloses* are read next, so a rule whose whole body sits inside one

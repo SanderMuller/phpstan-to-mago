@@ -128,12 +128,16 @@ final class DeclaredParameters
     private const array FUNCTION_LIKES = [NodeKind::Method, NodeKind::Function, NodeKind::Closure, NodeKind::ArrowFunction];
 
     /**
-     * How many times a declaration's parameters enter the total.
+     * How many times a declaration's parameters enter the total: once, or zero for a trait declaration
+     * that no using class reaches.
      *
-     * Once for anything written in a class, an enum, an interface or a plain function — and, for a trait
-     * method, once per *class* that ends up with that method. PHPStan analyses a trait's body in the context
-     * of each using class, and `CollectorDataNormalizer` sums the records without deduplicating, so the same
-     * two parameters arrive three times for a trait three classes use.
+     * **This counted once per using class up to type-coverage 2.3.6.** PHPStan analyses a trait's body in the
+     * context of each using class, and `CollectorDataNormalizer` summed the records without deduplicating,
+     * so the same two parameters arrived three times for a trait three classes use. 2.3.7 (#78, #85) adds
+     * the node's start position to each record and counts a trait declaration once per `trait file:position`.
+     * So the per-user questions below still decide *whether* a declaration counts, because the guard still
+     * runs per using class, and no longer *how many times*. The table records the 2.3.6 behaviour it was
+     * measured on; `CountsParametersLikeTheCollectorTest` holds the numbers the rule gives now.
      *
      * None of that is a guess about PHPStan's traversal. Every clause below is a control, each its own
      * sandbox, comparing the real rule against this one:
@@ -190,28 +194,25 @@ final class DeclaredParameters
 
         $users = $traitUsers[strtolower($trait)] ?? [];
 
-        // A closure or an arrow function inside a trait method is analysed with that method, so it is counted
-        // as many times as that method is — the questions below are asked of the enclosing method, because a
-        // closure has no name for a parent to declare or an override to win over. Answering them of the
+        // A closure or an arrow function inside a trait method is analysed with that method, so it counts
+        // whenever some user reaches that method — the questions below are asked of the enclosing method,
+        // because a closure has no name for a parent to declare or an override to win over. Answering them of the
         // closure instead returned 1 for it, and a trait's closures counted once where PHPStan counted them
         // per using class: 0 against 18 on a directory of three traits with no users in it.
         $isMethod = $functionLike->kind === NodeKind::Method;
         $named = $isMethod ? $functionLike : Declarations::enclosingMethod($source, $functionLike);
         $method = $named instanceof Node ? Declarations::declaredName($source, $named) : null;
         if (! $named instanceof Node || $method === null) {
-            return count($users);
+            return $users === [] ? 0 : 1;
         }
 
         $here = $file . ':' . $named->span->start;
-        $times = 0;
         foreach ($users as $user) {
             // An anonymous class has no name to ask the codebase about, so neither question can be put to it
             // and the declaration counts once for it.
             $class = $user['class'];
             if ($class === null) {
-                ++$times;
-
-                continue;
+                return 1;
             }
 
             // The LSP guard skips the *method record* and nothing else: the collector's node type is
@@ -235,10 +236,10 @@ final class DeclaredParameters
                 continue;
             }
 
-            ++$times;
+            return 1;
         }
 
-        return $times;
+        return 0;
     }
 
     /**

@@ -16,17 +16,20 @@ use Mago\Sdk\Reporting\Level;
 use Sandermuller\PhpstanToMago\Runtime\TypeCoverage;
 
 /**
- * Over-counts the original by +1 of 17635 declarations on the 1694 files of laravel/framework's own
- * `Illuminate`, and by 1.11% at most on the two Laravel *applications* it was measured on — +81 of 13694 and
- * +37 of 11428, both measured before `@mixin` was followed and not re-measured since. The collector skips a
- * method whose name an ancestor has, asking `ClassReflection::hasMethod()`, and two of the things that answer it
- * are reproduced here: a `@method` line on an ancestor, and a `@mixin` on one, followed transitively. The mixin
- * was +1310 on `Illuminate` by itself — +1190 of that in `Database`, +55 in `Redis`, +16 in `Pagination`, and
- * the other 35 directories at zero. What remains is a mixin target whose metadata is missing a method the
- * runtime has: `@mixin \Redis` on Illuminate\Redis\Connections\Connection, where mago carries `scan`, `sscan`
- * and `zscan` and not `hscan`, so `PhpRedisConnection::hscan()` is the whole +1 — and, on an application,
- * larastan's factory and auth extensions, which a Mago plugin cannot reproduce. Under-counts nothing measured.
- * Reproduce with `php tests/Support/run-coverage-corpus.php <consumer-root>`.
+ * Over-counts the original by +6 of 15069 declarations on the 1703 files of laravel/framework's own
+ * `Illuminate`, measured on laravel/framework v13.33.0 and type-coverage 2.3.7, where the port from before 2.3.7
+ * measured +4 against 2.3.6 on the same tree, and by 1.11% at most on the two Laravel *applications* it was
+ * measured on — +81 of 13694 and +37 of 11428, both measured on type-coverage 2.3.6, before `@mixin` was
+ * followed, and not re-measured since. The collector skips a method whose name an ancestor has, asking
+ * `ClassReflection::hasMethod()`, and two of the things that answer it are reproduced here: a `@method` line on
+ * an ancestor, and a `@mixin` on one, followed transitively. The mixin was +1310 on `Illuminate` by itself —
+ * +1190 of that in `Database`, +55 in `Redis`, +16 in `Pagination`, and the other 35 directories at zero. What
+ * remains is a mixin target whose metadata is missing a method the runtime has: `@mixin \Redis` on
+ * Illuminate\Redis\Connections\Connection, where mago carries `scan`, `sscan` and `zscan` and not `hscan`, so
+ * `PhpRedisConnection::hscan()` was the whole +1 when `Illuminate` measured +1, and the rest of today's +6 is
+ * not traced — and, on an application, larastan's factory and auth extensions, which a Mago plugin cannot
+ * reproduce. Under-counts nothing measured. Reproduce with `php tests/Support/run-coverage-corpus.php
+ * <consumer-root>`.
  */
 final class ParamTypeCoverageRule implements AfterAnalysisHook, Plugin
 {

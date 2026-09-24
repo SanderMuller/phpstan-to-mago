@@ -1150,7 +1150,8 @@ final class Vocabulary
      * the port, reading metadata keyed by class name, counts neither body. The control
      * `conditionally-redeclared` pins it.
      * Independently, `type-coverage`'s own param count on the first consumer is 11164 today and 7317 with two
-     * pending semantics fixes applied — a different measurement against a different extension set, quoted
+     * pending semantics fixes applied (written before type-coverage 2.3.7, which counts a trait declaration
+     * once; whether that release is these two fixes has not been checked against this consumer) — a different measurement against a different extension set, quoted
      * because it sizes the *worst case*: the same +81 is 0.73% of that denominator now and 1.11% after those
      * fixes land. `CEILING` is set against the post-fix figure so landing them cannot turn the gate red
      * without a real regression.
@@ -1185,17 +1186,20 @@ final class Vocabulary
     public const array ACCEPTED_DIVERGENCE = [
         'parameters' => [
             'ceiling' => 0.0111,
-            'note' => 'Over-counts the original by +1 of 17635 declarations on the 1694 files of '
-                . "laravel/framework's own `Illuminate`, and by 1.11% at most on the two Laravel "
-                . '*applications* it was measured on — +81 of 13694 and +37 of 11428, both measured before '
-                . '`@mixin` was followed and not re-measured since. The collector skips a method whose name an '
+            'note' => 'Over-counts the original by +6 of 15069 declarations on the 1703 files of '
+                . "laravel/framework's own `Illuminate`, measured on laravel/framework v13.33.0 and "
+                . 'type-coverage 2.3.7, where the port from before 2.3.7 measured +4 against 2.3.6 on the '
+                . 'same tree, and by 1.11% at most on the two Laravel *applications* it was measured on — +81 '
+                . 'of 13694 and +37 of 11428, both measured on type-coverage 2.3.6, before `@mixin` was '
+                . 'followed, and not re-measured since. The collector skips a method whose name an '
                 . 'ancestor has, asking `ClassReflection::hasMethod()`, and two of the things that answer it '
                 . 'are reproduced here: a `@method` line on an ancestor, and a `@mixin` on one, followed '
                 . 'transitively. The mixin was +1310 on `Illuminate` by itself — +1190 of that in `Database`, '
                 . '+55 in `Redis`, +16 in `Pagination`, and the other 35 directories at zero. What remains is '
                 . 'a mixin target whose metadata is missing a method the runtime has: `@mixin \\Redis` on '
                 . 'Illuminate\\Redis\\Connections\\Connection, where mago carries `scan`, `sscan` and '
-                . '`zscan` and not `hscan`, so `PhpRedisConnection::hscan()` is the whole +1 — and, on an '
+                . '`zscan` and not `hscan`, so `PhpRedisConnection::hscan()` was the whole +1 when '
+                . '`Illuminate` measured +1, and the rest of today\'s +6 is not traced — and, on an '
                 . "application, larastan's factory and auth extensions, which a Mago plugin cannot "
                 . 'reproduce. Under-counts nothing measured. Reproduce with '
                 . '`php tests/Support/run-coverage-corpus.php <consumer-root>`.',
@@ -1214,10 +1218,14 @@ final class Vocabulary
         'returns' => [
             'ceiling' => 0.0,
             'note' => 'Counted exactly on the two Laravel consumers it was measured on: 18307 of 18307 and '
-                . '8526 of 8526, agreeing on the percentage as well as the count. A zero ceiling is the '
-                . 'measurement rather than an absence of one. Four things had to hold and each was measured '
-                . "first: a trait's methods are counted once for every class that reaches them and not once "
-                . 'each, with a class reaching a trait through two traits counting twice; a class that '
+                . '8526 of 8526, agreeing on the percentage as well as the count, measured on type-coverage '
+                . '2.3.6 and not re-measured since. A zero ceiling is that measurement rather than an absence '
+                . "of one. On laravel/framework v13.33.0's own `Illuminate` it under-counts by 2 of 12968 on "
+                . 'type-coverage 2.3.7, where the port from before 2.3.7 measured -24 against 2.3.6 on the '
+                . 'same tree. Four things had to hold and each was measured first: a trait method counts once '
+                . 'when at least one class reaches it, which is type-coverage 2.3.7 counting a trait '
+                . 'declaration once by its position (up to 2.3.6 it counted once for every class that '
+                . 'reached it, and twice for a class reaching a trait through two traits); a class that '
                 . "declares the method itself does not reach the trait's, and a `@method` docblock takes no "
                 . "name away from it; magic methods are skipped by php-parser's list of seventeen names and "
                 . "not by mago's flag; and neither a `@method` entry nor an enum's `cases()`, `from()` and "

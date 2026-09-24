@@ -35,8 +35,9 @@ final class CountsReturnsLikeTheCollectorTest extends TestCase
      */
     public static function controls(): iterable
     {
-        // A trait's body is analysed once per using class, so its one method arrives three times.
-        yield 'a trait method and three using classes' => ['three-users', 3];
+        // A trait's body is analysed once per using class, and since type-coverage 2.3.7 its one method
+        // counts once however many classes use it. It counted three times up to 2.3.6.
+        yield 'a trait method and three using classes' => ['three-users', 1];
         // And zero times for a trait nobody uses: the body is never analysed in any class's context.
         yield 'a trait nobody uses' => ['no-users', 0];
         // Once, for the class that writes the `use`. A subclass does not count its parent's trait again.
@@ -46,11 +47,13 @@ final class CountsReturnsLikeTheCollectorTest extends TestCase
         // The class's own method wins, so the trait's version is never analysed in its context. Counting the
         // trait's *users* rather than the users that *reach* the declaration made this 2.
         yield 'a trait method the using class overrides' => ['overridden-trait-method', 1];
-        // A renamed method still arrives, under the new name, so the class reaches both declarations.
-        yield 'a trait method reached under an alias' => ['aliased-trait-method', 3];
-        // The interface's own declaration counts, and the trait's is skipped for the class that implements
-        // it — the LSP guard is the parameter collector's, and this one has none, so all three count.
-        yield 'a trait method whose name an interface declares' => ['locked-by-interface', 3];
+        // A renamed method still arrives, under the new name, and since 2.3.7 the renamed use and the plain
+        // use are the same declaration: the class's own method and the trait's, once each. It was 3 up to 2.3.6.
+        yield 'a trait method reached under an alias' => ['aliased-trait-method', 2];
+        // The interface's own declaration counts, and so does the trait's — the LSP guard is the parameter
+        // collector's, and this one has none. Since 2.3.7 the trait's counts once for its two users, so 2.
+        // It was 3 up to 2.3.6.
+        yield 'a trait method whose name an interface declares' => ['locked-by-interface', 2];
         // An anonymous class is a using class like any other, and has no name to ask the codebase about.
         yield 'an anonymous class implementing an interface' => ['anonymous-class', 3];
         // The reflection extension that bounds the parameter metric has nothing to act on here: this
@@ -64,14 +67,15 @@ final class CountsReturnsLikeTheCollectorTest extends TestCase
         // them, so there is no node to visit and only the two declared methods count. This was +430 of a
         // +444 corpus delta, all of it in one directory of 157 enums.
         yield 'an enum and a backed enum' => ['enum-cases', 2];
-        // A `@method` line takes no name away from a trait, so both users reach the declaration. The
-        // codebase resolves the name to the documented one, which said the documenting class did not.
-        yield 'a class documenting the trait method it uses' => ['documented-trait-method', 2];
-        // One class, two traits, both using a third: the body of the third is analysed once per path, so it
-        // counts twice. A walk carrying a visited set counted it once, which was the last divergence in this
-        // metric on a real consumer — one class using two validation traits that both use a URL-prefixing
-        // one, and a -1 in 18307.
-        yield 'a class reaching one trait through two' => ['trait-diamond', 2];
+        // A `@method` line takes no name away from a trait, so both users reach the declaration, which counts
+        // once since 2.3.7 (twice up to 2.3.6). The codebase resolves the name to the documented one, which
+        // said the documenting class did not — so the row still guards the reach, not only the count.
+        yield 'a class documenting the trait method it uses' => ['documented-trait-method', 1];
+        // One class, two traits, both using a third: the body of the third is analysed once per path. Up to
+        // 2.3.6 that counted twice, and a walk carrying a visited set counted it once, which was the last
+        // divergence in this metric on a real consumer — one class using two validation traits that both use
+        // a URL-prefixing one, and a -1 in 18307. Since 2.3.7 the two paths are one declaration and count once.
+        yield 'a class reaching one trait through two' => ['trait-diamond', 1];
     }
 
     #[DataProvider('controls')]

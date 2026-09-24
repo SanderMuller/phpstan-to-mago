@@ -156,11 +156,12 @@ final class AggregatesTypeCoverageTest extends TestCase
         $this->assertStringContainsString("'typeCoverage.paramTypeCoverage'", $emitted);
         $this->assertStringContainsString('Out of %d possible param types', $emitted);
 
-        // Both figures, because one of them alone is what a reader would take as a bound. +1 of 17635 is
-        // `laravel/framework`'s own `Illuminate` as it stands; 1.11% is the two Laravel applications, and it
-        // is the older of the two — measured before `@mixin` was followed and not re-measured since, which
-        // the note has to keep saying or the smaller vendor figure reads as covering an application too.
-        $this->assertStringContainsString('+1 of 17635 declarations', $emitted);
+        // Both figures, because one of them alone is what a reader would take as a bound. +6 of 15069 is
+        // `laravel/framework`'s own `Illuminate` as it stands, re-measured on type-coverage 2.3.7; 1.11% is the
+        // two Laravel applications, and it is the older of the two — measured on 2.3.6, before `@mixin` was
+        // followed, and not re-measured since, which the note has to keep saying or the smaller vendor figure
+        // reads as covering an application too.
+        $this->assertStringContainsString('+6 of 15069 declarations', $emitted);
         $this->assertStringContainsString('1.11% at most on the two Laravel *applications*', $emitted);
         $this->assertStringContainsString('not re-measured since', $emitted);
         // And what the +1 is, by name. A residue nobody can name is how +1 becomes +1310 again unnoticed.

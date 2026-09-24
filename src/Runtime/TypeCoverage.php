@@ -211,11 +211,14 @@ final readonly class TypeCoverage
     }
 
     /**
-     * How many times PHPStan analyses one method declaration, which is not always once.
+     * Whether a method declaration's return enters the total: once, or zero for a trait method no using class
+     * reaches.
      *
      * The collectors here run per analysed *scope*, and a trait's body is analysed once for every class that
-     * uses it — twice for a trait two classes use, and **not at all** for a trait nobody uses. A method
-     * declared in a class is analysed once.
+     * uses it — twice for a trait two classes use, and **not at all** for a trait nobody uses. Up to
+     * type-coverage 2.3.6 each of those analyses was a separate count. 2.3.7 (#78, #85) counts a trait
+     * declaration once per `trait file:position`, so reaching it from any user is enough, and reaching it from
+     * none still counts zero. A method declared in a class counts once, as before.
      *
      * Counting the trait's users is not enough, which a control says rather than an argument. A class that
      * uses a trait and declares the same method itself never has the trait's version analysed in its
@@ -238,24 +241,21 @@ final readonly class TypeCoverage
 
         $site = $method->location->file . ':' . $method->location->span->start;
 
-        $times = 0;
         foreach ($users as $user) {
             $class = $user['class'];
 
             // An anonymous class has no name to ask the codebase about, so the question cannot be put to it
-            // and the declaration counts once for it.
+            // and the declaration counts for it.
             if ($class === null) {
-                ++$times;
-
-                continue;
+                return 1;
             }
 
             if (TraitUsers::reachedAs($context, $class, $site, [$method->name, ...$user['aliases']]) !== null) {
-                ++$times;
+                return 1;
             }
         }
 
-        return $times;
+        return 0;
     }
 
     /**

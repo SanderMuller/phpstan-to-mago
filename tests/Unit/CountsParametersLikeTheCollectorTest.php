@@ -35,8 +35,9 @@ final class CountsParametersLikeTheCollectorTest extends TestCase
      */
     public static function controls(): iterable
     {
-        // A trait method is analysed once per using class, so its parameters arrive three times.
-        yield 'a trait method and three using classes' => ['three-users', 6];
+        // A trait method is analysed once per using class, and since type-coverage 2.3.7 its two parameters
+        // count once however many classes use it. They arrived three times, 6, up to 2.3.6.
+        yield 'a trait method and three using classes' => ['three-users', 2];
         // And zero times for a trait nobody uses: the body is never analysed in any class's context.
         yield 'a trait nobody uses' => ['no-users', 0];
         // Once, for the one class at the end of the chain — not once per link in it.
@@ -63,24 +64,29 @@ final class CountsParametersLikeTheCollectorTest extends TestCase
         // `use T { m as other; }` leaves the class's own `m` winning that name while the trait's `m` is still
         // analysed in the class's context under the alias. Two for the plain user, two for the renaming user's
         // own method, two for the trait's inside it. Asking only about the original name counted the last of
-        // those zero times, which was -2 on a real project's enum directory.
-        yield 'a trait method reached under an alias' => ['aliased-trait-method', 6];
+        // those zero times, which was -2 on a real project's enum directory. Since 2.3.7 the plain use and the
+        // renamed use are one declaration, so the trait's two count once: 4, where it was 6 up to 2.3.6.
+        yield 'a trait method reached under an alias' => ['aliased-trait-method', 4];
         // And the guard is asked about the *alias*. PHPStan reads the method node's name, which inside a
         // renamed trait method is the new one, so an interface declaring the original does not lock it: the
         // interface's own two, one each for the inner trait's two users, and the trait's two for the renaming
-        // class only. Asking about the original instead skipped that last pair.
-        yield 'an aliased trait method an interface declares' => ['aliased-trait-locked-by-interface', 6];
+        // class only. Asking about the original instead skipped that last pair. Since 2.3.7 the inner trait's
+        // one parameter counts once for its two users, so 5, where it was 6 up to 2.3.6.
+        yield 'an aliased trait method an interface declares' => ['aliased-trait-locked-by-interface', 5];
         // The discriminating one, and the reason the row above is not arithmetic. Here the interface declares
         // *only* the alias: asking the guard about the alias predicts 8, asking about the original predicts
-        // 10, and the original counts 8. Written before the run rather than read off it.
-        yield 'an interface declaring only the alias' => ['aliased-trait-locked-by-alias', 8];
+        // 10, and the original counted 8 up to 2.3.6. Written before the run rather than read off it. Since
+        // 2.3.7 `Inner::inner()`'s one parameter counts once rather than per user, so 7 — derived by hand
+        // from the fixture before being pinned, because a drop of one on a two-parameter case needed a reason.
+        yield 'an interface declaring only the alias' => ['aliased-trait-locked-by-alias', 7];
         // A `@method` line takes no name away from a trait, so both users reach the declaration. Shared with
         // the return metric, which is where the case was found: the codebase resolves the name to the
         // documented declaration, and asking where it lands said the documenting class did not reach it.
-        yield 'a class documenting the trait method it uses' => ['documented-trait-method', 2];
+        // Since 2.3.7 both users reaching it count it once, where it was twice up to 2.3.6.
+        yield 'a class documenting the trait method it uses' => ['documented-trait-method', 1];
         // The same path counting, shared through `TraitUsers`: a class reaching one trait through two has
-        // that trait's body analysed twice.
-        yield 'a class reaching one trait through two' => ['trait-diamond', 2];
+        // that trait's body analysed twice. That counted twice up to 2.3.6, and once since 2.3.7.
+        yield 'a class reaching one trait through two' => ['trait-diamond', 1];
         // A `@mixin` on the *parent* puts the mixin target's methods on it, and PHPStan's own
         // `MixinMethodsClassReflectionExtension` answers `hasMethod()` for them — so the guard skips the
         // subclass's declaration. The mixin target's own two parameters count, and `plain()`'s one.
