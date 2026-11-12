@@ -19,7 +19,7 @@
     ],
     "require": {
         "php": "^8.4",
-        "nette/neon": "^3.4",
+        "nette/neon": "^3.4 || ^4.0",
         "nikic/php-parser": "^5.7"
     },
     "require-dev": {
