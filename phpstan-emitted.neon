@@ -38,7 +38,6 @@ parameters:
         param: 0
         property: 0
         constant: 0
-        declare: 0
 
     cognitive_complexity:
         class: 500
